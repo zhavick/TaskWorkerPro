@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("TrackerKerja.WebApi")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+785aeee4ed9460d5f84d9a294dcede9bf8ed8409")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+049b681d338cbe1ba5ed7006f4ab518c1e0ac901")]
 [assembly: System.Reflection.AssemblyProductAttribute("TrackerKerja.WebApi")]
 [assembly: System.Reflection.AssemblyTitleAttribute("TrackerKerja.WebApi")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
