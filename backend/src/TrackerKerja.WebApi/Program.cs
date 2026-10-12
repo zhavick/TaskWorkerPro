@@ -21,7 +21,8 @@ builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(connectionString, npgsqlOptions =>
     {
         npgsqlOptions.EnableRetryOnFailure(3);
-    });
+    })
+    .UseSnakeCaseNamingConvention();
 });
 
 // 3. Application & Infrastructure Services
