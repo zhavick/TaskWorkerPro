@@ -27,6 +27,7 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 // 3. Application & Infrastructure Services
 builder.Services.AddScoped<ICurrentTenantService, CurrentTenantService>();
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
+builder.Services.AddScoped<IExcelExportService, ClosedXmlExportService>();
 
 // 4. JWT Authentication
 var jwtSettings = builder.Configuration.GetSection("JwtSettings");
