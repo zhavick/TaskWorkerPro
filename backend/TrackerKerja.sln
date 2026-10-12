@@ -1,0 +1,57 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{963C84BE-EC22-41DF-8000-6DFED9621831}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TrackerKerja.Domain", "src\TrackerKerja.Domain\TrackerKerja.Domain.csproj", "{7170615A-3738-4AC1-9C44-169264B0718D}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TrackerKerja.Application", "src\TrackerKerja.Application\TrackerKerja.Application.csproj", "{6E0859B8-6EB0-4BD8-8CBB-A51B2646CCB9}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TrackerKerja.Infrastructure", "src\TrackerKerja.Infrastructure\TrackerKerja.Infrastructure.csproj", "{FCAF2FB2-80C1-4193-B8A8-99B880A0E890}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TrackerKerja.WebApi", "src\TrackerKerja.WebApi\TrackerKerja.WebApi.csproj", "{0535F1EE-F892-45A2-A736-7A6E17385DDE}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{0EF5FBFC-3E51-4D53-A3E7-C07146B1DBEA}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TrackerKerja.Tests", "tests\TrackerKerja.Tests\TrackerKerja.Tests.csproj", "{75ABEC99-8B23-4194-BE54-C5DE315CE2F0}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{7170615A-3738-4AC1-9C44-169264B0718D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7170615A-3738-4AC1-9C44-169264B0718D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7170615A-3738-4AC1-9C44-169264B0718D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7170615A-3738-4AC1-9C44-169264B0718D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6E0859B8-6EB0-4BD8-8CBB-A51B2646CCB9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6E0859B8-6EB0-4BD8-8CBB-A51B2646CCB9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6E0859B8-6EB0-4BD8-8CBB-A51B2646CCB9}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6E0859B8-6EB0-4BD8-8CBB-A51B2646CCB9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{FCAF2FB2-80C1-4193-B8A8-99B880A0E890}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FCAF2FB2-80C1-4193-B8A8-99B880A0E890}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FCAF2FB2-80C1-4193-B8A8-99B880A0E890}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FCAF2FB2-80C1-4193-B8A8-99B880A0E890}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0535F1EE-F892-45A2-A736-7A6E17385DDE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0535F1EE-F892-45A2-A736-7A6E17385DDE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0535F1EE-F892-45A2-A736-7A6E17385DDE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0535F1EE-F892-45A2-A736-7A6E17385DDE}.Release|Any CPU.Build.0 = Release|Any CPU
+		{75ABEC99-8B23-4194-BE54-C5DE315CE2F0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{75ABEC99-8B23-4194-BE54-C5DE315CE2F0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{75ABEC99-8B23-4194-BE54-C5DE315CE2F0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{75ABEC99-8B23-4194-BE54-C5DE315CE2F0}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{7170615A-3738-4AC1-9C44-169264B0718D} = {963C84BE-EC22-41DF-8000-6DFED9621831}
+		{6E0859B8-6EB0-4BD8-8CBB-A51B2646CCB9} = {963C84BE-EC22-41DF-8000-6DFED9621831}
+		{FCAF2FB2-80C1-4193-B8A8-99B880A0E890} = {963C84BE-EC22-41DF-8000-6DFED9621831}
+		{0535F1EE-F892-45A2-A736-7A6E17385DDE} = {963C84BE-EC22-41DF-8000-6DFED9621831}
+		{75ABEC99-8B23-4194-BE54-C5DE315CE2F0} = {0EF5FBFC-3E51-4D53-A3E7-C07146B1DBEA}
+	EndGlobalSection
+EndGlobal

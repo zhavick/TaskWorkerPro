@@ -1,0 +1,3 @@
+﻿<Project>
+  <Import Project="..\buildMultiTargeting\TrackerKerja.WebApi.props" />
+</Project>

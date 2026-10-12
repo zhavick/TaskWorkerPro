@@ -1,0 +1,15 @@
+C:\TEMP\VSCODE\TrackerKerjaModern\backend\src\TrackerKerja.Application\bin\Debug\net8.0\TrackerKerja.Application.deps.json
+C:\TEMP\VSCODE\TrackerKerjaModern\backend\src\TrackerKerja.Application\bin\Debug\net8.0\TrackerKerja.Application.dll
+C:\TEMP\VSCODE\TrackerKerjaModern\backend\src\TrackerKerja.Application\bin\Debug\net8.0\TrackerKerja.Application.pdb
+C:\TEMP\VSCODE\TrackerKerjaModern\backend\src\TrackerKerja.Application\bin\Debug\net8.0\TrackerKerja.Domain.dll
+C:\TEMP\VSCODE\TrackerKerjaModern\backend\src\TrackerKerja.Application\bin\Debug\net8.0\TrackerKerja.Domain.pdb
+C:\TEMP\VSCODE\TrackerKerjaModern\backend\src\TrackerKerja.Application\obj\Debug\net8.0\TrackerKerja.Application.csproj.AssemblyReference.cache
+C:\TEMP\VSCODE\TrackerKerjaModern\backend\src\TrackerKerja.Application\obj\Debug\net8.0\TrackerKerja.Application.GeneratedMSBuildEditorConfig.editorconfig
+C:\TEMP\VSCODE\TrackerKerjaModern\backend\src\TrackerKerja.Application\obj\Debug\net8.0\TrackerKerja.Application.AssemblyInfoInputs.cache
+C:\TEMP\VSCODE\TrackerKerjaModern\backend\src\TrackerKerja.Application\obj\Debug\net8.0\TrackerKerja.Application.AssemblyInfo.cs
+C:\TEMP\VSCODE\TrackerKerjaModern\backend\src\TrackerKerja.Application\obj\Debug\net8.0\TrackerKerja.Application.csproj.CoreCompileInputs.cache
+C:\TEMP\VSCODE\TrackerKerjaModern\backend\src\TrackerKerja.Application\obj\Debug\net8.0\TrackerK.C528EBBC.Up2Date
+C:\TEMP\VSCODE\TrackerKerjaModern\backend\src\TrackerKerja.Application\obj\Debug\net8.0\TrackerKerja.Application.dll
+C:\TEMP\VSCODE\TrackerKerjaModern\backend\src\TrackerKerja.Application\obj\Debug\net8.0\refint\TrackerKerja.Application.dll
+C:\TEMP\VSCODE\TrackerKerjaModern\backend\src\TrackerKerja.Application\obj\Debug\net8.0\TrackerKerja.Application.pdb
+C:\TEMP\VSCODE\TrackerKerjaModern\backend\src\TrackerKerja.Application\obj\Debug\net8.0\ref\TrackerKerja.Application.dll

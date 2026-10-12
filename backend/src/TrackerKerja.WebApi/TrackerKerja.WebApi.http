@@ -1,0 +1,6 @@
+@TrackerKerja.WebApi_HostAddress = http://localhost:5118
+
+GET {{TrackerKerja.WebApi_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

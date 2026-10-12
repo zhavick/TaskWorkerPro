@@ -1,0 +1,12 @@
+{
+  "version": 2,
+  "dgSpecHash": "EzE6SbQA0Dw=",
+  "success": true,
+  "projectFilePath": "C:\\TEMP\\VSCODE\\TrackerKerjaModern\\backend\\src\\TrackerKerja.Application\\TrackerKerja.Application.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\WAHANA 24\\.nuget\\packages\\fluentvalidation\\11.9.2\\fluentvalidation.11.9.2.nupkg.sha512",
+    "C:\\Users\\WAHANA 24\\.nuget\\packages\\fluentvalidation.dependencyinjectionextensions\\11.9.2\\fluentvalidation.dependencyinjectionextensions.11.9.2.nupkg.sha512",
+    "C:\\Users\\WAHANA 24\\.nuget\\packages\\microsoft.extensions.dependencyinjection.abstractions\\2.1.0\\microsoft.extensions.dependencyinjection.abstractions.2.1.0.nupkg.sha512"
+  ],
+  "logs": []
+}
