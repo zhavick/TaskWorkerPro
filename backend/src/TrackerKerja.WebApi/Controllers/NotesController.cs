@@ -202,7 +202,7 @@ public class NotesController : ControllerBase
     }
 
     [HttpPost("{id}/attachments")]
-    public async Task<IActionResult> UploadAttachment(int id, [FromForm] IFormFile file)
+    public async Task<IActionResult> UploadAttachment(int id, IFormFile file)
     {
         var note = await _context.Notes.FirstOrDefaultAsync(n => n.Id == id);
         if (note == null) return NotFound(new { success = false, message = "Catatan tidak ditemukan." });
