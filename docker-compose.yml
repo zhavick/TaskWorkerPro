@@ -1,0 +1,76 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: trackerkerja_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: trackerkerja_db
+      POSTGRES_USER: tracker_admin
+      POSTGRES_PASSWORD: TrackerSecurePassword2026!
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./database/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tracker_admin -d trackerkerja_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - tracker_network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: src/TrackerKerja.WebApi/Dockerfile
+    container_name: trackerkerja_backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:5000
+      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=trackerkerja_db;Username=tracker_admin;Password=TrackerSecurePassword2026!;Maximum Pool Size=100;Minimum Pool Size=10;
+      JwtSettings__SecretKey: SUPER_SECRET_KEY_FOR_TRACKER_KERJA_2026_MINIMUM_32_BYTES_STRONG!
+      JwtSettings__Issuer: https://api.trackerkerja.local
+      JwtSettings__Audience: https://app.trackerkerja.local
+      CorsSettings__AllowedOrigins__0: http://localhost:3000
+      CorsSettings__AllowedOrigins__1: http://frontend:3000
+    ports:
+      - "5000:5000"
+    volumes:
+      - backend_uploads:/app/uploads
+    networks:
+      - tracker_network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: trackerkerja_frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:5000/api
+    ports:
+      - "3000:3000"
+    networks:
+      - tracker_network
+
+volumes:
+  pgdata:
+    driver: local
+  backend_uploads:
+    driver: local
+
+networks:
+  tracker_network:
+    driver: bridge
