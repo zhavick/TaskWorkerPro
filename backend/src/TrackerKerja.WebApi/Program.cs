@@ -128,4 +128,19 @@ app.UseAuthorization();
 
 app.MapControllers();
 
+// 8. Inisialisasi & Seeding Akun Bawaan (Admin & Default Tenant)
+using (var scope = app.Services.CreateScope())
+{
+    var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    try
+    {
+        await DbInitializer.SeedAsync(context);
+    }
+    catch (Exception ex)
+    {
+        var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+        logger.LogWarning(ex, "DbInitializer gagal menjalankan seed pada startup.");
+    }
+}
+
 app.Run();
