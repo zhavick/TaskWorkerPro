@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("TrackerKerja.Domain")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+049b681d338cbe1ba5ed7006f4ab518c1e0ac901")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+74132fa2f7721c1b1a19b2ec19ae5e0e0b259df7")]
 [assembly: System.Reflection.AssemblyProductAttribute("TrackerKerja.Domain")]
 [assembly: System.Reflection.AssemblyTitleAttribute("TrackerKerja.Domain")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

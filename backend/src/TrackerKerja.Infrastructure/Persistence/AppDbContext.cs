@@ -40,6 +40,9 @@ public class AppDbContext : DbContext
     public DbSet<JsonHistory> JsonHistories => Set<JsonHistory>();
     public DbSet<SqlHistory> SqlHistories => Set<SqlHistory>();
 
+    public int? CurrentCompanyId => _tenantService?.CompanyId;
+    public bool IsCurrentUserAdmin => _tenantService?.IsAdmin ?? false;
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -140,19 +143,16 @@ public class AppDbContext : DbContext
             .OnDelete(DeleteBehavior.SetNull);
 
         // 4. Multi-Tenancy Global Query Filter
-        if (_tenantService != null)
-        {
-            modelBuilder.Entity<WorkTask>().HasQueryFilter(t =>
-                _tenantService.IsAdmin || _tenantService.CompanyId == null || t.CompanyId == _tenantService.CompanyId);
+        modelBuilder.Entity<WorkTask>().HasQueryFilter(t =>
+            IsCurrentUserAdmin || CurrentCompanyId == null || t.CompanyId == CurrentCompanyId);
 
-            modelBuilder.Entity<Project>().HasQueryFilter(p =>
-                _tenantService.IsAdmin || _tenantService.CompanyId == null || p.CompanyId == _tenantService.CompanyId);
+        modelBuilder.Entity<Project>().HasQueryFilter(p =>
+            IsCurrentUserAdmin || CurrentCompanyId == null || p.CompanyId == CurrentCompanyId);
 
-            modelBuilder.Entity<WorkNote>().HasQueryFilter(n =>
-                _tenantService.IsAdmin || _tenantService.CompanyId == null || n.CompanyId == _tenantService.CompanyId);
+        modelBuilder.Entity<WorkNote>().HasQueryFilter(n =>
+            IsCurrentUserAdmin || CurrentCompanyId == null || n.CompanyId == CurrentCompanyId);
 
-            modelBuilder.Entity<Announcement>().HasQueryFilter(a =>
-                _tenantService.IsAdmin || a.CompanyId == null || _tenantService.CompanyId == null || a.CompanyId == _tenantService.CompanyId);
-        }
+        modelBuilder.Entity<Announcement>().HasQueryFilter(a =>
+            IsCurrentUserAdmin || a.CompanyId == null || CurrentCompanyId == null || a.CompanyId == CurrentCompanyId);
     }
 }
