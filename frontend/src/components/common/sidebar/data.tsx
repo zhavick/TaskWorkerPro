@@ -1,0 +1,107 @@
+import React from "react";
+import {
+  Home,
+  Briefcase,
+  CheckSquare,
+  Clock,
+  Calendar,
+  BookOpen,
+  Users,
+  Award,
+  Bell,
+  Code,
+  Settings,
+  User,
+} from "lucide-react";
+
+export const NAV_DATA = [
+  {
+    label: "OPERASIONAL KERJA",
+    items: [
+      {
+        title: "Dashboard",
+        icon: <Home className="h-5 w-5" />,
+        url: "/dashboard",
+        items: [],
+      },
+      {
+        title: "Manajemen Proyek",
+        icon: <Briefcase className="h-5 w-5" />,
+        url: "/projects",
+        items: [],
+      },
+      {
+        title: "Tugas & Kanban",
+        icon: <CheckSquare className="h-5 w-5" />,
+        items: [
+          { title: "Daftar Tugas", url: "/tasks" },
+          { title: "Papan Kanban", url: "/tasks/kanban" },
+        ],
+      },
+      {
+        title: "Timesheet & Timer",
+        icon: <Clock className="h-5 w-5" />,
+        url: "/timesheets",
+        items: [],
+      },
+      {
+        title: "Presensi Kehadiran",
+        icon: <Calendar className="h-5 w-5" />,
+        url: "/attendance",
+        items: [],
+      },
+      {
+        title: "Catatan & SOP",
+        icon: <BookOpen className="h-5 w-5" />,
+        url: "/notes",
+        items: [],
+      },
+    ],
+  },
+  {
+    label: "TIM & ENTERPRISE",
+    items: [
+      {
+        title: "Anggota Tim",
+        icon: <Users className="h-5 w-5" />,
+        url: "/members",
+        items: [],
+      },
+      {
+        title: "Gamifikasi & Hadiah",
+        icon: <Award className="h-5 w-5" />,
+        items: [
+          { title: "Status & Streak", url: "/gamification" },
+          { title: "Lencana Prestasi", url: "/gamification/badges" },
+          { title: "Reward Store", url: "/gamification/rewards" },
+        ],
+      },
+      {
+        title: "Pengumuman",
+        icon: <Bell className="h-5 w-5" />,
+        url: "/announcements",
+        items: [],
+      },
+      {
+        title: "Developer Tools",
+        icon: <Code className="h-5 w-5" />,
+        items: [
+          { title: "JSON Formatter", url: "/dev-tools/json" },
+          { title: "SQL Beautifier", url: "/dev-tools/sql" },
+        ],
+      },
+      {
+        title: "Konfigurasi Sistem",
+        icon: <Settings className="h-5 w-5" />,
+        url: "/configuration",
+        items: [],
+      },
+      {
+        title: "Profil Saya",
+        icon: <User className="h-5 w-5" />,
+        url: "/profile",
+        items: [],
+      },
+    ],
+  },
+];
