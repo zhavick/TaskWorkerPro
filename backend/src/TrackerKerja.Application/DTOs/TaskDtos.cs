@@ -127,3 +127,13 @@ public record CreateSubtaskRequest(
     string? AssignedToUserId,
     DateTimeOffset? DueDate
 );
+
+public record TaskExportFilterDto
+{
+    public string Format { get; init; } = "standard"; // "standard" | "arms"
+    public DateTimeOffset? StartDate { get; init; }
+    public DateTimeOffset? EndDate { get; init; }
+    public int? ProjectId { get; init; }
+    public int? Status { get; init; }
+    public string Scope { get; init; } = "mine"; // "mine" | "all"
+}
