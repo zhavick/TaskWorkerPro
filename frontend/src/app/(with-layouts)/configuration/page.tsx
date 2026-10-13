@@ -26,6 +26,18 @@ import {
   AlertTriangle,
   Palette,
   Sparkles,
+  RefreshCw,
+  Download,
+  Upload,
+  ArrowUpRight,
+  ArrowDownLeft,
+  Cloud,
+  HardDrive,
+  Server,
+  Clock,
+  Key,
+  FileArchive,
+  Check,
 } from "lucide-react";
 import { Button } from "@/components/tailgrids/core/button";
 import { Input } from "@/components/tailgrids/core/input";
@@ -53,7 +65,7 @@ const COLOR_PRESETS = [
 export default function ConfigurationPage() {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<
-    "general" | "security" | "smtp" | "audit" | "master"
+    "general" | "security" | "smtp" | "audit" | "master" | "sync"
   >("general");
 
   // Setting values mapping
@@ -71,6 +83,19 @@ export default function ConfigurationPage() {
   });
 
   const [testEmail, setTestEmail] = useState("");
+
+  // ==========================================
+  // SYNC / HOST INDUK STATES
+  // ==========================================
+  const [hostUrl, setHostUrl] = useState("http://localhost:5000");
+  const [syncApiKey, setSyncApiKey] = useState("");
+  const [includeFiles, setIncludeFiles] = useState(true);
+  const [pingResult, setPingResult] = useState<{
+    ready: boolean;
+    latencyMs: number;
+    message?: string;
+  } | null>(null);
+  const [importFile, setImportFile] = useState<File | null>(null);
 
   // Subtab for Master Data
   const [masterSubTab, setMasterSubTab] = useState<
@@ -198,6 +223,35 @@ export default function ConfigurationPage() {
     enabled: activeTab === "master",
   });
 
+  // ==========================================
+  // QUERIES - SYNC / HOST INDUK
+  // ==========================================
+  const {
+    data: localPing,
+    isLoading: loadingPing,
+    refetch: refetchPing,
+  } = useQuery({
+    queryKey: ["syncLocalPing"],
+    queryFn: async () => {
+      const res = await apiClient.get("/sync/ping");
+      return res.data;
+    },
+    enabled: activeTab === "sync",
+  });
+
+  const {
+    data: syncHistories = [],
+    isLoading: loadingHistory,
+    refetch: refetchHistory,
+  } = useQuery<any[]>({
+    queryKey: ["syncHistory"],
+    queryFn: async () => {
+      const res = await apiClient.get("/sync/history?limit=30");
+      return res.data;
+    },
+    enabled: activeTab === "sync",
+  });
+
   useEffect(() => {
     if (serverSettings && Array.isArray(serverSettings)) {
       const map: Record<string, string> = { ...settings };
@@ -233,6 +287,111 @@ export default function ConfigurationPage() {
     onError: (err: any) =>
       toast.error(err.response?.data?.message || "Gagal mengirim email pengujian"),
   });
+
+  // ==========================================
+  // MUTATIONS - SYNC / HOST INDUK
+  // ==========================================
+  const pingHostMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiClient.post("/sync/ping-host", { hostUrl, apiKey: syncApiKey });
+      return res.data;
+    },
+    onSuccess: (data: any) => {
+      setPingResult({
+        ready: data.ready,
+        latencyMs: data.responseLatencyMs || 0,
+        message: `Terhubung ke ${data.instanceName} (v${data.version})`,
+      });
+      toast.success(`Host merespons dalam ${data.responseLatencyMs || 0} ms!`);
+    },
+    onError: (err: any) => {
+      setPingResult(null);
+      toast.error(err.response?.data?.message || "Gagal menghubungi host induk");
+    },
+  });
+
+  const pushMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiClient.post("/sync/push", { hostUrl, apiKey: syncApiKey, includeFiles });
+      return res.data;
+    },
+    onSuccess: (data: any) => {
+      toast.success(data.message || "Data berhasil di-push ke host induk!");
+      refetchHistory();
+      refetchPing();
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || "Gagal melakukan push ke host induk");
+    },
+  });
+
+  const pullMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiClient.post("/sync/pull", { hostUrl, apiKey: syncApiKey, includeFiles });
+      return res.data;
+    },
+    onSuccess: (data: any) => {
+      toast.success(data.message || "Data berhasil ditarik dari host induk!");
+      refetchHistory();
+      refetchPing();
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || "Gagal melakukan pull dari host induk");
+    },
+  });
+
+  const exportZipMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiClient.get(`/sync/export-package?includeFiles=${includeFiles}`, {
+        responseType: "blob",
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", `trackerkerja_sync_package_${Date.now()}.zip`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      return true;
+    },
+    onSuccess: () => {
+      toast.success("Paket .ZIP berhasil diunduh!");
+      refetchHistory();
+      refetchPing();
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || "Gagal mengekspor paket .ZIP");
+    },
+  });
+
+  const importZipMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await apiClient.post("/sync/import-package", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      return res.data;
+    },
+    onSuccess: (data: any) => {
+      toast.success(data.message || "Paket .ZIP berhasil diimpor!");
+      setImportFile(null);
+      refetchHistory();
+      refetchPing();
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || "Gagal mengimpor paket .ZIP");
+    },
+  });
+
+  const formatBytes = (bytes: number) => {
+    if (!bytes || bytes <= 0) return "0 B";
+    const k = 1024;
+    const sizes = ["B", "KB", "MB", "GB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
+  };
 
   // ==========================================
   // MUTATIONS - MASTER DATA
@@ -523,7 +682,7 @@ export default function ConfigurationPage() {
           </p>
         </div>
 
-        {activeTab !== "master" && (
+        {activeTab !== "master" && activeTab !== "sync" && (
           <Button
             onClick={() => saveMutation.mutate()}
             disabled={saveMutation.isPending}
@@ -535,7 +694,7 @@ export default function ConfigurationPage() {
         )}
       </div>
 
-      {/* 5 Tabs Navigation */}
+      {/* 6 Tabs Navigation */}
       <div className="flex flex-wrap gap-2 border-b border-gray-200/80 pb-2 dark:border-gray-800">
         <button
           onClick={() => setActiveTab("general")}
@@ -595,6 +754,18 @@ export default function ConfigurationPage() {
         >
           <Layers className="h-4 w-4" />
           Master Data & SDLC
+        </button>
+
+        <button
+          onClick={() => setActiveTab("sync")}
+          className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition ${
+            activeTab === "sync"
+              ? "bg-indigo-600 text-white shadow-xs"
+              : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300"
+          }`}
+        >
+          <RefreshCw className="h-4 w-4" />
+          Sinkronisasi Host Induk
         </button>
       </div>
 
@@ -1405,6 +1576,368 @@ export default function ConfigurationPage() {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* TAB 6: SINKRONISASI HOST INDUK */}
+      {/* ======================================================== */}
+      {activeTab === "sync" && (
+        <div className="space-y-6">
+          {/* Status & Stat Cards */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            {/* Card 1: Node Lokal */}
+            <div className="flex items-center gap-4 rounded-2xl border border-gray-100 bg-white p-5 shadow-xs dark:border-gray-800 dark:bg-gray-900">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-400">
+                <Server className="h-6 w-6" />
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-gray-500 uppercase tracking-wider dark:text-gray-400">
+                    Node Lokal
+                  </span>
+                  <span className="flex h-2 w-2 relative">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                  </span>
+                </div>
+                <h3 className="text-base font-bold text-gray-900 dark:text-white">
+                  {localPing?.instanceName || "TrackerKerja-Node"}
+                </h3>
+                <p className="text-xs text-gray-400 dark:text-gray-500">
+                  Versi {localPing?.version || "1.0.0"} • {localPing?.ready ? "Siap Sinkron" : "Inisialisasi"}
+                </p>
+              </div>
+            </div>
+
+            {/* Card 2: Basis Data */}
+            <div className="flex items-center gap-4 rounded-2xl border border-gray-100 bg-white p-5 shadow-xs dark:border-gray-800 dark:bg-gray-900">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400">
+                <Database className="h-6 w-6" />
+              </div>
+              <div className="flex-1">
+                <span className="text-xs font-bold text-gray-500 uppercase tracking-wider dark:text-gray-400">
+                  Entitas Basis Data
+                </span>
+                <h3 className="text-base font-bold text-gray-900 dark:text-white">
+                  {(localPing?.totalCompanies || 0) + (localPing?.totalUsers || 0) + (localPing?.totalTasks || 0)} Rekod
+                </h3>
+                <p className="text-xs text-gray-400 dark:text-gray-500">
+                  {localPing?.totalTasks || 0} Tugas • {localPing?.totalProjects || 0} Proyek • {localPing?.totalUsers || 0} User
+                </p>
+              </div>
+            </div>
+
+            {/* Card 3: Berkas Fisik */}
+            <div className="flex items-center gap-4 rounded-2xl border border-gray-100 bg-white p-5 shadow-xs dark:border-gray-800 dark:bg-gray-900">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400">
+                <HardDrive className="h-6 w-6" />
+              </div>
+              <div className="flex-1">
+                <span className="text-xs font-bold text-gray-500 uppercase tracking-wider dark:text-gray-400">
+                  Lampiran Berkas (uploads/)
+                </span>
+                <h3 className="text-base font-bold text-gray-900 dark:text-white">
+                  {formatBytes(localPing?.totalUploadsSizeBytes || 0)}
+                </h3>
+                <p className="text-xs text-gray-400 dark:text-gray-500">
+                  {localPing?.totalAttachments || 0} Berkas • {localPing?.totalNotes || 0} Catatan
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Dual Panel: Online Host Induk & Offline ZIP Package */}
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            {/* Panel 1: Konfigurasi Host Induk (Online Push & Pull) */}
+            <div className="flex flex-col justify-between rounded-2xl border border-gray-100 bg-white p-6 shadow-xs dark:border-gray-800 dark:bg-gray-900">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between border-b border-gray-100 pb-3 dark:border-gray-800">
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-100 text-indigo-600 dark:bg-indigo-900/50 dark:text-indigo-400">
+                      <Cloud className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <h2 className="text-sm font-bold text-gray-900 dark:text-white">
+                        Koneksi Host Induk (REST API)
+                      </h2>
+                      <p className="text-[11px] text-gray-500">
+                        Sinkronisasi dua arah real-time via RESTful API
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-gray-700 dark:text-gray-300">
+                      URL Server Host Induk *
+                    </label>
+                    <Input
+                      value={hostUrl}
+                      onChange={(e) => setHostUrl(e.target.value)}
+                      placeholder="https://tracker-induk.perusahaan.co.id"
+                      className="font-mono text-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-gray-700 dark:text-gray-300">
+                      Kunci Rahasia Sinkronisasi (X-Sync-Key)
+                    </label>
+                    <div className="relative">
+                      <Input
+                        type="password"
+                        value={syncApiKey}
+                        onChange={(e) => setSyncApiKey(e.target.value)}
+                        placeholder="Masukkan token otorisasi host induk"
+                        className="font-mono text-xs pr-8"
+                      />
+                      <Key className="absolute right-2.5 top-2.5 h-4 w-4 text-gray-400" />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-1">
+                    <input
+                      type="checkbox"
+                      id="syncIncludeFiles"
+                      checked={includeFiles}
+                      onChange={(e) => setIncludeFiles(e.target.checked)}
+                      className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <label
+                      htmlFor="syncIncludeFiles"
+                      className="text-xs font-medium text-gray-700 dark:text-gray-300"
+                    >
+                      Sertakan seluruh berkas lampiran fisik (uploads/)
+                    </label>
+                  </div>
+
+                  {/* Ping Result Banner */}
+                  {pingResult && (
+                    <div className="flex items-center justify-between rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 dark:border-emerald-900/50 dark:bg-emerald-950/20">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                        <span className="text-xs font-medium text-emerald-800 dark:text-emerald-300">
+                          {pingResult.message}
+                        </span>
+                      </div>
+                      <span className="rounded-md bg-emerald-100 px-2 py-0.5 font-mono text-[11px] font-bold text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300">
+                        {pingResult.latencyMs} ms
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="mt-6 flex flex-wrap items-center gap-2 pt-4 border-t border-gray-100 dark:border-gray-800">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => pingHostMutation.mutate()}
+                  disabled={pingHostMutation.isPending || !hostUrl.trim()}
+                  className="gap-1.5 text-xs"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${pingHostMutation.isPending ? "animate-spin" : ""}`} />
+                  {pingHostMutation.isPending ? "Menguji..." : "Uji Koneksi"}
+                </Button>
+
+                <Button
+                  size="sm"
+                  onClick={() => pushMutation.mutate()}
+                  disabled={pushMutation.isPending || !hostUrl.trim()}
+                  className="gap-1.5 bg-indigo-600 text-xs font-semibold text-white shadow-xs hover:bg-indigo-700"
+                >
+                  <ArrowUpRight className="h-3.5 w-3.5" />
+                  {pushMutation.isPending ? "Mengirim Push..." : "Push ke Host Induk"}
+                </Button>
+
+                <Button
+                  size="sm"
+                  onClick={() => pullMutation.mutate()}
+                  disabled={pullMutation.isPending || !hostUrl.trim()}
+                  className="gap-1.5 bg-purple-600 text-xs font-semibold text-white shadow-xs hover:bg-purple-700"
+                >
+                  <ArrowDownLeft className="h-3.5 w-3.5" />
+                  {pullMutation.isPending ? "Menarik Pull..." : "Pull dari Host Induk"}
+                </Button>
+              </div>
+            </div>
+
+            {/* Panel 2: Offline Air-Gapped Package (.ZIP) */}
+            <div className="flex flex-col justify-between rounded-2xl border border-gray-100 bg-white p-6 shadow-xs dark:border-gray-800 dark:bg-gray-900">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between border-b border-gray-100 pb-3 dark:border-gray-800">
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-100 text-emerald-600 dark:bg-emerald-900/50 dark:text-emerald-400">
+                      <FileArchive className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <h2 className="text-sm font-bold text-gray-900 dark:text-white">
+                        Paket Offline Mandiri (.ZIP)
+                      </h2>
+                      <p className="text-[11px] text-gray-500">
+                        Ekspor & Impor arsip zip untuk pemindahan data via flashdisk
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  {/* Ekspor Box */}
+                  <div className="rounded-xl border border-gray-200/80 bg-gray-50/50 p-4 dark:border-gray-800 dark:bg-gray-800/40">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Download className="h-4 w-4 text-indigo-600" />
+                      <h3 className="text-xs font-bold text-gray-900 dark:text-white">Ekspor Paket .ZIP</h3>
+                    </div>
+                    <p className="text-[11px] text-gray-500 mb-3">
+                      Kemas manifest.json, basis data terenkripsi, dan folder uploads/ menjadi satu file zip.
+                    </p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => exportZipMutation.mutate()}
+                      disabled={exportZipMutation.isPending}
+                      className="w-full gap-1.5 text-xs font-medium"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      {exportZipMutation.isPending ? "Mengemas..." : "Unduh Paket .ZIP"}
+                    </Button>
+                  </div>
+
+                  {/* Impor Box */}
+                  <div className="rounded-xl border border-gray-200/80 bg-gray-50/50 p-4 dark:border-gray-800 dark:bg-gray-800/40">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Upload className="h-4 w-4 text-emerald-600" />
+                      <h3 className="text-xs font-bold text-gray-900 dark:text-white">Impor Paket .ZIP</h3>
+                    </div>
+                    <p className="text-[11px] text-gray-500 mb-2">
+                      Pilih berkas zip paket yang diekspor dari server lain.
+                    </p>
+                    <input
+                      type="file"
+                      accept=".zip"
+                      onChange={(e) => setImportFile(e.target.files?.[0] || null)}
+                      className="mb-2 block w-full text-[11px] text-gray-500 file:mr-2 file:rounded-md file:border-0 file:bg-gray-200 file:px-2 file:py-1 file:text-[11px] file:font-semibold hover:file:bg-gray-300 dark:file:bg-gray-700 dark:file:text-gray-200"
+                    />
+                    <Button
+                      size="sm"
+                      onClick={() => importFile && importZipMutation.mutate(importFile)}
+                      disabled={importZipMutation.isPending || !importFile}
+                      className="w-full gap-1.5 bg-emerald-600 text-xs font-medium text-white hover:bg-emerald-700"
+                    >
+                      <Upload className="h-3.5 w-3.5" />
+                      {importZipMutation.isPending ? "Mengimpor..." : "Terapkan Paket"}
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-amber-200/80 bg-amber-50/60 p-3 dark:border-amber-900/40 dark:bg-amber-950/20">
+                  <div className="flex items-start gap-2">
+                    <Shield className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+                    <p className="text-[11px] text-amber-800 dark:text-amber-300">
+                      <strong>Proteksi Keamanan:</strong> Seluruh entitas diekstrak dengan penjaga <em>Zip Slip Traversal</em> dan diterapkan melalui transaksi basis data atomik.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Panel 3: Tabel Riwayat Sinkronisasi */}
+          <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-xs dark:border-gray-800 dark:bg-gray-900">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-4 dark:border-gray-800">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-400">
+                  <Clock className="h-4 w-4" />
+                </div>
+                <div>
+                  <h2 className="text-sm font-bold text-gray-900 dark:text-white">
+                    Riwayat Sinkronisasi & Jejak Audit Sync
+                  </h2>
+                  <p className="text-[11px] text-gray-500">
+                    Catatan seluruh aktivitas push, pull, ekspor, dan impor paket data
+                  </p>
+                </div>
+              </div>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => refetchHistory()}
+                className="gap-1.5 text-xs"
+              >
+                <RefreshCw className={`h-3 w-3 ${loadingHistory ? "animate-spin" : ""}`} />
+                Segarkan
+              </Button>
+            </div>
+
+            <div className="mt-4 overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="border-b border-gray-100 text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:border-gray-800">
+                  <tr>
+                    <th className="py-2.5 pr-4">Waktu</th>
+                    <th className="py-2.5 pr-4">Arah Operasi</th>
+                    <th className="py-2.5 pr-4">Status</th>
+                    <th className="py-2.5 pr-4">Target / Asal</th>
+                    <th className="py-2.5 pr-4">Rekod</th>
+                    <th className="py-2.5 pr-4">Ukuran File</th>
+                    <th className="py-2.5">Keterangan</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                  {syncHistories.map((h: any) => (
+                    <tr key={h.id} className="transition hover:bg-gray-50/60 dark:hover:bg-gray-800/40">
+                      <td className="py-3 pr-4 font-mono text-[11px] text-gray-500">
+                        {new Date(h.createdAt).toLocaleString("id-ID")}
+                      </td>
+                      <td className="py-3 pr-4">
+                        <span className="inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-semibold bg-indigo-50 text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300">
+                          {h.direction}
+                        </span>
+                      </td>
+                      <td className="py-3 pr-4">
+                        <span
+                          className={`inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-semibold ${
+                            h.status === "Success"
+                              ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300"
+                              : "bg-red-50 text-red-700 dark:bg-red-950/50 dark:text-red-300"
+                          }`}
+                        >
+                          {h.status}
+                        </span>
+                      </td>
+                      <td className="py-3 pr-4 font-mono text-[11px] text-gray-600 dark:text-gray-300">
+                        {h.targetHost || "-"}
+                      </td>
+                      <td className="py-3 pr-4 font-semibold text-gray-900 dark:text-white">
+                        {h.totalRecordsSynced} rekod
+                      </td>
+                      <td className="py-3 pr-4 text-gray-500 font-mono text-[11px]">
+                        {formatBytes(h.fileSizeBytes)}
+                      </td>
+                      <td className="py-3 text-gray-500">
+                        {h.errorMessage ? (
+                          <span className="text-red-600 dark:text-red-400">{h.errorMessage}</span>
+                        ) : (
+                          <span className="text-gray-400">Sukses</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+
+                  {syncHistories.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="py-8 text-center text-gray-400">
+                        Belum ada riwayat aktivitas sinkronisasi yang tercatat.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       )}
 
