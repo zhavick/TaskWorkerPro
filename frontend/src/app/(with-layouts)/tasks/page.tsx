@@ -14,10 +14,12 @@ import {
   Kanban,
   CheckCircle2,
   Calendar,
+  FileSpreadsheet,
 } from "lucide-react";
 import { Button } from "@/components/tailgrids/core/button";
 import { Input } from "@/components/tailgrids/core/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/tailgrids/core/dialog";
+import { ImportExcelDialog } from "@/components/tasks/import-excel-dialog";
 import { toast } from "sonner";
 import Link from "next/link";
 
@@ -30,6 +32,7 @@ export default function TasksListPage() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [importModalOpen, setImportModalOpen] = useState(false);
 
   // New task form state
   const [title, setTitle] = useState("");
@@ -107,6 +110,14 @@ export default function TasksListPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() => setImportModalOpen(true)}
+            className="gap-2 border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/40"
+          >
+            <FileSpreadsheet className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+            Impor Excel
+          </Button>
           <Link href="/tasks/kanban">
             <Button variant="outline" className="gap-2">
               <Kanban className="h-4 w-4" />
@@ -355,6 +366,12 @@ export default function TasksListPage() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Modal Impor Excel */}
+      <ImportExcelDialog
+        open={importModalOpen}
+        onOpenChange={setImportModalOpen}
+      />
     </div>
   );
 }

@@ -6,6 +6,7 @@ using TrackerKerja.Application.DTOs;
 using TrackerKerja.Domain.Entities;
 using TrackerKerja.Domain.Enums;
 using TrackerKerja.Infrastructure.Persistence;
+using TrackerKerja.Infrastructure.Services;
 
 namespace TrackerKerja.WebApi.Controllers;
 
@@ -16,11 +17,16 @@ public class TasksController : ControllerBase
 {
     private readonly AppDbContext _context;
     private readonly ICurrentTenantService _tenantService;
+    private readonly ITaskExcelImportService _excelImportService;
 
-    public TasksController(AppDbContext context, ICurrentTenantService tenantService)
+    public TasksController(
+        AppDbContext context,
+        ICurrentTenantService tenantService,
+        ITaskExcelImportService? excelImportService = null)
     {
         _context = context;
         _tenantService = tenantService;
+        _excelImportService = excelImportService ?? new TaskExcelImportService(context);
     }
 
     [HttpGet]
@@ -363,6 +369,46 @@ public class TasksController : ControllerBase
         await _context.SaveChangesAsync();
 
         return Ok(new { success = true, message = "Sub-tugas berhasil ditambahkan.", data = subtask });
+    }
+
+    [HttpPost("import-excel")]
+    public async Task<IActionResult> ImportExcel(IFormFile file, CancellationToken cancellationToken)
+    {
+        if (file == null || file.Length == 0)
+        {
+            return BadRequest(new { success = false, message = "File Excel wajib diunggah." });
+        }
+
+        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+        if (ext != ".xlsx" && ext != ".xls")
+        {
+            return BadRequest(new { success = false, message = "Hanya file format Excel (.xlsx / .xls) yang diperbolehkan." });
+        }
+
+        try
+        {
+            await using var stream = file.OpenReadStream();
+            var result = await _excelImportService.ImportTasksFromExcelAsync(
+                stream,
+                _tenantService.CompanyId,
+                cancellationToken
+            );
+
+            return Ok(new
+            {
+                success = true,
+                message = $"Berhasil mengimpor {result.TotalImported} tugas dari file Excel ({result.TotalProjectsCreated} proyek baru dibuat).",
+                data = result
+            });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new
+            {
+                success = false,
+                message = $"Gagal memproses file Excel: {ex.Message}"
+            });
+        }
     }
 
     private static TaskItemDto MapToItemDto(WorkTask t)

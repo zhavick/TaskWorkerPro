@@ -6,6 +6,7 @@ import { apiClient } from "@/services/api/client";
 import {
   Briefcase,
   Plus,
+  Pencil,
   TrendingUp,
   AlertTriangle,
   CheckCircle2,
@@ -36,6 +37,31 @@ export default function ProjectsPage() {
   const [color, setColor] = useState("#4680FF");
   const [budget, setBudget] = useState("50000000");
   const [actualCost, setActualCost] = useState("10000000");
+
+  // Form Edit Project state
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editingProject, setEditingProject] = useState<any | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editClientName, setEditClientName] = useState("");
+  const [editColor, setEditColor] = useState("#4680FF");
+  const [editStatus, setEditStatus] = useState("0");
+  const [editBudget, setEditBudget] = useState("0");
+  const [editActualCost, setEditActualCost] = useState("0");
+  const [editDeadline, setEditDeadline] = useState("");
+
+  const handleOpenEditModal = (p: any) => {
+    setEditingProject(p);
+    setEditName(p.name || "");
+    setEditDescription(p.description || "");
+    setEditClientName(p.clientName || "");
+    setEditColor(p.color || "#4680FF");
+    setEditStatus(String(p.status ?? 0));
+    setEditBudget(String(p.budget ?? 0));
+    setEditActualCost(String(p.actualCost ?? 0));
+    setEditDeadline(p.deadline ? p.deadline.split("T")[0] : "");
+    setEditModalOpen(true);
+  };
 
   // 1. Projects Query
   const { data: projects = [], isLoading } = useQuery<any[]>({
@@ -80,6 +106,31 @@ export default function ProjectsPage() {
       queryClient.invalidateQueries({ queryKey: ["projectsList"] });
     },
     onError: (err: any) => toast.error(err.response?.data?.message || "Gagal membuat proyek"),
+  });
+
+  // 3b. Update Project Mutation
+  const updateProjectMutation = useMutation({
+    mutationFn: async () => {
+      if (!editingProject) return;
+      const res = await apiClient.put(`/projects/${editingProject.id}`, {
+        name: editName.trim(),
+        description: editDescription.trim(),
+        clientName: editClientName.trim(),
+        color: editColor,
+        status: parseInt(editStatus, 10),
+        budget: parseFloat(editBudget) || 0,
+        actualCost: parseFloat(editActualCost) || 0,
+        deadline: editDeadline ? new Date(editDeadline).toISOString() : null,
+      });
+      return res.data;
+    },
+    onSuccess: () => {
+      toast.success("Data proyek berhasil diperbarui!");
+      setEditModalOpen(false);
+      setEditingProject(null);
+      queryClient.invalidateQueries({ queryKey: ["projectsList"] });
+    },
+    onError: (err: any) => toast.error(err.response?.data?.message || "Gagal memperbarui proyek"),
   });
 
   // 4. Bulk Assign Tasks Mutation
@@ -227,6 +278,17 @@ export default function ProjectsPage() {
 
               {/* Bottom Actions */}
               <div className="mt-5 border-t border-gray-100 pt-4 flex items-center justify-between dark:border-gray-800">
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1.5 text-xs text-gray-700 hover:text-indigo-600 dark:text-gray-300 dark:hover:text-indigo-400"
+                    onClick={() => handleOpenEditModal(p)}
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                    Edit Proyek
+                  </Button>
+                </div>
                 <Button
                   size="sm"
                   variant="outline"
@@ -415,6 +477,148 @@ export default function ProjectsPage() {
                 Terapkan Alokasi
               </Button>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Edit Proyek */}
+      <Dialog open={editModalOpen} onOpenChange={setEditModalOpen}>
+        <DialogContent className="max-w-md bg-white p-6 shadow-2xl dark:bg-gray-900">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+              <Pencil className="h-5 w-5 text-indigo-600" />
+              Edit Data Proyek
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="mt-4 space-y-3.5">
+            <div>
+              <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                Nama Proyek *
+              </label>
+              <Input
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                placeholder="cth. Core Banking Revamp"
+                className="mt-1 text-sm"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                Klien / Stakeholder
+              </label>
+              <Input
+                value={editClientName}
+                onChange={(e) => setEditClientName(e.target.value)}
+                placeholder="cth. Bank Mandiri Syariah"
+                className="mt-1 text-sm"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                Deskripsi
+              </label>
+              <textarea
+                value={editDescription}
+                onChange={(e) => setEditDescription(e.target.value)}
+                placeholder="Deskripsi singkat ruang lingkup proyek..."
+                className="mt-1 w-full rounded-xl border border-gray-200 bg-transparent p-2.5 text-xs text-gray-900 outline-hidden focus:border-indigo-600 dark:border-gray-800 dark:text-white"
+                rows={2}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                  Status Proyek
+                </label>
+                <select
+                  value={editStatus}
+                  onChange={(e) => setEditStatus(e.target.value)}
+                  className="mt-1 w-full rounded-xl border border-gray-200 bg-transparent p-2 text-xs text-gray-900 outline-hidden focus:border-indigo-600 dark:border-gray-800 dark:bg-gray-900 dark:text-white"
+                >
+                  <option value="0">0 - Aktif</option>
+                  <option value="1">1 - Selesai (Completed)</option>
+                  <option value="2">2 - Diarsipkan (Archived)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                  Warna Label
+                </label>
+                <div className="mt-1 flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={editColor}
+                    onChange={(e) => setEditColor(e.target.value)}
+                    className="h-8 w-12 rounded cursor-pointer border-0 bg-transparent p-0"
+                  />
+                  <span className="font-mono text-xs text-gray-500">{editColor}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                  Budget (Rp)
+                </label>
+                <Input
+                  type="number"
+                  value={editBudget}
+                  onChange={(e) => setEditBudget(e.target.value)}
+                  className="mt-1 font-mono text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                  Actual Cost (Rp)
+                </label>
+                <Input
+                  type="number"
+                  value={editActualCost}
+                  onChange={(e) => setEditActualCost(e.target.value)}
+                  className="mt-1 font-mono text-sm"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                Target Deadline
+              </label>
+              <Input
+                type="date"
+                value={editDeadline}
+                onChange={(e) => setEditDeadline(e.target.value)}
+                className="mt-1 text-sm"
+              />
+            </div>
+          </div>
+
+          <div className="mt-6 flex justify-end gap-2 border-t border-gray-100 pt-4 dark:border-gray-800">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setEditModalOpen(false);
+                setEditingProject(null);
+              }}
+            >
+              Batal
+            </Button>
+            <Button
+              size="sm"
+              className="bg-indigo-600 text-white hover:bg-indigo-700"
+              disabled={!editName.trim() || updateProjectMutation.isPending}
+              onClick={() => updateProjectMutation.mutate()}
+            >
+              Simpan Perubahan
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

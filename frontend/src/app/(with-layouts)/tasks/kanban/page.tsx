@@ -14,8 +14,10 @@ import {
   List,
   GripVertical,
   MoveRight,
+  FileSpreadsheet,
 } from "lucide-react";
 import { Button } from "@/components/tailgrids/core/button";
+import { ImportExcelDialog } from "@/components/tasks/import-excel-dialog";
 import { toast } from "sonner";
 import Link from "next/link";
 
@@ -57,6 +59,7 @@ const columns = [
 export default function KanbanPage() {
   const queryClient = useQueryClient();
   const [selectedMobileColumn, setSelectedMobileColumn] = useState("InProgress");
+  const [importModalOpen, setImportModalOpen] = useState(false);
 
   // Drag and Drop States
   const [draggedTaskId, setDraggedTaskId] = useState<number | null>(null);
@@ -196,6 +199,14 @@ export default function KanbanPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() => setImportModalOpen(true)}
+            className="gap-2 border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/40 text-xs"
+          >
+            <FileSpreadsheet className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+            Impor Excel
+          </Button>
           <Link href="/tasks">
             <Button variant="outline" className="gap-2 text-xs">
               <List className="h-4 w-4" />
@@ -395,6 +406,12 @@ export default function KanbanPage() {
           );
         })}
       </div>
+
+      {/* Modal Impor Excel */}
+      <ImportExcelDialog
+        open={importModalOpen}
+        onOpenChange={setImportModalOpen}
+      />
     </div>
   );
 }
