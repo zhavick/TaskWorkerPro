@@ -149,9 +149,3 @@ public record JsonFormatRequest(
     int? TaskId
 );
 
-public record SqlFormatRequest(
-    string SqlString,
-    string? Dialect,
-    string? Name,
-    int? TaskId
-);
