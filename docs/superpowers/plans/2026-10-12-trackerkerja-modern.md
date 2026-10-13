@@ -37,10 +37,10 @@
 - Consumes: Specifications from `reqs/01_KERANGKA_APLIKASI_DAN_INFRASTRUKTUR.md` & `reqs/03_SKEMA_DATABASE_POSTGRESQL.md`.
 - Produces: Running PostgreSQL service on port `5432` with preloaded `trackerkerja_db` schema.
 
-- [ ] **Step 1: Create `docker-compose.yml` with PostgreSQL 16 and backend/frontend service templates**
-- [ ] **Step 2: Create `database/init/01_init_schema.sql` containing full 21+ tables DDL**
-- [ ] **Step 3: Create `database/init/02_init_seed.sql` containing initial roles, default company, priorities, and statuses**
-- [ ] **Step 4: Verify SQL syntax and file creation**
+- [x] **Step 1: Create `docker-compose.yml` with PostgreSQL 16 and backend/frontend service templates**
+- [x] **Step 2: Create `database/init/01_init_schema.sql` containing full 21+ tables DDL**
+- [x] **Step 3: Create `database/init/02_init_seed.sql` containing initial roles, default company, priorities, and statuses**
+- [x] **Step 4: Verify SQL syntax and file creation**
 
 ---
 
@@ -59,11 +59,11 @@
 - Consumes: Task 1 Docker infrastructure.
 - Produces: Compilable .NET 8 solution with dependency injection wiring and package references.
 
-- [ ] **Step 1: Execute `dotnet new` commands to create solution and 4 clean architecture projects plus test project**
-- [ ] **Step 2: Add project references (Inversion of Control: WebApi -> Infrastructure & Application -> Domain)**
-- [ ] **Step 3: Install NuGet packages (`Npgsql.EntityFrameworkCore.PostgreSQL`, `FluentValidation`, `ClosedXML`, `Swashbuckle`, etc.)**
-- [ ] **Step 4: Create multi-stage .NET 8 `Dockerfile` in `backend/src/TrackerKerja.WebApi/Dockerfile`**
-- [ ] **Step 5: Execute `dotnet build` to verify clean compilation**
+- [x] **Step 1: Execute `dotnet new` commands to create solution and 4 clean architecture projects plus test project**
+- [x] **Step 2: Add project references (Inversion of Control: WebApi -> Infrastructure & Application -> Domain)**
+- [x] **Step 3: Install NuGet packages (`Npgsql.EntityFrameworkCore.PostgreSQL`, `FluentValidation`, `ClosedXML`, `Swashbuckle`, etc.)**
+- [x] **Step 4: Create multi-stage .NET 8 `Dockerfile` in `backend/src/TrackerKerja.WebApi/Dockerfile`**
+- [x] **Step 5: Execute `dotnet build` to verify clean compilation**
 
 ---
 
@@ -80,10 +80,10 @@
 - Consumes: EF Core 8 and Npgsql packages.
 - Produces: EF Core models mapped to PostgreSQL schema with Global Query Filter for `CompanyId`.
 
-- [ ] **Step 1: Write failing unit test for `WorkTask` and `Company` tenant relationship in `TrackerKerja.Tests`**
-- [ ] **Step 2: Create domain entities and enums in `TrackerKerja.Domain`**
-- [ ] **Step 3: Implement `AppDbContext` and entity configurations in `TrackerKerja.Infrastructure`**
-- [ ] **Step 4: Run unit tests to verify domain model passes**
+- [x] **Step 1: Write failing unit test for `WorkTask` and `Company` tenant relationship in `TrackerKerja.Tests`**
+- [x] **Step 2: Create domain entities and enums in `TrackerKerja.Domain`**
+- [x] **Step 3: Implement `AppDbContext` and entity configurations in `TrackerKerja.Infrastructure`**
+- [x] **Step 4: Run unit tests to verify domain model passes**
 
 ---
 
@@ -101,11 +101,11 @@
 - Consumes: `AppDbContext`, ASP.NET Core Identity.
 - Produces: Claims-based JWT authentication, refresh token rotation, and automatic `CompanyId` scoping.
 
-- [ ] **Step 1: Write unit test for JWT generation and claims extraction**
-- [ ] **Step 2: Implement `ICurrentTenantService` and `CurrentTenantService`**
-- [ ] **Step 3: Implement `JwtTokenService` with HMAC-SHA256 and refresh token generation**
-- [ ] **Step 4: Configure `Program.cs` with JWT Bearer authentication, CORS Next.js policy, and Swagger UI Bearer Modal**
-- [ ] **Step 5: Verify build with `dotnet test`**
+- [x] **Step 1: Write unit test for JWT generation and claims extraction**
+- [x] **Step 2: Implement `ICurrentTenantService` and `CurrentTenantService`**
+- [x] **Step 3: Implement `JwtTokenService` with HMAC-SHA256 and refresh token generation**
+- [x] **Step 4: Configure `Program.cs` with JWT Bearer authentication, CORS Next.js policy, and Swagger UI Bearer Modal**
+- [x] **Step 5: Verify build with `dotnet test`**
 
 ---
 
@@ -122,11 +122,11 @@
 - Consumes: `AppDbContext`, `ICurrentTenantService`.
 - Produces: REST endpoints for priorities, statuses, milestones, categories, 4-tab system settings, and dev tools.
 
-- [ ] **Step 1: Implement DTOs and Controller for Master Priorities, Statuses, and Milestones**
-- [ ] **Step 2: Implement `SettingsController` with batch key-value update and SMTP test endpoint**
-- [ ] **Step 3: Implement `DevToolsController` for JSON formatting and SQL beautifying**
-- [ ] **Step 4: Implement `AuditLogsController` with pagination and filter support**
-- [ ] **Step 5: Verify endpoints build and test compilation**
+- [x] **Step 1: Implement DTOs and Controller for Master Priorities, Statuses, and Milestones**
+- [x] **Step 2: Implement `SettingsController` with batch key-value update and SMTP test endpoint**
+- [x] **Step 3: Implement `DevToolsController` for JSON formatting and SQL beautifying**
+- [x] **Step 4: Implement `AuditLogsController` with pagination and filter support**
+- [x] **Step 5: Verify endpoints build and test compilation**
 
 ---
 
@@ -143,11 +143,11 @@
 - Consumes: Identity `UserManager`, `JwtTokenService`, `AppDbContext`.
 - Produces: Registration with existing company code or new company, login with `IsApproved` guard, admin approval/rejection endpoints, profile & cover updates.
 
-- [ ] **Step 1: Write integration tests for registration flow (`existing` vs `new` company) and `IsApproved` block**
-- [ ] **Step 2: Implement `AuthController` (Register, Login, RefreshToken, Logout, ForgotPassword)**
-- [ ] **Step 3: Implement `MembersController` (Approve, Reject, Unlock, List with Company Grouping)**
-- [ ] **Step 4: Implement `ProfileController` (Get, Update, Upload Avatar, Upload Cover)**
-- [ ] **Step 5: Run tests and verify**
+- [x] **Step 1: Write integration tests for registration flow (`existing` vs `new` company) and `IsApproved` block**
+- [x] **Step 2: Implement `AuthController` (Register, Login, RefreshToken, Logout, ForgotPassword)**
+- [x] **Step 3: Implement `MembersController` (Approve, Reject, Unlock, List with Company Grouping)**
+- [x] **Step 4: Implement `ProfileController` (Get, Update, Upload Avatar, Upload Cover)**
+- [x] **Step 5: Run tests and verify**
 
 ---
 
@@ -161,10 +161,10 @@
 - Consumes: `AppDbContext`, `ICurrentTenantService`.
 - Produces: Projects CRUD, financial burn rate calculation (`ActualCost / Budget * 100%`), and bulk task assignment (`POST /api/projects/{id}/assign-tasks`).
 
-- [ ] **Step 1: Write unit test for Burn Rate percentage and status calculation (<80% Safe, 80-100% Warning, >100% Overbudget)**
-- [ ] **Step 2: Implement `ProjectDtos` and `ProjectsController`**
-- [ ] **Step 3: Implement bulk task assignment endpoint in `ProjectsController`**
-- [ ] **Step 4: Verify test passes**
+- [x] **Step 1: Write unit test for Burn Rate percentage and status calculation (<80% Safe, 80-100% Warning, >100% Overbudget)**
+- [x] **Step 2: Implement `ProjectDtos` and `ProjectsController`**
+- [x] **Step 3: Implement bulk task assignment endpoint in `ProjectsController`**
+- [x] **Step 4: Verify test passes**
 
 ---
 
@@ -178,10 +178,10 @@
 - Consumes: `AppDbContext`, `ICurrentTenantService`.
 - Produces: Task CRUD, subtask hierarchy, status patch for Kanban, progress slider, and `PUT /api/tasks/{id}/unified-save` atomic transaction.
 
-- [ ] **Step 1: Write unit test for `UnifiedSave` verifying task update and work session creation occur atomically**
-- [ ] **Step 2: Implement `TasksController` CRUD, Subtasks, and Kanban grouping**
-- [ ] **Step 3: Implement `UnifiedSave` endpoint with `IDbContextTransaction`**
-- [ ] **Step 4: Verify test passes**
+- [x] **Step 1: Write unit test for `UnifiedSave` verifying task update and work session creation occur atomically**
+- [x] **Step 2: Implement `TasksController` CRUD, Subtasks, and Kanban grouping**
+- [x] **Step 3: Implement `UnifiedSave` endpoint with `IDbContextTransaction`**
+- [x] **Step 4: Verify test passes**
 
 ---
 
@@ -196,10 +196,10 @@
 - Consumes: `AppDbContext`, `ICurrentTenantService`.
 - Produces: Live timer start/stop (`end_time IS NULL`), concurrent active timers query, manual session log, and 3-sheet ClosedXML Excel export.
 
-- [ ] **Step 1: Write unit test for ClosedXML 3-sheet workbook generation and Man-Days formula**
-- [ ] **Step 2: Implement `ClosedXmlExportService` generating Daily Details, Project Recap, and Member Contribution**
-- [ ] **Step 3: Implement `TimesheetsController` (Start, Stop, Active-Timers, Manual, Export)**
-- [ ] **Step 4: Run tests and verify**
+- [x] **Step 1: Write unit test for ClosedXML 3-sheet workbook generation and Man-Days formula**
+- [x] **Step 2: Implement `ClosedXmlExportService` generating Daily Details, Project Recap, and Member Contribution**
+- [x] **Step 3: Implement `TimesheetsController` (Start, Stop, Active-Timers, Manual, Export)**
+- [x] **Step 4: Run tests and verify**
 
 ---
 
@@ -219,11 +219,11 @@
 - Consumes: `AppDbContext`, `ICurrentTenantService`.
 - Produces: Endpoints for Clock In/Out, Notes with file attachments, Gamification daily check-in with 15/30-day rules and rewards, and Announcements with anti-overlap read tracking.
 
-- [ ] **Step 1: Implement `AttendancesController` (ClockIn, ClockOut, Today, Team Reconciliation)**
-- [ ] **Step 2: Implement `NotesController` (Notes CRUD, Pin toggle, File Upload/Download)**
-- [ ] **Step 3: Implement `GamificationController` (CheckIn, Streak, Badges, Reward Store & Claims)**
-- [ ] **Step 4: Implement `AnnouncementsController` (Active popup, Mark Read, Admin CRUD)**
-- [ ] **Step 5: Verify all backend controllers compile and tests pass**
+- [x] **Step 1: Implement `AttendancesController` (ClockIn, ClockOut, Today, Team Reconciliation)**
+- [x] **Step 2: Implement `NotesController` (Notes CRUD, Pin toggle, File Upload/Download)**
+- [x] **Step 3: Implement `GamificationController` (CheckIn, Streak, Badges, Reward Store & Claims)**
+- [x] **Step 4: Implement `AnnouncementsController` (Active popup, Mark Read, Admin CRUD)**
+- [x] **Step 5: Verify all backend controllers compile and tests pass**
 
 ---
 
@@ -241,12 +241,12 @@
 - Consumes: `sample-web-ui` template components and assets.
 - Produces: Working Next.js 16 app with configured API client, JWT interceptor, sidebar navigation, and multi-stage Docker build.
 
-- [ ] **Step 1: Copy base template from `sample-web-ui/nextjs-admin-dashboard-main` to `frontend/`**
-- [ ] **Step 2: Create `frontend/src/services/api/client.ts` with Axios base URL and silent refresh token interceptor**
-- [ ] **Step 3: Update `src/components/common/sidebar/data.tsx` to include TrackerKerja's real business navigation**
-- [ ] **Step 4: Update `src/app/providers.tsx` with TanStack Query Client, Next-Themes, and Toaster**
-- [ ] **Step 5: Create production multi-stage `frontend/Dockerfile`**
-- [ ] **Step 6: Verify `npm run build` succeeds**
+- [x] **Step 1: Copy base template from `sample-web-ui/nextjs-admin-dashboard-main` to `frontend/`**
+- [x] **Step 2: Create `frontend/src/services/api/client.ts` with Axios base URL and silent refresh token interceptor**
+- [x] **Step 3: Update `src/components/common/sidebar/data.tsx` to include TrackerKerja's real business navigation**
+- [x] **Step 4: Update `src/app/providers.tsx` with TanStack Query Client, Next-Themes, and Toaster**
+- [x] **Step 5: Create production multi-stage `frontend/Dockerfile`**
+- [x] **Step 6: Verify `npm run build` succeeds**
 
 ---
 
@@ -263,11 +263,11 @@
 - Consumes: Auth API endpoints (`/api/auth/*`).
 - Produces: Login with Lottie and Dark/Light toggle, 2-tab Company Code registration, Topbar tenant badge, 60-min session guard with 5-min warning modal, and anti-overlap announcement popup.
 
-- [ ] **Step 1: Implement Login page with JWT storing and error handling**
-- [ ] **Step 2: Implement Register page with Existing Company Code vs New Company tab**
-- [ ] **Step 3: Update Header with tenant badge `[KODE] Nama Perusahaan` and user profile dropdown**
-- [ ] **Step 4: Implement `SessionInactivityGuard` and `AnnouncementModal`**
-- [ ] **Step 5: Verify auth flow navigation**
+- [x] **Step 1: Implement Login page with JWT storing and error handling**
+- [x] **Step 2: Implement Register page with Existing Company Code vs New Company tab**
+- [x] **Step 3: Update Header with tenant badge `[KODE] Nama Perusahaan` and user profile dropdown**
+- [x] **Step 4: Implement `SessionInactivityGuard` and `AnnouncementModal`**
+- [x] **Step 5: Verify auth flow navigation**
 
 ---
 
@@ -287,12 +287,12 @@
 - Consumes: Task, Project, and Timesheet API endpoints.
 - Produces: Executive dashboard with burn rate charts, projects list & bulk task modal, task table grid & @dnd-kit Kanban board, studio 12-column unified save form, and active timers widget.
 
-- [ ] **Step 1: Implement Dashboard with Recharts KPI metrics and task status distribution**
-- [ ] **Step 2: Implement Projects list with Burn Rate progress bar and detail page with bulk task assignment modal**
-- [ ] **Step 3: Implement Tasks table and interactive Kanban board with `@dnd-kit`**
-- [ ] **Step 4: Implement Full-Width Studio Task Edit form with unified task + manual session save**
-- [ ] **Step 5: Implement Timesheets page with floating active multi-timer bar and Excel export trigger**
-- [ ] **Step 6: Verify frontend pages render and build cleanly**
+- [x] **Step 1: Implement Dashboard with Recharts KPI metrics and task status distribution**
+- [x] **Step 2: Implement Projects list with Burn Rate progress bar and detail page with bulk task assignment modal**
+- [x] **Step 3: Implement Tasks table and interactive Kanban board with `@dnd-kit`**
+- [x] **Step 4: Implement Full-Width Studio Task Edit form with unified task + manual session save**
+- [x] **Step 5: Implement Timesheets page with floating active multi-timer bar and Excel export trigger**
+- [x] **Step 6: Verify frontend pages render and build cleanly**
 
 ---
 
@@ -309,12 +309,12 @@
 - Consumes: Attendance, Notes, Members, Gamification, and Settings API endpoints.
 - Produces: Attendance Clock In/Out & reconciliation, rich-text Notes, member cards grouped by company with approval actions, gamification streak/badges/reward claims, and 4-tab configuration.
 
-- [ ] **Step 1: Implement Attendance page with Clock In/Out buttons and admin reconciliation tab**
-- [ ] **Step 2: Implement Notes page with categories and attachment upload dropzone**
-- [ ] **Step 3: Implement Members directory with pure grid cards and admin approval buttons**
-- [ ] **Step 4: Implement Gamification page with streak counter, 15/30-day bars, and reward store**
-- [ ] **Step 5: Implement 4-Tab Configuration page and audit trail modal**
-- [ ] **Step 6: Verify build with `npm run build`**
+- [x] **Step 1: Implement Attendance page with Clock In/Out buttons and admin reconciliation tab**
+- [x] **Step 2: Implement Notes page with categories and attachment upload dropzone**
+- [x] **Step 3: Implement Members directory with pure grid cards and admin approval buttons**
+- [x] **Step 4: Implement Gamification page with streak counter, 15/30-day bars, and reward store**
+- [x] **Step 5: Implement 4-Tab Configuration page and audit trail modal**
+- [x] **Step 6: Verify build with `npm run build`**
 
 ---
 
@@ -328,8 +328,8 @@
 - Consumes: All backend and frontend artifacts.
 - Produces: Fully containerized application stack runnable via `docker compose up --build`.
 
-- [ ] **Step 1: Update `docker-compose.yml` linking `postgres`, `backend`, and `frontend` with network bridge and volume persistence**
-- [ ] **Step 2: Verify backend `.NET` build in container**
-- [ ] **Step 3: Verify frontend `Next.js` production build in container**
-- [ ] **Step 4: Perform end-to-end smoke test verifying registration, login, task creation, and timer run**
-- [ ] **Step 5: Commit all implementation changes to repository**
+- [x] **Step 1: Update `docker-compose.yml` linking `postgres`, `backend`, and `frontend` with network bridge and volume persistence**
+- [x] **Step 2: Verify backend `.NET` build in container**
+- [x] **Step 3: Verify frontend `Next.js` production build in container**
+- [x] **Step 4: Perform end-to-end smoke test verifying registration, login, task creation, and timer run**
+- [x] **Step 5: Commit all implementation changes to repository**

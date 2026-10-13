@@ -2,6 +2,7 @@
 
 import Header from "@/components/common/header";
 import Sidebar from "@/components/common/sidebar";
+import { FloatingTimerBar } from "@/components/common/floating-timer-bar";
 import { SheetContent, SheetOverlay, SheetTitle } from "@/components/tailgrids/core/sheet";
 import { cn } from "@/utils/cn";
 import { ReactNode, useState } from "react";
@@ -57,10 +58,13 @@ export default function WithLayout({ children }: { children: ReactNode }) {
           <Header onMenuClick={() => setIsMobileSheetOpen(true)} />
 
           <main className="scrollbar-thin flex-1 min-h-0 overflow-y-auto">
-            <div className="mx-auto w-full max-w-384 pb-5">{children}</div>
+            <div className="mx-auto w-full max-w-384 pb-16">{children}</div>
           </main>
         </div>
       </div>
+
+      {/* Floating Active Multi-Timer Bar */}
+      <FloatingTimerBar />
     </div>
   );
 }
