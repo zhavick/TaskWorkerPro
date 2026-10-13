@@ -37,7 +37,11 @@ public class TasksController : ControllerBase
         [FromQuery] string? milestone = null,
         [FromQuery] string? assignedToUserId = null,
         [FromQuery] int? parentTaskId = null,
-        [FromQuery] string? search = null)
+        [FromQuery] string? search = null,
+        [FromQuery] string? filter = null,
+        [FromQuery] DateTimeOffset? startDate = null,
+        [FromQuery] DateTimeOffset? endDate = null,
+        [FromQuery] bool? allHierarchies = null)
     {
         var query = _context.Tasks
             .Include(t => t.Project)
@@ -48,12 +52,24 @@ public class TasksController : ControllerBase
             .AsNoTracking()
             .AsQueryable();
 
+        // RBAC Scoping (FSD 5.14): Non-admin is automatically scoped to their own tasks, or admin filtering "mine"
+        if ((!_tenantService.IsAdmin && !string.IsNullOrEmpty(_tenantService.UserId)) ||
+            (filter == "mine" && !string.IsNullOrEmpty(_tenantService.UserId)))
+        {
+            query = query.Where(t => t.AssignedToUserId == _tenantService.UserId);
+        }
+
         if (projectId.HasValue) query = query.Where(t => t.ProjectId == projectId.Value);
         if (status.HasValue) query = query.Where(t => t.Status == status.Value);
         if (priority.HasValue) query = query.Where(t => t.Priority == priority.Value);
         if (!string.IsNullOrWhiteSpace(milestone)) query = query.Where(t => t.Milestone == milestone);
         if (!string.IsNullOrWhiteSpace(assignedToUserId)) query = query.Where(t => t.AssignedToUserId == assignedToUserId);
-        if (parentTaskId.HasValue)
+
+        if (allHierarchies == true)
+        {
+            // Do not restrict ParentTaskId
+        }
+        else if (parentTaskId.HasValue)
         {
             query = query.Where(t => t.ParentTaskId == parentTaskId.Value);
         }
@@ -61,6 +77,18 @@ public class TasksController : ControllerBase
         {
             // Default: get root tasks (ParentTaskId == null) unless specifically queried
             query = query.Where(t => t.ParentTaskId == null);
+        }
+
+        if (startDate.HasValue)
+        {
+            query = query.Where(t => (t.DueDate.HasValue && t.DueDate.Value >= startDate.Value) ||
+                                     (t.StartDate.HasValue && t.StartDate.Value >= startDate.Value));
+        }
+
+        if (endDate.HasValue)
+        {
+            query = query.Where(t => (t.DueDate.HasValue && t.DueDate.Value <= endDate.Value) ||
+                                     (t.StartDate.HasValue && t.StartDate.Value <= endDate.Value));
         }
 
         if (!string.IsNullOrWhiteSpace(search))

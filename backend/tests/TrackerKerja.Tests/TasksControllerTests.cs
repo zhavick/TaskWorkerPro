@@ -117,6 +117,44 @@ public class TasksControllerTests
     }
 
     [Fact]
+    public async Task GetTasks_WithFilterMine_ShouldOnlyReturnAssignedTasks()
+    {
+        // Arrange
+        var userTask = new WorkTask
+        {
+            Id = 50,
+            Title = "Tugas Milik Saya",
+            CompanyId = 10,
+            ProjectId = 1,
+            AssignedToUserId = "user-1",
+            Status = Domain.Enums.TaskStatus.Todo
+        };
+        var otherTask = new WorkTask
+        {
+            Id = 51,
+            Title = "Tugas Staf Lain",
+            CompanyId = 10,
+            ProjectId = 1,
+            AssignedToUserId = "user-2",
+            Status = Domain.Enums.TaskStatus.Todo
+        };
+        _context.Tasks.AddRange(userTask, otherTask);
+        await _context.SaveChangesAsync();
+
+        var controller = new TasksController(_context, _tenantService);
+
+        // Act
+        var result = await controller.GetTasks(filter: "mine") as OkObjectResult;
+
+        // Assert
+        result.Should().NotBeNull();
+        var data = result!.Value?.GetType().GetProperty("data")?.GetValue(result.Value) as List<TaskItemDto>;
+        data.Should().NotBeNull();
+        data!.Should().Contain(t => t.Id == 50);
+        data.Should().NotContain(t => t.Id == 51);
+    }
+
+    [Fact]
     public async Task UnifiedSave_ShouldUpdateTaskAndCreateManualSessionAtomically()
     {
         // Arrange
