@@ -39,6 +39,7 @@ public class AppDbContext : DbContext
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<JsonHistory> JsonHistories => Set<JsonHistory>();
     public DbSet<SqlHistory> SqlHistories => Set<SqlHistory>();
+    public DbSet<SyncHistory> SyncHistories => Set<SyncHistory>();
 
     public int? CurrentCompanyId => _tenantService?.CompanyId;
     public bool IsCurrentUserAdmin => _tenantService?.IsAdmin ?? false;
@@ -73,6 +74,7 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<AuditLog>().ToTable("audit_logs");
         modelBuilder.Entity<JsonHistory>().ToTable("json_histories");
         modelBuilder.Entity<SqlHistory>().ToTable("sql_histories");
+        modelBuilder.Entity<SyncHistory>().ToTable("sync_histories");
 
         // 2. Primary Keys & Unique Constraints
         modelBuilder.Entity<SystemSetting>().HasKey(s => s.Key);
