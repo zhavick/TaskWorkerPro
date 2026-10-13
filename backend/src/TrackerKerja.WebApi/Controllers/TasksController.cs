@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -18,15 +19,18 @@ public class TasksController : ControllerBase
     private readonly AppDbContext _context;
     private readonly ICurrentTenantService _tenantService;
     private readonly ITaskExcelImportService _excelImportService;
+    private readonly IExcelExportService _excelExportService;
 
     public TasksController(
         AppDbContext context,
         ICurrentTenantService tenantService,
-        ITaskExcelImportService? excelImportService = null)
+        ITaskExcelImportService? excelImportService = null,
+        IExcelExportService? excelExportService = null)
     {
         _context = context;
         _tenantService = tenantService;
         _excelImportService = excelImportService ?? new TaskExcelImportService(context);
+        _excelExportService = excelExportService ?? new ClosedXmlExportService(context);
     }
 
     [HttpGet]
@@ -437,6 +441,25 @@ public class TasksController : ControllerBase
                 message = $"Gagal memproses file Excel: {ex.Message}"
             });
         }
+    }
+
+    [HttpGet("export")]
+    public async Task<IActionResult> ExportTasks([FromQuery] TaskExportFilterDto filter, CancellationToken cancellationToken)
+    {
+        var currentUserId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty;
+        var isAdmin = User.IsInRole("Administrator") || User.IsInRole("SuperAdmin");
+
+        var bytes = await _excelExportService.GenerateTasksExcelAsync(
+            filter,
+            _tenantService.CompanyId,
+            currentUserId,
+            isAdmin,
+            cancellationToken);
+
+        var prefix = filter.Format?.ToLowerInvariant() == "arms" ? "Laporan_ARMS_Enterprise" : "Laporan_Tugas";
+        var fileName = $"{prefix}_{DateTime.UtcNow:yyyyMMdd_HHmmss}.xlsx";
+
+        return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
     }
 
     private static TaskItemDto MapToItemDto(WorkTask t)
