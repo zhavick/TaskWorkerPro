@@ -202,6 +202,57 @@ public class EnterpriseModulesControllerTests
         list2!.Count.Should().Be(0); // Hidden!
     }
 
+    [Fact]
+    public async Task Announcements_CreateGlobal_AndInspectReaders_ShouldReturnReadersWithDetails()
+    {
+        // Arrange
+        var user = new AppUser
+        {
+            Id = "usr-reader-1",
+            Email = "reader1@test.com",
+            FullName = "Audited Reader",
+            JobTitle = "Security Auditor",
+            CompanyId = 10
+        };
+        _context.Users.Add(user);
+        await _context.SaveChangesAsync();
+
+        var adminTenantService = new FakeTenantService(10, "WCH", "usr-admin", true);
+        var controller = new AnnouncementsController(_context, adminTenantService);
+
+        var createReq = new CreateAnnouncementRequest(
+            "Global Critical Patch",
+            "Emergency maintenance across all entities",
+            "Mendesak / Darurat",
+            DateTimeOffset.UtcNow.AddHours(-1),
+            DateTimeOffset.UtcNow.AddDays(2),
+            true,
+            null // Global scope!
+        );
+
+        // Act 1 - Create Global Announcement
+        var createRes = await controller.CreateAnnouncement(createReq) as OkObjectResult;
+        createRes.Should().NotBeNull();
+        var created = createRes!.Value?.GetType().GetProperty("data")?.GetValue(createRes.Value) as Announcement;
+        created.Should().NotBeNull();
+        created!.CompanyId.Should().BeNull();
+
+        // Act 2 - Reader user marks read
+        var userTenantService = new FakeTenantService(10, "WCH", "usr-reader-1", false);
+        var userController = new AnnouncementsController(_context, userTenantService);
+        await userController.MarkRead(created.Id, new MarkAnnouncementReadRequest(false));
+
+        // Act 3 - Admin inspects readers list
+        var readersRes = await controller.GetAnnouncementReaders(created.Id) as OkObjectResult;
+        readersRes.Should().NotBeNull();
+        var readers = readersRes!.Value?.GetType().GetProperty("data")?.GetValue(readersRes.Value) as List<AnnouncementReaderDto>;
+        readers.Should().NotBeNull();
+        readers!.Count.Should().Be(1);
+        readers[0].FullName.Should().Be("Audited Reader");
+        readers[0].Email.Should().Be("reader1@test.com");
+        readers[0].JobTitle.Should().Be("Security Auditor");
+    }
+
     private class FakeTenantService : ICurrentTenantService
     {
         public FakeTenantService(int? companyId, string? companyCode, string? userId, bool isAdmin)

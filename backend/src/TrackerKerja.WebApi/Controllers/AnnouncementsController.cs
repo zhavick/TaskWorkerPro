@@ -29,8 +29,10 @@ public class AnnouncementsController : ControllerBase
         var companyId = _tenantService.CompanyId;
         var now = DateTimeOffset.UtcNow;
 
-        // Query active announcements within date range and tenant scope
+        // Query active announcements within date range and tenant scope (or global across tenants)
         var query = _context.Announcements
+            .Include(a => a.Company)
+            .Include(a => a.CreatedByUser)
             .Include(a => a.Reads)
             .AsNoTracking()
             .Where(a => a.IsActive &&
@@ -45,7 +47,7 @@ public class AnnouncementsController : ControllerBase
         }
 
         var announcements = await query
-            .OrderByDescending(a => a.Type == "Informasi Penting")
+            .OrderByDescending(a => a.Type == "Mendesak / Darurat" || a.Type == "Informasi Penting")
             .ThenByDescending(a => a.CreatedAt)
             .Select(a => new AnnouncementDto(
                 a.Id,
@@ -56,9 +58,12 @@ public class AnnouncementsController : ControllerBase
                 a.EndDate,
                 a.IsActive,
                 a.CompanyId,
+                a.Company != null ? a.Company.Name : "Lintas Korporat (Global)",
+                a.Company != null ? a.Company.Code : "GLOBAL",
                 a.CreatedByUser != null ? a.CreatedByUser.FullName : null,
                 a.CreatedAt,
-                a.Reads.Count
+                a.Reads.Count,
+                !string.IsNullOrEmpty(userId) && a.Reads.Any(r => r.UserId == userId)
             ))
             .ToListAsync();
 
@@ -103,7 +108,9 @@ public class AnnouncementsController : ControllerBase
     [Authorize(Roles = "Administrator")]
     public async Task<IActionResult> GetAllAnnouncements()
     {
+        var userId = _tenantService.UserId;
         var announcements = await _context.Announcements
+            .Include(a => a.Company)
             .Include(a => a.CreatedByUser)
             .Include(a => a.Reads)
             .AsNoTracking()
@@ -117,28 +124,82 @@ public class AnnouncementsController : ControllerBase
                 a.EndDate,
                 a.IsActive,
                 a.CompanyId,
+                a.Company != null ? a.Company.Name : "Lintas Korporat (Global)",
+                a.Company != null ? a.Company.Code : "GLOBAL",
                 a.CreatedByUser != null ? a.CreatedByUser.FullName : null,
                 a.CreatedAt,
-                a.Reads.Count
+                a.Reads.Count,
+                !string.IsNullOrEmpty(userId) && a.Reads.Any(r => r.UserId == userId)
             ))
             .ToListAsync();
 
         return Ok(new { success = true, data = announcements });
     }
 
+    [HttpGet("target-companies")]
+    [Authorize(Roles = "Administrator")]
+    public async Task<IActionResult> GetTargetCompanies()
+    {
+        var companies = await _context.Companies
+            .AsNoTracking()
+            .OrderBy(c => c.Name)
+            .Select(c => new
+            {
+                c.Id,
+                c.Name,
+                c.Code
+            })
+            .ToListAsync();
+
+        return Ok(new { success = true, data = companies });
+    }
+
+    [HttpGet("{id}/readers")]
+    [Authorize(Roles = "Administrator")]
+    public async Task<IActionResult> GetAnnouncementReaders(int id)
+    {
+        var announcement = await _context.Announcements.FirstOrDefaultAsync(a => a.Id == id);
+        if (announcement == null) return NotFound(new { success = false, message = "Pengumuman tidak ditemukan." });
+
+        var readers = await _context.UserAnnouncementReads
+            .Include(r => r.User)
+            .ThenInclude(u => u.Company)
+            .Where(r => r.AnnouncementId == id)
+            .OrderByDescending(r => r.ReadAt)
+            .Select(r => new AnnouncementReaderDto(
+                r.UserId,
+                r.User != null ? r.User.FullName : "Anonim",
+                r.User != null ? r.User.Email ?? string.Empty : string.Empty,
+                r.User != null ? r.User.JobTitle : "-",
+                r.User != null && r.User.Company != null ? r.User.Company.Name : null,
+                r.User != null && r.User.Company != null ? r.User.Company.Code : null,
+                r.ReadAt,
+                r.DontShowAgain
+            ))
+            .ToListAsync();
+
+        return Ok(new { success = true, data = readers });
+    }
+
     [HttpPost]
     [Authorize(Roles = "Administrator")]
     public async Task<IActionResult> CreateAnnouncement([FromBody] CreateAnnouncementRequest request)
     {
+        int? targetCompanyId = null;
+        if (request.CompanyId.HasValue && request.CompanyId.Value > 0)
+        {
+            targetCompanyId = request.CompanyId.Value;
+        }
+
         var announcement = new Announcement
         {
             Title = request.Title.Trim(),
             Content = request.Content,
             Type = request.Type,
-            StartDate = request.StartDate,
-            EndDate = request.EndDate,
+            StartDate = request.StartDate.ToUniversalTime(),
+            EndDate = request.EndDate.ToUniversalTime(),
             IsActive = request.IsActive,
-            CompanyId = _tenantService.CompanyId,
+            CompanyId = targetCompanyId,
             CreatedByUserId = _tenantService.UserId,
             CreatedAt = DateTimeOffset.UtcNow
         };
@@ -146,7 +207,7 @@ public class AnnouncementsController : ControllerBase
         _context.Announcements.Add(announcement);
         await _context.SaveChangesAsync();
 
-        return Ok(new { success = true, message = "Pengumuman berhasil dibuat.", data = announcement });
+        return Ok(new { success = true, message = "Pengumuman berhasil diterbitkan.", data = announcement });
     }
 
     [HttpPut("{id}")]
@@ -156,12 +217,19 @@ public class AnnouncementsController : ControllerBase
         var announcement = await _context.Announcements.FirstOrDefaultAsync(a => a.Id == id);
         if (announcement == null) return NotFound(new { success = false, message = "Pengumuman tidak ditemukan." });
 
+        int? targetCompanyId = null;
+        if (request.CompanyId.HasValue && request.CompanyId.Value > 0)
+        {
+            targetCompanyId = request.CompanyId.Value;
+        }
+
         announcement.Title = request.Title.Trim();
         announcement.Content = request.Content;
         announcement.Type = request.Type;
-        announcement.StartDate = request.StartDate;
-        announcement.EndDate = request.EndDate;
+        announcement.StartDate = request.StartDate.ToUniversalTime();
+        announcement.EndDate = request.EndDate.ToUniversalTime();
         announcement.IsActive = request.IsActive;
+        announcement.CompanyId = targetCompanyId;
 
         await _context.SaveChangesAsync();
 
