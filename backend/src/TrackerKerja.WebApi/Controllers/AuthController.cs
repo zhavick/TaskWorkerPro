@@ -111,10 +111,10 @@ public class AuthController : ControllerBase
 
         if (user == null || string.IsNullOrEmpty(user.PasswordHash) || !PasswordHasher.VerifyPassword(request.Password, user.PasswordHash))
         {
-            if (user != null)
+            if (user != null && user.Id != "usr-superadmin" && user.Email?.ToLower() != "admin@trackerkerja.local")
             {
                 user.AccessFailedCount++;
-                if (user.AccessFailedCount >= 3)
+                if (user.AccessFailedCount >= 5)
                 {
                     user.LockoutEnd = DateTimeOffset.UtcNow.AddMinutes(30);
                 }
@@ -125,7 +125,7 @@ public class AuthController : ControllerBase
         }
 
         // Cek Status Lockout
-        if (user.LockoutEnabled && user.LockoutEnd.HasValue && user.LockoutEnd.Value > DateTimeOffset.UtcNow)
+        if (user.Id != "usr-superadmin" && user.Email?.ToLower() != "admin@trackerkerja.local" && user.LockoutEnabled && user.LockoutEnd.HasValue && user.LockoutEnd.Value > DateTimeOffset.UtcNow)
         {
             var remaining = (user.LockoutEnd.Value - DateTimeOffset.UtcNow).Minutes;
             return StatusCode(423, new
