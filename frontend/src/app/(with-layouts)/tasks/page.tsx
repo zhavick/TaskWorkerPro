@@ -15,11 +15,13 @@ import {
   CheckCircle2,
   Calendar,
   FileSpreadsheet,
+  Download,
 } from "lucide-react";
 import { Button } from "@/components/tailgrids/core/button";
 import { Input } from "@/components/tailgrids/core/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/tailgrids/core/dialog";
 import { ImportExcelDialog } from "@/components/tasks/import-excel-dialog";
+import { ExportTasksDialog } from "@/components/tasks/export-excel-dialog";
 import { toast } from "sonner";
 import Link from "next/link";
 
@@ -33,6 +35,7 @@ export default function TasksListPage() {
   const [search, setSearch] = useState("");
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [importModalOpen, setImportModalOpen] = useState(false);
+  const [exportModalOpen, setExportModalOpen] = useState(false);
 
   // New task form state
   const [title, setTitle] = useState("");
@@ -117,6 +120,14 @@ export default function TasksListPage() {
           >
             <FileSpreadsheet className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
             Impor Excel
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => setExportModalOpen(true)}
+            className="gap-2 border-indigo-300 text-indigo-700 hover:bg-indigo-50 dark:border-indigo-800 dark:text-indigo-400 dark:hover:bg-indigo-950/40"
+          >
+            <Download className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+            Ekspor Excel
           </Button>
           <Link href="/tasks/kanban">
             <Button variant="outline" className="gap-2">
@@ -371,6 +382,12 @@ export default function TasksListPage() {
       <ImportExcelDialog
         open={importModalOpen}
         onOpenChange={setImportModalOpen}
+      />
+
+      {/* Modal Ekspor Excel */}
+      <ExportTasksDialog
+        open={exportModalOpen}
+        onOpenChange={setExportModalOpen}
       />
     </div>
   );
