@@ -31,6 +31,8 @@ builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
 builder.Services.AddScoped<IExcelExportService, ClosedXmlExportService>();
 builder.Services.AddScoped<ITaskExcelImportService, TaskExcelImportService>();
 builder.Services.AddSingleton<ISqlFormatterService, SqlFormatterService>();
+builder.Services.AddHttpClient();
+builder.Services.AddScoped<ISyncService, SyncService>();
 
 // 4. JWT Authentication
 var jwtSettings = builder.Configuration.GetSection("JwtSettings");
