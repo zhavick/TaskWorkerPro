@@ -19,8 +19,35 @@ public record CreatePriorityRequest(
     bool IsDefault
 );
 
+public record UpdatePriorityRequest(
+    string Name,
+    string Color,
+    string Icon,
+    int OrderIndex,
+    string? Description,
+    bool IsDefault
+);
+
 public record MasterStatusDto(
     int Id,
+    string Name,
+    string Color,
+    bool IsDoneState,
+    int OrderIndex,
+    string? Description,
+    bool IsDefault
+);
+
+public record CreateStatusRequest(
+    string Name,
+    string Color,
+    bool IsDoneState,
+    int OrderIndex,
+    string? Description,
+    bool IsDefault
+);
+
+public record UpdateStatusRequest(
     string Name,
     string Color,
     bool IsDoneState,
@@ -40,6 +67,26 @@ public record MasterMilestoneDto(
     bool IsDefault
 );
 
+public record CreateMilestoneRequest(
+    string Name,
+    string Phase,
+    string Color,
+    string Icon,
+    int OrderIndex,
+    string? Description,
+    bool IsDefault
+);
+
+public record UpdateMilestoneRequest(
+    string Name,
+    string Phase,
+    string Color,
+    string Icon,
+    int OrderIndex,
+    string? Description,
+    bool IsDefault
+);
+
 public record CategoryDto(
     int Id,
     string Name,
@@ -48,6 +95,12 @@ public record CategoryDto(
 );
 
 public record CreateCategoryRequest(
+    string Name,
+    string Color,
+    string? Description
+);
+
+public record UpdateCategoryRequest(
     string Name,
     string Color,
     string? Description

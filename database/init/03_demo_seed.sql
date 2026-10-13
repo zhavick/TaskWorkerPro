@@ -681,4 +681,11 @@ ON CONFLICT (id) DO UPDATE SET
 -- Sinkronkan sequence announcements
 SELECT setval('announcements_id_seq', (SELECT MAX(id) FROM announcements));
 
+-- Sinkronkan sequence master data & projects
+SELECT setval('master_priorities_id_seq', (SELECT MAX(id) FROM master_priorities));
+SELECT setval('master_statuses_id_seq', (SELECT MAX(id) FROM master_statuses));
+SELECT setval('master_milestones_id_seq', (SELECT MAX(id) FROM master_milestones));
+SELECT setval('categories_id_seq', (SELECT MAX(id) FROM categories));
+SELECT setval('projects_id_seq', (SELECT MAX(id) FROM projects));
+
 -- SEED DATA DEMO SELESAI
