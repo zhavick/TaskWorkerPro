@@ -28,7 +28,7 @@
 **Interfaces:**
 - Produces: `ISqlFormatterService`, `SqlFormatRequest`, `SqlFormatResult`, `SqlMinifyRequest`, `SqlMinifyResult`, `SqlValidationRequest`, `SqlValidationResult`, `SqlDialectInfo`, `SqlDiagnosticError`, `KeywordCase`, `CommaPosition`.
 
-- [ ] **Step 1: Create `SqlToolsDtos.cs` in `TrackerKerja.Application/DTOs`**
+- [x] **Step 1: Create `SqlToolsDtos.cs` in `TrackerKerja.Application/DTOs`**
 
 ```csharp
 namespace TrackerKerja.Application.DTOs;
@@ -105,7 +105,7 @@ public record SqlDialectInfo(
 );
 ```
 
-- [ ] **Step 2: Create `ISqlFormatterService.cs` in `TrackerKerja.Application/Common/Interfaces`**
+- [x] **Step 2: Create `ISqlFormatterService.cs` in `TrackerKerja.Application/Common/Interfaces`**
 
 ```csharp
 using TrackerKerja.Application.DTOs;
@@ -122,12 +122,12 @@ public interface ISqlFormatterService
 }
 ```
 
-- [ ] **Step 3: Run `dotnet build backend/src/TrackerKerja.Application` to verify compilation**
+- [x] **Step 3: Run `dotnet build backend/src/TrackerKerja.Application` to verify compilation**
 
 Run: `dotnet build backend/src/TrackerKerja.Application/TrackerKerja.Application.csproj`
 Expected: Build succeeded with 0 errors.
 
-- [ ] **Step 4: Commit Application layer changes**
+- [x] **Step 4: Commit Application layer changes**
 
 ```bash
 git add backend/src/TrackerKerja.Application/DTOs/SqlToolsDtos.cs backend/src/TrackerKerja.Application/Common/Interfaces/ISqlFormatterService.cs
@@ -147,7 +147,7 @@ git commit -m "feat(sqltools): define application DTOs and ISqlFormatterService 
 - Consumes: `ISqlFormatterService`, `SqlToolsDtos` from Task 1.
 - Produces: Concrete `SqlFormatterService` registered in DI as scoped or singleton.
 
-- [ ] **Step 1: Write failing unit tests in `TrackerKerja.Tests/SqlFormatterServiceTests.cs`**
+- [x] **Step 1: Write failing unit tests in `TrackerKerja.Tests/SqlFormatterServiceTests.cs`**
 
 ```csharp
 using TrackerKerja.Application.DTOs;
@@ -229,27 +229,27 @@ public class SqlFormatterServiceTests
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `dotnet test backend/tests/TrackerKerja.Tests/TrackerKerja.Tests.csproj --filter "FullyQualifiedName~SqlFormatterServiceTests"`
 Expected: Compilation failure / tests fail because `SqlFormatterService` is not implemented yet.
 
-- [ ] **Step 3: Implement `SqlFormatterService.cs` in `TrackerKerja.Infrastructure/Services`**
+- [x] **Step 3: Implement `SqlFormatterService.cs` in `TrackerKerja.Infrastructure/Services`**
 
 Implement complete tokenizing, comment stripping, keyword replacement, indentation engine, minifier, parentheses/string validator, and 15+ dialects metadata & samples in `SqlFormatterService.cs`.
 
-- [ ] **Step 4: Register `ISqlFormatterService` in `DependencyInjection.cs`**
+- [x] **Step 4: Register `ISqlFormatterService` in `DependencyInjection.cs`**
 
 ```csharp
 services.AddSingleton<ISqlFormatterService, SqlFormatterService>();
 ```
 
-- [ ] **Step 5: Run tests and verify they pass**
+- [x] **Step 5: Run tests and verify they pass**
 
 Run: `dotnet test backend/tests/TrackerKerja.Tests/TrackerKerja.Tests.csproj --filter "FullyQualifiedName~SqlFormatterServiceTests"`
 Expected: All tests pass.
 
-- [ ] **Step 6: Commit Infrastructure implementation**
+- [x] **Step 6: Commit Infrastructure implementation**
 
 ```bash
 git add backend/src/TrackerKerja.Infrastructure/Services/SqlFormatterService.cs backend/src/TrackerKerja.Infrastructure/DependencyInjection.cs backend/tests/TrackerKerja.Tests/SqlFormatterServiceTests.cs
@@ -268,25 +268,25 @@ git commit -m "feat(sqltools): implement native SqlFormatterService with 15+ dia
 - Consumes: `ISqlFormatterService`, `AppDbContext`, `ICurrentTenantService`.
 - Produces: REST endpoints `/api/sqltools/format`, `/api/sqltools/minify`, `/api/sqltools/validate`, `/api/sqltools/dialects`, `/api/sqltools/samples/{dialect}`, `/api/sqltools/history`, `/api/sqltools/history/{id}`.
 
-- [ ] **Step 1: Write integration/unit tests for `SqlToolsController`**
+- [x] **Step 1: Write integration/unit tests for `SqlToolsController`**
 
 Create `SqlToolsControllerTests.cs` verifying format, minify, validate, dialects endpoints return `200 OK` with JSON envelope.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `dotnet test backend/tests/TrackerKerja.Tests/TrackerKerja.Tests.csproj --filter "FullyQualifiedName~SqlToolsControllerTests"`
 Expected: FAIL because `SqlToolsController` does not exist yet.
 
-- [ ] **Step 3: Implement `SqlToolsController.cs` in `TrackerKerja.WebApi/Controllers`**
+- [x] **Step 3: Implement `SqlToolsController.cs` in `TrackerKerja.WebApi/Controllers`**
 
 Implement endpoints with `[Authorize]`, error handling, `SqlHistory` saving if `Name` provided, and uniform API responses.
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `dotnet test backend/tests/TrackerKerja.Tests/TrackerKerja.Tests.csproj --filter "FullyQualifiedName~SqlToolsControllerTests"`
 Expected: PASS.
 
-- [ ] **Step 5: Commit WebApi Controller implementation**
+- [x] **Step 5: Commit WebApi Controller implementation**
 
 ```bash
 git add backend/src/TrackerKerja.WebApi/Controllers/SqlToolsController.cs backend/tests/TrackerKerja.Tests/SqlToolsControllerTests.cs
@@ -305,7 +305,7 @@ git commit -m "feat(sqltools): implement SqlToolsController REST endpoints and t
 - Consumes: `/api/sqltools/*` endpoints via `apiClient`.
 - Produces: Responsive full-featured SQL Studio with 15+ dialect selectors, sample query loader, live validation status, side-by-side code editors, formatting options, copy/download actions, and history drawer.
 
-- [ ] **Step 1: Update `frontend/src/app/(with-layouts)/dev-tools/sql/page.tsx`**
+- [x] **Step 1: Update `frontend/src/app/(with-layouts)/dev-tools/sql/page.tsx`**
 
 Implement the full UI:
 - Dialect selector with 15+ options and family pills (Relational, Cloud DW, NoSQL, Distributed, Big Data).
@@ -316,16 +316,16 @@ Implement the full UI:
 - Syntax Diagnostic Box showing green badge for valid queries, or red alert with line/column coordinates for syntax issues.
 - Slide-over History Drawer displaying previously saved SQL queries with 1-click restore.
 
-- [ ] **Step 2: Update Sidebar navigation if necessary**
+- [x] **Step 2: Update Sidebar navigation if necessary**
 
 Verify `src/components/common/sidebar/data.tsx` points properly to `/dev-tools/sql` and displays the database icon.
 
-- [ ] **Step 3: Test frontend compilation with `npm run build`**
+- [x] **Step 3: Test frontend compilation with `npm run build`**
 
 Run: `npm run build` in `frontend/` directory.
 Expected: Build succeeds with 0 TypeScript or linting errors.
 
-- [ ] **Step 4: Commit frontend UI changes**
+- [x] **Step 4: Commit frontend UI changes**
 
 ```bash
 git add frontend/src/app/\(with-layouts\)/dev-tools/sql/page.tsx frontend/src/components/common/sidebar/data.tsx
@@ -341,6 +341,6 @@ git commit -m "feat(sqltools): implement interactive SQL Studio UI with 15+ dial
 - Run all unit tests: `dotnet test backend/TrackerKerja.sln`
 - Test frontend production build: `npm --prefix frontend run build`
 
-- [ ] **Step 1: Run complete backend test suite**
-- [ ] **Step 2: Run frontend production build**
-- [ ] **Step 3: Commit and summarize implementation**
+- [x] **Step 1: Run complete backend test suite**
+- [x] **Step 2: Run frontend production build**
+- [x] **Step 3: Commit and summarize implementation**
