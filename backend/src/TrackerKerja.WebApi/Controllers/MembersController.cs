@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using TrackerKerja.Application.Common.Interfaces;
 using TrackerKerja.Application.DTOs;
 using TrackerKerja.Infrastructure.Persistence;
+using TrackerKerja.Infrastructure.Services;
 
 namespace TrackerKerja.WebApi.Controllers;
 
@@ -55,26 +56,49 @@ public class MembersController : ControllerBase
                                      u.JobTitle.ToLower().Contains(searchLower));
         }
 
-        var members = await query
+        var now = DateTimeOffset.UtcNow;
+        var users = await query
+            .Include(u => u.AssignedTasks)
+            .Include(u => u.WorkSessions)
             .OrderBy(u => u.FullName)
-            .Select(u => new MemberListItemDto(
-                u.Id,
-                u.FullName,
-                u.Email ?? string.Empty,
-                u.JobTitle,
-                u.AvatarColor,
-                u.ProfilePictureUrl,
-                u.CompanyId,
-                u.Company != null ? u.Company.Name : null,
-                u.Company != null ? u.Company.Code : null,
-                u.IsApproved,
-                u.ApprovedAt,
-                u.CreatedAt,
-                new List<string> { u.JobTitle.Contains("Admin") ? "Administrator" : "Member" }
-            ))
             .ToListAsync();
 
-        return Ok(new { success = true, data = members });
+        var members = users.Select(u => new MemberListItemDto(
+            u.Id,
+            u.FullName,
+            u.Email ?? string.Empty,
+            u.JobTitle,
+            u.AvatarColor,
+            u.ProfilePictureUrl,
+            u.CompanyId,
+            u.Company != null ? u.Company.Name : null,
+            u.Company != null ? u.Company.Code : null,
+            u.IsApproved,
+            u.ApprovedAt,
+            u.CreatedAt,
+            new List<string> { u.JobTitle.Contains("Admin") ? "Administrator" : "Member" },
+            u.LockoutEnd.HasValue && u.LockoutEnd.Value > now,
+            u.AssignedTasks.Count,
+            u.AssignedTasks.Count(t => t.Status == Domain.Enums.TaskStatus.Done),
+            Math.Round(u.WorkSessions.Where(s => s.EndTime != null).Sum(s => s.Duration) / 3600.0, 1)
+        )).ToList();
+
+        var groups = members
+            .GroupBy(m => new { m.CompanyId, CompanyName = m.CompanyName ?? "Perusahaan Default", CompanyCode = m.CompanyCode ?? "WCH" })
+            .Select(g => new CompanyMemberGroupDto(
+                g.Key.CompanyId,
+                g.Key.CompanyName,
+                g.Key.CompanyCode,
+                g.Count(),
+                g.Sum(m => m.TotalTasks),
+                g.Sum(m => m.CompletedTasks),
+                Math.Round(g.Sum(m => m.TotalHours), 1),
+                g.ToList()
+            ))
+            .OrderBy(g => g.CompanyName)
+            .ToList();
+
+        return Ok(new { success = true, data = members, groups });
     }
 
     [HttpGet("{id}")]
@@ -160,12 +184,53 @@ public class MembersController : ControllerBase
         return Ok(new { success = true, message = $"Kunci akun {user.FullName} berhasil dibuka." });
     }
 
-    [HttpDelete("{id}/permanent")]
+    [HttpPost("{id}/reset-password")]
     [Authorize(Roles = "Administrator")]
-    public async Task<IActionResult> DeleteMemberPermanently(string id)
+    public async Task<IActionResult> ResetPassword(string id, [FromBody] AdminResetPasswordRequest request)
     {
+        if (string.IsNullOrWhiteSpace(request.NewPassword) || request.NewPassword.Length < 6)
+        {
+            return BadRequest(new { success = false, message = "Kata sandi baru minimal 6 karakter." });
+        }
+
         var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == id);
         if (user == null) return NotFound(new { success = false, message = "Pengguna tidak ditemukan." });
+
+        user.PasswordHash = PasswordHasher.HashPassword(request.NewPassword);
+        user.AccessFailedCount = 0;
+        user.LockoutEnd = null;
+
+        await _context.SaveChangesAsync();
+
+        return Ok(new { success = true, message = $"Kata sandi untuk {user.FullName} berhasil direset." });
+    }
+
+    [HttpDelete("{id}/permanent")]
+    [Authorize(Roles = "Administrator")]
+    public async Task<IActionResult> DeleteMemberPermanently(string id, [FromBody] DeleteMemberConfirmationRequest? request = null)
+    {
+        if (id == "usr-superadmin" || id == _tenantService.UserId)
+        {
+            return BadRequest(new { success = false, message = "Akun Administrator aktif / Superadmin tidak dapat dihapus." });
+        }
+
+        var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == id);
+        if (user == null) return NotFound(new { success = false, message = "Pengguna tidak ditemukan." });
+
+        if (request != null && !string.IsNullOrWhiteSpace(request.TargetFullName))
+        {
+            if (!string.Equals(request.TargetFullName.Trim(), user.FullName.Trim(), StringComparison.OrdinalIgnoreCase))
+            {
+                return BadRequest(new { success = false, message = "Konfirmasi nama lengkap tidak sesuai." });
+            }
+        }
+
+        // Bebaskan tugas yang terikat dengan pengguna target
+        var userTasks = await _context.Tasks.Where(t => t.AssignedToUserId == id).ToListAsync();
+        foreach (var t in userTasks)
+        {
+            t.AssignedToUserId = null;
+        }
 
         _context.Users.Remove(user);
         await _context.SaveChangesAsync();

@@ -28,7 +28,31 @@ public record MemberListItemDto(
     bool IsApproved,
     DateTimeOffset? ApprovedAt,
     DateTimeOffset CreatedAt,
-    IList<string> Roles
+    IList<string> Roles,
+    bool IsLockedOut = false,
+    int TotalTasks = 0,
+    int CompletedTasks = 0,
+    double TotalHours = 0.0
+);
+
+public record CompanyMemberGroupDto(
+    int? CompanyId,
+    string CompanyName,
+    string CompanyCode,
+    int TotalMembers,
+    int TotalTasks,
+    int CompletedTasks,
+    double TotalHours,
+    List<MemberListItemDto> Members
+);
+
+public record AdminResetPasswordRequest(
+    string NewPassword
+);
+
+public record DeleteMemberConfirmationRequest(
+    string? TargetFullName,
+    string? AdminPassword
 );
 
 public record ApproveMemberRequest(

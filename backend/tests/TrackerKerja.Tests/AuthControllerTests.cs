@@ -142,6 +142,73 @@ public class AuthControllerTests
         authResponse.User!.IsApproved.Should().BeTrue();
     }
 
+    [Fact]
+    public async Task AdminResetPassword_ShouldUpdateUserPasswordHashAndAllowLogin()
+    {
+        // Arrange
+        var user = new AppUser
+        {
+            Id = "usr-reset-test",
+            Email = "resetuser@test.com",
+            UserName = "resetuser@test.com",
+            FullName = "Reset Test User",
+            PasswordHash = TrackerKerja.Infrastructure.Services.PasswordHasher.HashPassword("OldPass123!"),
+            CompanyId = 10,
+            IsApproved = true
+        };
+        _context.Users.Add(user);
+        await _context.SaveChangesAsync();
+
+        var tenantService = new FakeAdminTenantService();
+        var membersController = new MembersController(_context, tenantService);
+        var authController = new AuthController(_context, _jwtService)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext()
+            }
+        };
+
+        // Act - Admin resets password to NewSecret2026!
+        var resetResult = await membersController.ResetPassword(user.Id, new AdminResetPasswordRequest("NewSecret2026!")) as OkObjectResult;
+
+        // Assert
+        resetResult.Should().NotBeNull();
+        resetResult!.StatusCode.Should().Be(200);
+
+        // User should now be able to login with the new password
+        var loginResult = await authController.Login(new LoginRequest("resetuser@test.com", "NewSecret2026!")) as OkObjectResult;
+        loginResult.Should().NotBeNull();
+        loginResult!.StatusCode.Should().Be(200);
+    }
+
+    [Fact]
+    public async Task DeleteMemberPermanently_WhenSuperadmin_ShouldReturnBadRequest()
+    {
+        // Arrange
+        var superadmin = new AppUser
+        {
+            Id = "usr-superadmin",
+            Email = "admin@trackerkerja.local",
+            UserName = "admin@trackerkerja.local",
+            FullName = "Super Administrator",
+            CompanyId = 10,
+            IsApproved = true
+        };
+        _context.Users.Add(superadmin);
+        await _context.SaveChangesAsync();
+
+        var tenantService = new FakeAdminTenantService();
+        var membersController = new MembersController(_context, tenantService);
+
+        // Act - Attempt to delete superadmin
+        var deleteResult = await membersController.DeleteMemberPermanently("usr-superadmin", new DeleteMemberConfirmationRequest("Super Administrator", null)) as BadRequestObjectResult;
+
+        // Assert
+        deleteResult.Should().NotBeNull();
+        deleteResult!.StatusCode.Should().Be(400);
+    }
+
     private class FakeAdminTenantService : ICurrentTenantService
     {
         public int? CompanyId => 10;
