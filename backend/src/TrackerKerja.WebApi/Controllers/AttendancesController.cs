@@ -136,6 +136,90 @@ public class AttendancesController : ControllerBase
         });
     }
 
+    [HttpPost("leave")]
+    public async Task<IActionResult> SubmitLeave([FromBody] SubmitLeaveRequest request)
+    {
+        var userId = _tenantService.UserId;
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
+        if (request.Type == AttendanceType.Present)
+        {
+            return BadRequest(new { success = false, message = "Untuk kehadiran normal, silakan gunakan fitur Clock In." });
+        }
+
+        var targetDate = request.Date;
+        var existing = await _context.Attendances.FirstOrDefaultAsync(a => a.UserId == userId && a.Date == targetDate);
+        var now = DateTimeOffset.UtcNow;
+
+        if (existing != null)
+        {
+            existing.Type = request.Type;
+            existing.LeaveReason = request.LeaveReason?.Trim();
+            existing.Notes = request.Notes?.Trim();
+            existing.ClockIn = null;
+            existing.ClockOut = null;
+            existing.TotalHours = 0.0;
+            existing.UpdatedAt = now;
+        }
+        else
+        {
+            existing = new Attendance
+            {
+                UserId = userId,
+                Date = targetDate,
+                Type = request.Type,
+                WorkLocation = WorkLocation.WFO,
+                ClockIn = null,
+                ClockOut = null,
+                TotalHours = 0.0,
+                LeaveReason = request.LeaveReason?.Trim(),
+                Notes = request.Notes?.Trim(),
+                CreatedAt = now,
+                UpdatedAt = now
+            };
+            _context.Attendances.Add(existing);
+        }
+
+        await _context.SaveChangesAsync();
+        return Ok(new { success = true, message = $"Pencatatan {request.Type} pada tanggal {targetDate:yyyy-MM-dd} berhasil disimpan.", data = existing });
+    }
+
+    [HttpGet("my-summary")]
+    public async Task<IActionResult> GetMySummary([FromQuery] int? month = null, [FromQuery] int? year = null)
+    {
+        var userId = _tenantService.UserId;
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
+        var now = DateTime.UtcNow;
+        int targetMonth = month ?? now.Month;
+        int targetYear = year ?? now.Year;
+
+        var records = await _context.Attendances
+            .AsNoTracking()
+            .Where(a => a.UserId == userId && a.Date.Month == targetMonth && a.Date.Year == targetYear)
+            .ToListAsync();
+
+        int presentDays = records.Count(a => a.Type == AttendanceType.Present);
+        int leaveDays = records.Count(a => a.Type == AttendanceType.Leave);
+        int sickDays = records.Count(a => a.Type == AttendanceType.Sick);
+        int permissionDays = records.Count(a => a.Type == AttendanceType.Permission);
+        int tripDays = records.Count(a => a.Type == AttendanceType.BusinessTrip);
+        double totalHours = Math.Round(records.Sum(a => a.TotalHours), 2);
+        double avgDailyHours = presentDays > 0 ? Math.Round(totalHours / presentDays, 2) : 0.0;
+
+        var summary = new AttendanceMonthlySummaryDto(
+            presentDays,
+            leaveDays,
+            sickDays,
+            permissionDays,
+            tripDays,
+            totalHours,
+            avgDailyHours
+        );
+
+        return Ok(new { success = true, month = targetMonth, year = targetYear, data = summary });
+    }
+
     [HttpGet("my-history")]
     public async Task<IActionResult> GetMyHistory([FromQuery] int? month = null, [FromQuery] int? year = null)
     {

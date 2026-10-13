@@ -57,3 +57,21 @@ public record ManualAttendanceEntryRequest(
     string? LeaveReason,
     string? Notes
 );
+
+public record SubmitLeaveRequest(
+    DateOnly Date,
+    AttendanceType Type,
+    string? LeaveReason,
+    string? Notes
+);
+
+public record AttendanceMonthlySummaryDto(
+    int TotalDaysPresent,
+    int TotalDaysLeave,
+    int TotalDaysSick,
+    int TotalDaysPermission,
+    int TotalDaysBusinessTrip,
+    double TotalWorkingHours,
+    double AverageDailyHours
+);
+
