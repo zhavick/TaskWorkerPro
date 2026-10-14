@@ -137,3 +137,17 @@ public record TaskExportFilterDto
     public int? Status { get; init; }
     public string Scope { get; init; } = "mine"; // "mine" | "all"
 }
+
+public record BulkUpdateTaskStatusRequest(
+    List<int> TaskIds,
+    Domain.Enums.TaskStatus Status
+);
+
+public record BulkUpdateTaskPriorityRequest(
+    List<int> TaskIds,
+    TaskPriority Priority
+);
+
+public record BulkDeleteTasksRequest(
+    List<int> TaskIds
+);

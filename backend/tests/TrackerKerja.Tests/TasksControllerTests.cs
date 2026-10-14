@@ -254,6 +254,69 @@ public class TasksControllerTests
         result!.StatusCode.Should().Be(200);
     }
 
+    [Fact]
+    public async Task GetTasks_WithPaginationAndSorting_ReturnsCorrectPageAndOrder()
+    {
+        // Arrange
+        var controller = new TasksController(_context, _tenantService);
+
+        // Act - request page 1, pageSize 2, sorted by title asc
+        var result = await controller.GetTasks(page: 1, pageSize: 2, sortBy: "title", sortOrder: "asc") as OkObjectResult;
+
+        // Assert
+        result.Should().NotBeNull();
+        result!.StatusCode.Should().Be(200);
+
+        var dataProp = result.Value?.GetType().GetProperty("data")?.GetValue(result.Value) as List<TaskItemDto>;
+        var totalCount = (int?)result.Value?.GetType().GetProperty("totalCount")?.GetValue(result.Value);
+        var totalPages = (int?)result.Value?.GetType().GetProperty("totalPages")?.GetValue(result.Value);
+
+        dataProp.Should().NotBeNull();
+        dataProp!.Count.Should().Be(2);
+        totalCount.Should().Be(4);
+        totalPages.Should().Be(2);
+        dataProp[0].Title.Should().Be("Tugas 10");
+        dataProp[1].Title.Should().Be("Tugas 20 In Progress");
+    }
+
+    [Fact]
+    public async Task BulkUpdateStatus_ShouldUpdateMultipleTasks()
+    {
+        // Arrange
+        var controller = new TasksController(_context, _tenantService);
+        var request = new BulkUpdateTaskStatusRequest(new List<int> { 10, 20 }, Domain.Enums.TaskStatus.Done);
+
+        // Act
+        var result = await controller.BulkUpdateStatus(request) as OkObjectResult;
+
+        // Assert
+        result.Should().NotBeNull();
+        var task10 = await _context.Tasks.FindAsync(10);
+        var task20 = await _context.Tasks.FindAsync(20);
+        task10!.Status.Should().Be(Domain.Enums.TaskStatus.Done);
+        task10.Progress.Should().Be(100);
+        task20!.Status.Should().Be(Domain.Enums.TaskStatus.Done);
+        task20.Progress.Should().Be(100);
+    }
+
+    [Fact]
+    public async Task BulkDeleteTasks_ShouldRemoveSelectedTasks()
+    {
+        // Arrange
+        var controller = new TasksController(_context, _tenantService);
+        var request = new BulkDeleteTasksRequest(new List<int> { 10, 20 });
+
+        // Act
+        var result = await controller.BulkDeleteTasks(request) as OkObjectResult;
+
+        // Assert
+        result.Should().NotBeNull();
+        var task10 = await _context.Tasks.FindAsync(10);
+        var task20 = await _context.Tasks.FindAsync(20);
+        task10.Should().BeNull();
+        task20.Should().BeNull();
+    }
+
     private class FakeTenantService : ICurrentTenantService
     {
         public FakeTenantService(int? companyId, string? companyCode, string? userId, bool isAdmin)

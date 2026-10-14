@@ -45,7 +45,11 @@ public class TasksController : ControllerBase
         [FromQuery] string? filter = null,
         [FromQuery] DateTimeOffset? startDate = null,
         [FromQuery] DateTimeOffset? endDate = null,
-        [FromQuery] bool? allHierarchies = null)
+        [FromQuery] bool? allHierarchies = null,
+        [FromQuery] string? sortBy = null,
+        [FromQuery] string? sortOrder = null,
+        [FromQuery] int? page = null,
+        [FromQuery] int? pageSize = null)
     {
         var query = _context.Tasks
             .Include(t => t.Project)
@@ -99,14 +103,54 @@ public class TasksController : ControllerBase
         {
             var searchLower = search.Trim().ToLower();
             query = query.Where(t => t.Title.ToLower().Contains(searchLower) ||
-                                     (t.Description != null && t.Description.ToLower().Contains(searchLower)));
+                                     (t.Description != null && t.Description.ToLower().Contains(searchLower)) ||
+                                     (t.Project != null && t.Project.Name.ToLower().Contains(searchLower)));
         }
 
-        var tasks = await query.OrderByDescending(t => t.CreatedAt).ToListAsync();
+        // Column Sorting
+        var isAsc = string.Equals(sortOrder, "asc", StringComparison.OrdinalIgnoreCase);
+        query = (sortBy?.ToLower()) switch
+        {
+            "title" => isAsc ? query.OrderBy(t => t.Title) : query.OrderByDescending(t => t.Title),
+            "project" => isAsc ? query.OrderBy(t => t.Project != null ? t.Project.Name : "") : query.OrderByDescending(t => t.Project != null ? t.Project.Name : ""),
+            "priority" => isAsc ? query.OrderBy(t => t.Priority) : query.OrderByDescending(t => t.Priority),
+            "status" => isAsc ? query.OrderBy(t => t.Status) : query.OrderByDescending(t => t.Status),
+            "progress" => isAsc ? query.OrderBy(t => t.Progress) : query.OrderByDescending(t => t.Progress),
+            "duedate" => isAsc ? query.OrderBy(t => t.DueDate) : query.OrderByDescending(t => t.DueDate),
+            _ => isAsc ? query.OrderBy(t => t.CreatedAt) : query.OrderByDescending(t => t.CreatedAt)
+        };
+
+        var totalCount = await query.CountAsync();
+
+        List<WorkTask> tasks;
+        int currentPage = 1;
+        int currentPageSize = totalCount;
+        int totalPages = 1;
+
+        if (page.HasValue && page.Value > 0)
+        {
+            currentPage = page.Value;
+            currentPageSize = pageSize.HasValue && pageSize.Value > 0 ? Math.Clamp(pageSize.Value, 1, 500) : 20;
+            totalPages = (int)Math.Ceiling(totalCount / (double)currentPageSize);
+            tasks = await query.Skip((currentPage - 1) * currentPageSize).Take(currentPageSize).ToListAsync();
+        }
+        else
+        {
+            tasks = await query.ToListAsync();
+            currentPageSize = tasks.Count > 0 ? tasks.Count : 20;
+        }
 
         var result = tasks.Select(MapToItemDto).ToList();
 
-        return Ok(new { success = true, data = result });
+        return Ok(new
+        {
+            success = true,
+            data = result,
+            totalCount,
+            page = currentPage,
+            pageSize = currentPageSize,
+            totalPages
+        });
     }
 
     [HttpGet("kanban")]
@@ -374,6 +418,106 @@ public class TasksController : ControllerBase
         await _context.SaveChangesAsync();
 
         return Ok(new { success = true, message = "Tugas berhasil dihapus." });
+    }
+
+    [HttpPost("bulk-status")]
+    public async Task<IActionResult> BulkUpdateStatus([FromBody] BulkUpdateTaskStatusRequest request)
+    {
+        if (request.TaskIds == null || request.TaskIds.Count == 0)
+        {
+            return BadRequest(new { success = false, message = "Tidak ada tugas yang dipilih." });
+        }
+
+        var tasks = await _context.Tasks
+            .Where(t => request.TaskIds.Contains(t.Id))
+            .ToListAsync();
+
+        if (tasks.Count == 0)
+        {
+            return NotFound(new { success = false, message = "Tugas yang dipilih tidak ditemukan." });
+        }
+
+        foreach (var task in tasks)
+        {
+            task.Status = request.Status;
+            if (request.Status == Domain.Enums.TaskStatus.Done && task.Progress < 100)
+            {
+                task.Progress = 100;
+            }
+            task.UpdatedAt = DateTimeOffset.UtcNow;
+        }
+
+        await _context.SaveChangesAsync();
+
+        return Ok(new
+        {
+            success = true,
+            message = $"{tasks.Count} tugas berhasil diperbarui statusnya.",
+            updatedCount = tasks.Count
+        });
+    }
+
+    [HttpPost("bulk-priority")]
+    public async Task<IActionResult> BulkUpdatePriority([FromBody] BulkUpdateTaskPriorityRequest request)
+    {
+        if (request.TaskIds == null || request.TaskIds.Count == 0)
+        {
+            return BadRequest(new { success = false, message = "Tidak ada tugas yang dipilih." });
+        }
+
+        var tasks = await _context.Tasks
+            .Where(t => request.TaskIds.Contains(t.Id))
+            .ToListAsync();
+
+        if (tasks.Count == 0)
+        {
+            return NotFound(new { success = false, message = "Tugas yang dipilih tidak ditemukan." });
+        }
+
+        foreach (var task in tasks)
+        {
+            task.Priority = request.Priority;
+            task.UpdatedAt = DateTimeOffset.UtcNow;
+        }
+
+        await _context.SaveChangesAsync();
+
+        return Ok(new
+        {
+            success = true,
+            message = $"{tasks.Count} tugas berhasil diperbarui prioritasnya.",
+            updatedCount = tasks.Count
+        });
+    }
+
+    [HttpPost("bulk-delete")]
+    public async Task<IActionResult> BulkDeleteTasks([FromBody] BulkDeleteTasksRequest request)
+    {
+        if (request.TaskIds == null || request.TaskIds.Count == 0)
+        {
+            return BadRequest(new { success = false, message = "Tidak ada tugas yang dipilih." });
+        }
+
+        var tasks = await _context.Tasks
+            .Include(t => t.Subtasks)
+            .Include(t => t.Sessions)
+            .Where(t => request.TaskIds.Contains(t.Id))
+            .ToListAsync();
+
+        if (tasks.Count == 0)
+        {
+            return NotFound(new { success = false, message = "Tugas yang dipilih tidak ditemukan." });
+        }
+
+        _context.Tasks.RemoveRange(tasks);
+        await _context.SaveChangesAsync();
+
+        return Ok(new
+        {
+            success = true,
+            message = $"{tasks.Count} tugas berhasil dihapus.",
+            deletedCount = tasks.Count
+        });
     }
 
     [HttpGet("{id}/subtasks")]
