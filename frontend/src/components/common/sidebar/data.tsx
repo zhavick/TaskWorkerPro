@@ -5,6 +5,8 @@ import {
   CheckSquare,
   Clock,
   Calendar,
+  CalendarDays,
+  CalendarCheck,
   BookOpen,
   Users,
   Award,
@@ -46,8 +48,14 @@ export const NAV_DATA = [
       },
       {
         title: "Presensi Kehadiran",
-        icon: <Calendar className="h-5 w-5" />,
+        icon: <CalendarCheck className="h-5 w-5" />,
         url: "/attendance",
+        items: [],
+      },
+      {
+        title: "Kalender Jadwal",
+        icon: <CalendarDays className="h-5 w-5" />,
+        url: "/calendar",
         items: [],
       },
       {
