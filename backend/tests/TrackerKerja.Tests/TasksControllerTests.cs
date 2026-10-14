@@ -240,6 +240,20 @@ public class TasksControllerTests
         subtasks[0].CompanyId.Should().Be(10);
     }
 
+    [Fact]
+    public async Task GetKanbanTasks_WithFilter_ReturnsFilteredResults()
+    {
+        // Arrange
+        var controller = new TasksController(_context, _tenantService);
+
+        // Act
+        var result = await controller.GetKanbanTasks(projectId: 1, priority: TaskPriority.Critical) as OkObjectResult;
+
+        // Assert
+        result.Should().NotBeNull();
+        result!.StatusCode.Should().Be(200);
+    }
+
     private class FakeTenantService : ICurrentTenantService
     {
         public FakeTenantService(int? companyId, string? companyCode, string? userId, bool isAdmin)

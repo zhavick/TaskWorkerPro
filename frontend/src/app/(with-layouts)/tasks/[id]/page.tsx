@@ -11,18 +11,36 @@ import {
   Plus,
   Play,
   CheckCircle2,
+  Circle,
   Clock,
   AlertCircle,
   Lightbulb,
   CheckSquare,
   ShieldCheck,
   Calendar,
+  User,
+  FolderKanban,
+  Tag,
+  Flag,
+  Milestone as MilestoneIcon,
+  RotateCcw,
+  Sparkles,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/tailgrids/core/button";
 import { Input } from "@/components/tailgrids/core/input";
 import { Checkbox } from "@/components/tailgrids/core/checkbox";
 import { toast } from "sonner";
 import Link from "next/link";
+
+const MILESTONE_OPTIONS = [
+  "Requirement Analysis",
+  "System Design",
+  "Implementation",
+  "Testing & QA",
+  "Deployment",
+  "Maintenance",
+];
 
 export default function TaskStudioPage() {
   const params = useParams();
@@ -40,6 +58,10 @@ export default function TaskStudioPage() {
   const [obstacle, setObstacle] = useState("");
   const [solution, setSolution] = useState("");
   const [projectId, setProjectId] = useState<number | undefined>(undefined);
+  const [categoryId, setCategoryId] = useState<number | undefined>(undefined);
+  const [assignedToUserId, setAssignedToUserId] = useState<string>("");
+  const [startDate, setStartDate] = useState<string>("");
+  const [dueDate, setDueDate] = useState<string>("");
 
   // Unified Manual Work Session parameters
   const [logManualSession, setLogManualSession] = useState(false);
@@ -50,7 +72,7 @@ export default function TaskStudioPage() {
   // Subtask form
   const [subtaskTitle, setSubtaskTitle] = useState("");
 
-  // Query Task Detail
+  // 1. Query Task Detail
   const { data: detailData, isLoading } = useQuery<any>({
     queryKey: ["taskDetail", taskId],
     queryFn: async () => {
@@ -60,12 +82,34 @@ export default function TaskStudioPage() {
     enabled: !!taskId,
   });
 
-  // Query Projects list for dropdown
+  // 2. Query Projects list
   const { data: projects = [] } = useQuery<any[]>({
     queryKey: ["projectsDropdown"],
     queryFn: async () => {
       const res = await apiClient.get("/projects");
-      return res.data.data;
+      return res.data.data || [];
+    },
+  });
+
+  // 3. Query Members list for Assignee (PIC)
+  const { data: members = [] } = useQuery<any[]>({
+    queryKey: ["membersDropdown"],
+    queryFn: async () => {
+      const res = await apiClient.get("/members");
+      return res.data.data || [];
+    },
+  });
+
+  // 4. Query Categories list
+  const { data: categories = [] } = useQuery<any[]>({
+    queryKey: ["categoriesDropdown"],
+    queryFn: async () => {
+      try {
+        const res = await apiClient.get("/master/categories");
+        return res.data.data || [];
+      } catch {
+        return [];
+      }
     },
   });
 
@@ -82,29 +126,69 @@ export default function TaskStudioPage() {
       setObstacle(t.obstacle || "");
       setSolution(t.solution || "");
       setProjectId(t.projectId || undefined);
+      setCategoryId(t.categoryId || undefined);
+      setAssignedToUserId(t.assignedToUserId || "");
+      setStartDate(t.startDate ? t.startDate.split("T")[0] : "");
+      setDueDate(t.dueDate ? t.dueDate.split("T")[0] : "");
     }
   }, [detailData]);
 
-  // Unified Save Mutation
+  // Handle Quick Progress Preset (0%, 25%, 50%, 75%, 100%) - FSD 5.5
+  const handleProgressPreset = (val: number) => {
+    setProgress(val);
+    if (val === 100) {
+      setStatus(2); // Done
+    } else if (val === 0) {
+      setStatus(0); // Todo
+    } else if (status === 0 || status === 2) {
+      setStatus(1); // InProgress
+    }
+  };
+
+  // Handle Quick Manual Time Presets (+30m, +1h, +2h, +4h, Reset) - FSD 5.5 & 5.21
+  const handleTimePreset = (minutes: number) => {
+    const now = new Date();
+    const start = new Date(now.getTime() - minutes * 60 * 1000);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const formatLocal = (d: Date) =>
+      `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+
+    setManualEndTime(formatLocal(now));
+    setManualStartTime(formatLocal(start));
+    setLogManualSession(true);
+  };
+
+  const handleTimeReset = () => {
+    setManualStartTime("");
+    setManualEndTime("");
+    setManualNotes("");
+    setLogManualSession(false);
+  };
+
+  // Unified Save Mutation (FSD 5.5 & 5.21)
   const unifiedSaveMutation = useMutation({
     mutationFn: async () => {
       const payload: any = {
-        title,
-        description,
-        priority,
-        status,
-        progress,
-        milestone,
-        obstacle,
-        solution,
-        projectId: projectId || null,
+        title: title.trim(),
+        description: description.trim() || null,
+        priority: Number(priority),
+        status: Number(status),
+        progress: Number(progress),
+        milestone: milestone || null,
+        obstacle: obstacle.trim() || null,
+        solution: solution.trim() || null,
+        projectId: projectId ? Number(projectId) : null,
+        categoryId: categoryId ? Number(categoryId) : null,
+        assignedToUserId: assignedToUserId || null,
+        startDate: startDate ? new Date(startDate).toISOString() : null,
+        dueDate: dueDate ? new Date(dueDate).toISOString() : null,
         logManualSession,
       };
 
       if (logManualSession && manualStartTime && manualEndTime) {
         payload.manualSessionStartTime = new Date(manualStartTime).toISOString();
         payload.manualSessionEndTime = new Date(manualEndTime).toISOString();
-        payload.manualSessionNotes = manualNotes;
+        payload.manualSessionNotes = manualNotes.trim() || null;
       }
 
       const res = await apiClient.put(`/tasks/${taskId}/unified-save`, payload);
@@ -117,9 +201,28 @@ export default function TaskStudioPage() {
       queryClient.invalidateQueries({ queryKey: ["taskDetail", taskId] });
       queryClient.invalidateQueries({ queryKey: ["tasksList"] });
       queryClient.invalidateQueries({ queryKey: ["kanbanTasks"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboardStats"] });
     },
     onError: (err: any) => {
-      toast.error(err.response?.data?.message || "Gagal menyimpan perubahan");
+      toast.error(err.response?.data?.message || "Gagal menyimpan perubahan tugas");
+    },
+  });
+
+  // Toggle Subtask Status Mutation
+  const toggleSubtaskMutation = useMutation({
+    mutationFn: async ({ subtaskId, currentStatus }: { subtaskId: number; currentStatus: number }) => {
+      const nextStatus = currentStatus === 2 ? 0 : 2;
+      const res = await apiClient.patch(`/tasks/${subtaskId}/status`, { status: nextStatus });
+      return res.data;
+    },
+    onSuccess: () => {
+      toast.success("Status sub-tugas diperbarui!");
+      queryClient.invalidateQueries({ queryKey: ["taskDetail", taskId] });
+      queryClient.invalidateQueries({ queryKey: ["tasksList"] });
+      queryClient.invalidateQueries({ queryKey: ["kanbanTasks"] });
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || "Gagal mengubah status sub-tugas");
     },
   });
 
@@ -154,18 +257,27 @@ export default function TaskStudioPage() {
   });
 
   if (isLoading) {
-    return <div className="p-8 text-center text-sm text-gray-400">Memuat studio tugas...</div>;
+    return (
+      <div className="flex h-64 items-center justify-center">
+        <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+          <Loader2 className="h-5 w-5 animate-spin text-indigo-600" />
+          <span>Memuat kanvas studio tugas...</span>
+        </div>
+      </div>
+    );
   }
 
   const task = detailData?.task;
   const subtasks = detailData?.subtasks || [];
   const sessions = detailData?.recentSessions || [];
+  const totalSeconds = sessions.reduce((acc: number, s: any) => acc + (s.duration || 0), 0);
+  const totalHours = Math.round((totalSeconds / 3600) * 10) / 10;
 
   return (
-    <div className="relative pb-24">
-      {/* Studio Header Bar */}
-      <div className="border-b border-gray-200/80 bg-white px-4 py-3 shadow-2xs dark:border-gray-800 dark:bg-gray-900 lg:px-6">
-        <div className="flex items-center justify-between">
+    <div className="relative pb-28">
+      {/* 1. Executive Topbar Banner (Full-Width Studio Layout - FSD 5.21) */}
+      <div className="border-b border-gray-200/80 bg-white px-4 py-3.5 shadow-2xs dark:border-gray-800 dark:bg-gray-900 lg:px-8">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
             <Link href="/tasks">
               <Button size="sm" variant="ghost" className="h-8 gap-1.5 px-2 text-xs">
@@ -174,57 +286,73 @@ export default function TaskStudioPage() {
               </Button>
             </Link>
             <div className="h-4 w-px bg-gray-200 dark:bg-gray-800" />
-            <span className="font-mono text-xs font-bold text-indigo-600 dark:text-indigo-400">
-              TASK #TK-{taskId}
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-xs font-black tracking-wider text-indigo-600 dark:text-indigo-400">
+                TASK #TK-{taskId}
+              </span>
+              {task?.projectName && (
+                <span
+                  className="rounded px-2 py-0.5 text-[10px] font-bold text-white shadow-xs"
+                  style={{ backgroundColor: task.projectColor || "#4F46E5" }}
+                >
+                  {task.projectName}
+                </span>
+              )}
+            </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-400">
-              Diperbarui: {new Date(task?.updatedAt || Date.now()).toLocaleTimeString("id-ID")}
+          <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
+            <span className="flex items-center gap-1 font-semibold text-gray-700 dark:text-gray-300">
+              <Clock className="h-3.5 w-3.5 text-indigo-500" />
+              Total Durasi: <span className="font-mono text-indigo-600 dark:text-indigo-400 font-bold">{totalHours} Jam</span>
+            </span>
+            <span>•</span>
+            <span>
+              Diperbarui: {new Date(task?.updatedAt || Date.now()).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
             </span>
           </div>
         </div>
       </div>
 
-      {/* 12-Column Grid Container */}
-      <div className="mx-auto max-w-7xl px-4 py-6 lg:px-6">
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-          {/* Main Content Area (8 Columns) */}
+      {/* 2. Asymmetric 12-Column Responsive Grid (FSD 5.21: 8 cols Canvas, 4 cols Sticky Inspector) */}
+      <div className="mx-auto max-w-7xl px-4 py-6 lg:px-8">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-12 lg:gap-8">
+          {/* Main Form Canvas (8 Columns) */}
           <div className="space-y-6 lg:col-span-8">
-            {/* 1. Judul Tugas */}
+            {/* Judul Tugas */}
             <div className="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-xs dark:border-gray-800 dark:bg-gray-900">
               <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider dark:text-gray-400">
-                Judul Tugas
+                Judul Tugas Pekerjaan <span className="text-red-500">*</span>
               </label>
               <Input
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="Masukkan judul tugas..."
                 className="mt-2 text-base font-bold text-gray-900 dark:text-white"
+                required
               />
             </div>
 
-            {/* 2. Deskripsi Lengkap */}
+            {/* Deskripsi Lengkap */}
             <div className="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-xs dark:border-gray-800 dark:bg-gray-900">
               <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider dark:text-gray-400">
-                Deskripsi Lengkap (Rich Text Area)
+                Deskripsi Lengkap & Kriteria Penerimaan
               </label>
               <textarea
                 rows={5}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="Tuliskan detail pekerjaan, kriteria penerimaan, dan catatan teknis..."
+                placeholder="Tuliskan detail pekerjaan, deliverable yang diharapkan, dan instruksi teknis..."
                 className="mt-2 w-full rounded-xl border border-gray-200 bg-transparent p-3 text-sm text-gray-900 leading-relaxed dark:border-gray-800 dark:text-white"
               />
             </div>
 
-            {/* 3 & 4. Kendala & Solusi Teknis */}
+            {/* Kendala (Obstacle) & Solusi Teknis (Solution) - FSD 5.5 */}
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               {/* Kendala */}
-              <div className="rounded-2xl border border-red-200/60 bg-red-50/30 p-5 shadow-xs dark:border-red-900/40 dark:bg-red-950/20">
+              <div className="rounded-2xl border border-red-200/70 bg-red-50/40 p-5 shadow-xs dark:border-red-900/40 dark:bg-red-950/20">
                 <div className="flex items-center gap-2 text-red-700 dark:text-red-400">
-                  <AlertCircle className="h-4 w-4" />
+                  <AlertCircle className="h-4 w-4 shrink-0" />
                   <label className="text-xs font-bold uppercase tracking-wider">
                     Catatan Kendala (Obstacle Log)
                   </label>
@@ -233,15 +361,15 @@ export default function TaskStudioPage() {
                   rows={3}
                   value={obstacle}
                   onChange={(e) => setObstacle(e.target.value)}
-                  placeholder="Contoh: Lock contention pada transaksi sesi..."
-                  className="mt-2 w-full rounded-xl border border-red-200 bg-white/80 p-2.5 text-xs text-gray-900 dark:border-red-900/60 dark:bg-gray-900 dark:text-white"
+                  placeholder="Contoh: Menunggu akses database development server atau API specification..."
+                  className="mt-2 w-full rounded-xl border border-red-200 bg-white/90 p-2.5 text-xs text-gray-900 dark:border-red-900/60 dark:bg-gray-900 dark:text-white"
                 />
               </div>
 
               {/* Solusi Teknis */}
-              <div className="rounded-2xl border border-emerald-200/60 bg-emerald-50/30 p-5 shadow-xs dark:border-emerald-900/40 dark:bg-emerald-950/20">
+              <div className="rounded-2xl border border-emerald-200/70 bg-emerald-50/40 p-5 shadow-xs dark:border-emerald-900/40 dark:bg-emerald-950/20">
                 <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-400">
-                  <Lightbulb className="h-4 w-4" />
+                  <Lightbulb className="h-4 w-4 shrink-0" />
                   <label className="text-xs font-bold uppercase tracking-wider">
                     Solusi Teknis (Solution Log)
                   </label>
@@ -250,36 +378,85 @@ export default function TaskStudioPage() {
                   rows={3}
                   value={solution}
                   onChange={(e) => setSolution(e.target.value)}
-                  placeholder="Contoh: Menggunakan IDbContextTransaction dan pooling..."
-                  className="mt-2 w-full rounded-xl border border-emerald-200 bg-white/80 p-2.5 text-xs text-gray-900 dark:border-emerald-900/60 dark:bg-gray-900 dark:text-white"
+                  placeholder="Contoh: Koordinasi dengan tim devops untuk pembukaan firewall port 5432..."
+                  className="mt-2 w-full rounded-xl border border-emerald-200 bg-white/90 p-2.5 text-xs text-gray-900 dark:border-emerald-900/60 dark:bg-gray-900 dark:text-white"
                 />
               </div>
             </div>
 
-            {/* 5. Unified Manual Session Form */}
-            <div className="rounded-2xl border border-indigo-200/70 bg-indigo-50/40 p-5 shadow-xs dark:border-indigo-900/60 dark:bg-indigo-950/30">
-              <div className="flex items-center justify-between">
+            {/* Penyatuan Jam Kerja Manual Terpadu (Unified Session Log) - FSD 5.5 & 5.21 */}
+            <div className="rounded-2xl border border-indigo-200/80 bg-indigo-50/40 p-5 shadow-xs dark:border-indigo-900/60 dark:bg-indigo-950/30">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-2 text-indigo-700 dark:text-indigo-400">
                   <Clock className="h-5 w-5" />
-                  <h4 className="text-sm font-bold">
-                    Catat Jam Kerja Manual Terpadu (Unified Session)
-                  </h4>
+                  <div>
+                    <h4 className="text-sm font-bold">
+                      Pencatatan Jam Kerja Manual Terpadu (Unified Session)
+                    </h4>
+                    <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                      Simpan perubahan data tugas dan log sesi jam kerja sekaligus dalam 1 request atomik.
+                    </p>
+                  </div>
                 </div>
-                <label className="flex items-center gap-2 text-xs font-semibold text-indigo-900 dark:text-indigo-300 cursor-pointer">
+
+                <label className="flex items-center gap-2 text-xs font-semibold text-indigo-900 dark:text-indigo-300 cursor-pointer self-start sm:self-center">
                   <Checkbox
                     checked={logManualSession}
                     onCheckedChange={(checked) => setLogManualSession(!!checked)}
                   />
-                  <span>Simpan Sesi Jam Kerja Sekaligus</span>
+                  <span>Sertakan Log Sesi</span>
                 </label>
               </div>
 
+              {/* Quick Time Preset Buttons (FSD 5.5: +30m, +1h, +2h, +4h, Reset) */}
+              <div className="mt-3.5 flex flex-wrap items-center gap-2 border-t border-indigo-200/60 pt-3 dark:border-indigo-900/60">
+                <span className="text-[11px] font-bold text-gray-600 dark:text-gray-300">Preset Cepat:</span>
+                <button
+                  type="button"
+                  onClick={() => handleTimePreset(30)}
+                  className="rounded-lg border border-indigo-200 bg-white px-2.5 py-1 text-xs font-bold text-indigo-700 shadow-2xs hover:bg-indigo-50 dark:border-indigo-800 dark:bg-gray-900 dark:text-indigo-300"
+                >
+                  +30 Menit
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleTimePreset(60)}
+                  className="rounded-lg border border-indigo-200 bg-white px-2.5 py-1 text-xs font-bold text-indigo-700 shadow-2xs hover:bg-indigo-50 dark:border-indigo-800 dark:bg-gray-900 dark:text-indigo-300"
+                >
+                  +1 Jam
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleTimePreset(120)}
+                  className="rounded-lg border border-indigo-200 bg-white px-2.5 py-1 text-xs font-bold text-indigo-700 shadow-2xs hover:bg-indigo-50 dark:border-indigo-800 dark:bg-gray-900 dark:text-indigo-300"
+                >
+                  +2 Jam
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleTimePreset(240)}
+                  className="rounded-lg border border-indigo-200 bg-white px-2.5 py-1 text-xs font-bold text-indigo-700 shadow-2xs hover:bg-indigo-50 dark:border-indigo-800 dark:bg-gray-900 dark:text-indigo-300"
+                >
+                  +4 Jam
+                </button>
+                {logManualSession && (
+                  <button
+                    type="button"
+                    onClick={handleTimeReset}
+                    className="flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-bold text-gray-500 hover:text-red-600 dark:text-gray-400"
+                  >
+                    <RotateCcw className="h-3 w-3" />
+                    Reset
+                  </button>
+                )}
+              </div>
+
               {logManualSession && (
-                <div className="mt-4 space-y-3 border-t border-indigo-200/60 pt-3 dark:border-indigo-900/60">
+                <div className="mt-3.5 space-y-3 pt-2">
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div>
                       <label className="block text-[11px] font-semibold text-indigo-900 dark:text-indigo-300">
-                        Waktu Mulai
+                        Waktu Mulai Sesi
                       </label>
                       <Input
                         type="datetime-local"
@@ -290,7 +467,7 @@ export default function TaskStudioPage() {
                     </div>
                     <div>
                       <label className="block text-[11px] font-semibold text-indigo-900 dark:text-indigo-300">
-                        Waktu Selesai
+                        Waktu Selesai Sesi
                       </label>
                       <Input
                         type="datetime-local"
@@ -303,12 +480,12 @@ export default function TaskStudioPage() {
 
                   <div>
                     <label className="block text-[11px] font-semibold text-indigo-900 dark:text-indigo-300">
-                      Catatan Sesi Jam Kerja
+                      Catatan Deskripsi Sesi Kerja
                     </label>
                     <Input
                       value={manualNotes}
                       onChange={(e) => setManualNotes(e.target.value)}
-                      placeholder="Contoh: Diskusi arsitektur dan refactoring query backend..."
+                      placeholder="Contoh: Diskusi teknis review arsitektur dan penulisan test case..."
                       className="mt-1 text-xs bg-white dark:bg-gray-900"
                     />
                   </div>
@@ -316,11 +493,16 @@ export default function TaskStudioPage() {
               )}
             </div>
 
-            {/* 6. Riwayat Sesi Kerja Terkait */}
+            {/* Riwayat Sesi Jam Kerja Tugas Ini */}
             <div className="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-xs dark:border-gray-800 dark:bg-gray-900">
-              <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider dark:text-gray-400">
-                Riwayat Sesi Jam Kerja Tugas Ini ({sessions.length})
-              </h4>
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider dark:text-gray-400">
+                  Riwayat Sesi Jam Kerja Tugas Ini ({sessions.length})
+                </h4>
+                <span className="font-mono text-xs font-bold text-indigo-600 dark:text-indigo-400">
+                  Total: {totalHours} Jam
+                </span>
+              </div>
 
               <div className="mt-3 divide-y divide-gray-100 dark:divide-gray-800">
                 {sessions.map((s: any) => (
@@ -330,7 +512,12 @@ export default function TaskStudioPage() {
                         {s.userName}
                       </span>
                       <span className="ml-2 text-gray-400">
-                        {new Date(s.startTime).toLocaleString("id-ID")}
+                        {new Date(s.startTime).toLocaleString("id-ID", {
+                          day: "numeric",
+                          month: "short",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
                       </span>
                       {s.notes && <p className="text-gray-500 mt-0.5">{s.notes}</p>}
                     </div>
@@ -349,19 +536,24 @@ export default function TaskStudioPage() {
             </div>
           </div>
 
-          {/* Sticky Sidebar (4 Columns) */}
+          {/* Sticky Metadata Inspector Sidebar (4 Columns) - FSD 5.21 */}
           <div className="space-y-6 lg:col-span-4">
             <div className="sticky top-20 space-y-6">
               {/* Properties Card */}
               <div className="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-xs dark:border-gray-800 dark:bg-gray-900 space-y-4">
-                {/* Status */}
+                {/* Status Tugas */}
                 <div>
                   <label className="block text-xs font-bold text-gray-600 dark:text-gray-300">
-                    Status Tugas
+                    Status Alur Kerja
                   </label>
                   <select
                     value={status}
-                    onChange={(e) => setStatus(Number(e.target.value))}
+                    onChange={(e) => {
+                      const newStatus = Number(e.target.value);
+                      setStatus(newStatus);
+                      if (newStatus === 2 && progress < 100) setProgress(100);
+                      if (newStatus === 0 && progress === 100) setProgress(0);
+                    }}
                     className="mt-1.5 w-full rounded-xl border border-gray-200 bg-transparent p-2 text-xs font-semibold text-gray-900 dark:border-gray-800 dark:text-white"
                   >
                     <option value={0}>Todo</option>
@@ -371,26 +563,44 @@ export default function TaskStudioPage() {
                   </select>
                 </div>
 
-                {/* Progres Slider */}
+                {/* Slider Progres & Tombol Cepat (FSD 5.5: 0%, 25%, 50%, 75%, 100%) */}
                 <div>
                   <div className="flex items-center justify-between text-xs font-bold text-gray-600 dark:text-gray-300">
-                    <span>Progres Penyelesaian</span>
-                    <span className="font-mono text-indigo-600 dark:text-indigo-400">{progress}%</span>
+                    <span>Kemajuan Progres</span>
+                    <span className="font-mono text-indigo-600 dark:text-indigo-400 font-bold">{progress}%</span>
                   </div>
                   <input
                     type="range"
                     min="0"
                     max="100"
                     value={progress}
-                    onChange={(e) => setProgress(Number(e.target.value))}
+                    onChange={(e) => handleProgressPreset(Number(e.target.value))}
                     className="mt-2 w-full accent-indigo-600 cursor-pointer"
                   />
+                  {/* Preset Buttons */}
+                  <div className="mt-1.5 flex justify-between gap-1">
+                    {[0, 25, 50, 75, 100].map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => handleProgressPreset(preset)}
+                        className={`rounded px-1.5 py-0.5 text-[10px] font-bold transition-all ${
+                          progress === preset
+                            ? "bg-indigo-600 text-white"
+                            : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300"
+                        }`}
+                      >
+                        {preset}%
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 {/* Prioritas */}
                 <div>
-                  <label className="block text-xs font-bold text-gray-600 dark:text-gray-300">
-                    Prioritas
+                  <label className="flex items-center gap-1.5 text-xs font-bold text-gray-600 dark:text-gray-300">
+                    <Flag className="h-3.5 w-3.5 text-amber-500" />
+                    Tingkat Prioritas
                   </label>
                   <select
                     value={priority}
@@ -404,9 +614,30 @@ export default function TaskStudioPage() {
                   </select>
                 </div>
 
-                {/* Proyek */}
+                {/* PIC Penanggung Jawab (Assignee) */}
                 <div>
-                  <label className="block text-xs font-bold text-gray-600 dark:text-gray-300">
+                  <label className="flex items-center gap-1.5 text-xs font-bold text-gray-600 dark:text-gray-300">
+                    <User className="h-3.5 w-3.5 text-blue-500" />
+                    PIC Penanggung Jawab
+                  </label>
+                  <select
+                    value={assignedToUserId}
+                    onChange={(e) => setAssignedToUserId(e.target.value)}
+                    className="mt-1.5 w-full rounded-xl border border-gray-200 bg-transparent p-2 text-xs font-semibold text-gray-900 dark:border-gray-800 dark:text-white"
+                  >
+                    <option value="">-- Belum Ditugaskan --</option>
+                    {members.map((u: any) => (
+                      <option key={u.id} value={u.id}>
+                        {u.fullName || u.userName} ({u.jobTitle || "Member"})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Proyek Terkait */}
+                <div>
+                  <label className="flex items-center gap-1.5 text-xs font-bold text-gray-600 dark:text-gray-300">
+                    <FolderKanban className="h-3.5 w-3.5 text-indigo-500" />
                     Proyek Terkait
                   </label>
                   <select
@@ -423,37 +654,95 @@ export default function TaskStudioPage() {
                   </select>
                 </div>
 
-                {/* Milestone */}
+                {/* Kategori Pekerjaan */}
                 <div>
-                  <label className="block text-xs font-bold text-gray-600 dark:text-gray-300">
-                    Milestone / Tahapan
+                  <label className="flex items-center gap-1.5 text-xs font-bold text-gray-600 dark:text-gray-300">
+                    <Tag className="h-3.5 w-3.5 text-emerald-500" />
+                    Kategori Tugas
                   </label>
-                  <Input
+                  <select
+                    value={categoryId || ""}
+                    onChange={(e) => setCategoryId(e.target.value ? Number(e.target.value) : undefined)}
+                    className="mt-1.5 w-full rounded-xl border border-gray-200 bg-transparent p-2 text-xs font-semibold text-gray-900 dark:border-gray-800 dark:text-white"
+                  >
+                    <option value="">-- Tanpa Kategori --</option>
+                    {categories.map((c: any) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Milestone SDLC */}
+                <div>
+                  <label className="flex items-center gap-1.5 text-xs font-bold text-gray-600 dark:text-gray-300">
+                    <MilestoneIcon className="h-3.5 w-3.5 text-purple-500" />
+                    Milestone SDLC
+                  </label>
+                  <select
                     value={milestone}
                     onChange={(e) => setMilestone(e.target.value)}
-                    className="mt-1.5 text-xs"
-                  />
+                    className="mt-1.5 w-full rounded-xl border border-gray-200 bg-transparent p-2 text-xs font-semibold text-gray-900 dark:border-gray-800 dark:text-white"
+                  >
+                    <option value="">-- Pilih Milestone --</option>
+                    {MILESTONE_OPTIONS.map((m) => (
+                      <option key={m} value={m}>
+                        {m}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Tanggal Mulai & Deadline (Due Date) */}
+                <div className="grid grid-cols-2 gap-2 pt-1 border-t border-gray-100 dark:border-gray-800">
+                  <div>
+                    <label className="block text-[11px] font-bold text-gray-500 dark:text-gray-400">
+                      Tanggal Mulai
+                    </label>
+                    <Input
+                      type="date"
+                      value={startDate}
+                      onChange={(e) => setStartDate(e.target.value)}
+                      className="mt-1 text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-gray-500 dark:text-gray-400">
+                      Tenggat Waktu
+                    </label>
+                    <Input
+                      type="date"
+                      value={dueDate}
+                      onChange={(e) => setDueDate(e.target.value)}
+                      className="mt-1 text-xs"
+                    />
+                  </div>
                 </div>
               </div>
 
-              {/* Subtasks Checklist Card */}
+              {/* Subtasks Checklist Card (Interactive Checkbox) */}
               <div className="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-xs dark:border-gray-800 dark:bg-gray-900">
                 <div className="flex items-center justify-between">
                   <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider dark:text-gray-400">
                     Checklist Sub-Tugas ({subtasks.filter((s: any) => s.status === 2).length}/{subtasks.length})
                   </h4>
+                  <span className="text-[10px] text-gray-400">Klik untuk centang</span>
                 </div>
 
                 <div className="mt-3 space-y-2">
                   {subtasks.map((st: any) => (
                     <div
                       key={st.id}
-                      className="flex items-center gap-2 rounded-lg p-1.5 text-xs text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/40"
+                      onClick={() => toggleSubtaskMutation.mutate({ subtaskId: st.id, currentStatus: st.status })}
+                      className="flex items-center gap-2 rounded-lg p-2 text-xs text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/60 cursor-pointer transition select-none"
                     >
-                      <CheckCircle2
-                        className={`h-4 w-4 ${st.status === 2 ? "text-emerald-500" : "text-gray-300"}`}
-                      />
-                      <span className={st.status === 2 ? "line-through text-gray-400" : ""}>
+                      {st.status === 2 ? (
+                        <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
+                      ) : (
+                        <Circle className="h-4 w-4 shrink-0 text-gray-300 hover:text-gray-400" />
+                      )}
+                      <span className={`flex-1 truncate ${st.status === 2 ? "line-through text-gray-400 dark:text-gray-500" : "font-medium"}`}>
                         {st.title}
                       </span>
                     </div>
@@ -461,9 +750,15 @@ export default function TaskStudioPage() {
 
                   <div className="mt-3 flex gap-2 pt-2 border-t border-gray-100 dark:border-gray-800">
                     <Input
-                      placeholder="Tambah sub-tugas..."
+                      placeholder="Tambah sub-tugas baru..."
                       value={subtaskTitle}
                       onChange={(e) => setSubtaskTitle(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          if (subtaskTitle.trim()) addSubtaskMutation.mutate();
+                        }
+                      }}
                       className="text-xs"
                     />
                     <Button
@@ -482,9 +777,9 @@ export default function TaskStudioPage() {
         </div>
       </div>
 
-      {/* Sticky Bottom Action Bar */}
-      <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-gray-200/80 bg-white/95 p-4 backdrop-blur-md dark:border-gray-800 dark:bg-gray-900/95">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 lg:px-6">
+      {/* 3. Sticky Bottom Action Bar (FSD 5.21) */}
+      <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-gray-200/80 bg-white/95 p-4 backdrop-blur-md dark:border-gray-800 dark:bg-gray-900/95 shadow-lg">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 lg:px-8">
           <Link href="/tasks">
             <Button variant="outline" size="sm">
               Kembali ke Daftar
@@ -496,7 +791,7 @@ export default function TaskStudioPage() {
               variant="destructive"
               size="sm"
               onClick={() => {
-                if (confirm("Apakah Anda yakin ingin menghapus tugas ini?")) {
+                if (confirm("Apakah Anda yakin ingin menghapus tugas ini? Tindakan ini tidak dapat dibatalkan.")) {
                   deleteTaskMutation.mutate();
                 }
               }}
@@ -512,7 +807,11 @@ export default function TaskStudioPage() {
               disabled={unifiedSaveMutation.isPending}
               className="gap-2 bg-indigo-600 font-bold text-white shadow-lg shadow-indigo-500/25 hover:bg-indigo-700"
             >
-              <Save className="h-4 w-4" />
+              {unifiedSaveMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Save className="h-4 w-4" />
+              )}
               Simpan Seluruh Perubahan (Unified Save)
             </Button>
           </div>

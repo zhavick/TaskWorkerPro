@@ -110,7 +110,12 @@ public class TasksController : ControllerBase
     }
 
     [HttpGet("kanban")]
-    public async Task<IActionResult> GetKanbanTasks([FromQuery] int? projectId = null)
+    public async Task<IActionResult> GetKanbanTasks(
+        [FromQuery] int? projectId = null,
+        [FromQuery] TaskPriority? priority = null,
+        [FromQuery] string? search = null,
+        [FromQuery] string? filter = null,
+        [FromQuery] string? assignedToUserId = null)
     {
         var query = _context.Tasks
             .Include(t => t.Project)
@@ -121,7 +126,26 @@ public class TasksController : ControllerBase
             .AsNoTracking()
             .Where(t => t.ParentTaskId == null);
 
+        // RBAC Scoping (FSD 5.14): Non-admin is automatically scoped to their own tasks, or admin filtering "mine"
+        if ((!_tenantService.IsAdmin && !string.IsNullOrEmpty(_tenantService.UserId)) ||
+            (string.Equals(filter, "mine", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(_tenantService.UserId)))
+        {
+            query = query.Where(t => t.AssignedToUserId == _tenantService.UserId);
+        }
+        else if (!string.IsNullOrEmpty(assignedToUserId))
+        {
+            query = query.Where(t => t.AssignedToUserId == assignedToUserId);
+        }
+
         if (projectId.HasValue) query = query.Where(t => t.ProjectId == projectId.Value);
+        if (priority.HasValue) query = query.Where(t => t.Priority == priority.Value);
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var s = search.Trim().ToLower();
+            query = query.Where(t => t.Title.ToLower().Contains(s) ||
+                                     (t.Description != null && t.Description.ToLower().Contains(s)));
+        }
 
         var tasks = await query.OrderByDescending(t => t.CreatedAt).ToListAsync();
 
