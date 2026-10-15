@@ -198,6 +198,60 @@ public class CalendarControllerTests : IDisposable
         Assert.Equal(100, updatedTask.Progress);
     }
 
+    [Fact]
+    public async Task UpdateStatus_NonAdmin_ForbiddenForOthersTask()
+    {
+        var task = new WorkTask
+        {
+            Id = 60,
+            Title = "Others Task",
+            CompanyId = 1,
+            Status = Domain.Enums.TaskStatus.Todo,
+            Progress = 0,
+            AssignedToUserId = "someone-else-id"
+        };
+        _context.Tasks.Add(task);
+        await _context.SaveChangesAsync();
+
+        var controller = new CalendarController(_context, _memberTenantService);
+        controller.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() };
+
+        var request = new QuickUpdateTaskStatusRequest(Domain.Enums.TaskStatus.Done, null);
+        var result = await controller.UpdateStatus(60, request);
+
+        Assert.IsType<ForbidResult>(result);
+    }
+
+    [Fact]
+    public async Task UpdateStatus_NonAdmin_AllowedForOwnTask()
+    {
+        var task = new WorkTask
+        {
+            Id = 61,
+            Title = "My Own Task",
+            CompanyId = 1,
+            Status = Domain.Enums.TaskStatus.Todo,
+            Progress = 0,
+            AssignedToUserId = "member-usr-id"
+        };
+        _context.Tasks.Add(task);
+        await _context.SaveChangesAsync();
+
+        var controller = new CalendarController(_context, _memberTenantService);
+        controller.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() };
+
+        var request = new QuickUpdateTaskStatusRequest(Domain.Enums.TaskStatus.InProgress, 50);
+        var result = await controller.UpdateStatus(61, request);
+
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        Assert.Equal(200, okResult.StatusCode);
+
+        var updatedTask = await _context.Tasks.FindAsync(61);
+        Assert.NotNull(updatedTask);
+        Assert.Equal(Domain.Enums.TaskStatus.InProgress, updatedTask.Status);
+        Assert.Equal(50, updatedTask.Progress);
+    }
+
     private static List<CalendarEventDto> GetEventsFromResponse(object? responseValue)
     {
         if (responseValue == null) return new List<CalendarEventDto>();

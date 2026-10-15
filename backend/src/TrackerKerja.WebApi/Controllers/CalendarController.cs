@@ -153,6 +153,14 @@ public class CalendarController : ControllerBase
             return NotFound(new { success = false, message = "Tugas tidak ditemukan." });
         }
 
+        var isAdmin = _tenantService.IsAdmin || (User.Identity?.IsAuthenticated == true && User.IsInRole("Administrator"));
+        var currentUserId = _tenantService.UserId ?? string.Empty;
+
+        if (!isAdmin && !string.IsNullOrEmpty(task.AssignedToUserId) && task.AssignedToUserId != currentUserId)
+        {
+            return Forbid();
+        }
+
         task.Status = request.Status;
 
         if (request.Progress.HasValue)

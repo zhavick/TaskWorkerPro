@@ -70,6 +70,26 @@ const STATUS_LABELS: Record<number, { label: string; color: string }> = {
   3: { label: "Overdue", color: "#EF4444" },
 };
 
+function getStatusNumber(status: any): number {
+  if (typeof status === "number") return status;
+  if (!status) return 0;
+  const s = String(status).toLowerCase();
+  if (s.includes("done") || s.includes("selesai")) return 2;
+  if (s.includes("progress") || s.includes("sedang")) return 1;
+  if (s.includes("overdue") || s.includes("terlambat")) return 3;
+  return 0;
+}
+
+function getPriorityNumber(priority: any): number {
+  if (typeof priority === "number") return priority;
+  if (!priority) return 1;
+  const p = String(priority).toLowerCase();
+  if (p.includes("critical") || p.includes("kritis")) return 3;
+  if (p.includes("high") || p.includes("tinggi")) return 2;
+  if (p.includes("low") || p.includes("rendah")) return 0;
+  return 1;
+}
+
 function formatDateKey(date: Date): string {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, "0");
@@ -197,9 +217,10 @@ export default function CalendarSchedulePage() {
         setSelectedTask((prev: any) => ({
           ...prev,
           status: variables.status,
-          statusName: variables.status === 2 ? "Done" : variables.status === 1 ? "InProgress" : "Todo",
+          statusName: variables.status === 2 ? "Done" : variables.status === 1 ? "In Progress" : "Todo",
+          statusColor: variables.status === 2 ? "#10B981" : variables.status === 1 ? "#3B82F6" : "#6366F1",
           isDone: variables.status === 2,
-          progress: variables.status === 2 ? 100 : prev?.progress,
+          progress: variables.status === 2 ? 100 : (prev?.progress === 100 && variables.status === 0 ? 0 : prev?.progress),
           isOverdue: variables.status === 2 ? false : prev?.isOverdue,
         }));
       }
@@ -246,7 +267,7 @@ export default function CalendarSchedulePage() {
   const eventsByDate = useMemo(() => {
     const map: Record<string, any[]> = {};
     events.forEach((t) => {
-      const dateToUse = t.dueDate || t.startDate;
+      const dateToUse = t.end || t.dueDate || t.start || t.startDate;
       if (dateToUse) {
         const d = new Date(dateToUse);
         const key = formatDateKey(d);
@@ -369,7 +390,8 @@ export default function CalendarSchedulePage() {
     let overdue = 0;
 
     events.forEach((t) => {
-      if (t.isDone || t.status === 2) {
+      const isDone = t.isDone || getStatusNumber(t.status) === 2;
+      if (isDone) {
         done++;
       } else {
         inProgress++;
@@ -919,7 +941,7 @@ export default function CalendarSchedulePage() {
 
           <div className="space-y-3">
             {(eventsByDate[formatDateKey(selectedDate)] || []).map((t: any) => {
-              const isDone = t.isDone || t.status === 2;
+              const isDone = t.isDone || getStatusNumber(t.status) === 2;
               const isOverdue = t.isOverdue;
 
               return (
@@ -954,10 +976,10 @@ export default function CalendarSchedulePage() {
                         )}
                         <span
                           className={`rounded px-2 py-0.5 text-[10px] font-bold ${
-                            PRIORITY_LABELS[t.priority]?.badge || ""
+                            PRIORITY_LABELS[getPriorityNumber(t.priority)]?.badge || ""
                           }`}
                         >
-                          {PRIORITY_LABELS[t.priority]?.label || "Normal"}
+                          {PRIORITY_LABELS[getPriorityNumber(t.priority)]?.label || t.priority || "Normal"}
                         </span>
                       </div>
                       <p className="mt-1 text-xs text-gray-500">
@@ -1037,8 +1059,9 @@ export default function CalendarSchedulePage() {
 
           <div className="space-y-3">
             {events.map((t: any) => {
-              const isDone = t.isDone || t.status === 2;
+              const isDone = t.isDone || getStatusNumber(t.status) === 2;
               const isOverdue = t.isOverdue;
+              const dueVal = t.end || t.dueDate || t.start || t.startDate;
 
               return (
                 <div
@@ -1074,9 +1097,9 @@ export default function CalendarSchedulePage() {
 
                   <div className="flex flex-wrap items-center gap-3 text-xs font-mono">
                     <div className="text-gray-500">
-                      {t.dueDate ? (
+                      {dueVal ? (
                         <span className={isOverdue ? "font-bold text-rose-600" : ""}>
-                          Tenggat: {new Date(t.dueDate).toLocaleDateString("id-ID")}
+                          Tenggat: {new Date(dueVal).toLocaleDateString("id-ID")}
                         </span>
                       ) : (
                         "Tanpa Tenggat"
@@ -1145,22 +1168,22 @@ export default function CalendarSchedulePage() {
                 className="inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-bold text-white shadow-2xs"
                 style={{
                   backgroundColor:
-                    PRIORITY_LABELS[selectedTask?.priority]?.color || "#3B82F6",
+                    PRIORITY_LABELS[getPriorityNumber(selectedTask?.priority)]?.color || selectedTask?.priorityColor || "#3B82F6",
                 }}
               >
                 <Flag className="h-3 w-3" />
-                {PRIORITY_LABELS[selectedTask?.priority]?.label || "Normal"}
+                {PRIORITY_LABELS[getPriorityNumber(selectedTask?.priority)]?.label || selectedTask?.priority || "Normal"}
               </span>
 
               <span
                 className="inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-bold text-white shadow-2xs"
                 style={{
                   backgroundColor:
-                    STATUS_LABELS[selectedTask?.status]?.color || "#6366F1",
+                    STATUS_LABELS[getStatusNumber(selectedTask?.status)]?.color || selectedTask?.statusColor || "#6366F1",
                 }}
               >
                 <CheckCircle2 className="h-3 w-3" />
-                {STATUS_LABELS[selectedTask?.status]?.label || "To Do"}
+                {STATUS_LABELS[getStatusNumber(selectedTask?.status)]?.label || selectedTask?.status || "To Do"}
               </span>
 
               {selectedTask?.isOverdue && (
@@ -1192,12 +1215,12 @@ export default function CalendarSchedulePage() {
               <div className="mt-2.5 grid grid-cols-3 gap-2">
                 <button
                   type="button"
-                  disabled={quickUpdateStatusMutation.isPending || selectedTask?.status === 0}
+                  disabled={quickUpdateStatusMutation.isPending || getStatusNumber(selectedTask?.status) === 0}
                   onClick={() =>
                     quickUpdateStatusMutation.mutate({ taskId: selectedTask.id, status: 0 })
                   }
                   className={`flex items-center justify-center gap-1.5 rounded-lg py-2 px-3 text-xs font-bold transition ${
-                    selectedTask?.status === 0
+                    getStatusNumber(selectedTask?.status) === 0
                       ? "bg-indigo-600 text-white shadow-xs ring-2 ring-indigo-400"
                       : "border border-gray-200 bg-white text-gray-700 hover:bg-indigo-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
                   }`}
@@ -1207,12 +1230,12 @@ export default function CalendarSchedulePage() {
                 </button>
                 <button
                   type="button"
-                  disabled={quickUpdateStatusMutation.isPending || selectedTask?.status === 1}
+                  disabled={quickUpdateStatusMutation.isPending || getStatusNumber(selectedTask?.status) === 1}
                   onClick={() =>
                     quickUpdateStatusMutation.mutate({ taskId: selectedTask.id, status: 1 })
                   }
                   className={`flex items-center justify-center gap-1.5 rounded-lg py-2 px-3 text-xs font-bold transition ${
-                    selectedTask?.status === 1
+                    getStatusNumber(selectedTask?.status) === 1
                       ? "bg-blue-600 text-white shadow-xs ring-2 ring-blue-400"
                       : "border border-gray-200 bg-white text-gray-700 hover:bg-blue-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
                   }`}
@@ -1222,12 +1245,12 @@ export default function CalendarSchedulePage() {
                 </button>
                 <button
                   type="button"
-                  disabled={quickUpdateStatusMutation.isPending || selectedTask?.status === 2}
+                  disabled={quickUpdateStatusMutation.isPending || getStatusNumber(selectedTask?.status) === 2}
                   onClick={() =>
                     quickUpdateStatusMutation.mutate({ taskId: selectedTask.id, status: 2 })
                   }
                   className={`flex items-center justify-center gap-1.5 rounded-lg py-2 px-3 text-xs font-bold transition ${
-                    selectedTask?.status === 2
+                    getStatusNumber(selectedTask?.status) === 2
                       ? "bg-emerald-600 text-white shadow-xs ring-2 ring-emerald-400"
                       : "border border-gray-200 bg-white text-gray-700 hover:bg-emerald-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
                   }`}
@@ -1243,10 +1266,13 @@ export default function CalendarSchedulePage() {
               <div className="rounded-xl border border-gray-100 p-3 dark:border-gray-800">
                 <span className="text-[11px] text-gray-400">Penanggung Jawab (PIC)</span>
                 <div className="mt-1 flex items-center gap-2">
-                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-indigo-600 text-[10px] font-bold text-white">
+                  <div
+                    className="flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold text-white shrink-0"
+                    style={{ backgroundColor: selectedTask?.assignedToUserAvatarColor || "#6366F1" }}
+                  >
                     {selectedTask?.assignedToUserName?.slice(0, 2).toUpperCase() || "NA"}
                   </div>
-                  <span className="font-bold text-gray-900 dark:text-white">
+                  <span className="font-bold text-gray-900 dark:text-white truncate">
                     {selectedTask?.assignedToUserName || "Belum Ditugaskan"}
                   </span>
                 </div>
@@ -1270,8 +1296,8 @@ export default function CalendarSchedulePage() {
               <div className="rounded-xl border border-gray-100 p-3 dark:border-gray-800">
                 <span className="text-[11px] text-gray-400">Tanggal Mulai</span>
                 <p className="mt-1 font-mono font-bold text-gray-900 dark:text-white">
-                  {selectedTask?.startDate
-                    ? new Date(selectedTask.startDate).toLocaleDateString("id-ID")
+                  {selectedTask?.start || selectedTask?.startDate
+                    ? new Date(selectedTask.start || selectedTask.startDate).toLocaleDateString("id-ID")
                     : "-"}
                 </p>
               </div>
@@ -1279,8 +1305,8 @@ export default function CalendarSchedulePage() {
               <div className="rounded-xl border border-gray-100 p-3 dark:border-gray-800">
                 <span className="text-[11px] text-gray-400">Batas Waktu (Due Date)</span>
                 <p className="mt-1 font-mono font-bold text-gray-900 dark:text-white">
-                  {selectedTask?.dueDate
-                    ? new Date(selectedTask.dueDate).toLocaleDateString("id-ID")
+                  {selectedTask?.end || selectedTask?.dueDate
+                    ? new Date(selectedTask.end || selectedTask.dueDate).toLocaleDateString("id-ID")
                     : "Tanpa Deadline"}
                 </p>
               </div>
