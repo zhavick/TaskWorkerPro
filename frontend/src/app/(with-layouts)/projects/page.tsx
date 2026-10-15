@@ -16,7 +16,9 @@ import {
   Filter,
   DollarSign,
   User,
+  ExternalLink,
 } from "lucide-react";
+import Link from "next/link";
 import { Button } from "@/components/tailgrids/core/button";
 import { Input } from "@/components/tailgrids/core/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/tailgrids/core/dialog";
@@ -210,9 +212,12 @@ export default function ProjectsPage() {
                       className="h-3.5 w-3.5 rounded-full shrink-0"
                       style={{ backgroundColor: p.color || "#4680FF" }}
                     />
-                    <h3 className="font-bold text-base text-gray-900 dark:text-white leading-tight">
+                    <Link
+                      href={`/projects/${p.id}`}
+                      className="font-bold text-base text-gray-900 transition hover:text-indigo-600 dark:text-white dark:hover:text-indigo-400 leading-tight"
+                    >
                       {p.name}
-                    </h3>
+                    </Link>
                   </div>
                   <span
                     className={`rounded-full px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-white ${
@@ -277,30 +282,42 @@ export default function ProjectsPage() {
               </div>
 
               {/* Bottom Actions */}
-              <div className="mt-5 border-t border-gray-100 pt-4 flex items-center justify-between dark:border-gray-800">
-                <div className="flex items-center gap-2">
+              <div className="mt-5 border-t border-gray-100 pt-4 flex flex-wrap items-center justify-between gap-2 dark:border-gray-800">
+                <Link href={`/projects/${p.id}`}>
+                  <Button
+                    size="sm"
+                    className="gap-1.5 text-xs bg-indigo-600 text-white shadow-xs hover:bg-indigo-700 font-semibold"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    Buka Studio
+                  </Button>
+                </Link>
+
+                <div className="flex items-center gap-1.5">
                   <Button
                     size="sm"
                     variant="outline"
                     className="gap-1.5 text-xs text-gray-700 hover:text-indigo-600 dark:text-gray-300 dark:hover:text-indigo-400"
                     onClick={() => handleOpenEditModal(p)}
+                    title="Edit Metadata Cepat"
                   >
                     <Pencil className="h-3.5 w-3.5" />
-                    Edit Proyek
+                    Edit
+                  </Button>
+
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1.5 text-xs text-gray-700 hover:text-indigo-600 dark:text-gray-300 dark:hover:text-indigo-400"
+                    onClick={() => {
+                      setSelectedProjectForAssign(p);
+                      setSelectedTaskIds([]);
+                    }}
+                    title="Alokasikan Tugas Cepat"
+                  >
+                    <Layers className="h-3.5 w-3.5" />
                   </Button>
                 </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="gap-1.5 text-xs"
-                  onClick={() => {
-                    setSelectedProjectForAssign(p);
-                    setSelectedTaskIds([]);
-                  }}
-                >
-                  <Layers className="h-3.5 w-3.5" />
-                  Alokasikan Tugas
-                </Button>
               </div>
             </div>
           );
