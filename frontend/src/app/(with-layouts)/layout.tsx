@@ -3,15 +3,27 @@
 import Header from "@/components/common/header";
 import Sidebar from "@/components/common/sidebar";
 import { FloatingTimerBar } from "@/components/common/floating-timer-bar";
+import { AnnouncementModal } from "@/components/common/announcement-modal";
+import { UserGuideModal } from "@/components/common/user-guide-modal";
 import { SheetContent, SheetOverlay, SheetTitle } from "@/components/tailgrids/core/sheet";
 import { cn } from "@/utils/cn";
-import { ReactNode, useState } from "react";
+import { ReactNode, useState, useEffect } from "react";
 
 export default function WithLayout({ children }: { children: ReactNode }) {
   // XL+ sidebar expand/collapse state
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   // Mobile sheet open state (< xl breakpoint)
   const [isMobileSheetOpen, setIsMobileSheetOpen] = useState(false);
+  // User guide modal state
+  const [isUserGuideOpen, setIsUserGuideOpen] = useState(false);
+
+  useEffect(() => {
+    const handleOpenUserGuide = () => setIsUserGuideOpen(true);
+    window.addEventListener("wtp:open_user_guide", handleOpenUserGuide);
+    return () => {
+      window.removeEventListener("wtp:open_user_guide", handleOpenUserGuide);
+    };
+  }, []);
 
   const toggleSidebar = () => setIsSidebarOpen((prev) => !prev);
 
@@ -65,6 +77,15 @@ export default function WithLayout({ children }: { children: ReactNode }) {
 
       {/* Floating Active Multi-Timer Bar */}
       <FloatingTimerBar />
+
+      {/* Global User-Facing Announcement Modal (FSD 5.23.3) */}
+      <AnnouncementModal />
+
+      {/* Global Interactive User Guide & Help Modal (FSD 5.19 & FSD 5.23.4) */}
+      <UserGuideModal
+        isOpen={isUserGuideOpen}
+        onClose={() => setIsUserGuideOpen(false)}
+      />
     </div>
   );
 }

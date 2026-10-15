@@ -7,6 +7,7 @@ import { ThreeDots } from "@/components/common/sidebar/icon";
 import { cn } from "@/utils/cn";
 import { LogoWithText } from "@/utils/icon";
 import React from "react";
+import { HelpCircle } from "lucide-react";
 import { NotificationsButton } from "./notifications";
 import SearchBar from "./searchbar";
 import { TenantBadge } from "./tenant-badge";
@@ -15,6 +16,10 @@ import { ActiveTimersWidget } from "./active-timers-widget";
 //  Main Header
 export default function Header({ onMenuClick }: { onMenuClick?: () => void }) {
   const [isDrawerOpen, setIsDrawerOpen] = React.useState(false);
+
+  const handleOpenGuide = () => {
+    window.dispatchEvent(new CustomEvent("wtp:open_user_guide"));
+  };
 
   return (
     <>
@@ -69,6 +74,15 @@ export default function Header({ onMenuClick }: { onMenuClick?: () => void }) {
           {/* Right Side - Actions & Active Timers */}
           <div className="flex items-center gap-3">
             <ActiveTimersWidget />
+            <button
+              id="headerUserGuideDesktopBtn"
+              onClick={handleOpenGuide}
+              title="Panduan Sistem & Bantuan"
+              aria-label="Panduan Sistem & Bantuan"
+              className="flex h-10 w-10 items-center justify-center rounded-lg border border-border-secondary-alt text-icon-tertiary transition-colors hover:bg-background-gray-secondary hover:text-text-primary"
+            >
+              <HelpCircle className="h-5 w-5" />
+            </button>
             <ThemeToggle />
             <NotificationsButton />
             <UserProfileButton />
@@ -77,18 +91,33 @@ export default function Header({ onMenuClick }: { onMenuClick?: () => void }) {
       </header>
 
       {/* Mobile Info */}
-      <MobileInfoDrawer isOpen={isDrawerOpen} />
+      <MobileInfoDrawer isOpen={isDrawerOpen} onOpenGuide={handleOpenGuide} />
     </>
   );
 }
 
 // Mobile Info
-function MobileInfoDrawer({ isOpen }: { isOpen: boolean }) {
+function MobileInfoDrawer({
+  isOpen,
+  onOpenGuide,
+}: {
+  isOpen: boolean;
+  onOpenGuide: () => void;
+}) {
   return (
     <div className={cn("xl:hidden", isOpen ? "block" : "hidden")}>
       <div className="px-5 py-4 shadow-xs">
         <div className="flex items-center justify-between gap-2.5">
           <div className="flex items-center gap-2.5">
+            <button
+              id="headerUserGuideMobileBtn"
+              onClick={onOpenGuide}
+              title="Panduan Sistem & Bantuan"
+              aria-label="Panduan Sistem & Bantuan"
+              className="flex h-10 w-10 items-center justify-center rounded-lg border border-border-secondary-alt text-icon-tertiary transition-colors hover:bg-background-gray-secondary hover:text-text-primary"
+            >
+              <HelpCircle className="h-5 w-5" />
+            </button>
             <NotificationsButton />
             <ThemeToggle />
             <SearchBar />

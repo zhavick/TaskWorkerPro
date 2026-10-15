@@ -20,10 +20,13 @@ import {
 import { AltArrowDownIcon } from "@/utils/icon";
 import Link from "next/link";
 
+import { HelpCircle } from "lucide-react";
+
 interface UserProfileMenuItem {
-  href: string;
+  href?: string;
   icon: React.ReactNode;
   label: string;
+  onClick?: () => void;
 }
 
 interface UserProfile {
@@ -65,6 +68,10 @@ export function UserProfileButton() {
     window.location.href = "/login";
   };
 
+  const handleOpenGuide = () => {
+    window.dispatchEvent(new CustomEvent("wtp:open_user_guide"));
+  };
+
   const menuItems: UserProfileMenuItem[] = [
     {
       href: "/profile",
@@ -75,6 +82,11 @@ export function UserProfileButton() {
       href: "/configuration",
       icon: <GearIcon />,
       label: "Konfigurasi Sistem",
+    },
+    {
+      icon: <HelpCircle className="h-4 w-4" />,
+      label: "Panduan & Bantuan",
+      onClick: handleOpenGuide,
     },
   ];
 
@@ -108,21 +120,32 @@ export function UserProfileButton() {
         </DropdownMenuHeader>
 
         <DropdownMenuSection className="p-1.5">
-          {menuItems.map((item) => (
-            <DropdownMenuItem
-              key={item.label}
-              href={item.href}
-              className="cursor-pointer px-3 py-2.5"
-              render={(domProps) =>
-                "href" in domProps ? <Link {...domProps} /> : <div {...domProps} />
-              }
-            >
-              <span className="shrink-0 text-icon-secondary group-hover:text-text-primary">
-                {item.icon}
-              </span>
-              <span className="leading-5 font-medium">{item.label}</span>
-            </DropdownMenuItem>
-          ))}
+          {menuItems.map((item) =>
+            item.href ? (
+              <DropdownMenuItem
+                key={item.label}
+                href={item.href}
+                className="cursor-pointer px-3 py-2.5"
+                render={(domProps) => <Link {...(domProps as any)} />}
+              >
+                <span className="shrink-0 text-icon-secondary group-hover:text-text-primary">
+                  {item.icon}
+                </span>
+                <span className="leading-5 font-medium">{item.label}</span>
+              </DropdownMenuItem>
+            ) : (
+              <DropdownMenuItem
+                key={item.label}
+                onAction={item.onClick}
+                className="cursor-pointer px-3 py-2.5"
+              >
+                <span className="shrink-0 text-icon-secondary group-hover:text-text-primary">
+                  {item.icon}
+                </span>
+                <span className="leading-5 font-medium">{item.label}</span>
+              </DropdownMenuItem>
+            )
+          )}
         </DropdownMenuSection>
 
         <DropdownMenuSeparator />
