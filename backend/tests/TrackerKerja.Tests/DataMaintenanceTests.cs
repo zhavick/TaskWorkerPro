@@ -199,4 +199,110 @@ public class DataMaintenanceTests
         Assert.Equal(1, await context.Notes.CountAsync());
         Assert.Equal(4, await context.Users.CountAsync());
     }
+
+    [Fact]
+    public async Task PurgeOperationalData_FullResetWithComplexRelations_CleansUpSuccessfullyWithoutFKViolations()
+    {
+        using var context = CreateInMemoryContext();
+        var controller = CreateController(context, currentUserId: "admin-1");
+
+        // Add complex relational data
+        var subtask = new WorkTask
+        {
+            Id = 103,
+            Title = "Subtask 1",
+            ProjectId = 10,
+            ParentTaskId = 101,
+            AssignedToUserId = "member-1"
+        };
+        context.Tasks.Add(subtask);
+
+        var noteWithTask = await context.Notes.FirstAsync(n => n.Id == 701);
+        noteWithTask.TaskId = 101;
+
+        context.JsonHistories.Add(new JsonHistory { Id = 1, Name = "Test JSON", Content = "{}", TaskId = 101 });
+        context.SqlHistories.Add(new SqlHistory { Id = 1, Name = "Test SQL", Content = "SELECT 1;", TaskId = 101 });
+        context.DailyCheckIns.Add(new DailyCheckIn { Id = 1, UserId = "member-1", CheckInDate = DateOnly.FromDateTime(DateTime.UtcNow) });
+        context.MasterBadges.Add(new MasterBadge { Id = 1, Code = "FIRST_TASK", Name = "First Task" });
+        context.UserBadges.Add(new UserBadge { Id = 1, UserId = "member-1", BadgeId = 1 });
+
+        // Non-admin created announcement
+        var announcement = await context.Announcements.FirstAsync(a => a.Id == 1);
+        announcement.CreatedByUserId = "member-1";
+
+        await context.SaveChangesAsync();
+
+        var request = new DataPurgeRequest(
+            PurgeAll: false,
+            PurgeTasks: false,
+            PurgeProjects: false,
+            PurgeAttendances: false,
+            PurgeNotes: false,
+            PurgeNonAdminUsers: false,
+            PurgeAuditAndHistories: false,
+            ConfirmationKeyword: "RESET-TOTAL",
+            PurgeAllOperational: true // Sent by frontend for full reset
+        );
+
+        var result = await controller.PurgeOperationalData(request);
+        var okResult = Assert.IsType<OkObjectResult>(result);
+
+        var root = ToJsonElement(okResult.Value);
+        Assert.True(root.GetProperty("success").GetBoolean());
+
+        // Tasks, Subtasks, Sessions, Notes, Histories, Check-ins are deleted
+        Assert.Equal(0, await context.Tasks.CountAsync());
+        Assert.Equal(0, await context.Sessions.CountAsync());
+        Assert.Equal(0, await context.Notes.CountAsync());
+        Assert.Equal(0, await context.JsonHistories.CountAsync());
+        Assert.Equal(0, await context.SqlHistories.CountAsync());
+        Assert.Equal(0, await context.DailyCheckIns.CountAsync());
+        Assert.Equal(0, await context.UserBadges.CountAsync());
+
+        // Non-admin users are deleted
+        var remainingUsers = await context.Users.ToListAsync();
+        Assert.Equal(2, remainingUsers.Count);
+        Assert.All(remainingUsers, u => Assert.Contains("admin", u.Id));
+
+        // Announcement is preserved AND reassigned to administrator
+        var preservedAnnouncement = await context.Announcements.FirstOrDefaultAsync(a => a.Id == 1);
+        Assert.NotNull(preservedAnnouncement);
+        Assert.Equal("admin-1", preservedAnnouncement.CreatedByUserId);
+
+        // Master badge is preserved
+        Assert.Equal(1, await context.MasterBadges.CountAsync());
+    }
+
+    [Fact]
+    public async Task GetMaintenanceStats_ReturnsFrontendFormattedPropertyNames()
+    {
+        using var context = CreateInMemoryContext();
+        var controller = CreateController(context);
+
+        // Add a subtask and gamification record
+        context.Tasks.Add(new WorkTask { Id = 103, Title = "Subtask", ParentTaskId = 101 });
+        context.DailyCheckIns.Add(new DailyCheckIn { Id = 1, UserId = "member-1", CheckInDate = DateOnly.FromDateTime(DateTime.UtcNow) });
+        await context.SaveChangesAsync();
+
+        var result = await controller.GetMaintenanceStats();
+        var okResult = Assert.IsType<OkObjectResult>(result);
+
+        var root = ToJsonElement(okResult.Value);
+        Assert.True(root.GetProperty("success").GetBoolean());
+        var data = root.GetProperty("data");
+
+        // Check new frontend property names
+        Assert.Equal(2, data.GetProperty("totalTasks").GetInt32());
+        Assert.Equal(1, data.GetProperty("totalSubtasks").GetInt32());
+        Assert.Equal(1, data.GetProperty("totalProjects").GetInt32());
+        Assert.Equal(1, data.GetProperty("totalWorkSessions").GetInt32());
+        Assert.Equal(1, data.GetProperty("totalAttendances").GetInt32());
+        Assert.Equal(1, data.GetProperty("totalNotes").GetInt32());
+        Assert.Equal(2, data.GetProperty("totalNonAdminUsers").GetInt32());
+        Assert.Equal(1, data.GetProperty("totalGamificationRecords").GetInt32());
+        Assert.Equal(2, data.GetProperty("protectedAdminUsers").GetInt32());
+        Assert.Equal(1, data.GetProperty("protectedAnnouncements").GetInt32());
+        Assert.True(data.GetProperty("protectedMasterDataItems").GetInt32() >= 2);
+    }
 }
+

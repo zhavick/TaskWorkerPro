@@ -1,19 +1,36 @@
 namespace TrackerKerja.Application.DTOs;
 
 public record DataMaintenanceStatsDto(
-    int TasksCount,
-    int ProjectsCount,
-    int SessionsCount,
-    int AttendancesCount,
-    int NotesCount,
-    int NoteAttachmentsCount,
-    int NonAdminUsersCount,
-    int ToolHistoriesCount,
-    int AuditLogsCount,
-    int AdminUsersCount,
-    int MasterDataItemsCount,
-    int AnnouncementsCount
-);
+    int TotalTasks,
+    int TotalSubtasks,
+    int TotalProjects,
+    int TotalWorkSessions,
+    int TotalAttendances,
+    int TotalNotes,
+    int TotalNoteAttachments,
+    int TotalNonAdminUsers,
+    int TotalGamificationRecords,
+    int TotalToolHistories,
+    int TotalAuditLogs,
+    int ProtectedAdminUsers,
+    int ProtectedMasterDataItems,
+    int ProtectedAnnouncements
+)
+{
+    // Backwards-compatible aliases for existing tests and API callers
+    public int TasksCount => TotalTasks;
+    public int ProjectsCount => TotalProjects;
+    public int SessionsCount => TotalWorkSessions;
+    public int AttendancesCount => TotalAttendances;
+    public int NotesCount => TotalNotes;
+    public int NoteAttachmentsCount => TotalNoteAttachments;
+    public int NonAdminUsersCount => TotalNonAdminUsers;
+    public int ToolHistoriesCount => TotalToolHistories;
+    public int AuditLogsCount => TotalAuditLogs;
+    public int AdminUsersCount => ProtectedAdminUsers;
+    public int MasterDataItemsCount => ProtectedMasterDataItems;
+    public int AnnouncementsCount => ProtectedAnnouncements;
+}
 
 public record DataPurgeRequest(
     bool PurgeAll,
@@ -23,8 +40,12 @@ public record DataPurgeRequest(
     bool PurgeNotes,
     bool PurgeNonAdminUsers,
     bool PurgeAuditAndHistories,
-    string ConfirmationKeyword
-);
+    string ConfirmationKeyword,
+    bool PurgeAllOperational = false
+)
+{
+    public bool IsFullPurge => PurgeAll || PurgeAllOperational;
+}
 
 public record DataPurgeResultDto(
     bool Success,

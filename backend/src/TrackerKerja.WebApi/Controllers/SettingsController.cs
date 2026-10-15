@@ -66,41 +66,51 @@ public class SettingsController : ControllerBase
     [HttpGet("maintenance/stats")]
     public async Task<IActionResult> GetMaintenanceStats()
     {
-        var tasksCount = await _context.Tasks.CountAsync();
-        var projectsCount = await _context.Projects.CountAsync();
-        var sessionsCount = await _context.Sessions.CountAsync();
-        var attendancesCount = await _context.Attendances.CountAsync();
-        var notesCount = await _context.Notes.CountAsync();
-        var attachmentsCount = await _context.NoteAttachments.CountAsync();
-        var toolHistoriesCount = await _context.JsonHistories.CountAsync() + await _context.SqlHistories.CountAsync();
-        var auditLogsCount = await _context.AuditLogs.CountAsync();
+        var tasks = await _context.Tasks.IgnoreQueryFilters().AsNoTracking().ToListAsync();
+        var tasksTotal = tasks.Count(t => t.ParentTaskId == null);
+        var subtasksCount = tasks.Count(t => t.ParentTaskId != null);
+        var projectsCount = await _context.Projects.IgnoreQueryFilters().CountAsync();
+        var sessionsCount = await _context.Sessions.IgnoreQueryFilters().CountAsync();
+        var attendancesCount = await _context.Attendances.IgnoreQueryFilters().CountAsync();
+        var notesCount = await _context.Notes.IgnoreQueryFilters().CountAsync();
+        var attachmentsCount = await _context.NoteAttachments.IgnoreQueryFilters().CountAsync();
+        var toolHistoriesCount = await _context.JsonHistories.IgnoreQueryFilters().CountAsync() + await _context.SqlHistories.IgnoreQueryFilters().CountAsync();
+        var auditLogsCount = await _context.AuditLogs.IgnoreQueryFilters().CountAsync();
 
-        var allUsers = await _context.Users.AsNoTracking().ToListAsync();
+        var allUsers = await _context.Users.IgnoreQueryFilters().AsNoTracking().ToListAsync();
         var adminUsersCount = allUsers.Count(IsAdminUser);
         var nonAdminUsersCount = allUsers.Count - adminUsersCount;
 
-        var masterDataItemsCount = await _context.MasterPriorities.CountAsync()
-                                 + await _context.MasterStatuses.CountAsync()
-                                 + await _context.MasterMilestones.CountAsync()
-                                 + await _context.Categories.CountAsync()
-                                 + await _context.SystemSettings.CountAsync()
-                                 + await _context.EmailTemplates.CountAsync();
+        var gamificationCount = await _context.DailyCheckIns.IgnoreQueryFilters().CountAsync()
+                              + await _context.UserBadges.IgnoreQueryFilters().CountAsync()
+                              + await _context.RewardClaims.IgnoreQueryFilters().CountAsync();
 
-        var announcementsCount = await _context.Announcements.CountAsync();
+        var masterDataItemsCount = await _context.MasterPriorities.IgnoreQueryFilters().CountAsync()
+                                 + await _context.MasterStatuses.IgnoreQueryFilters().CountAsync()
+                                 + await _context.MasterMilestones.IgnoreQueryFilters().CountAsync()
+                                 + await _context.Categories.IgnoreQueryFilters().CountAsync()
+                                 + await _context.SystemSettings.IgnoreQueryFilters().CountAsync()
+                                 + await _context.EmailTemplates.IgnoreQueryFilters().CountAsync()
+                                 + await _context.MasterBadges.IgnoreQueryFilters().CountAsync()
+                                 + await _context.RewardItems.IgnoreQueryFilters().CountAsync();
+
+        var announcementsCount = await _context.Announcements.IgnoreQueryFilters().CountAsync();
 
         var stats = new DataMaintenanceStatsDto(
-            tasksCount,
-            projectsCount,
-            sessionsCount,
-            attendancesCount,
-            notesCount,
-            attachmentsCount,
-            nonAdminUsersCount,
-            toolHistoriesCount,
-            auditLogsCount,
-            adminUsersCount,
-            masterDataItemsCount,
-            announcementsCount
+            TotalTasks: tasksTotal,
+            TotalSubtasks: subtasksCount,
+            TotalProjects: projectsCount,
+            TotalWorkSessions: sessionsCount,
+            TotalAttendances: attendancesCount,
+            TotalNotes: notesCount,
+            TotalNoteAttachments: attachmentsCount,
+            TotalNonAdminUsers: nonAdminUsersCount,
+            TotalGamificationRecords: gamificationCount,
+            TotalToolHistories: toolHistoriesCount,
+            TotalAuditLogs: auditLogsCount,
+            ProtectedAdminUsers: adminUsersCount,
+            ProtectedMasterDataItems: masterDataItemsCount,
+            ProtectedAnnouncements: announcementsCount
         );
 
         return Ok(new { success = true, data = stats });
@@ -109,9 +119,10 @@ public class SettingsController : ControllerBase
     [HttpPost("maintenance/purge")]
     public async Task<IActionResult> PurgeOperationalData([FromBody] DataPurgeRequest request)
     {
+        var isFullPurge = request.IsFullPurge;
         var normalizedKeyword = request.ConfirmationKeyword?.Trim().ToUpperInvariant();
 
-        if (request.PurgeAll)
+        if (isFullPurge)
         {
             if (normalizedKeyword != "RESET-TOTAL")
             {
@@ -138,6 +149,10 @@ public class SettingsController : ControllerBase
                             ?? User.FindFirst("sub")?.Value
                             ?? string.Empty;
 
+        var adminFallback = await _context.Users.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(u => u.Id == currentUserId || u.Id == "usr-superadmin" || (u.Email != null && u.Email.Contains("admin@")));
+        var adminFallbackId = adminFallback?.Id ?? currentUserId;
+
         var isRelational = _context.Database.IsRelational();
         await using var transaction = isRelational ? await _context.Database.BeginTransactionAsync() : null;
 
@@ -152,10 +167,104 @@ public class SettingsController : ControllerBase
 
         try
         {
-            // 1. Sessions & Tasks
-            if (request.PurgeAll || request.PurgeTasks || request.PurgeProjects)
+            // =========================================================================
+            // PHASE 1: DISCONNECT / NULLIFY RESTRICTIVE CROSS-ENTITY FOREIGN KEYS
+            // Prevents 23503 foreign_key_violation in PostgreSQL when parent rows are wiped
+            // =========================================================================
+            if (isFullPurge || request.PurgeTasks || request.PurgeNotes)
             {
-                var sessions = await _context.Sessions.ToListAsync();
+                var notesReferencingTasks = await _context.Notes.IgnoreQueryFilters()
+                    .Where(n => n.TaskId != null).ToListAsync();
+                foreach (var n in notesReferencingTasks)
+                {
+                    n.TaskId = null;
+                }
+
+                var jsonHistoriesReferencingTasks = await _context.JsonHistories.IgnoreQueryFilters()
+                    .Where(j => j.TaskId != null).ToListAsync();
+                foreach (var j in jsonHistoriesReferencingTasks)
+                {
+                    j.TaskId = null;
+                }
+
+                var sqlHistoriesReferencingTasks = await _context.SqlHistories.IgnoreQueryFilters()
+                    .Where(s => s.TaskId != null).ToListAsync();
+                foreach (var s in sqlHistoriesReferencingTasks)
+                {
+                    s.TaskId = null;
+                }
+            }
+
+            if (isFullPurge || request.PurgeTasks || request.PurgeProjects)
+            {
+                var tasksWithParentsOrProjects = await _context.Tasks.IgnoreQueryFilters()
+                    .Where(t => t.ParentTaskId != null || t.ProjectId != null).ToListAsync();
+                foreach (var t in tasksWithParentsOrProjects)
+                {
+                    t.ParentTaskId = null;
+                    t.ProjectId = null;
+                }
+            }
+
+            if (isFullPurge || request.PurgeProjects || request.PurgeNonAdminUsers)
+            {
+                var projectsWithManagers = await _context.Projects.IgnoreQueryFilters()
+                    .Where(p => p.ProjectManagerId != null).ToListAsync();
+                foreach (var p in projectsWithManagers)
+                {
+                    p.ProjectManagerId = null;
+                }
+            }
+
+            if (isFullPurge || request.PurgeNonAdminUsers)
+            {
+                var announcementsWithNonAdmin = await _context.Announcements.IgnoreQueryFilters()
+                    .Where(a => a.CreatedByUserId != null).ToListAsync();
+                foreach (var a in announcementsWithNonAdmin)
+                {
+                    // Preserve announcement, reassign to active administrator
+                    a.CreatedByUserId = !string.IsNullOrEmpty(adminFallbackId) ? adminFallbackId : null;
+                }
+
+                var claimsProcessedByUsers = await _context.RewardClaims.IgnoreQueryFilters()
+                    .Where(rc => rc.ProcessedByUserId != null).ToListAsync();
+                foreach (var rc in claimsProcessedByUsers)
+                {
+                    rc.ProcessedByUserId = null;
+                }
+
+                var notesWithAuthors = await _context.Notes.IgnoreQueryFilters()
+                    .Where(n => n.AuthorUserId != null).ToListAsync();
+                foreach (var n in notesWithAuthors)
+                {
+                    n.AuthorUserId = null;
+                }
+
+                var noteAttachmentsWithUsers = await _context.NoteAttachments.IgnoreQueryFilters()
+                    .Where(a => a.UploadedByUserId != null).ToListAsync();
+                foreach (var a in noteAttachmentsWithUsers)
+                {
+                    a.UploadedByUserId = null;
+                }
+
+                var tasksWithAssignees = await _context.Tasks.IgnoreQueryFilters()
+                    .Where(t => t.AssignedToUserId != null).ToListAsync();
+                foreach (var t in tasksWithAssignees)
+                {
+                    t.AssignedToUserId = null;
+                }
+            }
+
+            await _context.SaveChangesAsync();
+
+            // =========================================================================
+            // PHASE 2: ORDERED ENTITY DELETION
+            // =========================================================================
+
+            // 1. Sessions & Tasks
+            if (isFullPurge || request.PurgeTasks || request.PurgeProjects)
+            {
+                var sessions = await _context.Sessions.IgnoreQueryFilters().ToListAsync();
                 deletedSessions = sessions.Count;
                 if (sessions.Count > 0)
                 {
@@ -163,7 +272,7 @@ public class SettingsController : ControllerBase
                     await _context.SaveChangesAsync();
                 }
 
-                var tasks = await _context.Tasks.ToListAsync();
+                var tasks = await _context.Tasks.IgnoreQueryFilters().ToListAsync();
                 deletedTasks = tasks.Count;
                 if (tasks.Count > 0)
                 {
@@ -174,9 +283,9 @@ public class SettingsController : ControllerBase
             }
 
             // 2. Projects
-            if (request.PurgeAll || request.PurgeProjects)
+            if (isFullPurge || request.PurgeProjects)
             {
-                var projects = await _context.Projects.ToListAsync();
+                var projects = await _context.Projects.IgnoreQueryFilters().ToListAsync();
                 deletedProjects = projects.Count;
                 if (projects.Count > 0)
                 {
@@ -187,9 +296,9 @@ public class SettingsController : ControllerBase
             }
 
             // 3. Attendances
-            if (request.PurgeAll || request.PurgeAttendances)
+            if (isFullPurge || request.PurgeAttendances || request.PurgeNonAdminUsers)
             {
-                var attendances = await _context.Attendances.ToListAsync();
+                var attendances = await _context.Attendances.IgnoreQueryFilters().ToListAsync();
                 deletedAttendances = attendances.Count;
                 if (attendances.Count > 0)
                 {
@@ -200,15 +309,15 @@ public class SettingsController : ControllerBase
             }
 
             // 4. Notes & Attachments
-            if (request.PurgeAll || request.PurgeNotes)
+            if (isFullPurge || request.PurgeNotes)
             {
-                var attachments = await _context.NoteAttachments.ToListAsync();
+                var attachments = await _context.NoteAttachments.IgnoreQueryFilters().ToListAsync();
                 if (attachments.Count > 0)
                 {
                     _context.NoteAttachments.RemoveRange(attachments);
                 }
 
-                var notes = await _context.Notes.ToListAsync();
+                var notes = await _context.Notes.IgnoreQueryFilters().ToListAsync();
                 deletedNotes = notes.Count;
                 if (notes.Count > 0)
                 {
@@ -218,26 +327,28 @@ public class SettingsController : ControllerBase
                 messages.Add($"Berhasil menghapus {deletedNotes} catatan dan {attachments.Count} file lampiran.");
             }
 
-            // 5. Tool Histories & Audit Logs
-            if (request.PurgeAll || request.PurgeAuditAndHistories)
+            // 5. Tool Histories, Audit Logs, & Sync Histories
+            if (isFullPurge || request.PurgeAuditAndHistories)
             {
-                var jsonH = await _context.JsonHistories.ToListAsync();
-                var sqlH = await _context.SqlHistories.ToListAsync();
-                var logs = await _context.AuditLogs.ToListAsync();
+                var jsonH = await _context.JsonHistories.IgnoreQueryFilters().ToListAsync();
+                var sqlH = await _context.SqlHistories.IgnoreQueryFilters().ToListAsync();
+                var logs = await _context.AuditLogs.IgnoreQueryFilters().ToListAsync();
+                var syncs = await _context.SyncHistories.IgnoreQueryFilters().ToListAsync();
 
-                deletedHistories = jsonH.Count + sqlH.Count + logs.Count;
+                deletedHistories = jsonH.Count + sqlH.Count + logs.Count + syncs.Count;
                 if (jsonH.Count > 0) _context.JsonHistories.RemoveRange(jsonH);
                 if (sqlH.Count > 0) _context.SqlHistories.RemoveRange(sqlH);
                 if (logs.Count > 0) _context.AuditLogs.RemoveRange(logs);
+                if (syncs.Count > 0) _context.SyncHistories.RemoveRange(syncs);
 
                 await _context.SaveChangesAsync();
-                messages.Add($"Berhasil menghapus {deletedHistories} riwayat tool dan log audit.");
+                messages.Add($"Berhasil menghapus {deletedHistories} riwayat tool, log audit, dan riwayat sinkronisasi.");
             }
 
             // 6. Non-Admin Users (Preserve Administrator, SuperAdmin, and Current User)
-            if (request.PurgeAll || request.PurgeNonAdminUsers)
+            if (isFullPurge || request.PurgeNonAdminUsers)
             {
-                var allUsers = await _context.Users.ToListAsync();
+                var allUsers = await _context.Users.IgnoreQueryFilters().ToListAsync();
                 var nonAdminUsers = allUsers
                     .Where(u => !IsAdminUser(u) && u.Id != currentUserId)
                     .ToList();
@@ -247,20 +358,36 @@ public class SettingsController : ControllerBase
                 {
                     var nonAdminUserIds = nonAdminUsers.Select(u => u.Id).ToHashSet();
 
-                    var checkIns = await _context.DailyCheckIns.Where(d => nonAdminUserIds.Contains(d.UserId)).ToListAsync();
+                    var checkIns = await _context.DailyCheckIns.IgnoreQueryFilters()
+                        .Where(d => nonAdminUserIds.Contains(d.UserId)).ToListAsync();
                     if (checkIns.Count > 0) _context.DailyCheckIns.RemoveRange(checkIns);
 
-                    var badges = await _context.UserBadges.Where(b => nonAdminUserIds.Contains(b.UserId)).ToListAsync();
+                    var badges = await _context.UserBadges.IgnoreQueryFilters()
+                        .Where(b => nonAdminUserIds.Contains(b.UserId)).ToListAsync();
                     if (badges.Count > 0) _context.UserBadges.RemoveRange(badges);
 
-                    var claims = await _context.RewardClaims.Where(r => nonAdminUserIds.Contains(r.UserId)).ToListAsync();
+                    var claims = await _context.RewardClaims.IgnoreQueryFilters()
+                        .Where(r => nonAdminUserIds.Contains(r.UserId)).ToListAsync();
                     if (claims.Count > 0) _context.RewardClaims.RemoveRange(claims);
 
-                    var refreshTokens = await _context.UserRefreshTokens.Where(t => nonAdminUserIds.Contains(t.UserId)).ToListAsync();
+                    var refreshTokens = await _context.UserRefreshTokens.IgnoreQueryFilters()
+                        .Where(t => nonAdminUserIds.Contains(t.UserId)).ToListAsync();
                     if (refreshTokens.Count > 0) _context.UserRefreshTokens.RemoveRange(refreshTokens);
 
-                    var announcementReads = await _context.UserAnnouncementReads.Where(a => nonAdminUserIds.Contains(a.UserId)).ToListAsync();
+                    var announcementReads = await _context.UserAnnouncementReads.IgnoreQueryFilters()
+                        .Where(a => nonAdminUserIds.Contains(a.UserId)).ToListAsync();
                     if (announcementReads.Count > 0) _context.UserAnnouncementReads.RemoveRange(announcementReads);
+
+                    // Ensure any remaining sessions or attendances from non-admins are removed
+                    var userSessions = await _context.Sessions.IgnoreQueryFilters()
+                        .Where(s => nonAdminUserIds.Contains(s.UserId)).ToListAsync();
+                    if (userSessions.Count > 0) _context.Sessions.RemoveRange(userSessions);
+
+                    var userAttendances = await _context.Attendances.IgnoreQueryFilters()
+                        .Where(a => nonAdminUserIds.Contains(a.UserId)).ToListAsync();
+                    if (userAttendances.Count > 0) _context.Attendances.RemoveRange(userAttendances);
+
+                    await _context.SaveChangesAsync();
 
                     _context.Users.RemoveRange(nonAdminUsers);
                     await _context.SaveChangesAsync();
@@ -278,7 +405,7 @@ public class SettingsController : ControllerBase
             return Ok(new
             {
                 success = true,
-                message = request.PurgeAll
+                message = isFullPurge
                     ? $"Pembersihan total berhasil diselesaikan! {totalDeleted} rekaman data operasional telah dihapus. Seluruh data Master, Akun Administrator, dan Pengumuman tetap utuh dipertahankan."
                     : $"Pembersihan parsial berhasil diselesaikan! {totalDeleted} rekaman data telah dibersihkan.",
                 data = new DataPurgeResultDto(

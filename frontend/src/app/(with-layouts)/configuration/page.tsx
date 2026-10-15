@@ -2993,9 +2993,15 @@ export default function ConfigurationPage() {
                 size="sm"
                 onClick={() => {
                   purgeMutation.mutate({
+                    purgeAll: purgeMode === "all",
                     purgeAllOperational: purgeMode === "all",
                     confirmationKeyword: confirmationInput,
-                    ...selectiveOptions,
+                    purgeTasks: purgeMode === "all" ? true : selectiveOptions.purgeTasks,
+                    purgeProjects: purgeMode === "all" ? true : selectiveOptions.purgeProjects,
+                    purgeAttendances: purgeMode === "all" ? true : selectiveOptions.purgeAttendances,
+                    purgeNotes: purgeMode === "all" ? true : selectiveOptions.purgeNotes,
+                    purgeNonAdminUsers: purgeMode === "all" ? true : selectiveOptions.purgeNonAdminUsers,
+                    purgeAuditAndHistories: purgeMode === "all" ? true : selectiveOptions.purgeAuditAndHistories,
                   });
                 }}
                 disabled={
