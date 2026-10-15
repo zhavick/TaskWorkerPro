@@ -162,7 +162,8 @@ public class AuditLogActionFilter : IAsyncActionFilter
             var details = JsonSerializer.Serialize(detailsPayload, new JsonSerializerOptions
             {
                 WriteIndented = false,
-                MaxDepth = 4
+                MaxDepth = 32,
+                ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles
             });
 
             var auditLog = new AuditLog

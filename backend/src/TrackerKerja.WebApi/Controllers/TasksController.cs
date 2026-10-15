@@ -646,10 +646,14 @@ public class TasksController : ControllerBase
                 cancellationToken
             );
 
+            var successMessage = result.TotalUsersCreated > 0
+                ? $"Berhasil mengimpor {result.TotalImported} tugas ({result.TotalProjectsCreated} proyek baru, {result.TotalUsersCreated} akun personil baru dibuat)."
+                : $"Berhasil mengimpor {result.TotalImported} tugas ({result.TotalProjectsCreated} proyek baru dibuat).";
+
             return Ok(new
             {
                 success = true,
-                message = $"Berhasil mengimpor {result.TotalImported} tugas ({result.TotalProjectsCreated} proyek baru dibuat).",
+                message = successMessage,
                 data = result
             });
         }

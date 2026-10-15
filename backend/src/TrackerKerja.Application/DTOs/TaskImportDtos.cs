@@ -45,12 +45,18 @@ public record TaskImportCommitRequest(
     int? DefaultProjectId,
     string? BulkAssignUserId,
     List<int>? SelectedRowIndexes,
-    List<TaskImportRowDto> Rows
+    List<TaskImportRowDto> Rows,
+    bool AutoCreateMissingUsers = true,
+    string? DefaultJobTitle = null,
+    string? DefaultPassword = null,
+    string? EmailDomain = null,
+    bool AutoApproveNewUsers = true
 );
 
 public record TaskImportResultDto(
     int TotalProcessed,
     int TotalImported,
     int TotalProjectsCreated,
-    List<string> Messages
+    List<string> Messages,
+    int TotalUsersCreated = 0
 );

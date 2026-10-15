@@ -20,6 +20,14 @@ import {
   ArrowLeft,
   ChevronRight,
   Info,
+  UserCheck,
+  UserPlus,
+  UserX,
+  Key,
+  Eye,
+  EyeOff,
+  Copy,
+  Check,
 } from "lucide-react";
 import { Button } from "@/components/tailgrids/core/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/tailgrids/core/dialog";
@@ -69,6 +77,7 @@ export interface ImportResult {
   totalProcessed: number;
   totalImported: number;
   totalProjectsCreated: number;
+  totalUsersCreated?: number;
   messages: string[];
 }
 
@@ -84,6 +93,16 @@ export function ImportExcelDialog({ open, onOpenChange, onSuccess }: ImportExcel
   const [bulkAssignUserId, setBulkAssignUserId] = useState<string>("");
   const [isDragging, setIsDragging] = useState(false);
   const [isDownloading, setIsDownloading] = useState<string | null>(null);
+
+  // Account creation customization state
+  const [autoCreateMissingUsers, setAutoCreateMissingUsers] = useState<boolean>(true);
+  const [emailDomain, setEmailDomain] = useState<string>("");
+  const [defaultJobTitle, setDefaultJobTitle] = useState<string>("Staff Pelaksana");
+  const [defaultPassword, setDefaultPassword] = useState<string>("TrackerKerja2026!");
+  const [showPassword, setShowPassword] = useState<boolean>(false);
+  const [autoApproveNewUsers, setAutoApproveNewUsers] = useState<boolean>(true);
+  const [showPersonnelList, setShowPersonnelList] = useState<boolean>(false);
+  const [copiedInfo, setCopiedInfo] = useState<boolean>(false);
 
   // Preview & Selection State
   const [previewData, setPreviewData] = useState<TaskImportPreview | null>(null);
@@ -183,6 +202,11 @@ export function ImportExcelDialog({ open, onOpenChange, onSuccess }: ImportExcel
         bulkAssignUserId: bulkAssignUserId || null,
         selectedRowIndexes: Array.from(selectedRowIndexes),
         rows: previewData.rows,
+        autoCreateMissingUsers,
+        defaultJobTitle: defaultJobTitle.trim() || "Staff Pelaksana",
+        defaultPassword: defaultPassword.trim() || "TrackerKerja2026!",
+        emailDomain: emailDomain.trim().replace(/^@/, ""),
+        autoApproveNewUsers,
       };
 
       const res = await apiClient.post("/tasks/import/commit", payload);
@@ -192,13 +216,19 @@ export function ImportExcelDialog({ open, onOpenChange, onSuccess }: ImportExcel
       const result: ImportResult = data.data;
       setImportResult(result);
       setStep("result");
-      toast.success(`Berhasil mengimpor ${result.totalImported} tugas!`);
+      toast.success(
+        `Berhasil mengimpor ${result.totalImported} tugas${
+          (result.totalUsersCreated ?? 0) > 0 ? ` & ${result.totalUsersCreated} akun personil baru dibuat!` : "!"
+        }`
+      );
 
       // Invalidate relevant queries
       queryClient.invalidateQueries({ queryKey: ["tasksList"] });
       queryClient.invalidateQueries({ queryKey: ["kanbanTasks"] });
       queryClient.invalidateQueries({ queryKey: ["projectsSelect"] });
       queryClient.invalidateQueries({ queryKey: ["projectsList"] });
+      queryClient.invalidateQueries({ queryKey: ["membersSelect"] });
+      queryClient.invalidateQueries({ queryKey: ["members"] });
       queryClient.invalidateQueries({ queryKey: ["dashboardOverview"] });
 
       onSuccess?.();
@@ -279,6 +309,14 @@ export function ImportExcelDialog({ open, onOpenChange, onSuccess }: ImportExcel
     setFilterTab("all");
     setSearchQuery("");
     setImportResult(null);
+    setAutoCreateMissingUsers(true);
+    setEmailDomain("");
+    setDefaultJobTitle("Staff Pelaksana");
+    setDefaultPassword("TrackerKerja2026!");
+    setShowPassword(false);
+    setAutoApproveNewUsers(true);
+    setShowPersonnelList(false);
+    setCopiedInfo(false);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -288,6 +326,19 @@ export function ImportExcelDialog({ open, onOpenChange, onSuccess }: ImportExcel
     resetState();
     onOpenChange(false);
   };
+
+  // Detect unique unregistered personnel in the preview
+  const detectedNewPersonnel = useMemo(() => {
+    if (!previewData) return [];
+    const set = new Set<string>();
+    previewData.rows.forEach((r) => {
+      if (r.picIdentifier && !r.matchedUserId && !bulkAssignUserId) {
+        const clean = r.picIdentifier.trim();
+        if (clean) set.add(clean);
+      }
+    });
+    return Array.from(set);
+  }, [previewData, bulkAssignUserId]);
 
   // Filtered rows for Preview Table
   const filteredRows = useMemo(() => {
@@ -499,6 +550,114 @@ export function ImportExcelDialog({ open, onOpenChange, onSuccess }: ImportExcel
               </select>
             </div>
 
+            {/* Customization: Automatic Account Creation Based on Name/PIC */}
+            <div className="rounded-xl border border-indigo-100 bg-indigo-50/40 p-3.5 dark:border-indigo-900/40 dark:bg-indigo-950/20 space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-100 text-indigo-700 dark:bg-indigo-900/60 dark:text-indigo-300">
+                    <UserPlus className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-gray-900 dark:text-white">
+                      Pembuatan Akun Berdasarkan Nama / PIC
+                    </h4>
+                    <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                      Otomatis daftarkan akun baru jika nama personil belum ada di master user.
+                    </p>
+                  </div>
+                </div>
+
+                <label className="relative inline-flex cursor-pointer items-center shrink-0">
+                  <input
+                    type="checkbox"
+                    checked={autoCreateMissingUsers}
+                    onChange={(e) => setAutoCreateMissingUsers(e.target.checked)}
+                    className="peer sr-only"
+                  />
+                  <div className="peer h-5 w-9 rounded-full bg-gray-200 after:absolute after:top-[2px] after:left-[2px] after:h-4 after:w-4 after:rounded-full after:bg-white after:transition-all after:content-[''] peer-checked:bg-indigo-600 peer-checked:after:translate-x-full dark:bg-gray-700"></div>
+                </label>
+              </div>
+
+              {autoCreateMissingUsers && (
+                <div className="space-y-2.5 pt-1 border-t border-indigo-100/70 dark:border-indigo-900/40">
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="text-[11px] font-semibold text-gray-700 dark:text-gray-300">
+                        Domain Email Akun
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="contoh: perusahaan.co.id"
+                        value={emailDomain}
+                        onChange={(e) => setEmailDomain(e.target.value)}
+                        className="w-full mt-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs text-gray-900 outline-hidden focus:border-indigo-600 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                      />
+                      <p className="text-[10px] text-gray-400 mt-0.5">
+                        Format: nama.lengkap@domain
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] font-semibold text-gray-700 dark:text-gray-300">
+                        Jabatan / Posisi Default
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Staff Pelaksana"
+                        value={defaultJobTitle}
+                        onChange={(e) => setDefaultJobTitle(e.target.value)}
+                        className="w-full mt-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs text-gray-900 outline-hidden focus:border-indigo-600 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                      />
+                      <p className="text-[10px] text-gray-400 mt-0.5">
+                        Jabatan standar akun personil baru
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2.5 items-end">
+                    <div>
+                      <label className="text-[11px] font-semibold text-gray-700 dark:text-gray-300 flex items-center justify-between">
+                        <span>Password Awal</span>
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="text-[10px] text-indigo-600 dark:text-indigo-400 flex items-center gap-1 hover:underline"
+                        >
+                          {showPassword ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                          {showPassword ? "Sembunyikan" : "Lihat"}
+                        </button>
+                      </label>
+                      <div className="relative mt-1">
+                        <Key className="absolute left-2.5 top-2 h-3.5 w-3.5 text-gray-400" />
+                        <input
+                          type={showPassword ? "text" : "password"}
+                          value={defaultPassword}
+                          onChange={(e) => setDefaultPassword(e.target.value)}
+                          className="w-full rounded-lg border border-gray-200 bg-white pl-8 pr-2.5 py-1.5 text-xs text-gray-900 outline-hidden focus:border-indigo-600 dark:border-gray-700 dark:bg-gray-900 dark:text-white font-mono"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 pb-2">
+                      <input
+                        type="checkbox"
+                        id="autoApproveToggle"
+                        checked={autoApproveNewUsers}
+                        onChange={(e) => setAutoApproveNewUsers(e.target.checked)}
+                        className="rounded text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5"
+                      />
+                      <label
+                        htmlFor="autoApproveToggle"
+                        className="text-[11px] font-medium text-gray-700 dark:text-gray-300 cursor-pointer select-none"
+                      >
+                        Langsung Aktifkan Akun (Active)
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Action Buttons */}
             <div className="flex justify-end gap-2 pt-2">
               <Button type="button" variant="outline" onClick={handleClose} className="text-xs font-medium">
@@ -548,6 +707,66 @@ export function ImportExcelDialog({ open, onOpenChange, onSuccess }: ImportExcel
                 <p className="text-base font-extrabold text-rose-700 dark:text-rose-400">{previewData.errorCount}</p>
               </div>
             </div>
+
+            {/* Detected Personnel Banner */}
+            {detectedNewPersonnel.length > 0 && (
+              <div className="rounded-xl border border-indigo-200 bg-indigo-50/70 p-3 dark:border-indigo-900/60 dark:bg-indigo-950/30">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-600 text-white shrink-0">
+                      <UserPlus className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-gray-900 dark:text-white">
+                        {detectedNewPersonnel.length} Nama Personil Baru Terdeteksi di Excel
+                      </p>
+                      <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                        {autoCreateMissingUsers
+                          ? `Akan dibuatkan akun login otomatis (${emailDomain ? `@${emailDomain.replace(/^@/, "")}` : "domain default"}) dengan jabatan "${defaultJobTitle}".`
+                          : "Pembuatan akun otomatis dinonaktifkan. Tugas akan diimpor tanpa akun personil terkait."}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setAutoCreateMissingUsers(!autoCreateMissingUsers)}
+                      className={`text-xs px-2.5 py-1 rounded-lg font-semibold transition ${
+                        autoCreateMissingUsers
+                          ? "bg-indigo-600 text-white hover:bg-indigo-700"
+                          : "bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-800 dark:text-gray-300"
+                      }`}
+                    >
+                      {autoCreateMissingUsers ? "Buat Akun: Aktif" : "Buat Akun: Nonaktif"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowPersonnelList(!showPersonnelList)}
+                      className="text-xs text-indigo-600 dark:text-indigo-400 font-medium underline hover:opacity-80"
+                    >
+                      {showPersonnelList ? "Tutup Daftar" : "Lihat Personil"}
+                    </button>
+                  </div>
+                </div>
+
+                {showPersonnelList && (
+                  <div className="mt-2.5 pt-2 border-t border-indigo-200/60 dark:border-indigo-900/40">
+                    <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto pr-1">
+                      {detectedNewPersonnel.map((name, i) => (
+                        <span
+                          key={i}
+                          className="inline-flex items-center gap-1 rounded-md bg-white px-2 py-0.5 text-[11px] font-medium text-gray-800 shadow-2xs dark:bg-gray-900 dark:text-gray-200 border border-indigo-100 dark:border-indigo-900/50"
+                        >
+                          <UserPlus className="h-3 w-3 text-indigo-600 shrink-0" />
+                          <span>{name}</span>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Filter Tabs & Bulk Assign Controls */}
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-gray-50 p-2 dark:bg-gray-800/50">
@@ -694,17 +913,34 @@ export function ImportExcelDialog({ open, onOpenChange, onSuccess }: ImportExcel
                           </td>
                           <td className="py-2 px-3">
                             {row.matchedUserId ? (
-                              <span className="text-[11px] font-medium text-gray-800 dark:text-gray-200">
-                                {row.matchedUserName || row.picIdentifier}
+                              <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.5 rounded">
+                                <UserCheck className="h-3 w-3 shrink-0" />
+                                <span>{row.matchedUserName || row.picIdentifier}</span>
                               </span>
                             ) : bulkAssignUserId ? (
                               <span className="text-[11px] text-indigo-600 dark:text-indigo-400 italic">
                                 Sesuai Bulk PIC
                               </span>
                             ) : row.picIdentifier ? (
-                              <span className="text-[11px] text-amber-600 dark:text-amber-400">
-                                {row.picIdentifier} (Tidak ada)
-                              </span>
+                              autoCreateMissingUsers ? (
+                                <span
+                                  className="inline-flex items-center gap-1 text-[11px] font-medium text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/40 px-1.5 py-0.5 rounded"
+                                  title="Akun baru akan dibuat otomatis berdasarkan nama ini"
+                                >
+                                  <UserPlus className="h-3 w-3 shrink-0 text-blue-600" />
+                                  <span>{row.picIdentifier}</span>
+                                  <span className="text-[9px] opacity-75 font-normal">(Akun Baru)</span>
+                                </span>
+                              ) : (
+                                <span
+                                  className="inline-flex items-center gap-1 text-[11px] text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-1.5 py-0.5 rounded"
+                                  title="Personil belum terdaftar & pembuatan akun nonaktif"
+                                >
+                                  <UserX className="h-3 w-3 shrink-0" />
+                                  <span>{row.picIdentifier}</span>
+                                  <span className="text-[9px] opacity-75">(Tanpa Akun)</span>
+                                </span>
+                              )
                             ) : (
                               <span className="text-gray-400 italic text-[11px]">-</span>
                             )}
@@ -789,7 +1025,7 @@ export function ImportExcelDialog({ open, onOpenChange, onSuccess }: ImportExcel
                 <CheckCircle2 className="h-5 w-5 shrink-0" />
                 <span>Impor Excel Selesai Berhasil!</span>
               </div>
-              <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
+              <div className="mt-3 grid grid-cols-4 gap-2 text-center text-xs">
                 <div className="rounded-lg bg-white/80 p-2.5 shadow-xs dark:bg-gray-900">
                   <div className="flex items-center justify-center text-gray-500 mb-1">
                     <FileCheck className="h-4 w-4" />
@@ -817,8 +1053,58 @@ export function ImportExcelDialog({ open, onOpenChange, onSuccess }: ImportExcel
                   </span>
                   <p className="text-[10px] text-gray-500">Proyek Baru</p>
                 </div>
+                <div className="rounded-lg bg-white/80 p-2.5 shadow-xs dark:bg-gray-900">
+                  <div className="flex items-center justify-center text-blue-600 mb-1">
+                    <UserPlus className="h-4 w-4" />
+                  </div>
+                  <span className="font-extrabold text-base text-blue-600 dark:text-blue-400">
+                    {importResult.totalUsersCreated ?? 0}
+                  </span>
+                  <p className="text-[10px] text-gray-500">Akun Personil</p>
+                </div>
               </div>
             </div>
+
+            {/* Generated Accounts Credential Card */}
+            {(importResult.totalUsersCreated ?? 0) > 0 && (
+              <div className="rounded-xl border border-indigo-200 bg-indigo-50/70 p-3.5 dark:border-indigo-900/60 dark:bg-indigo-950/30">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <UserPlus className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                    <span className="text-xs font-bold text-gray-900 dark:text-white">
+                      Info Kredensial Akun Personil Baru:
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const text = `TrackerKerja Akun Baru:\nPassword Awal: ${defaultPassword}\nJabatan Default: ${defaultJobTitle}\nHarap segera mengganti password setelah login pertama kali.`;
+                      navigator.clipboard.writeText(text);
+                      setCopiedInfo(true);
+                      toast.success("Info akun disalin!");
+                      setTimeout(() => setCopiedInfo(false), 2000);
+                    }}
+                    className="flex items-center gap-1 rounded-md bg-white px-2 py-1 text-[11px] font-semibold text-indigo-600 shadow-2xs hover:bg-indigo-50 dark:bg-gray-900 dark:text-indigo-400 dark:hover:bg-gray-800 transition"
+                  >
+                    {copiedInfo ? <Check className="h-3 w-3 text-emerald-600" /> : <Copy className="h-3 w-3" />}
+                    <span>{copiedInfo ? "Tersalin" : "Salin Info"}</span>
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-xs bg-white/80 p-2.5 rounded-lg border border-indigo-100 dark:bg-gray-900 dark:border-indigo-900/40">
+                  <div>
+                    <span className="text-[10px] text-gray-400">Password Awal:</span>
+                    <p className="font-mono font-bold text-gray-800 dark:text-gray-200">{defaultPassword}</p>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-gray-400">Jabatan:</span>
+                    <p className="font-semibold text-gray-800 dark:text-gray-200">{defaultJobTitle}</p>
+                  </div>
+                </div>
+                <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-2">
+                  Akun personil telah aktif dan dapat langsung digunakan untuk masuk ke TrackerKerja.
+                </p>
+              </div>
+            )}
 
             {importResult.messages && importResult.messages.length > 0 && (
               <div className="rounded-xl border border-blue-200 bg-blue-50/60 p-3 text-xs text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/40 dark:text-blue-300">
@@ -851,3 +1137,4 @@ export function ImportExcelDialog({ open, onOpenChange, onSuccess }: ImportExcel
     </Dialog>
   );
 }
+

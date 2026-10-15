@@ -385,7 +385,17 @@ public class TaskExcelImportService : ITaskExcelImportService
         var company = companyId.HasValue
             ? await _context.Companies.FirstOrDefaultAsync(c => c.Id == companyId.Value, cancellationToken)
             : null;
-        var companyDomain = company?.Code != null ? $"{company.Code.ToLowerInvariant()}.local" : "trackerkerja.local";
+        var defaultDomain = company?.Code != null ? $"{company.Code.ToLowerInvariant()}.local" : "trackerkerja.local";
+        var companyDomain = !string.IsNullOrWhiteSpace(request.EmailDomain)
+            ? request.EmailDomain.Trim().ToLowerInvariant().TrimStart('@')
+            : defaultDomain;
+
+        var defaultPassword = !string.IsNullOrWhiteSpace(request.DefaultPassword)
+            ? request.DefaultPassword.Trim()
+            : "TrackerKerja2026!";
+        var defaultJobTitle = !string.IsNullOrWhiteSpace(request.DefaultJobTitle)
+            ? request.DefaultJobTitle.Trim()
+            : "Staff Pelaksana";
 
         // Cache lokal user untuk mencegah duplikasi pembuatan user di dalam batch
         var userCache = new Dictionary<string, AppUser>(StringComparer.OrdinalIgnoreCase);
@@ -442,7 +452,7 @@ public class TaskExcelImportService : ITaskExcelImportService
                 project = defaultProject;
             }
 
-            // 2. Resolve PIC / Buat User Baru jika belum terdaftar (berdasarkan sheet name / email)
+            // 2. Resolve PIC / Buat User Baru jika belum terdaftar (berdasarkan sheet name / email / nama personil)
             string? assignedUserId = row.MatchedUserId;
 
             if (string.IsNullOrEmpty(assignedUserId) && !string.IsNullOrWhiteSpace(row.PicIdentifier))
@@ -455,42 +465,47 @@ public class TaskExcelImportService : ITaskExcelImportService
                 else
                 {
                     var (matchedId, resolvedName, resolvedEmail, isNew) = MatchUser(picKey, existingUsers, companyDomain);
-                    if (matchedId != null && userCache.TryGetValue(matchedId, out var existingFound))
+                    if (matchedId != null)
                     {
-                        assignedUserId = existingFound.Id;
+                        assignedUserId = matchedId;
+                        if (userCache.TryGetValue(matchedId, out var existingFound))
+                        {
+                            userCache[picKey] = existingFound;
+                        }
                     }
                     else if (!string.IsNullOrEmpty(resolvedEmail) && userCache.TryGetValue(resolvedEmail, out var existingByEmail))
                     {
                         assignedUserId = existingByEmail.Id;
+                        userCache[picKey] = existingByEmail;
                     }
-                    else
+                    else if (request.AutoCreateMissingUsers && !string.IsNullOrWhiteSpace(resolvedName) && !string.IsNullOrWhiteSpace(resolvedEmail))
                     {
-                        // Buat akun pengguna baru secara otomatis
+                        // Buat akun pengguna baru secara otomatis berdasarkan nama personil
                         var dbUser = await _context.Users.FirstOrDefaultAsync(u => u.Email == resolvedEmail, cancellationToken);
                         if (dbUser != null)
                         {
                             assignedUserId = dbUser.Id;
                             userCache[picKey] = dbUser;
-                            userCache[resolvedName!] = dbUser;
-                            userCache[resolvedEmail!] = dbUser;
+                            userCache[resolvedName] = dbUser;
+                            userCache[resolvedEmail] = dbUser;
                         }
                         else
                         {
                             var newUser = new AppUser
                             {
-                                Id = Guid.NewGuid().ToString(),
-                                FullName = resolvedName!,
-                                Email = resolvedEmail!,
-                                NormalizedEmail = resolvedEmail!.ToUpperInvariant(),
-                                UserName = resolvedEmail!,
-                                NormalizedUserName = resolvedEmail!.ToUpperInvariant(),
+                                Id = "usr-" + Guid.NewGuid().ToString("N")[..8],
+                                FullName = resolvedName,
+                                Email = resolvedEmail,
+                                NormalizedEmail = resolvedEmail.ToUpperInvariant(),
+                                UserName = resolvedEmail,
+                                NormalizedUserName = resolvedEmail.ToUpperInvariant(),
                                 EmailConfirmed = true,
-                                JobTitle = "Team Member",
-                                AvatarColor = PickAvatarColor(resolvedName!),
-                                PasswordHash = PasswordHasher.HashPassword("TrackerKerja123!"),
+                                JobTitle = defaultJobTitle,
+                                AvatarColor = PickAvatarColor(resolvedName),
+                                PasswordHash = PasswordHasher.HashPassword(defaultPassword),
                                 CompanyId = companyId,
-                                IsApproved = true,
-                                ApprovedAt = DateTimeOffset.UtcNow,
+                                IsApproved = request.AutoApproveNewUsers,
+                                ApprovedAt = request.AutoApproveNewUsers ? DateTimeOffset.UtcNow : null,
                                 CreatedAt = DateTimeOffset.UtcNow
                             };
 
@@ -499,13 +514,13 @@ public class TaskExcelImportService : ITaskExcelImportService
 
                             existingUsers.Add(newUser);
                             userCache[picKey] = newUser;
-                            userCache[resolvedName!] = newUser;
-                            userCache[resolvedEmail!] = newUser;
+                            userCache[resolvedName] = newUser;
+                            userCache[resolvedEmail] = newUser;
                             userCache[newUser.Id] = newUser;
 
                             assignedUserId = newUser.Id;
                             totalUsersCreated++;
-                            messages.Add($"Berhasil membuat akun personil baru untuk '{newUser.FullName}' ({newUser.Email}).");
+                            messages.Add($"Berhasil membuat akun personil baru '{newUser.FullName}' ({newUser.Email}) dengan jabatan '{newUser.JobTitle}'.");
                         }
                     }
                 }
@@ -592,7 +607,7 @@ public class TaskExcelImportService : ITaskExcelImportService
         }
 
         var resultDetail = totalUsersCreated > 0
-            ? $"Berhasil mengimpor {totalImported} tugas dari {totalProcessed} baris data ({totalProjectsCreated} proyek baru, {totalUsersCreated} personil baru dibuat)."
+            ? $"Berhasil mengimpor {totalImported} tugas dari {totalProcessed} baris data ({totalProjectsCreated} proyek baru, {totalUsersCreated} akun personil baru dibuat)."
             : $"Berhasil mengimpor {totalImported} tugas dari {totalProcessed} baris data ({totalProjectsCreated} proyek baru dibuat).";
         messages.Add(resultDetail);
 
@@ -600,7 +615,8 @@ public class TaskExcelImportService : ITaskExcelImportService
                 totalProcessed,
                 totalImported,
                 totalProjectsCreated,
-                messages
+                messages,
+                totalUsersCreated
             );
         });
     }
