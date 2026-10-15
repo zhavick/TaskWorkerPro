@@ -435,4 +435,207 @@ public class GamificationController : ControllerBase
             status = claim.Status
         });
     }
+
+    [HttpGet("admin/rewards")]
+    [Authorize(Roles = "Administrator,SuperAdmin")]
+    public async Task<IActionResult> GetAdminRewards()
+    {
+        var rewards = await _context.RewardItems
+            .OrderBy(r => r.OrderIndex)
+            .Select(r => new RewardItemDto(
+                r.Id,
+                r.Name,
+                r.Description,
+                r.PointCost,
+                r.PointCost * 100.00m,
+                r.Stock,
+                r.Category,
+                r.Icon,
+                r.Color,
+                r.IsActive
+            ))
+            .ToListAsync();
+
+        return Ok(new { success = true, data = rewards });
+    }
+
+    [HttpPost("admin/rewards")]
+    [Authorize(Roles = "Administrator,SuperAdmin")]
+    public async Task<IActionResult> CreateReward([FromBody] CreateOrUpdateRewardItemRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Name))
+        {
+            return BadRequest(new { success = false, message = "Nama hadiah wajib diisi." });
+        }
+
+        if (request.PointCost <= 0)
+        {
+            return BadRequest(new { success = false, message = "Biaya poin harus lebih dari 0." });
+        }
+
+        var reward = new RewardItem
+        {
+            Name = request.Name.Trim(),
+            Description = request.Description?.Trim(),
+            PointCost = request.PointCost,
+            Stock = Math.Max(0, request.Stock),
+            Category = string.IsNullOrWhiteSpace(request.Category) ? "Voucher" : request.Category.Trim(),
+            Icon = string.IsNullOrWhiteSpace(request.Icon) ? "gift" : request.Icon.Trim(),
+            Color = string.IsNullOrWhiteSpace(request.Color) ? "indigo" : request.Color.Trim(),
+            IsActive = request.IsActive,
+            IsMonthlyMilestoneReward = request.IsMonthlyMilestoneReward,
+            OrderIndex = request.OrderIndex,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+
+        _context.RewardItems.Add(reward);
+        await _context.SaveChangesAsync();
+
+        return Ok(new { success = true, message = "Hadiah baru berhasil ditambahkan ke katalog.", data = reward });
+    }
+
+    [HttpPut("admin/rewards/{id}")]
+    [Authorize(Roles = "Administrator,SuperAdmin")]
+    public async Task<IActionResult> UpdateReward(int id, [FromBody] CreateOrUpdateRewardItemRequest request)
+    {
+        var reward = await _context.RewardItems.FirstOrDefaultAsync(r => r.Id == id);
+        if (reward == null) return NotFound(new { success = false, message = "Item hadiah tidak ditemukan." });
+
+        if (string.IsNullOrWhiteSpace(request.Name))
+        {
+            return BadRequest(new { success = false, message = "Nama hadiah wajib diisi." });
+        }
+
+        if (request.PointCost <= 0)
+        {
+            return BadRequest(new { success = false, message = "Biaya poin harus lebih dari 0." });
+        }
+
+        reward.Name = request.Name.Trim();
+        reward.Description = request.Description?.Trim();
+        reward.PointCost = request.PointCost;
+        reward.Stock = Math.Max(0, request.Stock);
+        reward.Category = string.IsNullOrWhiteSpace(request.Category) ? reward.Category : request.Category.Trim();
+        reward.Icon = string.IsNullOrWhiteSpace(request.Icon) ? reward.Icon : request.Icon.Trim();
+        reward.Color = string.IsNullOrWhiteSpace(request.Color) ? reward.Color : request.Color.Trim();
+        reward.IsActive = request.IsActive;
+        reward.IsMonthlyMilestoneReward = request.IsMonthlyMilestoneReward;
+        reward.OrderIndex = request.OrderIndex;
+
+        await _context.SaveChangesAsync();
+
+        return Ok(new { success = true, message = "Katalog hadiah berhasil diperbarui.", data = reward });
+    }
+
+    [HttpDelete("admin/rewards/{id}")]
+    [Authorize(Roles = "Administrator,SuperAdmin")]
+    public async Task<IActionResult> DeleteReward(int id)
+    {
+        var reward = await _context.RewardItems.FirstOrDefaultAsync(r => r.Id == id);
+        if (reward == null) return NotFound(new { success = false, message = "Item hadiah tidak ditemukan." });
+
+        bool hasClaims = await _context.RewardClaims.AnyAsync(rc => rc.RewardItemId == id);
+        if (hasClaims)
+        {
+            // Soft delete / deactivate if it has claim history to protect referential integrity
+            reward.IsActive = false;
+            await _context.SaveChangesAsync();
+            return Ok(new { success = true, message = "Hadiah dinonaktifkan dari katalog karena memiliki riwayat penukaran." });
+        }
+
+        _context.RewardItems.Remove(reward);
+        await _context.SaveChangesAsync();
+
+        return Ok(new { success = true, message = "Hadiah berhasil dihapus dari katalog." });
+    }
+
+    [HttpGet("admin/badges/awards")]
+    [Authorize(Roles = "Administrator,SuperAdmin")]
+    public async Task<IActionResult> GetAdminBadgeAwards()
+    {
+        var awards = await _context.UserBadges
+            .Include(ub => ub.User)
+            .Include(ub => ub.Badge)
+            .OrderByDescending(ub => ub.UnlockedAt)
+            .Select(ub => new UserBadgeItemDto(
+                ub.Id,
+                ub.UserId,
+                ub.User.FullName,
+                ub.BadgeId,
+                ub.Badge.Name,
+                ub.Badge.Code,
+                ub.Badge.Icon,
+                ub.Badge.Color,
+                ub.Badge.Points,
+                ub.Badge.Rarity,
+                ub.UnlockedAt,
+                ub.AwardedBy
+            ))
+            .ToListAsync();
+
+        return Ok(new { success = true, data = awards });
+    }
+
+    [HttpPost("admin/badges/award")]
+    [Authorize(Roles = "Administrator,SuperAdmin")]
+    public async Task<IActionResult> AwardBadge([FromBody] AwardBadgeRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.UserId))
+        {
+            return BadRequest(new { success = false, message = "Pengguna penerima lencana wajib dipilih." });
+        }
+
+        var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == request.UserId);
+        if (user == null) return NotFound(new { success = false, message = "Pengguna tidak ditemukan." });
+
+        var badge = await _context.MasterBadges.FirstOrDefaultAsync(b => b.Id == request.BadgeId);
+        if (badge == null) return NotFound(new { success = false, message = "Master badge tidak ditemukan." });
+
+        var existing = await _context.UserBadges.FirstOrDefaultAsync(ub => ub.UserId == request.UserId && ub.BadgeId == request.BadgeId);
+        if (existing != null)
+        {
+            return BadRequest(new { success = false, message = $"Pengguna '{user.FullName}' sudah memiliki lencana '{badge.Name}'." });
+        }
+
+        var userBadge = new UserBadge
+        {
+            UserId = request.UserId,
+            BadgeId = request.BadgeId,
+            UnlockedAt = DateTimeOffset.UtcNow,
+            AwardedBy = _tenantService.UserId ?? "Administrator"
+        };
+
+        _context.UserBadges.Add(userBadge);
+        await _context.SaveChangesAsync();
+
+        return Ok(new
+        {
+            success = true,
+            message = $"Lencana '{badge.Name}' (+{badge.Points} Poin) berhasil dianugerahkan kepada '{user.FullName}'."
+        });
+    }
+
+    [HttpDelete("admin/badges/{badgeId}/user/{userId}")]
+    [Authorize(Roles = "Administrator,SuperAdmin")]
+    public async Task<IActionResult> RevokeBadge(int badgeId, string userId)
+    {
+        var userBadge = await _context.UserBadges
+            .Include(ub => ub.Badge)
+            .Include(ub => ub.User)
+            .FirstOrDefaultAsync(ub => ub.BadgeId == badgeId && ub.UserId == userId);
+
+        if (userBadge == null)
+        {
+            return NotFound(new { success = false, message = "Rekod perolehan lencana tidak ditemukan." });
+        }
+
+        _context.UserBadges.Remove(userBadge);
+        await _context.SaveChangesAsync();
+
+        return Ok(new
+        {
+            success = true,
+            message = $"Lencana '{userBadge.Badge.Name}' berhasil ditarik dari pengguna '{userBadge.User.FullName}'."
+        });
+    }
 }

@@ -75,3 +75,37 @@ public record RewardClaimDto(
     DateTimeOffset? ProcessedAt,
     string? ProcessedByUserName
 );
+
+public record CreateOrUpdateRewardItemRequest(
+    string Name,
+    string? Description,
+    int PointCost,
+    int Stock,
+    string Category,
+    string Icon,
+    string Color,
+    bool IsActive,
+    bool IsMonthlyMilestoneReward = false,
+    int OrderIndex = 0
+);
+
+public record AwardBadgeRequest(
+    string UserId,
+    int BadgeId
+);
+
+public record UserBadgeItemDto(
+    int Id,
+    string UserId,
+    string UserName,
+    int BadgeId,
+    string BadgeName,
+    string BadgeCode,
+    string BadgeIcon,
+    string BadgeColor,
+    int Points,
+    BadgeRarity Rarity,
+    DateTimeOffset UnlockedAt,
+    string? AwardedBy
+);
+

@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "@/services/api/client";
+import Link from "next/link";
 import {
   Award,
   Flame,
@@ -14,6 +15,8 @@ import {
   Clock,
   Check,
   X,
+  ChevronRight,
+  ArrowRight,
 } from "lucide-react";
 import { Button } from "@/components/tailgrids/core/button";
 import { Input } from "@/components/tailgrids/core/input";
@@ -108,48 +111,26 @@ export default function GamificationPage() {
           </p>
         </div>
 
-        {/* Tab Pills */}
-        <div className="flex rounded-xl bg-gray-100 p-1 dark:bg-gray-800">
-          <button
-            onClick={() => setActiveTab("status")}
-            className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
-              activeTab === "status"
-                ? "bg-white text-indigo-700 shadow-xs dark:bg-gray-900 dark:text-indigo-400"
-                : "text-gray-500 hover:text-gray-900 dark:text-gray-400"
-            }`}
+        {/* Navigation & Subpage Links */}
+        <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-gray-200/80 bg-white p-1 shadow-xs dark:border-gray-800 dark:bg-gray-900">
+          <div className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-xs">
+            <Flame className="h-3.5 w-3.5" />
+            Status &amp; Streak
+          </div>
+          <Link
+            href="/gamification/badges"
+            className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
           >
-            Streak & Poin
-          </button>
-          <button
-            onClick={() => setActiveTab("badges")}
-            className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
-              activeTab === "badges"
-                ? "bg-white text-indigo-700 shadow-xs dark:bg-gray-900 dark:text-indigo-400"
-                : "text-gray-500 hover:text-gray-900 dark:text-gray-400"
-            }`}
+            <Award className="h-3.5 w-3.5 text-indigo-500" />
+            Galeri Lencana ({badges.filter((b) => b.isUnlocked).length})
+          </Link>
+          <Link
+            href="/gamification/rewards"
+            className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
           >
-            Lencana ({badges.filter((b) => b.isUnlocked).length})
-          </button>
-          <button
-            onClick={() => setActiveTab("rewards")}
-            className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
-              activeTab === "rewards"
-                ? "bg-white text-indigo-700 shadow-xs dark:bg-gray-900 dark:text-indigo-400"
-                : "text-gray-500 hover:text-gray-900 dark:text-gray-400"
-            }`}
-          >
+            <Gift className="h-3.5 w-3.5 text-emerald-500" />
             Reward Store
-          </button>
-          <button
-            onClick={() => setActiveTab("claims")}
-            className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
-              activeTab === "claims"
-                ? "bg-white text-indigo-700 shadow-xs dark:bg-gray-900 dark:text-indigo-400"
-                : "text-gray-500 hover:text-gray-900 dark:text-gray-400"
-            }`}
-          >
-            Riwayat Klaim
-          </button>
+          </Link>
         </div>
       </div>
 
@@ -267,6 +248,49 @@ export default function GamificationPage() {
                 />
               </div>
             </div>
+          </div>
+
+          {/* Quick Action Navigation Cards */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Link
+              href="/gamification/badges"
+              className="group flex items-center justify-between rounded-2xl border border-indigo-200/80 bg-gradient-to-r from-indigo-50/70 to-purple-50/40 p-5 shadow-xs transition hover:border-indigo-300 hover:shadow-md dark:border-indigo-900/50 dark:from-indigo-950/20 dark:to-purple-950/10"
+            >
+              <div className="flex items-center gap-3.5">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-600 text-white shadow-md shadow-indigo-600/30 transition group-hover:scale-105">
+                  <Award className="h-6 w-6" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-gray-900 transition group-hover:text-indigo-600 dark:text-white dark:group-hover:text-indigo-400">
+                    Galeri 40+ Lencana Prestasi
+                  </h4>
+                  <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    Koleksi lencana Common, Rare, Epic, &amp; Legendary dengan poin permanen.
+                  </p>
+                </div>
+              </div>
+              <ArrowRight className="h-5 w-5 text-gray-400 transition group-hover:translate-x-1 group-hover:text-indigo-600 dark:group-hover:text-indigo-400" />
+            </Link>
+
+            <Link
+              href="/gamification/rewards"
+              className="group flex items-center justify-between rounded-2xl border border-emerald-200/80 bg-gradient-to-r from-emerald-50/70 to-teal-50/40 p-5 shadow-xs transition hover:border-emerald-300 hover:shadow-md dark:border-emerald-900/50 dark:from-emerald-950/20 dark:to-teal-950/10"
+            >
+              <div className="flex items-center gap-3.5">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-600 text-white shadow-md shadow-emerald-600/30 transition group-hover:scale-105">
+                  <Gift className="h-6 w-6" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-gray-900 transition group-hover:text-emerald-600 dark:text-white dark:group-hover:text-emerald-400">
+                    Toko Hadiah (Reward Store)
+                  </h4>
+                  <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    Tukarkan saldo poin aktif dengan voucher e-wallet, pulsa, &amp; merchandise.
+                  </p>
+                </div>
+              </div>
+              <ArrowRight className="h-5 w-5 text-gray-400 transition group-hover:translate-x-1 group-hover:text-emerald-600 dark:group-hover:text-emerald-400" />
+            </Link>
           </div>
         </div>
       )}
