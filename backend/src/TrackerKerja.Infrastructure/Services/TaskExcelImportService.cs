@@ -18,19 +18,137 @@ public class TaskExcelImportService : ITaskExcelImportService
         _context = context;
     }
 
-    public async Task<ExcelImportResultDto> ImportTasksFromExcelAsync(
+    public byte[] GenerateTemplate(string format)
+    {
+        using var workbook = new XLWorkbook();
+        var isArms = string.Equals(format, "arms", StringComparison.OrdinalIgnoreCase);
+
+        if (isArms)
+        {
+            var ws = workbook.Worksheets.Add("Template ARMS");
+            string[] headers =
+            [
+                "No", "Kode Tugas", "Kode Induk Tugas", "Nama Proyek", "Modul / Milestone",
+                "Judul Tugas (*)", "Deskripsi", "Prioritas", "Status", "Progres (%)",
+                "Tanggal Mulai", "Target Selesai", "Nama PIC", "Email PIC", "Kategori",
+                "Kendala", "Solusi", "Estimasi Jam", "Jam Aktual", "Dapat Ditagih", "Catatan"
+            ];
+
+            for (int i = 0; i < headers.Length; i++)
+            {
+                var cell = ws.Cell(1, i + 1);
+                cell.Value = headers[i];
+                cell.Style.Font.Bold = true;
+                cell.Style.Font.FontColor = XLColor.White;
+                cell.Style.Fill.BackgroundColor = XLColor.FromHtml("#1E293B");
+                cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+            }
+
+            // Sample row 1 (Parent task)
+            ws.Cell(2, 1).Value = 1;
+            ws.Cell(2, 2).Value = "TASK-001";
+            ws.Cell(2, 3).Value = "";
+            ws.Cell(2, 4).Value = "Website Redesign";
+            ws.Cell(2, 5).Value = "Phase 1 - Discovery";
+            ws.Cell(2, 6).Value = "Rancangan Arsitektur Frontend";
+            ws.Cell(2, 7).Value = "Menyusun skema arsitektur antarmuka dan design system.";
+            ws.Cell(2, 8).Value = "Tinggi";
+            ws.Cell(2, 9).Value = "InProgress";
+            ws.Cell(2, 10).Value = 60;
+            ws.Cell(2, 11).Value = DateTime.UtcNow.ToString("yyyy-MM-dd");
+            ws.Cell(2, 12).Value = DateTime.UtcNow.AddDays(7).ToString("yyyy-MM-dd");
+            ws.Cell(2, 13).Value = "Budi Santoso";
+            ws.Cell(2, 14).Value = "budi@perusahaan.com";
+            ws.Cell(2, 15).Value = "Frontend";
+            ws.Cell(2, 16).Value = "";
+            ws.Cell(2, 17).Value = "";
+            ws.Cell(2, 18).Value = 16;
+            ws.Cell(2, 19).Value = 10;
+            ws.Cell(2, 20).Value = "Ya";
+            ws.Cell(2, 21).Value = "Arsitektur menggunakan Next.js App Router";
+
+            // Sample row 2 (Child subtask linked to TASK-001)
+            ws.Cell(3, 1).Value = 2;
+            ws.Cell(3, 2).Value = "TASK-002";
+            ws.Cell(3, 3).Value = "TASK-001";
+            ws.Cell(3, 4).Value = "Website Redesign";
+            ws.Cell(3, 5).Value = "Phase 1 - Discovery";
+            ws.Cell(3, 6).Value = "Setup TailwindCSS & Design Tokens";
+            ws.Cell(3, 7).Value = "Inisialisasi palet warna dan tipografi Tailgrids.";
+            ws.Cell(3, 8).Value = "Sedang";
+            ws.Cell(3, 9).Value = "Done";
+            ws.Cell(3, 10).Value = 100;
+            ws.Cell(3, 11).Value = DateTime.UtcNow.AddDays(-2).ToString("yyyy-MM-dd");
+            ws.Cell(3, 12).Value = DateTime.UtcNow.ToString("yyyy-MM-dd");
+            ws.Cell(3, 13).Value = "Budi Santoso";
+            ws.Cell(3, 14).Value = "budi@perusahaan.com";
+            ws.Cell(3, 15).Value = "Frontend";
+            ws.Cell(3, 16).Value = "";
+            ws.Cell(3, 17).Value = "";
+            ws.Cell(3, 18).Value = 8;
+            ws.Cell(3, 19).Value = 8;
+            ws.Cell(3, 20).Value = "Ya";
+            ws.Cell(3, 21).Value = "";
+
+            ws.Columns().AdjustToContents();
+        }
+        else
+        {
+            var ws = workbook.Worksheets.Add("Template Standar");
+            string[] headers =
+            [
+                "Kode Tugas", "Judul Tugas (*)", "Deskripsi", "Proyek",
+                "Prioritas", "Status", "Progres (%)", "Email / Nama PIC", "Target Selesai"
+            ];
+
+            for (int i = 0; i < headers.Length; i++)
+            {
+                var cell = ws.Cell(1, i + 1);
+                cell.Value = headers[i];
+                cell.Style.Font.Bold = true;
+                cell.Style.Font.FontColor = XLColor.White;
+                cell.Style.Fill.BackgroundColor = XLColor.FromHtml("#0F766E");
+                cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+            }
+
+            // Sample row 1
+            ws.Cell(2, 1).Value = "TASK-001";
+            ws.Cell(2, 2).Value = "Implementasi Integrasi Kalender Kerja";
+            ws.Cell(2, 3).Value = "Menghubungkan kalender dengan deadline tugas";
+            ws.Cell(2, 4).Value = "TrackerKerja Modern";
+            ws.Cell(2, 5).Value = "Tinggi";
+            ws.Cell(2, 6).Value = "Todo";
+            ws.Cell(2, 7).Value = 0;
+            ws.Cell(2, 8).Value = "developer@perusahaan.com";
+            ws.Cell(2, 9).Value = DateTime.UtcNow.AddDays(5).ToString("yyyy-MM-dd");
+
+            // Sample row 2
+            ws.Cell(3, 1).Value = "TASK-002";
+            ws.Cell(3, 2).Value = "Uji Coba Ekspor Impor Excel";
+            ws.Cell(3, 3).Value = "Verifikasi dukungan template ClosedXML dan validasi baris";
+            ws.Cell(3, 4).Value = "TrackerKerja Modern";
+            ws.Cell(3, 5).Value = "Sedang";
+            ws.Cell(3, 6).Value = "InProgress";
+            ws.Cell(3, 7).Value = 50;
+            ws.Cell(3, 8).Value = "qa@perusahaan.com";
+            ws.Cell(3, 9).Value = DateTime.UtcNow.AddDays(3).ToString("yyyy-MM-dd");
+
+            ws.Columns().AdjustToContents();
+        }
+
+        using var ms = new MemoryStream();
+        workbook.SaveAs(ms);
+        return ms.ToArray();
+    }
+
+    public async Task<TaskImportPreviewDto> PreviewImportAsync(
         Stream fileStream,
+        string fileName,
         int? companyId,
         CancellationToken cancellationToken = default)
     {
-        var messages = new List<string>();
-        int totalProcessed = 0;
-        int totalImported = 0;
-        int totalProjectsCreated = 0;
-
         using var workbook = new XLWorkbook(fileStream);
 
-        // Preload existing projects and users in tenant
         var existingProjects = await _context.Projects
             .Where(p => p.CompanyId == companyId)
             .ToListAsync(cancellationToken);
@@ -39,49 +157,15 @@ public class TaskExcelImportService : ITaskExcelImportService
             .Where(u => u.CompanyId == companyId)
             .ToListAsync(cancellationToken);
 
-        // Find ARMS sheets (header row contains 'project_name' and 'title')
-        var armsSheets = workbook.Worksheets.Where(ws =>
+        var rows = new List<TaskImportRowDto>();
+        int rowIndex = 0;
+
+        var sheetsToProcess = workbook.Worksheets.Where(ws =>
         {
-            var firstRow = ws.FirstRowUsed();
-            if (firstRow == null) return false;
-            var lastCol = ws.LastColumnUsed()?.ColumnNumber() ?? 0;
-            var headers = Enumerable.Range(1, lastCol)
-                .Select(c => ws.Cell(firstRow.RowNumber(), c).GetString().Trim().ToLowerInvariant())
-                .ToList();
-            return headers.Contains("project_name") && headers.Contains("title");
+            var nameLower = ws.Name.ToLowerInvariant();
+            if (nameLower.Contains("lookup") || nameLower.Contains("dashboard")) return false;
+            return ws.FirstRowUsed() != null;
         }).ToList();
-
-        // Determine sheets to process
-        List<IXLWorksheet> sheetsToProcess;
-        bool isArmsMode;
-
-        if (armsSheets.Count > 0)
-        {
-            sheetsToProcess = armsSheets;
-            isArmsMode = true;
-            messages.Add($"Terdeteksi format multi-sheet ARMS ({armsSheets.Count} lembar personil): {string.Join(", ", armsSheets.Select(s => s.Name))}.");
-        }
-        else
-        {
-            // Fallback to Master_Data or generic sheets
-            sheetsToProcess = workbook.Worksheets.Where(ws =>
-            {
-                var nameLower = ws.Name.ToLowerInvariant();
-                if (nameLower.Contains("lookup") || nameLower.Contains("dashboard")) return false;
-                var firstRow = ws.FirstRowUsed();
-                if (firstRow == null) return false;
-                var lastCol = ws.LastColumnUsed()?.ColumnNumber() ?? 0;
-                var headers = Enumerable.Range(1, lastCol)
-                    .Select(c => ws.Cell(firstRow.RowNumber(), c).GetString().Trim().ToLowerInvariant())
-                    .ToList();
-                return headers.Any(h => h.Contains("title") || h.Contains("judul"));
-            }).ToList();
-            isArmsMode = false;
-            messages.Add($"Memproses {sheetsToProcess.Count} lembar data standar.");
-        }
-
-        var tasksToAdd = new List<WorkTask>();
-        var seenTaskKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var ws in sheetsToProcess)
         {
@@ -93,18 +177,21 @@ public class TaskExcelImportService : ITaskExcelImportService
                 .Select(c => ws.Cell(headerRow.RowNumber(), c).GetString().Trim().ToLowerInvariant())
                 .ToList();
 
-            int projectCol = FindCol(headers, "project_name", "project", "proyek");
-            int titleCol = FindCol(headers, "title", "judul", "task title");
+            int codeCol = FindCol(headers, "kode tugas", "task code", "task_code", "code");
+            int parentCodeCol = FindCol(headers, "kode induk tugas", "parent task code", "parent_code", "parent code");
+            int projectCol = FindCol(headers, "nama proyek", "project_name", "project", "proyek");
+            int milestoneCol = FindCol(headers, "modul", "milestone", "jenis_task", "jenis task");
+            int titleCol = FindCol(headers, "judul tugas", "task title", "title", "judul");
+            int descCol = FindCol(headers, "deskripsi", "description");
+            int priorityCol = FindCol(headers, "prioritas", "priority");
             int statusCol = FindCol(headers, "status");
-            int priorityCol = FindCol(headers, "priority", "prioritas");
-            int progressCol = FindCol(headers, "progress", "progres");
-            int milestoneCol = FindCol(headers, "milestone", "jenis_task", "jenis task");
+            int progressCol = FindCol(headers, "progres", "progress");
+            int startDateCol = FindCol(headers, "tanggal mulai", "start_date", "start date", "mulai");
+            int dueDateCol = FindCol(headers, "target selesai", "due_date", "due date", "completed_date", "selesai", "target", "deadline");
+            int picEmailCol = FindCol(headers, "email pic", "developer_emails", "email");
+            int picNameCol = FindCol(headers, "nama pic", "pic", "person", "email / nama pic");
             int obstacleCol = FindCol(headers, "kendala", "obstacle", "masalah");
             int solutionCol = FindCol(headers, "solusi", "solution");
-            int startDateCol = FindCol(headers, "start_date", "start date", "mulai");
-            int dueDateCol = FindCol(headers, "due_date", "due date", "completed_date", "selesai", "target", "deadline");
-            int picCol = FindCol(headers, "developer_emails", "pic", "email", "person");
-            int descCol = FindCol(headers, "description", "deskripsi", "module_name");
 
             if (titleCol == 0) continue;
 
@@ -113,131 +200,314 @@ public class TaskExcelImportService : ITaskExcelImportService
             for (int r = headerRow.RowNumber() + 1; r <= lastRow; r++)
             {
                 var title = ws.Cell(r, titleCol).GetString().Trim();
-                if (string.IsNullOrWhiteSpace(title)) continue;
-
-                totalProcessed++;
-
-                // Deduplicate within this import session
-                var projectName = projectCol > 0 ? ws.Cell(r, projectCol).GetString().Trim() : string.Empty;
-                var dedupKey = $"{projectName}___{title}";
-                if (seenTaskKeys.Contains(dedupKey)) continue;
-                seenTaskKeys.Add(dedupKey);
-
-                // Project resolution / auto-creation
-                Project? project = null;
-                if (!string.IsNullOrWhiteSpace(projectName))
-                {
-                    project = existingProjects.FirstOrDefault(p =>
-                        p.Name.Equals(projectName, StringComparison.OrdinalIgnoreCase));
-
-                    if (project == null)
-                    {
-                        project = new Project
-                        {
-                            Name = projectName,
-                            CompanyId = companyId,
-                            Color = PickColorForProject(projectName),
-                            Status = ProjectStatus.Active,
-                            CreatedAt = DateTimeOffset.UtcNow
-                        };
-                        _context.Projects.Add(project);
-                        existingProjects.Add(project);
-                        totalProjectsCreated++;
-                    }
-                }
-
-                // Resolve PIC / Assigned User
-                string? assignedUserId = null;
-                if (picCol > 0)
-                {
-                    var picText = ws.Cell(r, picCol).GetString().Trim();
-                    if (!string.IsNullOrWhiteSpace(picText))
-                    {
-                        var matchedUser = existingUsers.FirstOrDefault(u =>
-                            (!string.IsNullOrEmpty(u.Email) && picText.Contains(u.Email, StringComparison.OrdinalIgnoreCase)) ||
-                            (!string.IsNullOrEmpty(u.FullName) && (u.FullName.Contains(picText, StringComparison.OrdinalIgnoreCase) || picText.Contains(u.FullName, StringComparison.OrdinalIgnoreCase))));
-
-                        if (matchedUser != null)
-                        {
-                            assignedUserId = matchedUser.Id;
-                        }
-                    }
-                }
-
-                // If PIC not found in cell, try using sheet name (e.g. 'Glenn', 'Heni')
-                if (assignedUserId == null && isArmsMode)
-                {
-                    var sheetName = ws.Name.Trim();
-                    var matchedBySheet = existingUsers.FirstOrDefault(u =>
-                        u.FullName.Contains(sheetName, StringComparison.OrdinalIgnoreCase));
-                    if (matchedBySheet != null)
-                    {
-                        assignedUserId = matchedBySheet.Id;
-                    }
-                }
-
-                // Status & Priority
-                var statusText = statusCol > 0 ? ws.Cell(r, statusCol).GetString().Trim() : null;
+                var taskCode = codeCol > 0 ? ws.Cell(r, codeCol).GetString().Trim() : null;
+                var parentTaskCode = parentCodeCol > 0 ? ws.Cell(r, parentCodeCol).GetString().Trim() : null;
+                var projectName = projectCol > 0 ? ws.Cell(r, projectCol).GetString().Trim() : null;
+                var desc = descCol > 0 ? ws.Cell(r, descCol).GetString().Trim() : null;
                 var priorityText = priorityCol > 0 ? ws.Cell(r, priorityCol).GetString().Trim() : null;
+                var statusText = statusCol > 0 ? ws.Cell(r, statusCol).GetString().Trim() : null;
+                var progress = progressCol > 0 ? ParseProgress(ws.Cell(r, progressCol)) : 0;
+                var startDate = startDateCol > 0 ? ParseDate(ws.Cell(r, startDateCol)) : null;
+                var dueDate = dueDateCol > 0 ? ParseDate(ws.Cell(r, dueDateCol)) : null;
+                var milestone = milestoneCol > 0 ? ws.Cell(r, milestoneCol).GetString().Trim() : null;
+                var obstacle = obstacleCol > 0 ? ws.Cell(r, obstacleCol).GetString().Trim() : null;
+                var solution = solutionCol > 0 ? ws.Cell(r, solutionCol).GetString().Trim() : null;
+
+                string? picText = null;
+                if (picEmailCol > 0) picText = ws.Cell(r, picEmailCol).GetString().Trim();
+                if (string.IsNullOrWhiteSpace(picText) && picNameCol > 0) picText = ws.Cell(r, picNameCol).GetString().Trim();
+
+                // If empty title and all other fields are empty, ignore completely
+                if (string.IsNullOrWhiteSpace(title) && string.IsNullOrWhiteSpace(projectName) && string.IsNullOrWhiteSpace(taskCode))
+                {
+                    continue;
+                }
+
+                rowIndex++;
+                var validationMessages = new List<string>();
                 var status = ParseStatus(statusText);
                 var priority = ParsePriority(priorityText);
 
-                // Progress
-                int progress = progressCol > 0 ? ParseProgress(ws.Cell(r, progressCol)) : 0;
                 if (status == Domain.Enums.TaskStatus.Done && progress == 0)
                 {
                     progress = 100;
                 }
 
-                // Dates
-                DateTimeOffset? startDate = startDateCol > 0 ? ParseDate(ws.Cell(r, startDateCol)) : null;
-                DateTimeOffset? dueDate = dueDateCol > 0 ? ParseDate(ws.Cell(r, dueDateCol)) : null;
+                TaskImportValidationStatus validationStatus = TaskImportValidationStatus.Valid;
 
-                // Kendala & Solusi
-                var obstacle = obstacleCol > 0 ? ws.Cell(r, obstacleCol).GetString().Trim() : null;
-                var solution = solutionCol > 0 ? ws.Cell(r, solutionCol).GetString().Trim() : null;
-
-                // Milestone / Module
-                var milestone = milestoneCol > 0 ? ws.Cell(r, milestoneCol).GetString().Trim() : null;
-                var desc = descCol > 0 ? ws.Cell(r, descCol).GetString().Trim() : null;
-
-                var workTask = new WorkTask
+                if (string.IsNullOrWhiteSpace(title))
                 {
-                    Title = title,
-                    Description = string.IsNullOrWhiteSpace(desc) ? null : desc,
-                    Priority = priority,
-                    Status = status,
-                    Progress = progress,
-                    Milestone = string.IsNullOrWhiteSpace(milestone) ? null : milestone,
-                    Obstacle = string.IsNullOrWhiteSpace(obstacle) ? null : obstacle,
-                    Solution = string.IsNullOrWhiteSpace(solution) ? null : solution,
-                    Project = project,
-                    AssignedToUserId = assignedUserId,
-                    CompanyId = companyId,
-                    StartDate = startDate,
-                    DueDate = dueDate,
-                    CreatedAt = DateTimeOffset.UtcNow,
-                    UpdatedAt = DateTimeOffset.UtcNow
-                };
+                    validationStatus = TaskImportValidationStatus.Error;
+                    validationMessages.Add("Judul tugas wajib diisi.");
+                }
 
-                tasksToAdd.Add(workTask);
+                // Match project
+                int? matchedProjectId = null;
+                if (!string.IsNullOrWhiteSpace(projectName))
+                {
+                    var foundProj = existingProjects.FirstOrDefault(p =>
+                        p.Name.Equals(projectName, StringComparison.OrdinalIgnoreCase));
+                    if (foundProj != null)
+                    {
+                        matchedProjectId = foundProj.Id;
+                    }
+                    else
+                    {
+                        validationMessages.Add($"Proyek '{projectName}' belum terdaftar (akan otomatis dibuat baru).");
+                        if (validationStatus != TaskImportValidationStatus.Error)
+                        {
+                            validationStatus = TaskImportValidationStatus.Warning;
+                        }
+                    }
+                }
+
+                // Match user / PIC
+                string? matchedUserId = null;
+                string? matchedUserName = null;
+                if (!string.IsNullOrWhiteSpace(picText))
+                {
+                    var matchedUser = existingUsers.FirstOrDefault(u =>
+                        (!string.IsNullOrEmpty(u.Email) && picText.Contains(u.Email, StringComparison.OrdinalIgnoreCase)) ||
+                        (!string.IsNullOrEmpty(u.FullName) && (u.FullName.Contains(picText, StringComparison.OrdinalIgnoreCase) || picText.Contains(u.FullName, StringComparison.OrdinalIgnoreCase))));
+
+                    if (matchedUser != null)
+                    {
+                        matchedUserId = matchedUser.Id;
+                        matchedUserName = matchedUser.FullName;
+                    }
+                    else
+                    {
+                        validationMessages.Add($"PIC '{picText}' tidak ditemukan dalam daftar personil.");
+                        if (validationStatus != TaskImportValidationStatus.Error)
+                        {
+                            validationStatus = TaskImportValidationStatus.Warning;
+                        }
+                    }
+                }
+
+                rows.Add(new TaskImportRowDto(
+                    rowIndex,
+                    string.IsNullOrWhiteSpace(taskCode) ? null : taskCode,
+                    string.IsNullOrWhiteSpace(parentTaskCode) ? null : parentTaskCode,
+                    title,
+                    string.IsNullOrWhiteSpace(desc) ? null : desc,
+                    string.IsNullOrWhiteSpace(projectName) ? null : projectName,
+                    matchedProjectId,
+                    string.IsNullOrWhiteSpace(picText) ? null : picText,
+                    matchedUserId,
+                    matchedUserName,
+                    priority,
+                    status,
+                    progress,
+                    startDate,
+                    dueDate,
+                    string.IsNullOrWhiteSpace(milestone) ? null : milestone,
+                    string.IsNullOrWhiteSpace(obstacle) ? null : obstacle,
+                    string.IsNullOrWhiteSpace(solution) ? null : solution,
+                    validationStatus,
+                    validationMessages
+                ));
             }
         }
 
-        if (tasksToAdd.Count > 0)
+        int validCount = rows.Count(r => r.ValidationStatus == TaskImportValidationStatus.Valid);
+        int warningCount = rows.Count(r => r.ValidationStatus == TaskImportValidationStatus.Warning);
+        int errorCount = rows.Count(r => r.ValidationStatus == TaskImportValidationStatus.Error);
+
+        return new TaskImportPreviewDto(
+            fileName,
+            rows.Count,
+            validCount,
+            warningCount,
+            errorCount,
+            rows
+        );
+    }
+
+    public async Task<TaskImportResultDto> CommitImportAsync(
+        TaskImportCommitRequest request,
+        int? companyId,
+        CancellationToken cancellationToken = default)
+    {
+        var messages = new List<string>();
+        int totalProcessed = 0;
+        int totalImported = 0;
+        int totalProjectsCreated = 0;
+
+        var selectedIndexes = request.SelectedRowIndexes?.ToHashSet();
+        var candidateRows = request.Rows
+            .Where(r => r.ValidationStatus != TaskImportValidationStatus.Error)
+            .Where(r => selectedIndexes == null || selectedIndexes.Contains(r.RowIndex))
+            .ToList();
+
+        if (candidateRows.Count == 0)
         {
-            _context.Tasks.AddRange(tasksToAdd);
-            await _context.SaveChangesAsync(cancellationToken);
-            totalImported = tasksToAdd.Count;
+            return new TaskImportResultDto(0, 0, 0, ["Tidak ada baris valid yang dipilih untuk diimpor."]);
         }
 
-        messages.Add($"Berhasil memproses {totalProcessed} baris, mengimpor {totalImported} tugas unik, dan membuat {totalProjectsCreated} proyek baru.");
+        var isRelational = _context.Database.IsRelational();
+        await using var transaction = isRelational ? await _context.Database.BeginTransactionAsync(cancellationToken) : null;
 
-        return new ExcelImportResultDto(
+        var existingProjects = await _context.Projects
+            .Where(p => p.CompanyId == companyId)
+            .ToListAsync(cancellationToken);
+
+        var existingUsers = await _context.Users
+            .Where(u => u.CompanyId == companyId)
+            .ToListAsync(cancellationToken);
+
+        var tasksToInsert = new List<WorkTask>();
+        var batchTaskMap = new Dictionary<string, WorkTask>(StringComparer.OrdinalIgnoreCase);
+
+        // Preload DefaultProject if specified
+        Project? defaultProject = null;
+        if (request.DefaultProjectId.HasValue)
+        {
+            defaultProject = existingProjects.FirstOrDefault(p => p.Id == request.DefaultProjectId.Value);
+        }
+
+        foreach (var row in candidateRows)
+        {
+            totalProcessed++;
+
+            // Resolve Project
+            Project? project = null;
+            if (row.MatchedProjectId.HasValue)
+            {
+                project = existingProjects.FirstOrDefault(p => p.Id == row.MatchedProjectId.Value);
+            }
+            else if (!string.IsNullOrWhiteSpace(row.ProjectName))
+            {
+                project = existingProjects.FirstOrDefault(p =>
+                    p.Name.Equals(row.ProjectName, StringComparison.OrdinalIgnoreCase));
+
+                if (project == null)
+                {
+                    project = new Project
+                    {
+                        Name = row.ProjectName.Trim(),
+                        CompanyId = companyId,
+                        Color = PickColorForProject(row.ProjectName.Trim()),
+                        Status = ProjectStatus.Active,
+                        CreatedAt = DateTimeOffset.UtcNow
+                    };
+                    _context.Projects.Add(project);
+                    existingProjects.Add(project);
+                    totalProjectsCreated++;
+                }
+            }
+
+            if (project == null && defaultProject != null)
+            {
+                project = defaultProject;
+            }
+
+            // Resolve PIC
+            string? assignedUserId = row.MatchedUserId;
+            if (string.IsNullOrEmpty(assignedUserId) && !string.IsNullOrEmpty(request.BulkAssignUserId))
+            {
+                var bulkUser = existingUsers.FirstOrDefault(u => u.Id == request.BulkAssignUserId);
+                if (bulkUser != null)
+                {
+                    assignedUserId = bulkUser.Id;
+                }
+            }
+
+            var workTask = new WorkTask
+            {
+                Title = row.Title,
+                Description = row.Description,
+                Priority = row.Priority,
+                Status = row.Status,
+                Progress = row.Progress,
+                Milestone = row.Milestone,
+                Obstacle = row.Obstacle,
+                Solution = row.Solution,
+                Project = project,
+                AssignedToUserId = assignedUserId,
+                CompanyId = companyId,
+                StartDate = row.StartDate,
+                DueDate = row.DueDate,
+                CreatedAt = DateTimeOffset.UtcNow,
+                UpdatedAt = DateTimeOffset.UtcNow
+            };
+
+            tasksToInsert.Add(workTask);
+
+            if (!string.IsNullOrWhiteSpace(row.TaskCode))
+            {
+                batchTaskMap[row.TaskCode.Trim()] = workTask;
+            }
+        }
+
+        if (tasksToInsert.Count > 0)
+        {
+            _context.Tasks.AddRange(tasksToInsert);
+            await _context.SaveChangesAsync(cancellationToken);
+            totalImported = tasksToInsert.Count;
+
+            // Second pass: resolve parent-child hierarchy within the batch
+            bool hasHierarchyUpdates = false;
+            for (int i = 0; i < candidateRows.Count; i++)
+            {
+                var row = candidateRows[i];
+                var insertedTask = tasksToInsert[i];
+
+                if (!string.IsNullOrWhiteSpace(row.ParentTaskCode))
+                {
+                    var parentCode = row.ParentTaskCode.Trim();
+                    if (batchTaskMap.TryGetValue(parentCode, out var parentTask) && parentTask.Id != insertedTask.Id)
+                    {
+                        insertedTask.ParentTaskId = parentTask.Id;
+                        hasHierarchyUpdates = true;
+                    }
+                    else if (int.TryParse(parentCode, out var directParentId))
+                    {
+                        var parentExists = await _context.Tasks.AnyAsync(t => t.Id == directParentId && t.CompanyId == companyId, cancellationToken);
+                        if (parentExists)
+                        {
+                            insertedTask.ParentTaskId = directParentId;
+                            hasHierarchyUpdates = true;
+                        }
+                    }
+                }
+            }
+
+            if (hasHierarchyUpdates)
+            {
+                await _context.SaveChangesAsync(cancellationToken);
+            }
+        }
+
+        if (transaction != null)
+        {
+            await transaction.CommitAsync(cancellationToken);
+        }
+
+        messages.Add($"Berhasil mengimpor {totalImported} tugas dari {totalProcessed} baris data ({totalProjectsCreated} proyek baru dibuat).");
+
+        return new TaskImportResultDto(
             totalProcessed,
             totalImported,
             totalProjectsCreated,
             messages
+        );
+    }
+
+    public async Task<ExcelImportResultDto> ImportTasksFromExcelAsync(
+        Stream fileStream,
+        int? companyId,
+        CancellationToken cancellationToken = default)
+    {
+        var preview = await PreviewImportAsync(fileStream, "Upload.xlsx", companyId, cancellationToken);
+        var commitReq = new TaskImportCommitRequest(null, null, null, preview.Rows);
+        var commitRes = await CommitImportAsync(commitReq, companyId, cancellationToken);
+
+        return new ExcelImportResultDto(
+            commitRes.TotalProcessed,
+            commitRes.TotalImported,
+            commitRes.TotalProjectsCreated,
+            commitRes.Messages
         );
     }
 

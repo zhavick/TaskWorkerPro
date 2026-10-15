@@ -571,6 +571,93 @@ public class TasksController : ControllerBase
         return Ok(new { success = true, message = "Sub-tugas berhasil ditambahkan.", data = subtask });
     }
 
+    [HttpGet("import/template")]
+    [Authorize(Roles = "Administrator,SuperAdmin")]
+    public IActionResult DownloadTemplate([FromQuery] string format = "standard")
+    {
+        var bytes = _excelImportService.GenerateTemplate(format);
+        var fileName = format.ToLowerInvariant() == "arms"
+            ? "Template_Import_Tugas_ARMS.xlsx"
+            : "Template_Import_Tugas_Standar.xlsx";
+        return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
+    }
+
+    [HttpPost("import/preview")]
+    [Authorize(Roles = "Administrator,SuperAdmin")]
+    public async Task<IActionResult> PreviewImport(IFormFile file, CancellationToken cancellationToken)
+    {
+        if (file == null || file.Length == 0)
+        {
+            return BadRequest(new { success = false, message = "File Excel wajib diunggah." });
+        }
+
+        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+        if (ext != ".xlsx" && ext != ".xls")
+        {
+            return BadRequest(new { success = false, message = "Hanya file format Excel (.xlsx / .xls) yang diperbolehkan." });
+        }
+
+        try
+        {
+            await using var stream = file.OpenReadStream();
+            var preview = await _excelImportService.PreviewImportAsync(
+                stream,
+                file.FileName,
+                _tenantService.CompanyId,
+                cancellationToken
+            );
+
+            return Ok(new
+            {
+                success = true,
+                message = $"Berhasil membaca {preview.TotalRows} baris dari file Excel.",
+                data = preview
+            });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new
+            {
+                success = false,
+                message = $"Gagal memproses pratinjau file Excel: {ex.Message}"
+            });
+        }
+    }
+
+    [HttpPost("import/commit")]
+    [Authorize(Roles = "Administrator,SuperAdmin")]
+    public async Task<IActionResult> CommitImport([FromBody] TaskImportCommitRequest request, CancellationToken cancellationToken)
+    {
+        if (request == null || request.Rows == null || request.Rows.Count == 0)
+        {
+            return BadRequest(new { success = false, message = "Data baris tugas untuk diimpor tidak boleh kosong." });
+        }
+
+        try
+        {
+            var result = await _excelImportService.CommitImportAsync(
+                request,
+                _tenantService.CompanyId,
+                cancellationToken
+            );
+
+            return Ok(new
+            {
+                success = true,
+                message = $"Berhasil mengimpor {result.TotalImported} tugas ({result.TotalProjectsCreated} proyek baru dibuat).",
+                data = result
+            });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new
+            {
+                success = false,
+                message = $"Gagal menyimpan data impor: {ex.Message}"
+            });
+        }
+    }
+
     [HttpPost("import-excel")]
     public async Task<IActionResult> ImportExcel(IFormFile file, CancellationToken cancellationToken)
     {
