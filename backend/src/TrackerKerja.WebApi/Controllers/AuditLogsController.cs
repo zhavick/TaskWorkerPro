@@ -25,6 +25,7 @@ public class AuditLogsController : ControllerBase
         [FromQuery] int pageSize = 20,
         [FromQuery] string? search = null,
         [FromQuery] string? method = null,
+        [FromQuery] string? module = null,
         [FromQuery] int? statusCode = null,
         [FromQuery] string? userId = null,
         [FromQuery] DateTimeOffset? startDate = null,
@@ -39,12 +40,20 @@ public class AuditLogsController : ControllerBase
                                      (a.UserEmail != null && a.UserEmail.Contains(searchLower)) ||
                                      (a.Path != null && a.Path.Contains(searchLower)) ||
                                      (a.ControllerName != null && a.ControllerName.Contains(searchLower)) ||
-                                     (a.ActionName != null && a.ActionName.Contains(searchLower)));
+                                     (a.ActionName != null && a.ActionName.Contains(searchLower)) ||
+                                     (a.Details != null && a.Details.Contains(searchLower)));
         }
 
         if (!string.IsNullOrWhiteSpace(method) && method.ToUpperInvariant() != "ALL")
         {
             query = query.Where(a => a.HttpMethod == method.ToUpperInvariant());
+        }
+
+        if (!string.IsNullOrWhiteSpace(module) && module.ToUpperInvariant() != "ALL")
+        {
+            var moduleLower = module.Trim();
+            query = query.Where(a => (a.Details != null && a.Details.Contains(moduleLower)) ||
+                                     (a.ControllerName != null && a.ControllerName.Contains(moduleLower)));
         }
 
         if (statusCode.HasValue)
@@ -184,6 +193,75 @@ public class AuditLogsController : ControllerBase
             .ToListAsync();
 
         return Ok(new { success = true, data = logs });
+    }
+
+    [HttpGet("project/{projectId}")]
+    public async Task<IActionResult> GetProjectAuditTimeline(int projectId)
+    {
+        var targetPath1 = $"/projects/{projectId}";
+        var targetPath2 = $"/api/projects/{projectId}";
+        var projIdParam1 = $"\"projectId\":{projectId}";
+        var projIdParam2 = $"\"projectId\": {projectId}";
+
+        var logs = await _context.AuditLogs
+            .AsNoTracking()
+            .Where(a => (a.Path != null && (a.Path.Contains(targetPath1) || a.Path.Contains(targetPath2))) ||
+                        (a.Details != null && (a.Details.Contains(projIdParam1) || a.Details.Contains(projIdParam2))))
+            .OrderByDescending(a => a.Timestamp)
+            .Take(30)
+            .Select(a => new AuditLogDto(
+                a.Id, a.UserId, a.UserEmail, a.UserName, a.ControllerName, a.ActionName,
+                a.HttpMethod, a.Path, a.StatusCode, a.DurationMs, a.Timestamp, a.Details
+            ))
+            .ToListAsync();
+
+        return Ok(new { success = true, data = logs });
+    }
+
+    [HttpGet("member/{userId}")]
+    [Authorize(Roles = "Administrator,SuperAdmin")]
+    public async Task<IActionResult> GetMemberAuditTimeline(string userId)
+    {
+        var targetPath = $"/members/{userId}";
+        var userIdParam1 = $"\"userId\":\"{userId}\"";
+        var userIdParam2 = $"\"userId\": \"{userId}\"";
+
+        var logs = await _context.AuditLogs
+            .AsNoTracking()
+            .Where(a => a.UserId == userId ||
+                        (a.Path != null && a.Path.Contains(targetPath)) ||
+                        (a.Details != null && (a.Details.Contains(userIdParam1) || a.Details.Contains(userIdParam2))))
+            .OrderByDescending(a => a.Timestamp)
+            .Take(30)
+            .Select(a => new AuditLogDto(
+                a.Id, a.UserId, a.UserEmail, a.UserName, a.ControllerName, a.ActionName,
+                a.HttpMethod, a.Path, a.StatusCode, a.DurationMs, a.Timestamp, a.Details
+            ))
+            .ToListAsync();
+
+        return Ok(new { success = true, data = logs });
+    }
+
+    [HttpGet("modules")]
+    public IActionResult GetAvailableModules()
+    {
+        var modules = new[]
+        {
+            "Autentikasi & Akun",
+            "Manajemen Tugas",
+            "Manajemen Proyek",
+            "Timesheet & Timer",
+            "Presensi & Kehadiran",
+            "Catatan & Dokumen",
+            "Gamifikasi & Hadiah",
+            "Pengumuman Resmi",
+            "Manajemen Anggota",
+            "Konfigurasi Sistem",
+            "Master Data SDLC",
+            "Developer Tools",
+            "Sinkronisasi Host Induk"
+        };
+        return Ok(new { success = true, data = modules });
     }
 
     [HttpGet("{id}")]

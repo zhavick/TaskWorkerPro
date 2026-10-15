@@ -199,4 +199,52 @@ public class AuditLogsControllerTests
         Assert.Contains("[REDACTED]", createdLog.Details);
         Assert.DoesNotContain("my-secret-123", createdLog.Details);
     }
+
+    [Fact]
+    public async Task GetProjectAuditTimeline_ReturnsMatchingLogsForProject()
+    {
+        using var context = CreateInMemoryContext();
+        var controller = new AuditLogsController(context);
+
+        var result = await controller.GetProjectAuditTimeline(5);
+        var okResult = Assert.IsType<OkObjectResult>(result);
+
+        var root = ToJsonElement(okResult.Value);
+        Assert.True(root.GetProperty("success").GetBoolean());
+        var items = root.GetProperty("data");
+        Assert.Equal(1, items.GetArrayLength());
+        Assert.Equal(3, items[0].GetProperty("id").GetInt64());
+    }
+
+    [Fact]
+    public async Task GetMemberAuditTimeline_ReturnsMatchingLogsForMember()
+    {
+        using var context = CreateInMemoryContext();
+        var controller = new AuditLogsController(context);
+
+        var result = await controller.GetMemberAuditTimeline("user-2");
+        var okResult = Assert.IsType<OkObjectResult>(result);
+
+        var root = ToJsonElement(okResult.Value);
+        Assert.True(root.GetProperty("success").GetBoolean());
+        var items = root.GetProperty("data");
+        Assert.Equal(1, items.GetArrayLength());
+        Assert.Equal(2, items[0].GetProperty("id").GetInt64());
+    }
+
+    [Fact]
+    public void GetAvailableModules_ReturnsListOfModules()
+    {
+        using var context = CreateInMemoryContext();
+        var controller = new AuditLogsController(context);
+
+        var result = controller.GetAvailableModules();
+        var okResult = Assert.IsType<OkObjectResult>(result);
+
+        var root = ToJsonElement(okResult.Value);
+        Assert.True(root.GetProperty("success").GetBoolean());
+        var data = root.GetProperty("data");
+        Assert.True(data.GetArrayLength() > 5);
+    }
 }
+

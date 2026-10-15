@@ -29,6 +29,9 @@ import {
   X,
   Sparkles,
   Loader2,
+  ShieldCheck,
+  Activity,
+  Code,
 } from "lucide-react";
 import { Button } from "@/components/tailgrids/core/button";
 import { Input } from "@/components/tailgrids/core/input";
@@ -145,6 +148,9 @@ export default function ProjectStudioDetailPage() {
   const [bulkModalOpen, setBulkModalOpen] = useState(false);
   const [selectedUnassignedIds, setSelectedUnassignedIds] = useState<number[]>([]);
 
+  // Workbench tab selector (Tasks vs Audit Trail)
+  const [activeTab, setActiveTab] = useState<"tasks" | "audit">("tasks");
+
   // Delete project confirmation modal
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
 
@@ -170,6 +176,16 @@ export default function ProjectStudioDetailPage() {
     queryFn: async () => {
       const res = await apiClient.get(`/projects/${projectId}`);
       return res.data.data;
+    },
+    enabled: !isNaN(projectId) && projectId > 0,
+  });
+
+  // 2b. Fetch Project Audit Logs Timeline
+  const { data: projectAuditLogs = [], isLoading: loadingProjectAudit } = useQuery<any[]>({
+    queryKey: ["projectAuditLogs", projectId],
+    queryFn: async () => {
+      const res = await apiClient.get(`/audit-logs/project/${projectId}`);
+      return res.data?.data || [];
     },
     enabled: !isNaN(projectId) && projectId > 0,
   });
@@ -645,199 +661,361 @@ export default function ProjectStudioDetailPage() {
             </div>
           </div>
 
-          {/* Project Tasks Workbench */}
+          {/* Project Tasks & Audit Workbench */}
           <div className="rounded-2xl border border-gray-200/80 bg-white p-6 shadow-xs dark:border-gray-800 dark:bg-gray-900">
-            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h2 className="text-sm font-bold uppercase tracking-wider text-gray-400">
-                  Daftar Tugas Proyek ({filteredTasks.length})
-                </h2>
-                <p className="text-xs text-gray-500">
-                  Kelola penugasan, progress kerja, dan integrasi studio tugas.
-                </p>
+            {/* Workbench Tabs Header */}
+            <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-gray-100 pb-4 dark:border-gray-800">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("tasks")}
+                  className={`flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-bold transition-all ${
+                    activeTab === "tasks"
+                      ? "bg-indigo-50 text-indigo-700 shadow-xs dark:bg-indigo-950/80 dark:text-indigo-300"
+                      : "text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
+                  }`}
+                >
+                  <Layers className="h-4 w-4" />
+                  <span>Daftar Tugas Proyek</span>
+                  <span className="rounded-full bg-indigo-200/60 px-2 py-0.5 text-[10px] font-black text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200">
+                    {filteredTasks.length}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("audit")}
+                  className={`flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-bold transition-all ${
+                    activeTab === "audit"
+                      ? "bg-indigo-50 text-indigo-700 shadow-xs dark:bg-indigo-950/80 dark:text-indigo-300"
+                      : "text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
+                  }`}
+                >
+                  <Activity className="h-4 w-4" />
+                  <span>Log Aktivitas & Audit</span>
+                  <span className="rounded-full bg-gray-200 px-2 py-0.5 text-[10px] font-bold text-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                    {projectAuditLogs.length}
+                  </span>
+                </button>
               </div>
 
-              {/* Filters */}
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="relative">
-                  <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-gray-400" />
-                  <Input
-                    value={taskSearch}
-                    onChange={(e) => setTaskSearch(e.target.value)}
-                    placeholder="Cari tugas..."
-                    className="h-8 w-44 pl-8 text-xs"
-                  />
-                </div>
+              {activeTab === "tasks" && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="relative">
+                    <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-gray-400" />
+                    <Input
+                      value={taskSearch}
+                      onChange={(e) => setTaskSearch(e.target.value)}
+                      placeholder="Cari tugas..."
+                      className="h-8 w-44 pl-8 text-xs"
+                    />
+                  </div>
 
-                <div className="flex items-center rounded-lg border border-gray-200 bg-gray-50/50 p-0.5 text-xs dark:border-gray-800 dark:bg-gray-800">
-                  {["all", "todo", "inprogress", "done"].map((st) => (
-                    <button
-                      key={st}
-                      type="button"
-                      onClick={() => setStatusFilter(st)}
-                      className={`rounded-md px-2.5 py-1 text-[11px] font-semibold transition ${
-                        statusFilter === st
-                          ? "bg-white text-gray-900 shadow-xs dark:bg-gray-900 dark:text-white"
-                          : "text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
-                      }`}
-                    >
-                      {st === "all"
-                        ? "Semua"
-                        : st === "todo"
-                        ? "Todo"
-                        : st === "inprogress"
-                        ? "In Progress"
-                        : "Done"}
-                    </button>
-                  ))}
+                  <div className="flex items-center rounded-lg border border-gray-200 bg-gray-50/50 p-0.5 text-xs dark:border-gray-800 dark:bg-gray-800">
+                    {["all", "todo", "inprogress", "done"].map((st) => (
+                      <button
+                        key={st}
+                        type="button"
+                        onClick={() => setStatusFilter(st)}
+                        className={`rounded-md px-2.5 py-1 text-[11px] font-semibold transition ${
+                          statusFilter === st
+                            ? "bg-white text-gray-900 shadow-xs dark:bg-gray-900 dark:text-white"
+                            : "text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
+                        }`}
+                      >
+                        {st === "all"
+                          ? "Semua"
+                          : st === "todo"
+                          ? "Todo"
+                          : st === "inprogress"
+                          ? "In Progress"
+                          : "Done"}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
 
-            {/* Task Table */}
-            <div className="overflow-x-auto rounded-xl border border-gray-100 dark:border-gray-800">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead>
-                  <tr className="border-b border-gray-100 bg-gray-50/75 dark:border-gray-800 dark:bg-gray-800/50">
-                    <th className="px-4 py-3 font-bold text-gray-600 dark:text-gray-300">
-                      Kode & Tugas
-                    </th>
-                    <th className="px-4 py-3 font-bold text-gray-600 dark:text-gray-300">
-                      Prioritas
-                    </th>
-                    <th className="px-4 py-3 font-bold text-gray-600 dark:text-gray-300">
-                      Status
-                    </th>
-                    <th className="px-4 py-3 font-bold text-gray-600 dark:text-gray-300">
-                      Progress
-                    </th>
-                    <th className="px-4 py-3 font-bold text-gray-600 dark:text-gray-300">
-                      PIC
-                    </th>
-                    <th className="px-4 py-3 font-bold text-gray-600 dark:text-gray-300">
-                      Waktu
-                    </th>
-                    <th className="px-4 py-3 text-right font-bold text-gray-600 dark:text-gray-300">
-                      Aksi
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                  {filteredTasks.map((t: any) => (
-                    <tr
-                      key={t.id}
-                      className="transition-colors hover:bg-gray-50/60 dark:hover:bg-gray-800/40"
-                    >
-                      <td className="px-4 py-3">
-                        <div className="font-mono text-[11px] font-bold text-indigo-600 dark:text-indigo-400">
-                          {t.taskCode}
-                        </div>
-                        <div className="font-semibold text-gray-900 dark:text-white">
-                          {t.title}
-                        </div>
-                        {t.categoryName && (
-                          <span className="text-[10px] text-gray-400">
-                            {t.categoryName}
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">{getPriorityBadge(t.priority)}</td>
-                      <td className="px-4 py-3">{getStatusBadge(t.status)}</td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <div className="h-1.5 w-16 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
-                            <div
-                              className="h-full bg-indigo-600"
-                              style={{ width: `${t.progress}%` }}
-                            />
+            {/* TAB 1: TASKS LIST */}
+            {activeTab === "tasks" && (
+              <div className="overflow-x-auto rounded-xl border border-gray-100 dark:border-gray-800">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="border-b border-gray-100 bg-gray-50/75 dark:border-gray-800 dark:bg-gray-800/50">
+                      <th className="px-4 py-3 font-bold text-gray-600 dark:text-gray-300">
+                        Kode & Tugas
+                      </th>
+                      <th className="px-4 py-3 font-bold text-gray-600 dark:text-gray-300">
+                        Prioritas
+                      </th>
+                      <th className="px-4 py-3 font-bold text-gray-600 dark:text-gray-300">
+                        Status
+                      </th>
+                      <th className="px-4 py-3 font-bold text-gray-600 dark:text-gray-300">
+                        Progress
+                      </th>
+                      <th className="px-4 py-3 font-bold text-gray-600 dark:text-gray-300">
+                        PIC
+                      </th>
+                      <th className="px-4 py-3 font-bold text-gray-600 dark:text-gray-300">
+                        Waktu
+                      </th>
+                      <th className="px-4 py-3 text-right font-bold text-gray-600 dark:text-gray-300">
+                        Aksi
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                    {filteredTasks.map((t: any) => (
+                      <tr
+                        key={t.id}
+                        className="transition-colors hover:bg-gray-50/60 dark:hover:bg-gray-800/40"
+                      >
+                        <td className="px-4 py-3">
+                          <div className="font-mono text-[11px] font-bold text-indigo-600 dark:text-indigo-400">
+                            {t.taskCode}
                           </div>
-                          <span className="font-mono text-[11px] text-gray-500">
-                            {t.progress}%
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        {t.assignedToUserName ? (
-                          <div className="flex items-center gap-1.5">
-                            <span
-                              className="flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold text-white"
-                              style={{
-                                backgroundColor:
-                                  t.assignedToUserAvatarColor || "#6366F1",
-                              }}
-                            >
-                              {t.assignedToUserName.charAt(0).toUpperCase()}
+                          <div className="font-semibold text-gray-900 dark:text-white">
+                            {t.title}
+                          </div>
+                          {t.categoryName && (
+                            <span className="text-[10px] text-gray-400">
+                              {t.categoryName}
                             </span>
-                            <span className="max-w-[100px] truncate font-medium text-gray-700 dark:text-gray-300">
-                              {t.assignedToUserName}
+                          )}
+                        </td>
+                        <td className="px-4 py-3">{getPriorityBadge(t.priority)}</td>
+                        <td className="px-4 py-3">{getStatusBadge(t.status)}</td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <div className="h-1.5 w-16 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
+                              <div
+                                className="h-full bg-indigo-600"
+                                style={{ width: `${t.progress}%` }}
+                              />
+                            </div>
+                            <span className="font-mono text-[11px] text-gray-500">
+                              {t.progress}%
                             </span>
                           </div>
-                        ) : (
-                          <span className="text-gray-400">-</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 font-mono text-[11px] text-gray-500">
-                        {Math.round((t.totalDurationSeconds / 3600) * 10) / 10}h
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <Link href={`/tasks/${t.id}`}>
+                        </td>
+                        <td className="px-4 py-3">
+                          {t.assignedToUserName ? (
+                            <div className="flex items-center gap-1.5">
+                              <span
+                                className="flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold text-white"
+                                style={{
+                                  backgroundColor:
+                                    t.assignedToUserAvatarColor || "#6366F1",
+                                }}
+                              >
+                                {t.assignedToUserName.charAt(0).toUpperCase()}
+                              </span>
+                              <span className="max-w-[100px] truncate font-medium text-gray-700 dark:text-gray-300">
+                                {t.assignedToUserName}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-gray-400">-</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 font-mono text-[11px] text-gray-500">
+                          {Math.round((t.totalDurationSeconds / 3600) * 10) / 10}h
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <Link href={`/tasks/${t.id}`}>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 w-7 p-0 text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/40"
+                                title="Buka Studio Tugas"
+                              >
+                                <ExternalLink className="h-3.5 w-3.5" />
+                              </Button>
+                            </Link>
+
                             <Button
                               size="sm"
                               variant="ghost"
-                              className="h-7 w-7 p-0 text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/40"
-                              title="Buka Studio Tugas"
+                              className="h-7 w-7 p-0 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40"
+                              title="Lepas Tugas dari Proyek"
+                              onClick={() => {
+                                if (
+                                  confirm(
+                                    `Lepaskan tugas '${t.title}' dari proyek ini?`
+                                  )
+                                ) {
+                                  unassignTaskMutation.mutate(t.id);
+                                }
+                              }}
                             >
-                              <ExternalLink className="h-3.5 w-3.5" />
+                              <Unlink className="h-3.5 w-3.5" />
                             </Button>
-                          </Link>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
 
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-7 w-7 p-0 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40"
-                            title="Lepas Tugas dari Proyek"
-                            onClick={() => {
-                              if (
-                                confirm(
-                                  `Lepaskan tugas '${t.title}' dari proyek ini?`
-                                )
-                              ) {
-                                unassignTaskMutation.mutate(t.id);
-                              }
-                            }}
-                          >
-                            <Unlink className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                    {filteredTasks.length === 0 && (
+                      <tr>
+                        <td
+                          colSpan={7}
+                          className="py-12 text-center text-gray-400"
+                        >
+                          <Layers className="mx-auto mb-2 h-8 w-8 text-gray-300 dark:text-gray-600" />
+                          Belum ada tugas yang cocok dengan filter.
+                          <div className="mt-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setBulkModalOpen(true)}
+                              className="text-xs"
+                            >
+                              + Alokasi Tugas Sekarang
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
 
-                  {filteredTasks.length === 0 && (
-                    <tr>
-                      <td
-                        colSpan={7}
-                        className="py-12 text-center text-gray-400"
-                      >
-                        <Layers className="mx-auto mb-2 h-8 w-8 text-gray-300 dark:text-gray-600" />
-                        Belum ada tugas yang cocok dengan filter.
-                        <div className="mt-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => setBulkModalOpen(true)}
-                            className="text-xs"
-                          >
-                            + Alokasi Tugas Sekarang
-                          </Button>
+            {/* TAB 2: AUDIT LOG TIMELINE */}
+            {activeTab === "audit" && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-gray-500">
+                    Riwayat kronologis mutasi data dan aksi administratif khusus terkait proyek ini.
+                  </p>
+                  <span className="text-[11px] font-mono text-gray-400">
+                    Total: {projectAuditLogs.length} kejadian
+                  </span>
+                </div>
+
+                {loadingProjectAudit ? (
+                  <div className="py-12 text-center text-xs text-gray-400">
+                    <Loader2 className="mx-auto mb-2 h-6 w-6 animate-spin text-indigo-600" />
+                    Memuat log aktivitas proyek...
+                  </div>
+                ) : projectAuditLogs.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-gray-200 py-12 text-center text-xs text-gray-400 dark:border-gray-800">
+                    <ShieldCheck className="mx-auto mb-2 h-8 w-8 text-gray-300 dark:text-gray-600" />
+                    Belum ada rekaman audit log untuk proyek ini.
+                  </div>
+                ) : (
+                  <div className="relative border-l-2 border-indigo-100 dark:border-indigo-950/60 ml-4 space-y-6 py-2">
+                    {projectAuditLogs.map((log: any) => {
+                      let parsedDetails: any = null;
+                      try {
+                        if (log.details) parsedDetails = JSON.parse(log.details);
+                      } catch {}
+
+                      const date = new Date(log.timestamp);
+                      const displaySummary =
+                        parsedDetails?.actionSummary ||
+                        `${log.controllerName} / ${log.actionName}`;
+
+                      const isSuccess = log.statusCode >= 200 && log.statusCode < 300;
+
+                      return (
+                        <div key={log.id} className="relative pl-6">
+                          {/* Dot indicator */}
+                          <div
+                            className={`absolute -left-[9px] top-1.5 h-4 w-4 rounded-full border-2 border-white dark:border-gray-900 ${
+                              isSuccess ? "bg-indigo-600" : "bg-rose-500"
+                            }`}
+                          />
+
+                          <div className="rounded-xl border border-gray-100 bg-gray-50/60 p-4 transition-all hover:border-indigo-200 dark:border-gray-800 dark:bg-gray-800/40">
+                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                              <div className="flex items-center gap-2">
+                                <span
+                                  className={`rounded-md px-2 py-0.5 text-[10px] font-bold tracking-wider ${
+                                    log.httpMethod === "POST"
+                                      ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+                                      : log.httpMethod === "PUT"
+                                      ? "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300"
+                                      : log.httpMethod === "DELETE"
+                                      ? "bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300"
+                                      : "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300"
+                                  }`}
+                                >
+                                  {log.httpMethod}
+                                </span>
+                                <h4 className="font-bold text-xs text-gray-900 dark:text-white">
+                                  {displaySummary}
+                                </h4>
+                              </div>
+
+                              <div className="flex items-center gap-2 text-[11px] text-gray-400">
+                                <Clock className="h-3 w-3" />
+                                <span>
+                                  {date.toLocaleDateString("id-ID", {
+                                    day: "numeric",
+                                    month: "short",
+                                    year: "numeric",
+                                  })}{" "}
+                                  •{" "}
+                                  {date.toLocaleTimeString("id-ID", {
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                    second: "2-digit",
+                                  })}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Actor & Telemetry */}
+                            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-gray-500 dark:text-gray-400">
+                              <div className="flex items-center gap-1.5">
+                                <User className="h-3 w-3 text-gray-400" />
+                                <span className="font-semibold text-gray-800 dark:text-gray-200">
+                                  {log.userName || "Sistem / Anonim"}
+                                </span>
+                                {log.userEmail && (
+                                  <span className="text-[10px] text-gray-400">
+                                    ({log.userEmail})
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className="flex items-center gap-1 font-mono text-[10px]">
+                                <span>Status:</span>
+                                <span
+                                  className={`font-bold ${
+                                    isSuccess ? "text-emerald-600" : "text-rose-600"
+                                  }`}
+                                >
+                                  {log.statusCode}
+                                </span>
+                                <span>•</span>
+                                <span>{log.durationMs}ms</span>
+                              </div>
+                            </div>
+
+                            {/* Details Payload if available */}
+                            {parsedDetails?.parameters && (
+                              <details className="mt-3 group">
+                                <summary className="cursor-pointer text-[10px] font-semibold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400">
+                                  Lihat Rincian Parameter Mutasi
+                                </summary>
+                                <pre className="mt-2 max-h-36 overflow-y-auto rounded-lg bg-gray-900 p-2.5 text-[10px] font-mono text-emerald-400">
+                                  {JSON.stringify(parsedDetails.parameters, null, 2)}
+                                </pre>
+                              </details>
+                            )}
+                          </div>
                         </div>
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 

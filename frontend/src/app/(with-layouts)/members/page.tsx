@@ -28,6 +28,9 @@ import {
   Check,
   Briefcase,
   AlertCircle,
+  Activity,
+  Loader2,
+  Code,
 } from "lucide-react";
 import { Button } from "@/components/tailgrids/core/button";
 import { Input } from "@/components/tailgrids/core/input";
@@ -86,6 +89,17 @@ export default function MembersPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<MemberItem | null>(null);
   const [confirmFullName, setConfirmFullName] = useState("");
+  const [auditTarget, setAuditTarget] = useState<MemberItem | null>(null);
+
+  // Member Audit Logs Query
+  const { data: memberAuditLogs = [], isLoading: loadingMemberAudit } = useQuery<any[]>({
+    queryKey: ["memberAuditLogs", auditTarget?.id],
+    queryFn: async () => {
+      const res = await apiClient.get(`/audit-logs/member/${auditTarget?.id}`);
+      return res.data?.data || [];
+    },
+    enabled: !!auditTarget?.id,
+  });
 
   // 1. Fetch Current User Profile to inspect RBAC Role
   const { data: userProfile } = useQuery<any>({
@@ -462,6 +476,7 @@ export default function MembersPage() {
                     isAdmin={isAdmin}
                     currentUserId={userProfile?.id}
                     onOpenDetail={() => setDetailMember(m)}
+                    onOpenAudit={() => setAuditTarget(m)}
                     onResetPassword={() => {
                       setResetTarget(m);
                       setNewPassword("");
@@ -507,6 +522,7 @@ export default function MembersPage() {
               isAdmin={isAdmin}
               currentUserId={userProfile?.id}
               onOpenDetail={() => setDetailMember(m)}
+              onOpenAudit={() => setAuditTarget(m)}
               onResetPassword={() => {
                 setResetTarget(m);
                 setNewPassword("");
@@ -903,11 +919,195 @@ export default function MembersPage() {
             </DialogBody>
           )}
 
-          <DialogFooter>
+          <DialogFooter className="flex items-center justify-between sm:justify-between w-full">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                const target = detailMember;
+                setDetailMember(null);
+                setAuditTarget(target);
+              }}
+              className="gap-1.5 text-xs text-indigo-600 border-indigo-200 hover:bg-indigo-50 dark:border-indigo-900/40 dark:text-indigo-400"
+            >
+              <Activity className="h-3.5 w-3.5" />
+              Buka Log Aktivitas
+            </Button>
+
             <Button
               size="sm"
               variant="outline"
               onClick={() => setDetailMember(null)}
+              className="text-xs"
+            >
+              Tutup
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ======================================================== */}
+      {/* MODAL 4: DETAIL LOG AUDIT & AKTIVITAS ANGGOTA            */}
+      {/* ======================================================== */}
+      <Dialog isOpen={!!auditTarget} onOpenChange={(open) => !open && setAuditTarget(null)}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400">
+              <ShieldCheck className="h-5 w-5" />
+              <DialogTitle className="text-base font-extrabold text-gray-900 dark:text-white">
+                Log Audit & Aktivitas Anggota
+              </DialogTitle>
+            </div>
+          </DialogHeader>
+
+          {auditTarget && (
+            <DialogBody className="space-y-4 py-2">
+              {/* Header Profile Info */}
+              <div className="flex items-center gap-3 rounded-2xl border border-gray-100 bg-gray-50/70 p-3.5 dark:border-gray-800 dark:bg-gray-800/40">
+                <div
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-base font-black text-white shadow-2xs"
+                  style={{ backgroundColor: auditTarget.avatarColor || "#6366F1" }}
+                >
+                  {auditTarget.fullName.slice(0, 2).toUpperCase()}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h4 className="text-sm font-black text-gray-900 dark:text-white truncate">
+                    {auditTarget.fullName}
+                  </h4>
+                  <p className="text-xs text-gray-500 truncate">{auditTarget.email}</p>
+                  <p className="text-[10px] text-indigo-600 dark:text-indigo-400 font-semibold">
+                    [{auditTarget.companyCode}] {auditTarget.jobTitle} • User ID: {auditTarget.id}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <span className="text-[10px] uppercase font-bold text-gray-400 block">Total Mutasi</span>
+                  <span className="text-base font-black text-indigo-600 dark:text-indigo-400">
+                    {memberAuditLogs.length}
+                  </span>
+                </div>
+              </div>
+
+              {/* Audit Activity List */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between text-xs text-gray-500">
+                  <span>Riwayat aksi sistem, mutasi data, dan keamanan:</span>
+                </div>
+
+                {loadingMemberAudit ? (
+                  <div className="py-12 text-center text-xs text-gray-400">
+                    <Loader2 className="mx-auto mb-2 h-6 w-6 animate-spin text-indigo-600" />
+                    Memuat riwayat aktivitas audit anggota...
+                  </div>
+                ) : memberAuditLogs.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-gray-200 py-12 text-center text-xs text-gray-400 dark:border-gray-800">
+                    <ShieldCheck className="mx-auto mb-2 h-8 w-8 text-gray-300 dark:text-gray-600" />
+                    Belum ada riwayat aktivitas mutasi yang tercatat untuk anggota ini.
+                  </div>
+                ) : (
+                  <div className="relative border-l-2 border-indigo-100 dark:border-indigo-950/60 ml-3 space-y-4 py-1">
+                    {memberAuditLogs.map((log: any) => {
+                      let parsedDetails: any = null;
+                      try {
+                        if (log.details) parsedDetails = JSON.parse(log.details);
+                      } catch {}
+
+                      const date = new Date(log.timestamp);
+                      const displaySummary =
+                        parsedDetails?.actionSummary ||
+                        `${log.controllerName} / ${log.actionName}`;
+                      const isSuccess = log.statusCode >= 200 && log.statusCode < 300;
+
+                      return (
+                        <div key={log.id} className="relative pl-5">
+                          {/* Dot indicator */}
+                          <div
+                            className={`absolute -left-[7px] top-1.5 h-3.5 w-3.5 rounded-full border-2 border-white dark:border-gray-900 ${
+                              isSuccess ? "bg-indigo-600" : "bg-rose-500"
+                            }`}
+                          />
+
+                          <div className="rounded-xl border border-gray-100 bg-gray-50/60 p-3.5 transition hover:border-indigo-200 dark:border-gray-800 dark:bg-gray-800/40 text-xs">
+                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span
+                                  className={`rounded-md px-1.5 py-0.5 text-[9px] font-bold tracking-wider ${
+                                    log.httpMethod === "POST"
+                                      ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+                                      : log.httpMethod === "PUT"
+                                      ? "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300"
+                                      : log.httpMethod === "DELETE"
+                                      ? "bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300"
+                                      : "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300"
+                                  }`}
+                                >
+                                  {log.httpMethod}
+                                </span>
+                                {parsedDetails?.module && (
+                                  <span className="rounded-md bg-gray-200/80 px-1.5 py-0.5 text-[9px] font-semibold text-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                                    {parsedDetails.module}
+                                  </span>
+                                )}
+                                <span className="font-bold text-gray-900 dark:text-white">
+                                  {displaySummary}
+                                </span>
+                              </div>
+
+                              <span className="text-[10px] text-gray-400 font-mono">
+                                {date.toLocaleDateString("id-ID", {
+                                  day: "numeric",
+                                  month: "short",
+                                })}{" "}
+                                •{" "}
+                                {date.toLocaleTimeString("id-ID", {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                  second: "2-digit",
+                                })}
+                              </span>
+                            </div>
+
+                            <div className="mt-2 flex flex-wrap items-center gap-x-3 text-[10px] text-gray-400 font-mono">
+                              <span>Endpoint: {log.path}</span>
+                              <span>•</span>
+                              <span>
+                                Status:{" "}
+                                <span
+                                  className={`font-bold ${
+                                    isSuccess ? "text-emerald-600" : "text-rose-600"
+                                  }`}
+                                >
+                                  {log.statusCode}
+                                </span>
+                              </span>
+                              <span>•</span>
+                              <span>Durasi: {log.durationMs}ms</span>
+                            </div>
+
+                            {parsedDetails?.parameters && (
+                              <details className="mt-2 group">
+                                <summary className="cursor-pointer text-[10px] font-semibold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400">
+                                  Rincian Parameter
+                                </summary>
+                                <pre className="mt-1.5 max-h-32 overflow-y-auto rounded-lg bg-gray-900 p-2 text-[10px] font-mono text-emerald-400">
+                                  {JSON.stringify(parsedDetails.parameters, null, 2)}
+                                </pre>
+                              </details>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </DialogBody>
+          )}
+
+          <DialogFooter>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setAuditTarget(null)}
               className="text-xs"
             >
               Tutup
@@ -925,6 +1125,7 @@ interface MemberCardProps {
   isAdmin: boolean;
   currentUserId?: string;
   onOpenDetail: () => void;
+  onOpenAudit?: () => void;
   onResetPassword: () => void;
   onDeletePermanent: () => void;
   onApprove: () => void;
@@ -939,6 +1140,7 @@ function MemberCard({
   isAdmin,
   currentUserId,
   onOpenDetail,
+  onOpenAudit,
   onResetPassword,
   onDeletePermanent,
   onApprove,
@@ -1033,14 +1235,25 @@ function MemberCard({
 
       {/* Action Buttons */}
       <div className="mt-4 border-t border-gray-100 pt-3 flex items-center justify-between dark:border-gray-800">
-        <button
-          type="button"
-          onClick={onOpenDetail}
-          className="text-[11px] font-semibold text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 flex items-center gap-1"
-        >
-          <Eye className="h-3 w-3" />
-          Profil
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onOpenDetail}
+            className="text-[11px] font-semibold text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 flex items-center gap-1"
+          >
+            <Eye className="h-3 w-3" />
+            Profil
+          </button>
+          <button
+            type="button"
+            onClick={onOpenAudit}
+            className="text-[11px] font-semibold text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 flex items-center gap-1"
+            title="Log Audit Aktivitas Anggota"
+          >
+            <Activity className="h-3 w-3" />
+            Log
+          </button>
+        </div>
 
         <div className="flex items-center gap-1.5">
           {/* Approval Controls */}

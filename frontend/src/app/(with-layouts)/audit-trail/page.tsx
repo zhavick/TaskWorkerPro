@@ -68,6 +68,7 @@ export default function AuditTrailPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(15);
   const [search, setSearch] = useState("");
+  const [moduleFilter, setModuleFilter] = useState("ALL");
   const [method, setMethod] = useState("ALL");
   const [statusCodeFilter, setStatusCodeFilter] = useState<string>("ALL");
   const [dateRange, setDateRange] = useState<"ALL" | "TODAY" | "7DAYS" | "30DAYS">("ALL");
@@ -109,6 +110,15 @@ export default function AuditTrailPage() {
     },
   });
 
+  // 1b. Query Available Business Modules
+  const { data: availableModules = [] } = useQuery<string[]>({
+    queryKey: ["auditLogModules"],
+    queryFn: async () => {
+      const res = await apiClient.get("/audit-logs/modules");
+      return res.data?.data || [];
+    },
+  });
+
   // 2. Query Paginated Audit Logs
   const {
     data: logsData,
@@ -119,13 +129,14 @@ export default function AuditTrailPage() {
     data: AuditLogItem[];
     pagination: { page: number; pageSize: number; totalItems: number; totalPages: number };
   }>({
-    queryKey: ["auditLogsList", page, pageSize, search, method, statusCodeFilter, dateRange],
+    queryKey: ["auditLogsList", page, pageSize, search, moduleFilter, method, statusCodeFilter, dateRange],
     queryFn: async () => {
       const params: Record<string, any> = {
         page,
         pageSize,
       };
       if (search.trim()) params.search = search.trim();
+      if (moduleFilter !== "ALL") params.module = moduleFilter;
       if (method !== "ALL") params.method = method;
       if (statusCodeFilter !== "ALL") params.statusCode = parseInt(statusCodeFilter, 10);
       const startDate = getStartDateParam();
@@ -155,6 +166,51 @@ export default function AuditTrailPage() {
 
   const logs = logsData?.data || [];
   const pagination = logsData?.pagination || { page: 1, pageSize: 15, totalItems: 0, totalPages: 1 };
+
+  const parseLogDetails = (rawDetails?: string | null) => {
+    if (!rawDetails) return { module: undefined, actionSummary: undefined, ipAddress: undefined, userAgent: undefined, parameters: undefined };
+    try {
+      const parsed = JSON.parse(rawDetails);
+      return {
+        module: parsed.module as string | undefined,
+        actionSummary: parsed.actionSummary as string | undefined,
+        ipAddress: parsed.ipAddress as string | undefined,
+        userAgent: parsed.userAgent as string | undefined,
+        parameters: parsed.parameters,
+      };
+    } catch {
+      return { module: undefined, actionSummary: undefined, ipAddress: undefined, userAgent: undefined, parameters: rawDetails };
+    }
+  };
+
+  const getModuleBadgeClass = (moduleName?: string) => {
+    switch (moduleName) {
+      case "Autentikasi & Akun":
+        return "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800";
+      case "Manajemen Tugas":
+        return "bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950/60 dark:text-indigo-300 dark:border-indigo-800";
+      case "Manajemen Proyek":
+        return "bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950/60 dark:text-sky-300 dark:border-sky-800";
+      case "Presensi & Absensi":
+        return "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800";
+      case "Timesheet & Jam Kerja":
+        return "bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-950/60 dark:text-violet-300 dark:border-violet-800";
+      case "Catatan & Quick Notes":
+        return "bg-yellow-50 text-yellow-800 border-yellow-200 dark:bg-yellow-950/60 dark:text-yellow-300 dark:border-yellow-800";
+      case "Gamifikasi & Level":
+        return "bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200 dark:bg-fuchsia-950/60 dark:text-fuchsia-300 dark:border-fuchsia-800";
+      case "Pengumuman Internal":
+        return "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-800";
+      case "Manajemen Anggota":
+        return "bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-950/60 dark:text-teal-300 dark:border-teal-800";
+      case "Konfigurasi & Pengaturan":
+        return "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800";
+      case "Sinkronisasi Offline":
+        return "bg-cyan-50 text-cyan-700 border-cyan-200 dark:bg-cyan-950/60 dark:text-cyan-300 dark:border-cyan-800";
+      default:
+        return "bg-gray-100 text-gray-700 border-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700";
+    }
+  };
 
   const getMethodBadgeClass = (m?: string | null) => {
     switch (m?.toUpperCase()) {
@@ -213,7 +269,7 @@ export default function AuditTrailPage() {
             <span>Audit Trail & Log Aktivitas Sistem</span>
           </h1>
           <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-            FSD 5.12 & 5.17 • Rekaman kronologis mutasi data, pelacakan IP, durasi request, dan keamanan sistem.
+            FSD 5.12 & 5.17 • Rekaman kronologis mutasi data, klasifikasi modul bisnis, pelacakan IP, durasi request, dan keamanan sistem.
           </p>
         </div>
 
@@ -302,13 +358,13 @@ export default function AuditTrailPage() {
 
       {/* 3. Filter & Search Toolbar */}
       <div className="rounded-2xl border border-gray-200/80 bg-white p-4 shadow-xs dark:border-gray-800 dark:bg-gray-900 space-y-3">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
           {/* Search Input */}
-          <div className="relative">
+          <div className="relative lg:col-span-1">
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
             <input
               type="text"
-              placeholder="Cari user, controller, path, atau aksi..."
+              placeholder="Cari aksi, user, path..."
               value={search}
               onChange={(e) => {
                 setSearch(e.target.value);
@@ -316,6 +372,25 @@ export default function AuditTrailPage() {
               }}
               className="w-full rounded-xl border border-gray-200 bg-white py-2 pl-9 pr-3 text-xs text-gray-900 outline-hidden focus:border-indigo-600 dark:border-gray-800 dark:bg-gray-900 dark:text-white"
             />
+          </div>
+
+          {/* Module Filter */}
+          <div>
+            <select
+              value={moduleFilter}
+              onChange={(e) => {
+                setModuleFilter(e.target.value);
+                setPage(1);
+              }}
+              className="w-full rounded-xl border border-gray-200 bg-white py-2 px-3 text-xs text-gray-900 outline-hidden focus:border-indigo-600 dark:border-gray-800 dark:bg-gray-900 dark:text-white font-medium"
+            >
+              <option value="ALL">Semua Modul Bisnis</option>
+              {availableModules.map((mod) => (
+                <option key={mod} value={mod}>
+                  {mod}
+                </option>
+              ))}
+            </select>
           </div>
 
           {/* HTTP Method Filter */}
@@ -329,9 +404,9 @@ export default function AuditTrailPage() {
               className="w-full rounded-xl border border-gray-200 bg-white py-2 px-3 text-xs text-gray-900 outline-hidden focus:border-indigo-600 dark:border-gray-800 dark:bg-gray-900 dark:text-white"
             >
               <option value="ALL">Semua Metode HTTP</option>
-              <option value="POST">POST (Pembuatan Data)</option>
+              <option value="POST">POST (Pembuatan)</option>
               <option value="PUT">PUT (Pembaruan Penuh)</option>
-              <option value="PATCH">PATCH (Pembaruan Sebagian)</option>
+              <option value="PATCH">PATCH (Pembaruan Parsial)</option>
               <option value="DELETE">DELETE (Penghapusan)</option>
             </select>
           </div>
@@ -378,11 +453,11 @@ export default function AuditTrailPage() {
           <table className="w-full text-left text-xs">
             <thead className="bg-gray-50/80 text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:bg-gray-800/60 dark:text-gray-400">
               <tr>
-                <th className="py-3.5 px-4 w-44">Waktu & Tanggal</th>
+                <th className="py-3.5 px-4 w-40">Waktu & Tanggal</th>
                 <th className="py-3.5 px-4">Pengguna</th>
+                <th className="py-3.5 px-3">Modul Bisnis</th>
+                <th className="py-3.5 px-4">Aksi & Aktivitas</th>
                 <th className="py-3.5 px-3 text-center">Metode</th>
-                <th className="py-3.5 px-4">Controller / Aksi</th>
-                <th className="py-3.5 px-4">Endpoint Path</th>
                 <th className="py-3.5 px-3 text-center">Status</th>
                 <th className="py-3.5 px-3 text-right">Durasi</th>
                 <th className="py-3.5 px-4 text-center w-24">Detail</th>
@@ -415,6 +490,10 @@ export default function AuditTrailPage() {
                     year: "numeric",
                   });
 
+                  const detailsInfo = parseLogDetails(log.details);
+                  const displayModule = detailsInfo.module || "Sistem Umum";
+                  const displaySummary = detailsInfo.actionSummary || `${log.controllerName} / ${log.actionName}`;
+
                   return (
                     <tr
                       key={log.id}
@@ -438,12 +517,43 @@ export default function AuditTrailPage() {
                           <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-indigo-700 text-[11px] font-bold dark:bg-indigo-950 dark:text-indigo-400">
                             {log.userName ? log.userName.charAt(0).toUpperCase() : "U"}
                           </div>
-                          <div className="truncate max-w-[160px]">
+                          <div className="truncate max-w-[150px]">
                             <div className="font-semibold text-gray-800 dark:text-gray-200 truncate">
                               {log.userName || "Sistem / Anonim"}
                             </div>
                             <div className="text-[10px] text-gray-400 truncate">{log.userEmail || "-"}</div>
                           </div>
+                        </div>
+                      </td>
+
+                      {/* Module */}
+                      <td className="py-3 px-3">
+                        <span
+                          className={`inline-block rounded-md border px-2 py-0.5 text-[10px] font-semibold whitespace-nowrap ${getModuleBadgeClass(
+                            displayModule
+                          )}`}
+                        >
+                          {displayModule}
+                        </span>
+                      </td>
+
+                      {/* Action & Activity Summary */}
+                      <td className="py-3 px-4">
+                        <div className="font-semibold text-gray-800 dark:text-gray-200 line-clamp-1">
+                          {displaySummary}
+                        </div>
+                        <div className="flex items-center gap-1 text-[10px] text-gray-400 font-mono mt-0.5">
+                          <span>{log.controllerName}</span>
+                          <span>•</span>
+                          <span>{log.actionName}</span>
+                          {log.path && (
+                            <>
+                              <span>•</span>
+                              <span className="truncate max-w-[160px]" title={log.path}>
+                                {log.path}
+                              </span>
+                            </>
+                          )}
                         </div>
                       </td>
 
@@ -455,24 +565,6 @@ export default function AuditTrailPage() {
                           )}`}
                         >
                           {log.httpMethod}
-                        </span>
-                      </td>
-
-                      {/* Controller / Action */}
-                      <td className="py-3 px-4">
-                        <span className="font-semibold text-gray-800 dark:text-gray-200">
-                          {log.controllerName}
-                        </span>
-                        <span className="text-gray-400"> / </span>
-                        <span className="text-[11px] text-gray-500 dark:text-gray-400 font-mono">
-                          {log.actionName}
-                        </span>
-                      </td>
-
-                      {/* Path */}
-                      <td className="py-3 px-4">
-                        <span className="font-mono text-[11px] text-gray-600 dark:text-gray-300 truncate max-w-[200px] block" title={log.path || ""}>
-                          {log.path}
                         </span>
                       </td>
 
@@ -555,123 +647,155 @@ export default function AuditTrailPage() {
       {/* 5. Slide-Over Detail Drawer (Sheet) */}
       <SheetOverlay isOpen={isDrawerOpen} onOpenChange={setIsDrawerOpen}>
         <SheetContent side="right" className="w-full max-w-lg p-0 bg-white dark:bg-gray-900 shadow-2xl overflow-y-auto">
-          {selectedLog && (
-            <div className="p-6 space-y-6">
-              <div className="flex items-start justify-between border-b border-gray-100 pb-4 dark:border-gray-800">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`inline-block rounded-md border px-2.5 py-0.5 text-xs font-bold tracking-wider ${getMethodBadgeClass(
-                        selectedLog.httpMethod
-                      )}`}
-                    >
-                      {selectedLog.httpMethod}
-                    </span>
-                    {getStatusCodeBadge(selectedLog.statusCode)}
-                  </div>
-                  <SheetTitle className="text-base font-bold text-gray-900 dark:text-white mt-2">
-                    Audit Log #{selectedLog.id}
-                  </SheetTitle>
-                  <p className="text-xs font-mono text-gray-500 dark:text-gray-400 mt-0.5">
-                    {new Date(selectedLog.timestamp).toLocaleString("id-ID", {
-                      dateStyle: "full",
-                      timeStyle: "medium",
-                    })}
-                  </p>
-                </div>
-              </div>
+          {selectedLog && (() => {
+            const detailsInfo = parseLogDetails(selectedLog.details);
+            const displayModule = detailsInfo.module || "Sistem Umum";
+            const displaySummary = detailsInfo.actionSummary || `${selectedLog.controllerName} / ${selectedLog.actionName}`;
 
-              {/* User Section */}
-              <div className="space-y-3">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-gray-400 flex items-center gap-1.5">
-                  <User className="h-3.5 w-3.5" />
-                  Informasi Pengguna
-                </h4>
-                <div className="rounded-xl border border-gray-100 bg-gray-50/70 p-3.5 dark:border-gray-800 dark:bg-gray-800/40 text-xs space-y-2">
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Nama Lengkap:</span>
-                    <span className="font-semibold text-gray-900 dark:text-white">
-                      {selectedLog.userName || "-"}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Email:</span>
-                    <span className="font-mono text-gray-800 dark:text-gray-200">
-                      {selectedLog.userEmail || "-"}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">User ID:</span>
-                    <span className="font-mono text-[11px] text-gray-600 dark:text-gray-400">
-                      {selectedLog.userId || "-"}
-                    </span>
+            return (
+              <div className="p-6 space-y-6">
+                <div className="flex items-start justify-between border-b border-gray-100 pb-4 dark:border-gray-800">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`inline-block rounded-md border px-2.5 py-0.5 text-xs font-bold tracking-wider ${getMethodBadgeClass(
+                          selectedLog.httpMethod
+                        )}`}
+                      >
+                        {selectedLog.httpMethod}
+                      </span>
+                      {getStatusCodeBadge(selectedLog.statusCode)}
+                      <span
+                        className={`inline-block rounded-md border px-2 py-0.5 text-[11px] font-semibold ${getModuleBadgeClass(
+                          displayModule
+                        )}`}
+                      >
+                        {displayModule}
+                      </span>
+                    </div>
+                    <SheetTitle className="text-base font-bold text-gray-900 dark:text-white mt-2">
+                      {displaySummary}
+                    </SheetTitle>
+                    <p className="text-xs font-mono text-gray-500 dark:text-gray-400 mt-0.5">
+                      Audit Log #{selectedLog.id} • {new Date(selectedLog.timestamp).toLocaleString("id-ID", {
+                        dateStyle: "full",
+                        timeStyle: "medium",
+                      })}
+                    </p>
                   </div>
                 </div>
-              </div>
 
-              {/* Request Telemetry */}
-              <div className="space-y-3">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-gray-400 flex items-center gap-1.5">
-                  <Globe className="h-3.5 w-3.5" />
-                  Telemetri Permintaan
-                </h4>
-                <div className="rounded-xl border border-gray-100 bg-gray-50/70 p-3.5 dark:border-gray-800 dark:bg-gray-800/40 text-xs space-y-2 font-mono">
-                  <div className="flex justify-between">
-                    <span className="text-gray-500 font-sans">Controller:</span>
-                    <span className="font-semibold text-gray-800 dark:text-gray-200">{selectedLog.controllerName}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-500 font-sans">Aksi (Action):</span>
-                    <span className="font-semibold text-gray-800 dark:text-gray-200">{selectedLog.actionName}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-500 font-sans">Endpoint:</span>
-                    <span className="text-gray-700 dark:text-gray-300 break-all">{selectedLog.path}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-500 font-sans">Durasi Pemrosesan:</span>
-                    <span className="font-semibold text-indigo-600 dark:text-indigo-400">{selectedLog.durationMs} ms</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Payload Details */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
+                {/* User Section */}
+                <div className="space-y-3">
                   <h4 className="text-xs font-bold uppercase tracking-wider text-gray-400 flex items-center gap-1.5">
-                    <Code className="h-3.5 w-3.5" />
-                    Parameter & Payload (Sanitized)
+                    <User className="h-3.5 w-3.5" />
+                    Informasi Pengguna
                   </h4>
-                  {selectedLog.details && (
-                    <button
-                      type="button"
-                      onClick={() => handleCopyJson(selectedLog.details || "")}
-                      className="flex items-center gap-1 text-[11px] font-semibold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400"
-                    >
-                      <Copy className="h-3 w-3" />
-                      Salin JSON
-                    </button>
+                  <div className="rounded-xl border border-gray-100 bg-gray-50/70 p-3.5 dark:border-gray-800 dark:bg-gray-800/40 text-xs space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Nama Lengkap:</span>
+                      <span className="font-semibold text-gray-900 dark:text-white">
+                        {selectedLog.userName || "Sistem / Anonim"}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Email:</span>
+                      <span className="font-mono text-gray-800 dark:text-gray-200">
+                        {selectedLog.userEmail || "-"}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">User ID:</span>
+                      <span className="font-mono text-[11px] text-gray-600 dark:text-gray-400">
+                        {selectedLog.userId || "-"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Request Telemetry */}
+                <div className="space-y-3">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-gray-400 flex items-center gap-1.5">
+                    <Globe className="h-3.5 w-3.5" />
+                    Telemetri Permintaan & Jaringan
+                  </h4>
+                  <div className="rounded-xl border border-gray-100 bg-gray-50/70 p-3.5 dark:border-gray-800 dark:bg-gray-800/40 text-xs space-y-2 font-mono">
+                    <div className="flex justify-between">
+                      <span className="text-gray-500 font-sans">Modul Bisnis:</span>
+                      <span className="font-semibold text-indigo-600 dark:text-indigo-400 font-sans">{displayModule}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500 font-sans">Controller:</span>
+                      <span className="font-semibold text-gray-800 dark:text-gray-200">{selectedLog.controllerName}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500 font-sans">Aksi (Action):</span>
+                      <span className="font-semibold text-gray-800 dark:text-gray-200">{selectedLog.actionName}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500 font-sans">Endpoint:</span>
+                      <span className="text-gray-700 dark:text-gray-300 break-all">{selectedLog.path}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500 font-sans">Alamat IP:</span>
+                      <span className="font-semibold text-gray-800 dark:text-gray-200">
+                        {detailsInfo.ipAddress || "127.0.0.1"}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500 font-sans">Durasi Pemrosesan:</span>
+                      <span className="font-semibold text-indigo-600 dark:text-indigo-400">{selectedLog.durationMs} ms</span>
+                    </div>
+                    {detailsInfo.userAgent && (
+                      <div className="pt-1 border-t border-gray-200/50 dark:border-gray-700/50">
+                        <span className="text-gray-500 font-sans block mb-1">User Agent:</span>
+                        <span className="text-[10px] text-gray-600 dark:text-gray-300 break-all block">
+                          {detailsInfo.userAgent}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Payload Details */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-gray-400 flex items-center gap-1.5">
+                      <Code className="h-3.5 w-3.5" />
+                      Parameter & Payload (Sanitized)
+                    </h4>
+                    {selectedLog.details && (
+                      <button
+                        type="button"
+                        onClick={() => handleCopyJson(selectedLog.details || "")}
+                        className="flex items-center gap-1 text-[11px] font-semibold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400"
+                      >
+                        <Copy className="h-3 w-3" />
+                        Salin JSON
+                      </button>
+                    )}
+                  </div>
+
+                  {selectedLog.details ? (
+                    <pre className="max-h-60 overflow-y-auto rounded-xl border border-gray-200 bg-gray-900 p-3.5 text-[11px] font-mono text-emerald-400 dark:border-gray-800">
+                      {(() => {
+                        try {
+                          const payloadToDisplay = detailsInfo.parameters !== undefined ? detailsInfo.parameters : JSON.parse(selectedLog.details);
+                          return JSON.stringify(payloadToDisplay, null, 2);
+                        } catch {
+                          return selectedLog.details;
+                        }
+                      })()}
+                    </pre>
+                  ) : (
+                    <div className="rounded-xl border border-dashed border-gray-200 p-4 text-center text-xs text-gray-400">
+                      Tidak ada data payload yang dicatat untuk aksi ini.
+                    </div>
                   )}
                 </div>
-
-                {selectedLog.details ? (
-                  <pre className="max-h-60 overflow-y-auto rounded-xl border border-gray-200 bg-gray-900 p-3.5 text-[11px] font-mono text-emerald-400 dark:border-gray-800">
-                    {(() => {
-                      try {
-                        return JSON.stringify(JSON.parse(selectedLog.details), null, 2);
-                      } catch {
-                        return selectedLog.details;
-                      }
-                    })()}
-                  </pre>
-                ) : (
-                  <div className="rounded-xl border border-dashed border-gray-200 p-4 text-center text-xs text-gray-400">
-                    Tidak ada data payload yang dicatat untuk aksi ini.
-                  </div>
-                )}
               </div>
-            </div>
-          )}
+            );
+          })()}
         </SheetContent>
       </SheetOverlay>
 
