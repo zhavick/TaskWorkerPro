@@ -33,6 +33,31 @@ public static class DbInitializer
                     CREATE INDEX IF NOT EXISTS ix_audit_logs_timestamp ON audit_logs(timestamp DESC);
                     CREATE INDEX IF NOT EXISTS ix_audit_logs_user_id ON audit_logs(user_id);
                     CREATE INDEX IF NOT EXISTS ix_audit_logs_controller_name ON audit_logs(controller_name);
+
+                    DROP INDEX IF EXISTS ix_audit_logs_details_gin;
+                    DO $$ 
+                    BEGIN 
+                        IF EXISTS (
+                            SELECT 1 FROM information_schema.columns 
+                            WHERE table_name = 'audit_logs' AND column_name = 'details' AND data_type = 'jsonb'
+                        ) THEN 
+                            ALTER TABLE audit_logs ALTER COLUMN details TYPE text USING details::text;
+                        END IF;
+                    END $$;
+
+                    CREATE TABLE IF NOT EXISTS sync_histories (
+                        id SERIAL PRIMARY KEY,
+                        direction INTEGER NOT NULL,
+                        status INTEGER NOT NULL,
+                        target_host TEXT NOT NULL,
+                        total_records_synced INTEGER NOT NULL,
+                        file_size_bytes BIGINT NOT NULL,
+                        summary_json TEXT,
+                        error_message TEXT,
+                        created_at TIMESTAMPTZ NOT NULL,
+                        triggered_by_user_id TEXT
+                    );
+                    CREATE INDEX IF NOT EXISTS ix_sync_histories_created_at ON sync_histories(created_at DESC);
                 ");
             }
             catch

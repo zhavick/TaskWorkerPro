@@ -368,7 +368,11 @@ public class TaskExcelImportService : ITaskExcelImportService
         }
 
         var isRelational = _context.Database.IsRelational();
-        await using var transaction = isRelational ? await _context.Database.BeginTransactionAsync(cancellationToken) : null;
+        var strategy = _context.Database.CreateExecutionStrategy();
+
+        return await strategy.ExecuteAsync(async () =>
+        {
+            await using var transaction = isRelational ? await _context.Database.BeginTransactionAsync(cancellationToken) : null;
 
         var existingProjects = await _context.Projects
             .Where(p => p.CompanyId == companyId)
@@ -592,12 +596,13 @@ public class TaskExcelImportService : ITaskExcelImportService
             : $"Berhasil mengimpor {totalImported} tugas dari {totalProcessed} baris data ({totalProjectsCreated} proyek baru dibuat).";
         messages.Add(resultDetail);
 
-        return new TaskImportResultDto(
-            totalProcessed,
-            totalImported,
-            totalProjectsCreated,
-            messages
-        );
+            return new TaskImportResultDto(
+                totalProcessed,
+                totalImported,
+                totalProjectsCreated,
+                messages
+            );
+        });
     }
 
     public async Task<ExcelImportResultDto> ImportTasksFromExcelAsync(

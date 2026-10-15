@@ -313,59 +313,64 @@ public class TasksController : ControllerBase
     public async Task<IActionResult> UnifiedSave(int id, [FromBody] UnifiedSaveTaskRequest request)
     {
         var isRelational = _context.Database.IsRelational();
-        await using var transaction = isRelational ? await _context.Database.BeginTransactionAsync() : null;
-        try
+        var strategy = _context.Database.CreateExecutionStrategy();
+
+        return await strategy.ExecuteAsync<IActionResult>(async () =>
         {
-            var task = await _context.Tasks.FirstOrDefaultAsync(t => t.Id == id);
-            if (task == null) return NotFound(new { success = false, message = "Tugas tidak ditemukan." });
-
-            // 1. Update task properties
-            task.Title = request.Title.Trim();
-            task.Description = request.Description;
-            task.Priority = request.Priority;
-            task.Status = request.Status;
-            task.Progress = Math.Clamp(request.Progress, 0, 100);
-            task.Milestone = request.Milestone;
-            task.Obstacle = request.Obstacle;
-            task.Solution = request.Solution;
-            task.ProjectId = request.ProjectId;
-            task.CategoryId = request.CategoryId;
-            task.AssignedToUserId = request.AssignedToUserId;
-            task.StartDate = request.StartDate;
-            task.DueDate = request.DueDate;
-            task.UpdatedAt = DateTimeOffset.UtcNow;
-
-            // 2. Add manual work session atomically if requested
-            if (request.LogManualSession && request.ManualSessionStartTime.HasValue && request.ManualSessionEndTime.HasValue)
+            await using var transaction = isRelational ? await _context.Database.BeginTransactionAsync() : null;
+            try
             {
-                var duration = (long)(request.ManualSessionEndTime.Value - request.ManualSessionStartTime.Value).TotalSeconds;
-                if (duration > 0)
+                var task = await _context.Tasks.FirstOrDefaultAsync(t => t.Id == id);
+                if (task == null) return NotFound(new { success = false, message = "Tugas tidak ditemukan." });
+
+                // 1. Update task properties
+                task.Title = request.Title.Trim();
+                task.Description = request.Description;
+                task.Priority = request.Priority;
+                task.Status = request.Status;
+                task.Progress = Math.Clamp(request.Progress, 0, 100);
+                task.Milestone = request.Milestone;
+                task.Obstacle = request.Obstacle;
+                task.Solution = request.Solution;
+                task.ProjectId = request.ProjectId;
+                task.CategoryId = request.CategoryId;
+                task.AssignedToUserId = request.AssignedToUserId;
+                task.StartDate = request.StartDate;
+                task.DueDate = request.DueDate;
+                task.UpdatedAt = DateTimeOffset.UtcNow;
+
+                // 2. Add manual work session atomically if requested
+                if (request.LogManualSession && request.ManualSessionStartTime.HasValue && request.ManualSessionEndTime.HasValue)
                 {
-                    var session = new WorkSession
+                    var duration = (long)(request.ManualSessionEndTime.Value - request.ManualSessionStartTime.Value).TotalSeconds;
+                    if (duration > 0)
                     {
-                        TaskId = task.Id,
-                        UserId = _tenantService.UserId ?? "anonymous",
-                        StartTime = request.ManualSessionStartTime.Value,
-                        EndTime = request.ManualSessionEndTime.Value,
-                        Duration = duration,
-                        Notes = string.IsNullOrWhiteSpace(request.ManualSessionNotes) ? "Dicatat via Unified Save Form" : request.ManualSessionNotes.Trim(),
-                        CreatedAt = DateTimeOffset.UtcNow
-                    };
+                        var session = new WorkSession
+                        {
+                            TaskId = task.Id,
+                            UserId = _tenantService.UserId ?? "anonymous",
+                            StartTime = request.ManualSessionStartTime.Value,
+                            EndTime = request.ManualSessionEndTime.Value,
+                            Duration = duration,
+                            Notes = string.IsNullOrWhiteSpace(request.ManualSessionNotes) ? "Dicatat via Unified Save Form" : request.ManualSessionNotes.Trim(),
+                            CreatedAt = DateTimeOffset.UtcNow
+                        };
 
-                    _context.Sessions.Add(session);
+                        _context.Sessions.Add(session);
+                    }
                 }
+
+                await _context.SaveChangesAsync();
+                if (transaction != null) await transaction.CommitAsync();
+
+                return Ok(new { success = true, message = "Tugas dan sesi jam kerja berhasil disimpan." });
             }
-
-            await _context.SaveChangesAsync();
-            if (transaction != null) await transaction.CommitAsync();
-
-            return Ok(new { success = true, message = "Tugas dan sesi jam kerja berhasil disimpan." });
-        }
-        catch (Exception ex)
-        {
-            if (transaction != null) await transaction.RollbackAsync();
-            return StatusCode(500, new { success = false, message = "Gagal menyimpan perubahan: " + ex.Message });
-        }
+            catch (Exception ex)
+            {
+                if (transaction != null) await transaction.RollbackAsync();
+                return StatusCode(500, new { success = false, message = "Gagal menyimpan perubahan: " + ex.Message });
+            }
+        });
     }
 
     [HttpPatch("{id}/status")]
