@@ -14,6 +14,7 @@ import {
   Code,
   Settings,
   User,
+  ShieldCheck,
 } from "lucide-react";
 
 export const NAV_DATA = [
@@ -97,6 +98,12 @@ export const NAV_DATA = [
           { title: "JSON Formatter", url: "/dev-tools/json" },
           { title: "SQL Beautifier", url: "/dev-tools/sql" },
         ],
+      },
+      {
+        title: "Audit Trail & Log",
+        icon: <ShieldCheck className="h-5 w-5" />,
+        url: "/audit-trail",
+        items: [],
       },
       {
         title: "Konfigurasi Sistem",

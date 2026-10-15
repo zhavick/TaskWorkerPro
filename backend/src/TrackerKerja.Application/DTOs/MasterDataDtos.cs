@@ -143,6 +143,22 @@ public record AuditLogDto(
     string? Details
 );
 
+public record AuditUserStatDto(
+    string? UserId,
+    string? UserName,
+    string? UserEmail,
+    int Count
+);
+
+public record AuditLogSummaryDto(
+    int TotalLogs,
+    int TodayCount,
+    int SuccessCount,
+    int ErrorCount,
+    Dictionary<string, int> MethodBreakdown,
+    List<AuditUserStatDto> TopUsers
+);
+
 public record JsonFormatRequest(
     string JsonString,
     string? Name,

@@ -26,6 +26,7 @@ import {
   RotateCcw,
   Sparkles,
   Loader2,
+  History,
 } from "lucide-react";
 import { Button } from "@/components/tailgrids/core/button";
 import { Input } from "@/components/tailgrids/core/input";
@@ -111,6 +112,20 @@ export default function TaskStudioPage() {
         return [];
       }
     },
+  });
+
+  // 5. Query Task Audit Timeline (FSD 5.17)
+  const { data: taskTimeline = [], isLoading: loadingTimeline } = useQuery<any[]>({
+    queryKey: ["taskAuditTimeline", taskId],
+    queryFn: async () => {
+      try {
+        const res = await apiClient.get(`/audit-logs/task/${taskId}`);
+        return res.data.data || [];
+      } catch {
+        return [];
+      }
+    },
+    enabled: !!taskId,
   });
 
   // Populate form when data loads
@@ -770,6 +785,55 @@ export default function TaskStudioPage() {
                       <Plus className="h-4 w-4" />
                     </Button>
                   </div>
+                </div>
+              </div>
+
+              {/* Task Activity & Audit Timeline Card (FSD 5.17) */}
+              <div className="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-xs dark:border-gray-800 dark:bg-gray-900">
+                <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-800">
+                  <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider dark:text-gray-400 flex items-center gap-1.5">
+                    <History className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                    <span>Riwayat Aktivitas ({taskTimeline.length})</span>
+                  </h4>
+                  <span className="text-[10px] text-gray-400 font-medium">Audit Trail</span>
+                </div>
+
+                <div className="mt-3 space-y-3 max-h-64 overflow-y-auto pr-1">
+                  {loadingTimeline ? (
+                    <div className="py-4 text-center text-xs text-gray-400">Memuat riwayat...</div>
+                  ) : taskTimeline.length === 0 ? (
+                    <div className="py-4 text-center text-xs text-gray-400 italic">
+                      Belum ada rekaman mutasi untuk tugas ini.
+                    </div>
+                  ) : (
+                    taskTimeline.map((item: any) => {
+                      const date = new Date(item.timestamp);
+                      const formattedTime = date.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+                      const formattedDate = date.toLocaleDateString("id-ID", { day: "numeric", month: "short" });
+
+                      return (
+                        <div key={item.id} className="relative flex items-start gap-2.5 text-xs">
+                          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-[10px] font-bold text-indigo-600 dark:bg-indigo-950 dark:text-indigo-400 mt-0.5">
+                            {item.userName ? item.userName.charAt(0).toUpperCase() : "U"}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="font-semibold text-gray-900 dark:text-white truncate max-w-[120px]">
+                                {item.userName || "Pengguna"}
+                              </span>
+                              <span className="text-[10px] text-gray-400 font-mono shrink-0">
+                                {formattedDate} {formattedTime}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-gray-600 dark:text-gray-300">
+                              <span className="font-bold text-indigo-600 dark:text-indigo-400">{item.httpMethod}</span>{" "}
+                              {item.actionName || item.controllerName}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
                 </div>
               </div>
             </div>

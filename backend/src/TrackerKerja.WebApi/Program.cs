@@ -11,7 +11,11 @@ using TrackerKerja.WebApi.Middlewares;
 var builder = WebApplication.CreateBuilder(args);
 
 // 1. Controller Services
-builder.Services.AddControllers();
+builder.Services.AddControllers(options =>
+{
+    options.Filters.Add<TrackerKerja.Infrastructure.Filters.AuditLogActionFilter>();
+});
+builder.Services.AddScoped<TrackerKerja.Infrastructure.Filters.AuditLogActionFilter>();
 builder.Services.AddHttpContextAccessor();
 
 // 2. Database Context (PostgreSQL via Npgsql)
