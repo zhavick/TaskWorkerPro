@@ -12,7 +12,9 @@ public record UserProfileDto(
     string? CompanyName,
     string? CompanyCode,
     bool IsApproved,
-    IList<string> Roles
+    IList<string> Roles,
+    string? PhoneNumber = null,
+    DateTimeOffset? CreatedAt = null
 );
 
 public record MemberListItemDto(
@@ -66,7 +68,10 @@ public record RejectMemberRequest(
 public record UpdateProfileRequest(
     string FullName,
     string JobTitle,
-    string AvatarColor
+    string AvatarColor,
+    string? PhoneNumber = null,
+    string? ProfilePictureUrl = null,
+    string? CoverPictureUrl = null
 );
 
 public record ChangePasswordRequest(

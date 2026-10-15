@@ -47,7 +47,9 @@ public class ProfileController : ControllerBase
             user.Company?.Name,
             user.Company?.Code,
             user.IsApproved,
-            new List<string> { user.JobTitle.Contains("Admin") ? "Administrator" : "Member" }
+            new List<string> { user.JobTitle.Contains("Admin") ? "Administrator" : "Member" },
+            user.PhoneNumber,
+            user.CreatedAt
         );
 
         return Ok(new { success = true, data = profile });
@@ -64,7 +66,22 @@ public class ProfileController : ControllerBase
 
         user.FullName = request.FullName.Trim();
         user.JobTitle = request.JobTitle.Trim();
-        user.AvatarColor = request.AvatarColor;
+        if (!string.IsNullOrWhiteSpace(request.AvatarColor))
+        {
+            user.AvatarColor = request.AvatarColor;
+        }
+        if (request.PhoneNumber != null)
+        {
+            user.PhoneNumber = request.PhoneNumber.Trim();
+        }
+        if (request.ProfilePictureUrl != null)
+        {
+            user.ProfilePictureUrl = request.ProfilePictureUrl;
+        }
+        if (request.CoverPictureUrl != null)
+        {
+            user.CoverPictureUrl = request.CoverPictureUrl;
+        }
 
         await _context.SaveChangesAsync();
 
