@@ -38,6 +38,12 @@ import {
   Key,
   FileArchive,
   Check,
+  ShieldAlert,
+  Users,
+  Briefcase,
+  ListTodo,
+  Flame,
+  Megaphone,
 } from "lucide-react";
 import { Button } from "@/components/tailgrids/core/button";
 import { Input } from "@/components/tailgrids/core/input";
@@ -65,8 +71,21 @@ const COLOR_PRESETS = [
 export default function ConfigurationPage() {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<
-    "general" | "security" | "smtp" | "audit" | "master" | "sync"
+    "general" | "security" | "smtp" | "audit" | "master" | "sync" | "maintenance"
   >("general");
+
+  // Data Maintenance & Purge States
+  const [purgeConfirmationOpen, setPurgeConfirmationOpen] = useState(false);
+  const [purgeMode, setPurgeMode] = useState<"all" | "selective">("all");
+  const [confirmationInput, setConfirmationInput] = useState("");
+  const [selectiveOptions, setSelectiveOptions] = useState({
+    purgeTasks: true,
+    purgeProjects: true,
+    purgeAttendances: true,
+    purgeNotes: true,
+    purgeNonAdminUsers: false,
+    purgeAuditAndHistories: false,
+  });
 
   // Setting values mapping
   const [settings, setSettings] = useState<Record<string, string>>({
@@ -184,6 +203,20 @@ export default function ConfigurationPage() {
       return res.data.data;
     },
     enabled: activeTab === "audit",
+  });
+
+  // Query Maintenance Stats
+  const {
+    data: maintenanceStats,
+    isLoading: loadingMaintenanceStats,
+    refetch: refetchMaintenanceStats,
+  } = useQuery<any>({
+    queryKey: ["maintenanceStats"],
+    queryFn: async () => {
+      const res = await apiClient.get("/settings/maintenance/stats");
+      return res.data.data;
+    },
+    enabled: activeTab === "maintenance",
   });
 
   // Master Data Queries
@@ -548,6 +581,24 @@ export default function ConfigurationPage() {
       toast.error(err.response?.data?.message || "Gagal menghapus kategori"),
   });
 
+  // Purge Operational Data Mutation
+  const purgeMutation = useMutation({
+    mutationFn: async (payload: any) => {
+      const res = await apiClient.post("/settings/maintenance/purge", payload);
+      return res.data;
+    },
+    onSuccess: (data: any) => {
+      toast.success(data.message || "Pembersihan data berhasil!");
+      setPurgeConfirmationOpen(false);
+      setConfirmationInput("");
+      refetchMaintenanceStats();
+      queryClient.invalidateQueries();
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || "Gagal melakukan pembersihan data");
+    },
+  });
+
   const handleFieldChange = (key: string, value: string) => {
     setSettings((prev) => ({ ...prev, [key]: value }));
   };
@@ -682,7 +733,7 @@ export default function ConfigurationPage() {
           </p>
         </div>
 
-        {activeTab !== "master" && activeTab !== "sync" && (
+        {activeTab !== "master" && activeTab !== "sync" && activeTab !== "maintenance" && (
           <Button
             onClick={() => saveMutation.mutate()}
             disabled={saveMutation.isPending}
@@ -694,7 +745,7 @@ export default function ConfigurationPage() {
         )}
       </div>
 
-      {/* 6 Tabs Navigation */}
+      {/* 7 Tabs Navigation */}
       <div className="flex flex-wrap gap-2 border-b border-gray-200/80 pb-2 dark:border-gray-800">
         <button
           onClick={() => setActiveTab("general")}
@@ -766,6 +817,18 @@ export default function ConfigurationPage() {
         >
           <RefreshCw className="h-4 w-4" />
           Sinkronisasi Host Induk
+        </button>
+
+        <button
+          onClick={() => setActiveTab("maintenance")}
+          className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition ${
+            activeTab === "maintenance"
+              ? "bg-rose-600 text-white shadow-xs"
+              : "bg-rose-50 text-rose-700 hover:bg-rose-100 dark:bg-rose-950/40 dark:text-rose-300 dark:hover:bg-rose-950/70"
+          }`}
+        >
+          <Trash2 className="h-4 w-4" />
+          Pembersihan Data (Purge)
         </button>
       </div>
 
@@ -1942,6 +2005,410 @@ export default function ConfigurationPage() {
       )}
 
       {/* ======================================================== */}
+      {/* TAB 7: PEMBERSIHAN & RESET DATA OPERASIONAL */}
+      {/* ======================================================== */}
+      {activeTab === "maintenance" && (
+        <div className="space-y-6">
+          {/* Banner Peringatan Keamanan Utama */}
+          <div className="rounded-2xl border border-rose-200 bg-rose-50/70 p-5 dark:border-rose-900/60 dark:bg-rose-950/30">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div className="flex items-start gap-3.5">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-rose-600 text-white shadow-sm shadow-rose-600/30">
+                  <ShieldAlert className="h-6 w-6" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-bold text-rose-950 dark:text-rose-100">
+                      Pembersihan &amp; Reset Data Operasional
+                    </h3>
+                    <span className="rounded-full bg-rose-600/10 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-rose-700 dark:bg-rose-400/20 dark:text-rose-300">
+                      Tindakan Berbahaya
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs leading-relaxed text-rose-800/80 dark:text-rose-300/80">
+                    Halaman ini digunakan untuk membersihkan data operasional (tugas, proyek, catatan, absensi, dsb).
+                    Sistem <strong>hanya akan mempertahankan</strong> akun Administrator, Master Data SDLC/konfigurasi,
+                    dan Pengumuman resmi. Seluruh data yang dihapus tidak dapat dipulihkan kembali.
+                  </p>
+                </div>
+              </div>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => refetchMaintenanceStats()}
+                disabled={loadingMaintenanceStats}
+                className="self-start gap-1.5 border-rose-300 bg-white text-xs font-semibold text-rose-700 hover:bg-rose-100 dark:border-rose-800 dark:bg-gray-900 dark:text-rose-300"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${loadingMaintenanceStats ? "animate-spin" : ""}`} />
+                Segarkan Statistik
+              </Button>
+            </div>
+          </div>
+
+          {/* Bagian 1: Data Yang Dilindungi (Whitelist - Tidak Dihapus) */}
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50/40 p-5 dark:border-emerald-900/50 dark:bg-emerald-950/20">
+            <div className="flex items-center justify-between border-b border-emerald-200/70 pb-3 dark:border-emerald-900/60">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                <h4 className="text-sm font-bold text-emerald-950 dark:text-emerald-100">
+                  Data Yang Dilindungi &amp; Tetap Dipertahankan (Whitelist Permanen)
+                </h4>
+              </div>
+              <span className="rounded-md bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200">
+                Aman / Tidak Pernah Dihapus
+              </span>
+            </div>
+
+            <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <div className="rounded-xl border border-emerald-200/80 bg-white p-4 shadow-xs dark:border-emerald-900/40 dark:bg-gray-900">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Akun Administrator</span>
+                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+                    <Shield className="h-4 w-4" />
+                  </div>
+                </div>
+                <div className="mt-2 text-2xl font-black text-emerald-700 dark:text-emerald-300">
+                  {loadingMaintenanceStats ? "..." : (maintenanceStats?.protectedAdminUsers ?? 0)}
+                </div>
+                <p className="mt-1 text-[11px] text-gray-400">
+                  Akun Superadmin &amp; Admin sistem tetap dipertahankan
+                </p>
+              </div>
+
+              <div className="rounded-xl border border-emerald-200/80 bg-white p-4 shadow-xs dark:border-emerald-900/40 dark:bg-gray-900">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Master Data &amp; Referensi</span>
+                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+                    <Database className="h-4 w-4" />
+                  </div>
+                </div>
+                <div className="mt-2 text-2xl font-black text-emerald-700 dark:text-emerald-300">
+                  {loadingMaintenanceStats ? "..." : (maintenanceStats?.protectedMasterDataItems ?? 0)}
+                </div>
+                <p className="mt-1 text-[11px] text-gray-400">
+                  Prioritas, Status SDLC, Milestone, Kategori, Perusahaan &amp; Template
+                </p>
+              </div>
+
+              <div className="rounded-xl border border-emerald-200/80 bg-white p-4 shadow-xs dark:border-emerald-900/40 dark:bg-gray-900">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Pengumuman Resmi</span>
+                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+                    <Megaphone className="h-4 w-4" />
+                  </div>
+                </div>
+                <div className="mt-2 text-2xl font-black text-emerald-700 dark:text-emerald-300">
+                  {loadingMaintenanceStats ? "..." : (maintenanceStats?.protectedAnnouncements ?? 0)}
+                </div>
+                <p className="mt-1 text-[11px] text-gray-400">
+                  Seluruh broadcast pengumuman perusahaan tetap utuh
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Bagian 2: Inventori Data Operasional Saat Ini */}
+          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-xs dark:border-gray-800 dark:bg-gray-900">
+            <div className="border-b border-gray-100 pb-3 dark:border-gray-800">
+              <h4 className="text-sm font-bold text-gray-900 dark:text-white">
+                Inventori Rekod Operasional Saat Ini (Dapat Dibersihkan)
+              </h4>
+              <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                Berikut adalah ringkasan jumlah rekod operasional aktif yang tersimpan dalam basis data:
+              </p>
+            </div>
+
+            <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <div className="rounded-xl border border-gray-100 bg-gray-50/70 p-3.5 dark:border-gray-800 dark:bg-gray-800/40">
+                <div className="flex items-center gap-2 text-xs font-semibold text-gray-600 dark:text-gray-300">
+                  <ListTodo className="h-4 w-4 text-indigo-500" />
+                  Tugas &amp; Subtugas
+                </div>
+                <div className="mt-2 text-xl font-bold text-gray-900 dark:text-white">
+                  {maintenanceStats ? `${maintenanceStats.totalTasks} / ${maintenanceStats.totalSubtasks}` : "0 / 0"}
+                </div>
+                <span className="text-[10px] text-gray-400">Tugas utama / sub-item</span>
+              </div>
+
+              <div className="rounded-xl border border-gray-100 bg-gray-50/70 p-3.5 dark:border-gray-800 dark:bg-gray-800/40">
+                <div className="flex items-center gap-2 text-xs font-semibold text-gray-600 dark:text-gray-300">
+                  <Clock className="h-4 w-4 text-amber-500" />
+                  Sesi Kerja
+                </div>
+                <div className="mt-2 text-xl font-bold text-gray-900 dark:text-white">
+                  {maintenanceStats?.totalWorkSessions ?? 0}
+                </div>
+                <span className="text-[10px] text-gray-400">Log waktu &amp; timer kerja</span>
+              </div>
+
+              <div className="rounded-xl border border-gray-100 bg-gray-50/70 p-3.5 dark:border-gray-800 dark:bg-gray-800/40">
+                <div className="flex items-center gap-2 text-xs font-semibold text-gray-600 dark:text-gray-300">
+                  <Briefcase className="h-4 w-4 text-sky-500" />
+                  Proyek
+                </div>
+                <div className="mt-2 text-xl font-bold text-gray-900 dark:text-white">
+                  {maintenanceStats?.totalProjects ?? 0}
+                </div>
+                <span className="text-[10px] text-gray-400">Daftar proyek &amp; repositori</span>
+              </div>
+
+              <div className="rounded-xl border border-gray-100 bg-gray-50/70 p-3.5 dark:border-gray-800 dark:bg-gray-800/40">
+                <div className="flex items-center gap-2 text-xs font-semibold text-gray-600 dark:text-gray-300">
+                  <CheckSquare className="h-4 w-4 text-emerald-500" />
+                  Presensi / Absensi
+                </div>
+                <div className="mt-2 text-xl font-bold text-gray-900 dark:text-white">
+                  {maintenanceStats?.totalAttendances ?? 0}
+                </div>
+                <span className="text-[10px] text-gray-400">Check-in harian &amp; lokasi</span>
+              </div>
+
+              <div className="rounded-xl border border-gray-100 bg-gray-50/70 p-3.5 dark:border-gray-800 dark:bg-gray-800/40">
+                <div className="flex items-center gap-2 text-xs font-semibold text-gray-600 dark:text-gray-300">
+                  <FileText className="h-4 w-4 text-blue-500" />
+                  Catatan Kerja
+                </div>
+                <div className="mt-2 text-xl font-bold text-gray-900 dark:text-white">
+                  {maintenanceStats?.totalNotes ?? 0}
+                </div>
+                <span className="text-[10px] text-gray-400">WorkNotes &amp; lampiran</span>
+              </div>
+
+              <div className="rounded-xl border border-gray-100 bg-gray-50/70 p-3.5 dark:border-gray-800 dark:bg-gray-800/40">
+                <div className="flex items-center gap-2 text-xs font-semibold text-gray-600 dark:text-gray-300">
+                  <Users className="h-4 w-4 text-purple-500" />
+                  User Non-Admin
+                </div>
+                <div className="mt-2 text-xl font-bold text-gray-900 dark:text-white">
+                  {maintenanceStats?.totalNonAdminUsers ?? 0}
+                </div>
+                <span className="text-[10px] text-gray-400">Staf / karyawan biasa</span>
+              </div>
+
+              <div className="rounded-xl border border-gray-100 bg-gray-50/70 p-3.5 dark:border-gray-800 dark:bg-gray-800/40">
+                <div className="flex items-center gap-2 text-xs font-semibold text-gray-600 dark:text-gray-300">
+                  <Sparkles className="h-4 w-4 text-pink-500" />
+                  Gamifikasi
+                </div>
+                <div className="mt-2 text-xl font-bold text-gray-900 dark:text-white">
+                  {maintenanceStats?.totalGamificationRecords ?? 0}
+                </div>
+                <span className="text-[10px] text-gray-400">Poin, lencana, check-in</span>
+              </div>
+
+              <div className="rounded-xl border border-gray-100 bg-gray-50/70 p-3.5 dark:border-gray-800 dark:bg-gray-800/40">
+                <div className="flex items-center gap-2 text-xs font-semibold text-gray-600 dark:text-gray-300">
+                  <Layers className="h-4 w-4 text-gray-500" />
+                  Riwayat &amp; Audit Log
+                </div>
+                <div className="mt-2 text-xl font-bold text-gray-900 dark:text-white">
+                  {(maintenanceStats?.totalToolHistories ?? 0) + (maintenanceStats?.totalAuditLogs ?? 0)}
+                </div>
+                <span className="text-[10px] text-gray-400">Riwayat tool &amp; aktivitas sistem</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Bagian 3: Dua Mode Eksekusi Pembersihan */}
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            {/* Opsi A: Reset Total (Factory Reset) */}
+            <div className="flex flex-col justify-between rounded-2xl border-2 border-rose-200 bg-white p-6 shadow-xs dark:border-rose-950 dark:bg-gray-900">
+              <div>
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-100 text-rose-600 dark:bg-rose-950 dark:text-rose-400">
+                    <Flame className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-gray-900 dark:text-white">
+                      Opsi 1: Reset Total Data Operasional
+                    </h4>
+                    <span className="text-xs text-rose-600 dark:text-rose-400">
+                      Factory Reset Data Operasional
+                    </span>
+                  </div>
+                </div>
+
+                <div className="mt-4 space-y-2 rounded-xl bg-rose-50/60 p-4 text-xs text-rose-900 dark:bg-rose-950/20 dark:text-rose-200">
+                  <p className="font-semibold">Menghapus secara permanen:</p>
+                  <ul className="list-disc space-y-1 pl-4 text-[11px] text-rose-800 dark:text-rose-300">
+                    <li>Semua tugas, subtugas, dan sesi kerja</li>
+                    <li>Semua proyek dan repositori</li>
+                    <li>Semua data presensi dan absensi karyawan</li>
+                    <li>Semua catatan kerja (WorkNotes) dan lampirannya</li>
+                    <li>Semua akun karyawan / pengguna non-admin</li>
+                    <li>Seluruh riwayat tool dan log audit</li>
+                  </ul>
+                  <p className="mt-2 text-[11px] font-bold text-emerald-700 dark:text-emerald-400">
+                    ✓ Tetap aman: Administrator, Master Data, &amp; Pengumuman.
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-6 pt-4 border-t border-gray-100 dark:border-gray-800">
+                <Button
+                  onClick={() => {
+                    setPurgeMode("all");
+                    setConfirmationInput("");
+                    setPurgeConfirmationOpen(true);
+                  }}
+                  className="w-full gap-2 bg-rose-600 text-white hover:bg-rose-700 shadow-md shadow-rose-600/20"
+                >
+                  <Flame className="h-4 w-4" />
+                  Reset Seluruh Data Operasional
+                </Button>
+              </div>
+            </div>
+
+            {/* Opsi B: Pembersihan Selektif / Modular */}
+            <div className="flex flex-col justify-between rounded-2xl border border-gray-200 bg-white p-6 shadow-xs dark:border-gray-800 dark:bg-gray-900">
+              <div>
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100 text-amber-600 dark:bg-amber-950 dark:text-amber-400">
+                    <CheckSquare className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-gray-900 dark:text-white">
+                      Opsi 2: Pembersihan Modular / Selektif
+                    </h4>
+                    <span className="text-xs text-gray-500">
+                      Pilih kategori data yang ingin dibersihkan
+                    </span>
+                  </div>
+                </div>
+
+                <div className="mt-4 space-y-2.5">
+                  <label className="flex items-center gap-3 rounded-xl border border-gray-100 p-2.5 text-xs text-gray-700 transition hover:bg-gray-50 dark:border-gray-800 dark:text-gray-300 dark:hover:bg-gray-800/40 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={selectiveOptions.purgeTasks}
+                      onChange={(e) =>
+                        setSelectiveOptions({ ...selectiveOptions, purgeTasks: e.target.checked })
+                      }
+                      className="h-4 w-4 rounded border-gray-300 text-rose-600 focus:ring-rose-500"
+                    />
+                    <div>
+                      <span className="font-semibold">Hapus Seluruh Tugas &amp; Sesi Kerja</span>
+                      <p className="text-[11px] text-gray-400">
+                        {maintenanceStats?.totalTasks ?? 0} tugas dan {maintenanceStats?.totalWorkSessions ?? 0} sesi
+                      </p>
+                    </div>
+                  </label>
+
+                  <label className="flex items-center gap-3 rounded-xl border border-gray-100 p-2.5 text-xs text-gray-700 transition hover:bg-gray-50 dark:border-gray-800 dark:text-gray-300 dark:hover:bg-gray-800/40 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={selectiveOptions.purgeProjects}
+                      onChange={(e) =>
+                        setSelectiveOptions({ ...selectiveOptions, purgeProjects: e.target.checked })
+                      }
+                      className="h-4 w-4 rounded border-gray-300 text-rose-600 focus:ring-rose-500"
+                    />
+                    <div>
+                      <span className="font-semibold">Hapus Seluruh Proyek</span>
+                      <p className="text-[11px] text-gray-400">
+                        {maintenanceStats?.totalProjects ?? 0} proyek (tugas di dalamnya juga terhapus)
+                      </p>
+                    </div>
+                  </label>
+
+                  <label className="flex items-center gap-3 rounded-xl border border-gray-100 p-2.5 text-xs text-gray-700 transition hover:bg-gray-50 dark:border-gray-800 dark:text-gray-300 dark:hover:bg-gray-800/40 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={selectiveOptions.purgeAttendances}
+                      onChange={(e) =>
+                        setSelectiveOptions({ ...selectiveOptions, purgeAttendances: e.target.checked })
+                      }
+                      className="h-4 w-4 rounded border-gray-300 text-rose-600 focus:ring-rose-500"
+                    />
+                    <div>
+                      <span className="font-semibold">Hapus Rekod Presensi / Absensi</span>
+                      <p className="text-[11px] text-gray-400">
+                        {maintenanceStats?.totalAttendances ?? 0} catatan absensi karyawan
+                      </p>
+                    </div>
+                  </label>
+
+                  <label className="flex items-center gap-3 rounded-xl border border-gray-100 p-2.5 text-xs text-gray-700 transition hover:bg-gray-50 dark:border-gray-800 dark:text-gray-300 dark:hover:bg-gray-800/40 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={selectiveOptions.purgeNotes}
+                      onChange={(e) =>
+                        setSelectiveOptions({ ...selectiveOptions, purgeNotes: e.target.checked })
+                      }
+                      className="h-4 w-4 rounded border-gray-300 text-rose-600 focus:ring-rose-500"
+                    />
+                    <div>
+                      <span className="font-semibold">Hapus Catatan Kerja (WorkNotes)</span>
+                      <p className="text-[11px] text-gray-400">
+                        {maintenanceStats?.totalNotes ?? 0} catatan kerja &amp; lampiran
+                      </p>
+                    </div>
+                  </label>
+
+                  <label className="flex items-center gap-3 rounded-xl border border-gray-100 p-2.5 text-xs text-gray-700 transition hover:bg-gray-50 dark:border-gray-800 dark:text-gray-300 dark:hover:bg-gray-800/40 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={selectiveOptions.purgeNonAdminUsers}
+                      onChange={(e) =>
+                        setSelectiveOptions({ ...selectiveOptions, purgeNonAdminUsers: e.target.checked })
+                      }
+                      className="h-4 w-4 rounded border-gray-300 text-rose-600 focus:ring-rose-500"
+                    />
+                    <div>
+                      <span className="font-semibold">Hapus Pengguna Non-Admin</span>
+                      <p className="text-[11px] text-gray-400">
+                        {maintenanceStats?.totalNonAdminUsers ?? 0} akun pengguna biasa (Admin tetap aman)
+                      </p>
+                    </div>
+                  </label>
+
+                  <label className="flex items-center gap-3 rounded-xl border border-gray-100 p-2.5 text-xs text-gray-700 transition hover:bg-gray-50 dark:border-gray-800 dark:text-gray-300 dark:hover:bg-gray-800/40 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={selectiveOptions.purgeAuditAndHistories}
+                      onChange={(e) =>
+                        setSelectiveOptions({ ...selectiveOptions, purgeAuditAndHistories: e.target.checked })
+                      }
+                      className="h-4 w-4 rounded border-gray-300 text-rose-600 focus:ring-rose-500"
+                    />
+                    <div>
+                      <span className="font-semibold">Bersihkan Riwayat Tool &amp; Audit Log</span>
+                      <p className="text-[11px] text-gray-400">
+                        {(maintenanceStats?.totalToolHistories ?? 0) + (maintenanceStats?.totalAuditLogs ?? 0)} rekod log
+                      </p>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              <div className="mt-6 pt-4 border-t border-gray-100 dark:border-gray-800">
+                <Button
+                  onClick={() => {
+                    setPurgeMode("selective");
+                    setConfirmationInput("");
+                    setPurgeConfirmationOpen(true);
+                  }}
+                  disabled={
+                    !selectiveOptions.purgeTasks &&
+                    !selectiveOptions.purgeProjects &&
+                    !selectiveOptions.purgeAttendances &&
+                    !selectiveOptions.purgeNotes &&
+                    !selectiveOptions.purgeNonAdminUsers &&
+                    !selectiveOptions.purgeAuditAndHistories
+                  }
+                  className="w-full gap-2 bg-amber-600 text-white hover:bg-amber-700 shadow-md shadow-amber-600/20"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Bersihkan Kategori Terpilih
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
       {/* DIALOG 1: MODAL TAMBAH / EDIT PRIORITAS */}
       {/* ======================================================== */}
       <Dialog isOpen={priorityModalOpen} onOpenChange={setPriorityModalOpen}>
@@ -2465,6 +2932,91 @@ export default function ConfigurationPage() {
                 className="bg-red-600 text-white hover:bg-red-700"
               >
                 Ya, Hapus
+              </Button>
+            </div>
+          </DialogBody>
+        </DialogContent>
+      </Dialog>
+
+      {/* ======================================================== */}
+      {/* DIALOG 6: KONFIRMASI PEMBERSIHAN DATA (PURGE) */}
+      {/* ======================================================== */}
+      <Dialog isOpen={purgeConfirmationOpen} onOpenChange={setPurgeConfirmationOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-rose-600">
+              <ShieldAlert className="h-5 w-5" />
+              {purgeMode === "all"
+                ? "Konfirmasi Reset Total Operasional"
+                : "Konfirmasi Pembersihan Data Terpilih"}
+            </DialogTitle>
+          </DialogHeader>
+          <DialogBody className="space-y-4">
+            <div className="rounded-xl bg-rose-50 p-3.5 text-xs text-rose-900 dark:bg-rose-950/40 dark:text-rose-200">
+              <p className="font-bold">PERINGATAN: Tindakan ini permanen!</p>
+              <p className="mt-1 leading-relaxed">
+                {purgeMode === "all"
+                  ? "Seluruh data tugas, sesi kerja, proyek, absensi, catatan, dan akun non-admin akan dihapus permanen. Administrator, master data, dan pengumuman akan tetap aman."
+                  : "Kategori data yang dipilih akan dihapus secara permanen dari basis data. Master data dan akun admin tetap aman."}
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-gray-100 bg-gray-50/70 p-3 text-xs dark:border-gray-800 dark:bg-gray-800/40">
+              <span className="font-semibold text-gray-700 dark:text-gray-300">
+                Ketik kata kunci konfirmasi berikut untuk melanjutkan:
+              </span>
+              <div className="mt-1 font-mono text-sm font-bold tracking-wider text-rose-600 dark:text-rose-400">
+                {purgeMode === "all" ? "RESET-TOTAL" : "KONFIRMASI"}
+              </div>
+            </div>
+
+            <div>
+              <Input
+                value={confirmationInput}
+                onChange={(e) => setConfirmationInput(e.target.value)}
+                placeholder={purgeMode === "all" ? "Ketik RESET-TOTAL" : "Ketik KONFIRMASI"}
+                className="font-mono text-center tracking-widest text-sm"
+                autoFocus
+              />
+            </div>
+
+            <div className="mt-4 flex justify-end gap-2 pt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPurgeConfirmationOpen(false)}
+                disabled={purgeMutation.isPending}
+              >
+                Batal
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => {
+                  purgeMutation.mutate({
+                    purgeAllOperational: purgeMode === "all",
+                    confirmationKeyword: confirmationInput,
+                    ...selectiveOptions,
+                  });
+                }}
+                disabled={
+                  purgeMutation.isPending ||
+                  (purgeMode === "all"
+                    ? confirmationInput !== "RESET-TOTAL"
+                    : confirmationInput !== "KONFIRMASI")
+                }
+                className="gap-1.5 bg-rose-600 text-white hover:bg-rose-700 disabled:opacity-50"
+              >
+                {purgeMutation.isPending ? (
+                  <>
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                    Memproses Pembersihan...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="h-3.5 w-3.5" />
+                    {purgeMode === "all" ? "Eksekusi Reset Total" : "Eksekusi Pembersihan"}
+                  </>
+                )}
               </Button>
             </div>
           </DialogBody>
