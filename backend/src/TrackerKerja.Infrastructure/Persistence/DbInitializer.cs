@@ -77,7 +77,7 @@ public static class DbInitializer
                 CompanyId = company.Id,
                 IsApproved = true,
                 ApprovedAt = DateTimeOffset.UtcNow,
-                PasswordHash = PasswordHasher.HashPassword("system32"),
+                PasswordHash = PasswordHasher.HashPassword("AdminSecurePassword2026!"),
                 CreatedAt = DateTimeOffset.UtcNow
             };
             context.Users.Add(adminUser);
@@ -85,7 +85,7 @@ public static class DbInitializer
         }
         else if (string.IsNullOrEmpty(adminUser.PasswordHash) || !adminUser.PasswordHash.Contains(':'))
         {
-            adminUser.PasswordHash = PasswordHasher.HashPassword("system32");
+            adminUser.PasswordHash = PasswordHasher.HashPassword("AdminSecurePassword2026!");
             adminUser.IsApproved = true;
             await context.SaveChangesAsync();
         }
