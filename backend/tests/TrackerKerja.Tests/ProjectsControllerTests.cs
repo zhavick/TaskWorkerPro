@@ -203,6 +203,93 @@ public class ProjectsControllerTests
         dynamicData!.Count().Should().Be(2);
     }
 
+    [Fact]
+    public async Task GetProjectById_ShouldReturnProjectDetailDtoWithTasksAndWorkDuration()
+    {
+        // Arrange
+        // Add work session for task 101
+        _context.Sessions.Add(new WorkSession
+        {
+            Id = 501,
+            TaskId = 101,
+            UserId = "user-1",
+            Duration = 7200, // 2 hours
+            StartTime = DateTimeOffset.UtcNow.AddHours(-2),
+            EndTime = DateTimeOffset.UtcNow
+        });
+        await _context.SaveChangesAsync();
+
+        var controller = new ProjectsController(_context, _tenantService);
+
+        // Act
+        var result = await controller.GetProjectById(1) as OkObjectResult;
+
+        // Assert
+        result.Should().NotBeNull();
+        result!.StatusCode.Should().Be(200);
+
+        var detail = result.Value?.GetType().GetProperty("data")?.GetValue(result.Value) as ProjectDetailDto;
+        detail.Should().NotBeNull();
+        detail!.Id.Should().Be(1);
+        detail.Name.Should().Be("Project Safe");
+        detail.BurnRatePercent.Should().Be(50.0);
+        detail.BurnRateStatus.Should().Be("Safe");
+        detail.TotalTasks.Should().Be(2);
+        detail.CompletedTasks.Should().Be(1);
+        detail.TotalWorkDurationSeconds.Should().Be(7200);
+        detail.Tasks.Should().NotBeNull();
+        detail.Tasks.Count.Should().Be(2);
+
+        var task101 = detail.Tasks.First(t => t.Id == 101);
+        task101.TotalDurationSeconds.Should().Be(7200);
+    }
+
+    [Fact]
+    public async Task GetProjectById_WhenNotFound_ShouldReturn404()
+    {
+        // Arrange
+        var controller = new ProjectsController(_context, _tenantService);
+
+        // Act
+        var result = await controller.GetProjectById(999) as NotFoundObjectResult;
+
+        // Assert
+        result.Should().NotBeNull();
+        result!.StatusCode.Should().Be(404);
+    }
+
+    [Fact]
+    public async Task UnassignTask_ShouldDetachTaskFromProject()
+    {
+        // Arrange
+        var controller = new ProjectsController(_context, _tenantService);
+
+        // Act
+        var result = await controller.UnassignTask(1, 102) as OkObjectResult;
+
+        // Assert
+        result.Should().NotBeNull();
+        result!.StatusCode.Should().Be(200);
+
+        var detachedTask = await _context.Tasks.FindAsync(102);
+        detachedTask.Should().NotBeNull();
+        detachedTask!.ProjectId.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task UnassignTask_WhenTaskDoesNotBelongToProject_ShouldReturnNotFound()
+    {
+        // Arrange
+        var controller = new ProjectsController(_context, _tenantService);
+
+        // Act
+        var result = await controller.UnassignTask(1, 999) as NotFoundObjectResult;
+
+        // Assert
+        result.Should().NotBeNull();
+        result!.StatusCode.Should().Be(404);
+    }
+
     private class FakeTenantService : ICurrentTenantService
     {
         public FakeTenantService(int? companyId, string? companyCode, string? userId, bool isAdmin)

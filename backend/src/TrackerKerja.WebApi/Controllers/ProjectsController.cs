@@ -98,6 +98,9 @@ public class ProjectsController : ControllerBase
         var project = await _context.Projects
             .Include(p => p.ProjectManager)
             .Include(p => p.Tasks)
+                .ThenInclude(t => t.AssignedToUser)
+            .Include(p => p.Tasks)
+                .ThenInclude(t => t.Category)
             .AsNoTracking()
             .FirstOrDefaultAsync(p => p.Id == id);
 
@@ -113,7 +116,41 @@ public class ProjectsController : ControllerBase
         double burnRate = project.Budget > 0 ? Math.Round((double)(project.ActualCost / project.Budget) * 100.0, 1) : 0.0;
         var burnStatus = burnRate > 100 ? "Overbudget" : burnRate >= 80 ? "Warning" : "Safe";
 
-        var dto = new ProjectListDto(
+        // Query sessions for tasks in this project
+        var taskIds = project.Tasks.Select(t => t.Id).ToList();
+        var sessions = await _context.Sessions
+            .AsNoTracking()
+            .Where(s => taskIds.Contains(s.TaskId) && s.EndTime != null)
+            .Select(s => new { s.TaskId, s.Duration })
+            .ToListAsync();
+
+        long totalDurationSeconds = sessions.Sum(s => s.Duration);
+
+        var taskItems = project.Tasks
+            .OrderBy(t => t.Status == Domain.Enums.TaskStatus.Done)
+            .ThenByDescending(t => t.Priority)
+            .Select(t =>
+            {
+                var taskDuration = sessions.Where(s => s.TaskId == t.Id).Sum(s => s.Duration);
+                return new ProjectTaskItemDto(
+                    t.Id,
+                    $"TK-{t.Id:D4}",
+                    t.Title,
+                    t.Description,
+                    t.Status,
+                    t.Priority,
+                    t.Progress,
+                    t.Milestone,
+                    t.Category?.Name,
+                    t.AssignedToUserId,
+                    t.AssignedToUser?.FullName,
+                    t.AssignedToUser?.AvatarColor,
+                    t.DueDate,
+                    taskDuration
+                );
+            }).ToList();
+
+        var dto = new ProjectDetailDto(
             project.Id,
             project.Name,
             project.Description,
@@ -122,6 +159,8 @@ public class ProjectsController : ControllerBase
             project.ClientName,
             project.ProjectManagerId,
             project.ProjectManager?.FullName,
+            project.ProjectManager?.Email,
+            project.ProjectManager?.AvatarColor,
             project.Budget,
             project.ActualCost,
             burnRate,
@@ -129,8 +168,10 @@ public class ProjectsController : ControllerBase
             totalTasks,
             completedTasks,
             progress,
+            totalDurationSeconds,
             project.Deadline,
-            project.CreatedAt
+            project.CreatedAt,
+            taskItems
         );
 
         return Ok(new { success = true, data = dto });
@@ -229,5 +270,18 @@ public class ProjectsController : ControllerBase
             success = true,
             message = $"{tasksToAssign.Count} tugas berhasil dialokasikan ke proyek {project.Name}."
         });
+    }
+
+    [HttpPost("{id}/unassign-task/{taskId}")]
+    public async Task<IActionResult> UnassignTask(int id, int taskId)
+    {
+        var task = await _context.Tasks.FirstOrDefaultAsync(t => t.Id == taskId && t.ProjectId == id);
+        if (task == null) return NotFound(new { success = false, message = "Tugas tidak ditemukan pada proyek ini." });
+
+        task.ProjectId = null;
+        task.UpdatedAt = DateTimeOffset.UtcNow;
+        await _context.SaveChangesAsync();
+
+        return Ok(new { success = true, message = $"Tugas '{task.Title}' berhasil dilepaskan dari proyek." });
     }
 }
