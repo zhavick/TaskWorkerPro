@@ -26,7 +26,7 @@
 **Interfaces:**
 - Produces: `ProjectTaskItemDto`, `ProjectDetailDto`.
 
-- [ ] **Step 1: Add `ProjectTaskItemDto` and `ProjectDetailDto` in `ProjectDtos.cs`**
+- [x] **Step 1: Add `ProjectTaskItemDto` and `ProjectDetailDto` in `ProjectDtos.cs`**
 
 ```csharp
 public record ProjectTaskItemDto(
@@ -71,12 +71,12 @@ public record ProjectDetailDto(
 );
 ```
 
-- [ ] **Step 2: Verify Compilation**
+- [x] **Step 2: Verify Compilation**
 
 Run: `dotnet build backend/src/TrackerKerja.Application/TrackerKerja.Application.csproj`
 Expected: Build succeeded with 0 errors.
 
-- [ ] **Step 3: Commit DTO additions**
+- [x] **Step 3: Commit DTO additions**
 
 ```bash
 git add backend/src/TrackerKerja.Application/DTOs/ProjectDtos.cs
@@ -95,18 +95,18 @@ git commit -m "feat(projects): add ProjectTaskItemDto and ProjectDetailDto"
 - Consumes: `AppDbContext`, `ICurrentTenantService`, `ProjectDetailDto`.
 - Produces: Enhanced `GET /api/projects/{id}` returning `ProjectDetailDto`, new `POST /api/projects/{id}/unassign-task/{taskId}` endpoint.
 
-- [ ] **Step 1: Write unit tests in `ProjectsControllerTests.cs`**
+- [x] **Step 1: Write unit tests in `ProjectsControllerTests.cs`**
 
 Write tests for:
 - `GetProjectById` returning `ProjectDetailDto` with mapped tasks and total session duration.
 - `UnassignTask` endpoint setting task `ProjectId = null`.
 - Non-existent project returning 404.
 
-- [ ] **Step 2: Run tests to verify failure**
+- [x] **Step 2: Run tests to verify failure**
 
 Run: `dotnet test backend/tests/TrackerKerja.Tests/TrackerKerja.Tests.csproj --filter "FullyQualifiedName~ProjectsControllerTests"`
 
-- [ ] **Step 3: Implement `GetProjectById` and `UnassignTask` in `ProjectsController.cs`**
+- [x] **Step 3: Implement `GetProjectById` and `UnassignTask` in `ProjectsController.cs`**
 
 Enhance `GetProjectById`:
 - Include ProjectManager, Tasks, Category, AssignedToUser.
@@ -129,12 +129,12 @@ public async Task<IActionResult> UnassignTask(int id, int taskId)
 }
 ```
 
-- [ ] **Step 4: Run tests to verify all pass**
+- [x] **Step 4: Run tests to verify all pass**
 
 Run: `dotnet test backend/tests/TrackerKerja.Tests/TrackerKerja.Tests.csproj --filter "FullyQualifiedName~ProjectsControllerTests"`
 Expected: All tests pass.
 
-- [ ] **Step 5: Commit backend controller updates**
+- [x] **Step 5: Commit backend controller updates**
 
 ```bash
 git add backend/src/TrackerKerja.WebApi/Controllers/ProjectsController.cs backend/tests/TrackerKerja.Tests/ProjectsControllerTests.cs
@@ -151,7 +151,7 @@ git commit -m "feat(projects): enhance GetProjectById with tasks and add unassig
 **Interfaces:**
 - Consumes: `GET /api/projects/{id}`, `PUT /api/projects/{id}`, `GET /api/projects/{id}/unassigned-tasks`, `POST /api/projects/{id}/assign-tasks`, `POST /api/projects/{id}/unassign-task/{taskId}`, `DELETE /api/projects/{id}`, `GET /api/members`.
 
-- [ ] **Step 1: Create `frontend/src/app/(with-layouts)/projects/[id]/page.tsx`**
+- [x] **Step 1: Create `frontend/src/app/(with-layouts)/projects/[id]/page.tsx`**
 
 Implement:
 - Top breadcrumbs & back link to `/projects`.
@@ -178,12 +178,12 @@ Implement:
   - Bulk Task Assignment Dialog:
     - Multi-select checklist table for unassigned tasks.
 
-- [ ] **Step 2: Verify TypeScript Compilation**
+- [x] **Step 2: Verify TypeScript Compilation**
 
 Run: `cmd.exe /c "npm --prefix frontend run build"`
 Expected: Compiled successfully with 0 errors.
 
-- [ ] **Step 3: Commit Studio Page**
+- [x] **Step 3: Commit Studio Page**
 
 ```bash
 git add "frontend/src/app/(with-layouts)/projects/[id]/page.tsx"
@@ -201,16 +201,16 @@ git commit -m "feat(projects): implement full-width 12-column project studio det
 - Consumes: Next.js `Link` component.
 - Produces: Action button "Buka Studio Proyek" on each project card.
 
-- [ ] **Step 1: Update project cards in `projects/page.tsx`**
+- [x] **Step 1: Update project cards in `projects/page.tsx`**
 
 Add prominent link button to `/projects/${p.id}` on each card.
 
-- [ ] **Step 2: Verify Frontend Build**
+- [x] **Step 2: Verify Frontend Build**
 
 Run: `cmd.exe /c "npm --prefix frontend run build"`
 Expected: Build passes.
 
-- [ ] **Step 3: Commit Navigation Link**
+- [x] **Step 3: Commit Navigation Link**
 
 ```bash
 git add "frontend/src/app/(with-layouts)/projects/page.tsx"
@@ -224,12 +224,12 @@ git commit -m "feat(projects): add studio navigation links on project cards"
 **Files:**
 - All touched files.
 
-- [ ] **Step 1: Run complete backend test suite**
+- [x] **Step 1: Run complete backend test suite**
 
 Run: `dotnet test backend/tests/TrackerKerja.Tests/TrackerKerja.Tests.csproj`
 Expected: 100% passed.
 
-- [ ] **Step 2: Run complete frontend production build**
+- [x] **Step 2: Run complete frontend production build**
 
 Run: `cmd.exe /c "npm --prefix frontend run build"`
 Expected: Build succeeds with static route `/projects/[id]`.
