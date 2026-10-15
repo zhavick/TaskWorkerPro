@@ -157,43 +157,64 @@ public class TaskExcelImportService : ITaskExcelImportService
             .Where(u => u.CompanyId == companyId)
             .ToListAsync(cancellationToken);
 
+        var company = companyId.HasValue
+            ? await _context.Companies.FirstOrDefaultAsync(c => c.Id == companyId.Value, cancellationToken)
+            : null;
+        var companyDomain = company?.Code != null ? $"{company.Code.ToLowerInvariant()}.local" : "trackerkerja.local";
+
         var rows = new List<TaskImportRowDto>();
         int rowIndex = 0;
 
         var sheetsToProcess = workbook.Worksheets.Where(ws =>
         {
-            var nameLower = ws.Name.ToLowerInvariant();
-            if (nameLower.Contains("lookup") || nameLower.Contains("dashboard")) return false;
+            var nameLower = ws.Name.Trim().ToLowerInvariant();
+            if (nameLower.Contains("lookup") || nameLower.Contains("dashboard") ||
+                nameLower.Contains("template") || nameLower.Contains("panduan") ||
+                nameLower.Contains("guide") || nameLower.Contains("readme"))
+                return false;
             return ws.FirstRowUsed() != null;
         }).ToList();
 
         foreach (var ws in sheetsToProcess)
         {
-            var headerRow = ws.FirstRowUsed();
+            var headerRow = DetectHeaderRow(ws);
             if (headerRow == null) continue;
 
             var lastCol = ws.LastColumnUsed()?.ColumnNumber() ?? 0;
-            var headers = Enumerable.Range(1, lastCol)
+            var headers = Enumerable.Range(1, Math.Min(lastCol, 40))
                 .Select(c => ws.Cell(headerRow.RowNumber(), c).GetString().Trim().ToLowerInvariant())
                 .ToList();
 
-            int codeCol = FindCol(headers, "kode tugas", "task code", "task_code", "code");
-            int parentCodeCol = FindCol(headers, "kode induk tugas", "parent task code", "parent_code", "parent code");
-            int projectCol = FindCol(headers, "nama proyek", "project_name", "project", "proyek");
-            int milestoneCol = FindCol(headers, "modul", "milestone", "jenis_task", "jenis task");
-            int titleCol = FindCol(headers, "judul tugas", "task title", "title", "judul");
-            int descCol = FindCol(headers, "deskripsi", "description");
-            int priorityCol = FindCol(headers, "prioritas", "priority");
-            int statusCol = FindCol(headers, "status");
-            int progressCol = FindCol(headers, "progres", "progress");
-            int startDateCol = FindCol(headers, "tanggal mulai", "start_date", "start date", "mulai");
-            int dueDateCol = FindCol(headers, "target selesai", "due_date", "due date", "completed_date", "selesai", "target", "deadline");
-            int picEmailCol = FindCol(headers, "email pic", "developer_emails", "email");
-            int picNameCol = FindCol(headers, "nama pic", "pic", "person", "email / nama pic");
-            int obstacleCol = FindCol(headers, "kendala", "obstacle", "masalah");
-            int solutionCol = FindCol(headers, "solusi", "solution");
+            int codeCol = FindCol(headers, "kode tugas", "task code", "task_code", "code", "kode", "no tugas", "task id", "id");
+            int parentCodeCol = FindCol(headers, "kode induk tugas", "parent task code", "parent_code", "parent code", "induk tugas", "parent");
+            int projectCol = FindCol(headers, "nama proyek", "project_name", "project", "proyek", "nama project", "aplikasi", "nama aplikasi", "sistem");
+            int milestoneCol = FindCol(headers, "modul", "milestone", "jenis_task", "jenis task", "kategori", "fitur", "tahapan");
+            int titleCol = FindCol(headers, "judul tugas", "task title", "title", "judul", "aktivitas", "activity", "pekerjaan", "uraian pekerjaan", "deskripsi pekerjaan", "uraian tugas", "nama tugas", "nama task", "task name", "uraian", "kegiatan", "work item");
+            int descCol = FindCol(headers, "deskripsi", "description", "keterangan", "detail", "catatan");
+            int priorityCol = FindCol(headers, "prioritas", "priority", "urgensi", "level");
+            int statusCol = FindCol(headers, "status", "keadaan", "progress status", "kondisi");
+            int progressCol = FindCol(headers, "progres", "progress", "%", "persentase", "bobot", "persen");
+            int startDateCol = FindCol(headers, "tanggal mulai", "start_date", "start date", "mulai", "tgl mulai", "start");
+            int dueDateCol = FindCol(headers, "target selesai", "due_date", "due date", "completed_date", "selesai", "target", "deadline", "tgl selesai", "due");
+            int picEmailCol = FindCol(headers, "email pic", "developer_emails", "pic email", "email user", "user email", "email");
+            int picNameCol = FindCol(headers, "email / nama pic", "nama pic", "pic", "penanggung jawab", "petugas", "pelaksana", "developer", "assigned to", "assignee", "nama staf", "nama personil", "person", "nama pengguna", "nama user");
+            int obstacleCol = FindCol(headers, "kendala", "obstacle", "masalah", "hambatan", "issue");
+            int solutionCol = FindCol(headers, "solusi", "solution", "tindakan", "penyelesaian");
+
+            // Jika titleCol tidak terdeteksi via nama umum, gunakan fallback kolom teks pertama yang relevan
+            if (titleCol == 0)
+            {
+                titleCol = FindCol(headers, "uraian", "kegiatan", "aktivitas", "pekerjaan", "item");
+                if (titleCol == 0 && headers.Count >= 2)
+                {
+                    titleCol = headers[0].Contains("no") && headers.Count > 1 ? 2 : 1;
+                }
+            }
 
             if (titleCol == 0) continue;
+
+            // Ekstrak nama personil dari nama sheet (misal sheet bernama "Budi", "Dewi Sartika", "Wahana")
+            var sheetPerson = ExtractPersonFromSheetName(ws.Name);
 
             var lastRow = ws.LastRowUsed()?.RowNumber() ?? 0;
 
@@ -213,11 +234,13 @@ public class TaskExcelImportService : ITaskExcelImportService
                 var obstacle = obstacleCol > 0 ? ws.Cell(r, obstacleCol).GetString().Trim() : null;
                 var solution = solutionCol > 0 ? ws.Cell(r, solutionCol).GetString().Trim() : null;
 
+                // Tentukan nama/email PIC dari baris, atau fallback ke Nama Sheet
                 string? picText = null;
                 if (picEmailCol > 0) picText = ws.Cell(r, picEmailCol).GetString().Trim();
                 if (string.IsNullOrWhiteSpace(picText) && picNameCol > 0) picText = ws.Cell(r, picNameCol).GetString().Trim();
+                if (string.IsNullOrWhiteSpace(picText) && !string.IsNullOrWhiteSpace(sheetPerson)) picText = sheetPerson;
 
-                // If empty title and all other fields are empty, ignore completely
+                // Abaikan baris kosong total
                 if (string.IsNullOrWhiteSpace(title) && string.IsNullOrWhiteSpace(projectName) && string.IsNullOrWhiteSpace(taskCode))
                 {
                     continue;
@@ -266,18 +289,16 @@ public class TaskExcelImportService : ITaskExcelImportService
                 string? matchedUserName = null;
                 if (!string.IsNullOrWhiteSpace(picText))
                 {
-                    var matchedUser = existingUsers.FirstOrDefault(u =>
-                        (!string.IsNullOrEmpty(u.Email) && picText.Contains(u.Email, StringComparison.OrdinalIgnoreCase)) ||
-                        (!string.IsNullOrEmpty(u.FullName) && (u.FullName.Contains(picText, StringComparison.OrdinalIgnoreCase) || picText.Contains(u.FullName, StringComparison.OrdinalIgnoreCase))));
-
-                    if (matchedUser != null)
+                    var (matchedId, resolvedName, resolvedEmail, isNew) = MatchUser(picText, existingUsers, companyDomain);
+                    if (!isNew && matchedId != null)
                     {
-                        matchedUserId = matchedUser.Id;
-                        matchedUserName = matchedUser.FullName;
+                        matchedUserId = matchedId;
+                        matchedUserName = resolvedName;
                     }
                     else
                     {
-                        validationMessages.Add($"PIC '{picText}' tidak ditemukan dalam daftar personil.");
+                        matchedUserName = resolvedName;
+                        validationMessages.Add($"Personil '{resolvedName}' ({resolvedEmail}) akan otomatis dibuatkan akun pengguna baru.");
                         if (validationStatus != TaskImportValidationStatus.Error)
                         {
                             validationStatus = TaskImportValidationStatus.Warning;
@@ -333,6 +354,7 @@ public class TaskExcelImportService : ITaskExcelImportService
         int totalProcessed = 0;
         int totalImported = 0;
         int totalProjectsCreated = 0;
+        int totalUsersCreated = 0;
 
         var selectedIndexes = request.SelectedRowIndexes?.ToHashSet();
         var candidateRows = request.Rows
@@ -356,6 +378,20 @@ public class TaskExcelImportService : ITaskExcelImportService
             .Where(u => u.CompanyId == companyId)
             .ToListAsync(cancellationToken);
 
+        var company = companyId.HasValue
+            ? await _context.Companies.FirstOrDefaultAsync(c => c.Id == companyId.Value, cancellationToken)
+            : null;
+        var companyDomain = company?.Code != null ? $"{company.Code.ToLowerInvariant()}.local" : "trackerkerja.local";
+
+        // Cache lokal user untuk mencegah duplikasi pembuatan user di dalam batch
+        var userCache = new Dictionary<string, AppUser>(StringComparer.OrdinalIgnoreCase);
+        foreach (var u in existingUsers)
+        {
+            if (!string.IsNullOrEmpty(u.Email)) userCache[u.Email] = u;
+            if (!string.IsNullOrEmpty(u.FullName)) userCache[u.FullName] = u;
+            userCache[u.Id] = u;
+        }
+
         var tasksToInsert = new List<WorkTask>();
         var batchTaskMap = new Dictionary<string, WorkTask>(StringComparer.OrdinalIgnoreCase);
 
@@ -370,7 +406,7 @@ public class TaskExcelImportService : ITaskExcelImportService
         {
             totalProcessed++;
 
-            // Resolve Project
+            // 1. Resolve Project
             Project? project = null;
             if (row.MatchedProjectId.HasValue)
             {
@@ -402,8 +438,75 @@ public class TaskExcelImportService : ITaskExcelImportService
                 project = defaultProject;
             }
 
-            // Resolve PIC
+            // 2. Resolve PIC / Buat User Baru jika belum terdaftar (berdasarkan sheet name / email)
             string? assignedUserId = row.MatchedUserId;
+
+            if (string.IsNullOrEmpty(assignedUserId) && !string.IsNullOrWhiteSpace(row.PicIdentifier))
+            {
+                var picKey = row.PicIdentifier.Trim();
+                if (userCache.TryGetValue(picKey, out var cachedUser))
+                {
+                    assignedUserId = cachedUser.Id;
+                }
+                else
+                {
+                    var (matchedId, resolvedName, resolvedEmail, isNew) = MatchUser(picKey, existingUsers, companyDomain);
+                    if (matchedId != null && userCache.TryGetValue(matchedId, out var existingFound))
+                    {
+                        assignedUserId = existingFound.Id;
+                    }
+                    else if (!string.IsNullOrEmpty(resolvedEmail) && userCache.TryGetValue(resolvedEmail, out var existingByEmail))
+                    {
+                        assignedUserId = existingByEmail.Id;
+                    }
+                    else
+                    {
+                        // Buat akun pengguna baru secara otomatis
+                        var dbUser = await _context.Users.FirstOrDefaultAsync(u => u.Email == resolvedEmail, cancellationToken);
+                        if (dbUser != null)
+                        {
+                            assignedUserId = dbUser.Id;
+                            userCache[picKey] = dbUser;
+                            userCache[resolvedName!] = dbUser;
+                            userCache[resolvedEmail!] = dbUser;
+                        }
+                        else
+                        {
+                            var newUser = new AppUser
+                            {
+                                Id = Guid.NewGuid().ToString(),
+                                FullName = resolvedName!,
+                                Email = resolvedEmail!,
+                                NormalizedEmail = resolvedEmail!.ToUpperInvariant(),
+                                UserName = resolvedEmail!,
+                                NormalizedUserName = resolvedEmail!.ToUpperInvariant(),
+                                EmailConfirmed = true,
+                                JobTitle = "Team Member",
+                                AvatarColor = PickAvatarColor(resolvedName!),
+                                PasswordHash = PasswordHasher.HashPassword("TrackerKerja123!"),
+                                CompanyId = companyId,
+                                IsApproved = true,
+                                ApprovedAt = DateTimeOffset.UtcNow,
+                                CreatedAt = DateTimeOffset.UtcNow
+                            };
+
+                            _context.Users.Add(newUser);
+                            await _context.SaveChangesAsync(cancellationToken);
+
+                            existingUsers.Add(newUser);
+                            userCache[picKey] = newUser;
+                            userCache[resolvedName!] = newUser;
+                            userCache[resolvedEmail!] = newUser;
+                            userCache[newUser.Id] = newUser;
+
+                            assignedUserId = newUser.Id;
+                            totalUsersCreated++;
+                            messages.Add($"Berhasil membuat akun personil baru untuk '{newUser.FullName}' ({newUser.Email}).");
+                        }
+                    }
+                }
+            }
+
             if (string.IsNullOrEmpty(assignedUserId) && !string.IsNullOrEmpty(request.BulkAssignUserId))
             {
                 var bulkUser = existingUsers.FirstOrDefault(u => u.Id == request.BulkAssignUserId);
@@ -484,7 +587,10 @@ public class TaskExcelImportService : ITaskExcelImportService
             await transaction.CommitAsync(cancellationToken);
         }
 
-        messages.Add($"Berhasil mengimpor {totalImported} tugas dari {totalProcessed} baris data ({totalProjectsCreated} proyek baru dibuat).");
+        var resultDetail = totalUsersCreated > 0
+            ? $"Berhasil mengimpor {totalImported} tugas dari {totalProcessed} baris data ({totalProjectsCreated} proyek baru, {totalUsersCreated} personil baru dibuat)."
+            : $"Berhasil mengimpor {totalImported} tugas dari {totalProcessed} baris data ({totalProjectsCreated} proyek baru dibuat).";
+        messages.Add(resultDetail);
 
         return new TaskImportResultDto(
             totalProcessed,
@@ -513,14 +619,36 @@ public class TaskExcelImportService : ITaskExcelImportService
 
     private static int FindCol(List<string> headers, params string[] candidates)
     {
+        // 1. Prioritize exact matches
         for (int i = 0; i < headers.Count; i++)
         {
             var h = headers[i];
-            if (candidates.Any(c => h.Contains(c, StringComparison.OrdinalIgnoreCase)))
+            foreach (var c in candidates)
             {
-                return i + 1; // 1-based ClosedXML index
+                if (h.Equals(c, StringComparison.OrdinalIgnoreCase))
+                {
+                    return i + 1;
+                }
             }
         }
+
+        // 2. Contains match with candidate priority
+        foreach (var c in candidates)
+        {
+            for (int i = 0; i < headers.Count; i++)
+            {
+                var h = headers[i];
+                if (h.Contains(c, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (c == "nama" && (h.Contains("proyek") || h.Contains("project") || h.Contains("aplikasi") || h.Contains("tugas") || h.Contains("task") || h.Contains("modul")))
+                    {
+                        continue;
+                    }
+                    return i + 1;
+                }
+            }
+        }
+
         return 0;
     }
 
@@ -593,6 +721,195 @@ public class TaskExcelImportService : ITaskExcelImportService
     private static string PickColorForProject(string name)
     {
         var colors = new[] { "#4F46E5", "#06B6D4", "#10B981", "#F59E0B", "#EC4899", "#8B5CF6", "#3B82F6" };
+        var hash = Math.Abs(name.GetHashCode());
+        return colors[hash % colors.Length];
+    }
+
+    private static IXLRow? DetectHeaderRow(IXLWorksheet ws)
+    {
+        var firstRow = ws.FirstRowUsed()?.RowNumber() ?? 1;
+        var lastRow = ws.LastRowUsed()?.RowNumber() ?? firstRow;
+        var maxScanRow = Math.Min(lastRow, firstRow + 20);
+
+        var headerKeywords = new[]
+        {
+            "judul", "tugas", "task", "pekerjaan", "uraian", "aktivitas",
+            "proyek", "project", "pic", "email", "status", "prioritas",
+            "progres", "progress", "deadline", "target", "mulai", "selesai"
+        };
+
+        for (int r = firstRow; r <= maxScanRow; r++)
+        {
+            var row = ws.Row(r);
+            int matchedKeywords = 0;
+            var lastCol = Math.Min(ws.LastColumnUsed()?.ColumnNumber() ?? 1, 40);
+
+            for (int c = 1; c <= lastCol; c++)
+            {
+                var val = row.Cell(c).GetString().Trim().ToLowerInvariant();
+                if (string.IsNullOrWhiteSpace(val)) continue;
+
+                if (headerKeywords.Any(k => val.Contains(k)))
+                {
+                    matchedKeywords++;
+                }
+            }
+
+            // Jika baris memiliki minimal 2 kata kunci header atau kata kunci spesifik task
+            if (matchedKeywords >= 2)
+            {
+                return row;
+            }
+
+            for (int c = 1; c <= lastCol; c++)
+            {
+                var val = row.Cell(c).GetString().Trim().ToLowerInvariant();
+                if (val.Contains("judul") || val.Contains("uraian pekerjaan") || val.Contains("task name") || val.Contains("task title"))
+                {
+                    return row;
+                }
+            }
+        }
+
+        // Fallback ke baris pertama yang terisi
+        return ws.FirstRowUsed();
+    }
+
+    private static string? ExtractPersonFromSheetName(string sheetName)
+    {
+        if (string.IsNullOrWhiteSpace(sheetName)) return null;
+
+        var clean = sheetName.Trim();
+        var lower = clean.ToLowerInvariant();
+
+        // Abaikan nama sheet yang bersifat umum / bukan personil
+        var genericKeywords = new[]
+        {
+            "sheet", "sheets", "halaman", "rekap", "summary", "dashboard", "lookup",
+            "master", "data", "tugas", "tasks", "task", "table", "all", "export",
+            "import", "panduan", "guide", "readme", "template", "report", "daftar",
+            "list", "project", "projects", "proyek", "item", "items"
+        };
+
+        if (genericKeywords.Any(g => lower.Equals(g, StringComparison.OrdinalIgnoreCase) ||
+                                     lower.StartsWith(g + " ", StringComparison.OrdinalIgnoreCase) ||
+                                     lower.StartsWith(g + "_", StringComparison.OrdinalIgnoreCase) ||
+                                     lower.StartsWith(g + "-", StringComparison.OrdinalIgnoreCase)))
+        {
+            return null;
+        }
+
+        // Jika ada prefix atau separator seperti "Tim A - Budi" atau "[PIC] Wahana", ambil nama intinya
+        if (clean.Contains('-'))
+        {
+            var parts = clean.Split('-');
+            var candidate = parts[^1].Trim();
+            if (candidate.Length >= 2 && !candidate.Any(char.IsDigit))
+            {
+                clean = candidate;
+            }
+        }
+
+        clean = clean.Trim('[', ']', '(', ')', '_', ' ');
+        return clean.Length >= 2 ? clean : null;
+    }
+
+    private static (string? userId, string? userName, string? userEmail, bool isNew) MatchUser(
+        string picIdentifier,
+        List<AppUser> existingUsers,
+        string? companyDomain = null)
+    {
+        if (string.IsNullOrWhiteSpace(picIdentifier))
+        {
+            return (null, null, null, false);
+        }
+
+        var trimmed = picIdentifier.Trim();
+        var domain = string.IsNullOrWhiteSpace(companyDomain) ? "trackerkerja.local" : companyDomain.Trim().ToLowerInvariant();
+
+        // Kasus 1: Input berupa email
+        if (trimmed.Contains('@'))
+        {
+            var foundByEmail = existingUsers.FirstOrDefault(u =>
+                u.Email != null && u.Email.Equals(trimmed, StringComparison.OrdinalIgnoreCase));
+
+            if (foundByEmail != null)
+            {
+                return (foundByEmail.Id, foundByEmail.FullName, foundByEmail.Email, false);
+            }
+
+            // Email belum ada -> jadikan calon user baru dengan nama dari user part
+            var localPart = trimmed.Split('@')[0];
+            var generatedName = FormatDisplayName(localPart);
+            return (null, generatedName, trimmed.ToLowerInvariant(), true);
+        }
+
+        // Kasus 2: Input berupa Nama Personil
+        // Coba cari exact match di FullName atau UserName
+        var foundByName = existingUsers.FirstOrDefault(u =>
+            (u.FullName != null && u.FullName.Equals(trimmed, StringComparison.OrdinalIgnoreCase)) ||
+            (u.UserName != null && u.UserName.Equals(trimmed, StringComparison.OrdinalIgnoreCase)));
+
+        if (foundByName != null)
+        {
+            return (foundByName.Id, foundByName.FullName, foundByName.Email, false);
+        }
+
+        // Coba cari parsial jika panjang kata kunci cukup
+        if (trimmed.Length >= 4)
+        {
+            var partialMatch = existingUsers.FirstOrDefault(u =>
+                u.FullName != null && u.FullName.Contains(trimmed, StringComparison.OrdinalIgnoreCase));
+            if (partialMatch != null)
+            {
+                return (partialMatch.Id, partialMatch.FullName, partialMatch.Email, false);
+            }
+        }
+
+        // Personil belum terdaftar -> format nama dan generate email baru
+        var formattedName = FormatDisplayName(trimmed);
+        var emailSlug = GenerateEmailSlug(formattedName, domain);
+
+        // Pastikan slug email tidak kebetulan bentrok dengan existing user
+        var userWithSameEmail = existingUsers.FirstOrDefault(u =>
+            u.Email != null && u.Email.Equals(emailSlug, StringComparison.OrdinalIgnoreCase));
+        if (userWithSameEmail != null)
+        {
+            return (userWithSameEmail.Id, userWithSameEmail.FullName, userWithSameEmail.Email, false);
+        }
+
+        return (null, formattedName, emailSlug, true);
+    }
+
+    private static string FormatDisplayName(string raw)
+    {
+        var cleaned = raw.Replace(".", " ").Replace("_", " ").Replace("-", " ").Trim();
+        var words = cleaned.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (words.Length == 0) return raw;
+
+        var textInfo = CultureInfo.CurrentCulture.TextInfo;
+        return string.Join(" ", words.Select(w => textInfo.ToTitleCase(w.ToLowerInvariant())));
+    }
+
+    private static string GenerateEmailSlug(string name, string domain)
+    {
+        var normalized = new string(name
+            .ToLowerInvariant()
+            .Where(c => char.IsLetterOrDigit(c) || c == ' ')
+            .ToArray());
+        var parts = normalized.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var slug = parts.Length switch
+        {
+            0 => "personnel",
+            1 => parts[0],
+            _ => $"{parts[0]}.{parts[^1]}"
+        };
+        return $"{slug}@{domain}";
+    }
+
+    private static string PickAvatarColor(string name)
+    {
+        var colors = new[] { "#3B82F6", "#10B981", "#8B5CF6", "#F59E0B", "#EF4444", "#EC4899", "#06B6D4", "#6366F1" };
         var hash = Math.Abs(name.GetHashCode());
         return colors[hash % colors.Length];
     }

@@ -3,6 +3,7 @@ using System.Security.Claims;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using TrackerKerja.Domain.Entities;
 using TrackerKerja.Infrastructure.Persistence;
@@ -11,8 +12,6 @@ namespace TrackerKerja.Infrastructure.Filters;
 
 public class AuditLogActionFilter : IAsyncActionFilter
 {
-    private readonly AppDbContext _context;
-    private readonly ILogger<AuditLogActionFilter> _logger;
 
     private static readonly HashSet<string> SensitiveKeys = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -24,9 +23,19 @@ public class AuditLogActionFilter : IAsyncActionFilter
         "POST", "PUT", "DELETE", "PATCH"
     };
 
-    public AuditLogActionFilter(AppDbContext context, ILogger<AuditLogActionFilter> logger)
+    private readonly IServiceScopeFactory? _scopeFactory;
+    private readonly AppDbContext? _directContext;
+    private readonly ILogger<AuditLogActionFilter> _logger;
+
+    public AuditLogActionFilter(IServiceScopeFactory scopeFactory, ILogger<AuditLogActionFilter> logger)
     {
-        _context = context;
+        _scopeFactory = scopeFactory;
+        _logger = logger;
+    }
+
+    public AuditLogActionFilter(AppDbContext directContext, ILogger<AuditLogActionFilter> logger)
+    {
+        _directContext = directContext;
         _logger = logger;
     }
 
@@ -35,8 +44,8 @@ public class AuditLogActionFilter : IAsyncActionFilter
         var httpMethod = context.HttpContext.Request.Method;
         var path = context.HttpContext.Request.Path.Value ?? string.Empty;
 
-        // Skip non-mutating requests and diagnostic/health endpoints
-        if (!MutatingMethods.Contains(httpMethod) || path.StartsWith("/health", StringComparison.OrdinalIgnoreCase))
+        // Skip diagnostic, health, CORS preflight and static endpoints
+        if (!ShouldAuditRequest(httpMethod, path))
         {
             await next();
             return;
@@ -86,10 +95,17 @@ public class AuditLogActionFilter : IAsyncActionFilter
         }
 
         // Execute action
-        var executedContext = await next();
-        stopwatch.Stop();
+        ActionExecutedContext? executedContext = null;
+        try
+        {
+            executedContext = await next();
+        }
+        finally
+        {
+            stopwatch.Stop();
+        }
 
-        // Record audit log asynchronously
+        // Record audit log asynchronously in an isolated scope
         try
         {
             var user = context.HttpContext.User;
@@ -105,13 +121,17 @@ public class AuditLogActionFilter : IAsyncActionFilter
             var actionName = context.ActionDescriptor.RouteValues.TryGetValue("action", out var act) ? act : context.ActionDescriptor.DisplayName;
 
             var ipAddress = context.HttpContext.Connection.RemoteIpAddress?.ToString();
-            var statusCode = executedContext.HttpContext.Response.StatusCode;
+            var statusCode = executedContext?.Exception != null ? 500 : (executedContext?.HttpContext.Response.StatusCode ?? 200);
 
             // Correlate Auth login/registration events when context.User wasn't populated yet
+            using var scope = _scopeFactory?.CreateScope();
+            var db = scope?.ServiceProvider.GetRequiredService<AppDbContext>() ?? _directContext;
+            if (db == null) return;
+
             if (string.IsNullOrEmpty(userEmail) && !string.IsNullOrEmpty(attemptedEmail))
             {
                 userEmail = attemptedEmail;
-                var dbUser = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Email == attemptedEmail);
+                var dbUser = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Email == attemptedEmail);
                 if (dbUser != null)
                 {
                     userId = dbUser.Id;
@@ -132,6 +152,11 @@ public class AuditLogActionFilter : IAsyncActionFilter
                 ["actionSummary"] = actionSummary,
                 ["params"] = sanitizedArgs
             };
+
+            if (executedContext?.Exception != null)
+            {
+                detailsPayload["exception"] = executedContext.Exception.Message;
+            }
 
             var details = JsonSerializer.Serialize(detailsPayload, new JsonSerializerOptions
             {
@@ -156,13 +181,35 @@ public class AuditLogActionFilter : IAsyncActionFilter
                 Details = details
             };
 
-            _context.AuditLogs.Add(auditLog);
-            await _context.SaveChangesAsync();
+            db.AuditLogs.Add(auditLog);
+            await db.SaveChangesAsync();
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to persist audit log entry for {Method} {Path}", httpMethod, path);
         }
+    }
+
+    private static bool ShouldAuditRequest(string httpMethod, string path)
+    {
+        if (string.Equals(httpMethod, "OPTIONS", StringComparison.OrdinalIgnoreCase)) return false;
+        if (path.StartsWith("/health", StringComparison.OrdinalIgnoreCase)) return false;
+        if (path.StartsWith("/swagger", StringComparison.OrdinalIgnoreCase)) return false;
+        if (path.EndsWith(".js") || path.EndsWith(".css") || path.EndsWith(".ico") || path.EndsWith(".map")) return false;
+
+        // Selalu catat setiap aksi mutasi (POST, PUT, DELETE, PATCH)
+        if (MutatingMethods.Contains(httpMethod)) return true;
+
+        // Catat aksi GET penting (Ekspor, Impor, Log Audit, Sinkronisasi, Profil, Konfigurasi)
+        var lower = path.ToLowerInvariant();
+        return lower.Contains("export") ||
+               lower.Contains("import") ||
+               lower.Contains("audit-logs") ||
+               lower.Contains("template") ||
+               lower.Contains("package") ||
+               lower.Contains("stats") ||
+               lower.Contains("settings") ||
+               lower.Contains("profile");
     }
 
     private static string GetModuleName(string controllerName) => controllerName switch

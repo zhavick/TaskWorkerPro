@@ -214,4 +214,87 @@ public class TaskExcelImportServiceTests
         Assert.Equal("user-budi", savedParent.AssignedToUserId);
         Assert.Equal("user-dewi", savedChild.AssignedToUserId);
     }
+
+    [Fact]
+    public async Task PreviewAndCommit_MultiSheetWithPersonnelSheetNames_AutoCreatesUsersAndAssignsTasks()
+    {
+        using var context = CreateInMemoryContext();
+        var service = new TaskExcelImportService(context);
+
+        using var wb = new XLWorkbook();
+
+        // Sheet 1: Metadata / Guideline (should be ignored)
+        var wsGuide = wb.Worksheets.Add("Panduan Import");
+        wsGuide.Cell(1, 1).Value = "Catatan Penting";
+        wsGuide.Cell(2, 1).Value = "Silakan isi data pada tab personil masing-masing.";
+
+        // Sheet 2: Personil "Wahana Pratama" with header on Row 2
+        var wsWahana = wb.Worksheets.Add("Wahana Pratama");
+        wsWahana.Cell(1, 1).Value = "Rekap Tugas Mingguan"; // Row 1 is a title banner
+        wsWahana.Cell(2, 1).Value = "Kode Tugas";
+        wsWahana.Cell(2, 2).Value = "Judul Tugas";
+        wsWahana.Cell(2, 3).Value = "Nama Proyek";
+        wsWahana.Cell(2, 4).Value = "Prioritas";
+        wsWahana.Cell(2, 5).Value = "Status";
+
+        wsWahana.Cell(3, 1).Value = "WP-01";
+        wsWahana.Cell(3, 2).Value = "Setup Audit Trail System";
+        wsWahana.Cell(3, 3).Value = "TrackerKerja Modern";
+        wsWahana.Cell(3, 4).Value = "Tinggi";
+        wsWahana.Cell(3, 5).Value = "InProgress";
+
+        // Sheet 3: Personil "Siti Rahma" with standard row 1 header
+        var wsSiti = wb.Worksheets.Add("Siti Rahma");
+        wsSiti.Cell(1, 1).Value = "No";
+        wsSiti.Cell(1, 2).Value = "Judul Pekerjaan";
+        wsSiti.Cell(1, 3).Value = "Proyek";
+        wsSiti.Cell(1, 4).Value = "Status";
+
+        wsSiti.Cell(2, 1).Value = "1";
+        wsSiti.Cell(2, 2).Value = "Desain Tampilan Kalender";
+        wsSiti.Cell(2, 3).Value = "TrackerKerja Modern";
+        wsSiti.Cell(2, 4).Value = "Todo";
+
+        using var ms = new MemoryStream();
+        wb.SaveAs(ms);
+        ms.Position = 0;
+
+        // 1. Preview
+        var preview = await service.PreviewImportAsync(ms, "multi-user.xlsx", 1);
+
+        Assert.Equal(2, preview.TotalRows);
+        Assert.All(preview.Rows, r => Assert.NotEqual(TaskImportValidationStatus.Error, r.ValidationStatus));
+
+        var rowWahana = preview.Rows.First(r => r.Title == "Setup Audit Trail System");
+        Assert.Equal("Wahana Pratama", rowWahana.MatchedUserName);
+
+        var rowSiti = preview.Rows.First(r => r.Title == "Desain Tampilan Kalender");
+        Assert.Equal("Siti Rahma", rowSiti.MatchedUserName);
+
+        // 2. Commit
+        var commitReq = new TaskImportCommitRequest(null, null, null, preview.Rows);
+        var commitRes = await service.CommitImportAsync(commitReq, 1);
+
+        Assert.Equal(2, commitRes.TotalImported);
+
+        // Verify users created in database
+        var createdWahana = await context.Users.FirstOrDefaultAsync(u => u.FullName == "Wahana Pratama");
+        var createdSiti = await context.Users.FirstOrDefaultAsync(u => u.FullName == "Siti Rahma");
+
+        Assert.NotNull(createdWahana);
+        Assert.NotNull(createdSiti);
+        Assert.True(createdWahana.IsApproved);
+        Assert.True(createdSiti.IsApproved);
+        Assert.NotEmpty(createdWahana.PasswordHash);
+        Assert.NotEmpty(createdSiti.PasswordHash);
+
+        // Verify tasks are properly assigned to the new user IDs
+        var taskWahana = await context.Tasks.FirstOrDefaultAsync(t => t.Title == "Setup Audit Trail System");
+        var taskSiti = await context.Tasks.FirstOrDefaultAsync(t => t.Title == "Desain Tampilan Kalender");
+
+        Assert.NotNull(taskWahana);
+        Assert.NotNull(taskSiti);
+        Assert.Equal(createdWahana.Id, taskWahana.AssignedToUserId);
+        Assert.Equal(createdSiti.Id, taskSiti.AssignedToUserId);
+    }
 }
