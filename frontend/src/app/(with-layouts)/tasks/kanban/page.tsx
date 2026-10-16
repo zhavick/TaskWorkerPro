@@ -1,19 +1,19 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "@/services/api/client";
 import {
   Kanban as KanbanIcon,
   Plus,
   Play,
+  Square,
   Clock,
   ArrowRight,
   AlertCircle,
   CheckCircle2,
   List,
   GripVertical,
-  MoveRight,
   FileSpreadsheet,
   Search,
   Filter,
@@ -24,59 +24,136 @@ import {
   X,
   FolderKanban,
   Flag,
+  ChevronLeft,
+  ChevronRight,
+  ExternalLink,
+  Eye,
+  Milestone as MilestoneIcon,
+  Sparkles,
+  Info,
 } from "lucide-react";
 import { Button } from "@/components/tailgrids/core/button";
 import { Input } from "@/components/tailgrids/core/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogBody,
+} from "@/components/tailgrids/core/dialog";
 import { ImportExcelDialog } from "@/components/tasks/import-excel-dialog";
 import { CreateTaskDialog } from "@/components/tasks/create-task-dialog";
 import { toast } from "sonner";
 import Link from "next/link";
 
-const columns = [
+interface KanbanColumn {
+  id: "Todo" | "InProgress" | "Done" | "Overdue";
+  title: string;
+  shortTitle: string;
+  statusValue: number;
+  emoji: string;
+  badgeColor: string;
+  headerBorder: string;
+  dropZoneHighlight: string;
+}
+
+const columns: KanbanColumn[] = [
   {
     id: "Todo",
     title: "Untuk Dikerjakan (Todo)",
+    shortTitle: "Todo",
     statusValue: 0,
     emoji: "📋",
-    badgeColor: "bg-slate-400",
-    color: "border-slate-500 text-slate-600 bg-slate-50 dark:bg-slate-900/60",
-    dropZoneHighlight: "border-slate-400 bg-slate-100/70 dark:bg-slate-900/80 ring-2 ring-slate-400/50",
+    badgeColor: "bg-slate-500",
+    headerBorder: "border-slate-500/30 text-slate-700 dark:text-slate-300",
+    dropZoneHighlight:
+      "border-slate-400 bg-slate-100/80 dark:bg-slate-900/90 ring-2 ring-slate-400/50",
   },
   {
     id: "InProgress",
     title: "Sedang Berjalan (InProgress)",
+    shortTitle: "In Progress",
     statusValue: 1,
     emoji: "🔄",
     badgeColor: "bg-indigo-500",
-    color: "border-indigo-500 text-indigo-600 bg-indigo-50 dark:bg-indigo-900/60",
-    dropZoneHighlight: "border-indigo-500 bg-indigo-50/80 dark:bg-indigo-950/60 ring-2 ring-indigo-500/50",
+    headerBorder: "border-indigo-500/30 text-indigo-700 dark:text-indigo-300",
+    dropZoneHighlight:
+      "border-indigo-500 bg-indigo-50/90 dark:bg-indigo-950/70 ring-2 ring-indigo-500/50",
   },
   {
     id: "Done",
     title: "Selesai (Done)",
+    shortTitle: "Done",
     statusValue: 2,
     emoji: "✅",
     badgeColor: "bg-emerald-500",
-    color: "border-emerald-500 text-emerald-600 bg-emerald-50 dark:bg-emerald-900/60",
-    dropZoneHighlight: "border-emerald-500 bg-emerald-50/80 dark:bg-emerald-950/60 ring-2 ring-emerald-500/50",
+    headerBorder: "border-emerald-500/30 text-emerald-700 dark:text-emerald-300",
+    dropZoneHighlight:
+      "border-emerald-500 bg-emerald-50/90 dark:bg-emerald-950/70 ring-2 ring-emerald-500/50",
   },
   {
     id: "Overdue",
     title: "Kedaluwarsa (Overdue)",
+    shortTitle: "Overdue",
     statusValue: 3,
     emoji: "⚠️",
     badgeColor: "bg-rose-500",
-    color: "border-rose-500 text-rose-600 bg-rose-50 dark:bg-rose-900/60",
-    dropZoneHighlight: "border-rose-500 bg-rose-50/80 dark:bg-rose-950/60 ring-2 ring-rose-500/50",
+    headerBorder: "border-rose-500/30 text-rose-700 dark:text-rose-300",
+    dropZoneHighlight:
+      "border-rose-500 bg-rose-50/90 dark:bg-rose-950/70 ring-2 ring-rose-500/50",
   },
 ];
 
-const priorityConfig: Record<number, { label: string; badge: string }> = {
-  0: { label: "Low", badge: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800" },
-  1: { label: "Medium", badge: "bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-400 border-blue-200 dark:border-blue-800" },
-  2: { label: "High", badge: "bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-400 border-amber-200 dark:border-amber-800" },
-  3: { label: "Critical", badge: "bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-400 border-rose-200 dark:border-rose-800" },
+const priorityConfig: Record<
+  number,
+  { label: string; badge: string; dot: string }
+> = {
+  0: {
+    label: "Rendah",
+    badge:
+      "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800",
+    dot: "bg-emerald-500",
+  },
+  1: {
+    label: "Sedang",
+    badge:
+      "bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-400 border-blue-200 dark:border-blue-800",
+    dot: "bg-blue-500",
+  },
+  2: {
+    label: "Tinggi",
+    badge:
+      "bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-400 border-amber-200 dark:border-amber-800",
+    dot: "bg-amber-500",
+  },
+  3: {
+    label: "Kritis",
+    badge:
+      "bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-400 border-rose-200 dark:border-rose-800",
+    dot: "bg-rose-500",
+  },
 };
+
+interface ActiveTimer {
+  sessionId: number;
+  taskId: number;
+  taskTitle: string;
+  projectName?: string;
+  projectColor?: string;
+  startTime: string;
+  currentElapsedSeconds: number;
+  notes?: string;
+}
+
+function formatElapsedTimer(seconds: number): string {
+  if (seconds < 0) seconds = 0;
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  return `${h > 0 ? `${h.toString().padStart(2, "0")}:` : ""}${m
+    .toString()
+    .padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+}
 
 export default function KanbanPage() {
   const queryClient = useQueryClient();
@@ -86,16 +163,23 @@ export default function KanbanPage() {
   const [selectedProjectId, setSelectedProjectId] = useState<string>("all");
   const [selectedPriority, setSelectedPriority] = useState<string>("all");
   const [scope, setScope] = useState<"mine" | "all">("all");
-  const [selectedMobileColumn, setSelectedMobileColumn] = useState("InProgress");
+  const [selectedMobileColumn, setSelectedMobileColumn] =
+    useState<"Todo" | "InProgress" | "Done" | "Overdue">("InProgress");
 
   // Dialog States
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [createModalDefaultStatus, setCreateModalDefaultStatus] = useState(0);
+  const [quickViewTask, setQuickViewTask] = useState<any | null>(null);
 
   // Drag and Drop States
   const [draggedTaskId, setDraggedTaskId] = useState<number | null>(null);
   const [activeDropColId, setActiveDropColId] = useState<string | null>(null);
+
+  // Live Timer Ticker
+  const [liveElapsedSeconds, setLiveElapsedSeconds] = useState<
+    Record<number, number>
+  >({});
 
   // 1. Fetch User Profile to check Admin RBAC
   const { data: userProfile } = useQuery<any>({
@@ -108,6 +192,7 @@ export default function KanbanPage() {
 
   const isAdmin =
     userProfile?.roles?.includes("Administrator") ||
+    userProfile?.roles?.includes("SuperAdmin") ||
     userProfile?.jobTitle?.toLowerCase().includes("admin") ||
     false;
 
@@ -120,14 +205,57 @@ export default function KanbanPage() {
     },
   });
 
-  // 3. Query Kanban Tasks with filters
-  const { data: kanbanData = { Todo: [], InProgress: [], Done: [], Overdue: [] }, isLoading } = useQuery<any>({
-    queryKey: ["kanbanTasks", search, selectedProjectId, selectedPriority, scope],
+  // 3. Query Active Timers for live badge on cards
+  const { data: activeTimers = [] } = useQuery<ActiveTimer[]>({
+    queryKey: ["activeTimers"],
+    queryFn: async () => {
+      const res = await apiClient.get("/timesheets/active-timers");
+      return res.data.data || [];
+    },
+    refetchInterval: 5000,
+  });
+
+  // Second-by-second ticker for live running timers
+  useEffect(() => {
+    if (!activeTimers.length) {
+      setLiveElapsedSeconds({});
+      return;
+    }
+
+    const updateTimes = () => {
+      const map: Record<number, number> = {};
+      const now = Date.now();
+      activeTimers.forEach((t) => {
+        const startMs = new Date(t.startTime).getTime();
+        map[t.taskId] = Math.max(0, Math.floor((now - startMs) / 1000));
+      });
+      setLiveElapsedSeconds(map);
+    };
+
+    updateTimes();
+    const interval = setInterval(updateTimes, 1000);
+    return () => clearInterval(interval);
+  }, [activeTimers]);
+
+  // 4. Query Kanban Tasks with filters
+  const {
+    data: kanbanData = { Todo: [], InProgress: [], Done: [], Overdue: [] },
+    isLoading,
+  } = useQuery<any>({
+    queryKey: [
+      "kanbanTasks",
+      search,
+      selectedProjectId,
+      selectedPriority,
+      scope,
+    ],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (search.trim()) params.append("search", search.trim());
-      if (selectedProjectId !== "all") params.append("projectId", selectedProjectId);
-      if (selectedPriority !== "all") params.append("priority", selectedPriority);
+      if (selectedProjectId !== "all")
+        params.append("projectId", selectedProjectId);
+      if (selectedPriority !== "all")
+        params.append("priority", selectedPriority);
       if (scope) params.append("filter", scope);
 
       const res = await apiClient.get(`/tasks/kanban?${params.toString()}`);
@@ -135,15 +263,27 @@ export default function KanbanPage() {
     },
   });
 
-  // Status Patch Mutation
+  // Status Patch Mutation with Optimistic Updates
   const patchStatusMutation = useMutation({
-    mutationFn: async ({ taskId, status }: { taskId: number; status: number }) => {
+    mutationFn: async ({
+      taskId,
+      status,
+    }: {
+      taskId: number;
+      status: number;
+    }) => {
       const res = await apiClient.patch(`/tasks/${taskId}/status`, { status });
       return res.data;
     },
     onMutate: async ({ taskId, status }) => {
       await queryClient.cancelQueries({ queryKey: ["kanbanTasks"] });
-      const previousData = queryClient.getQueryData<any>(["kanbanTasks", search, selectedProjectId, selectedPriority, scope]);
+      const previousData = queryClient.getQueryData<any>([
+        "kanbanTasks",
+        search,
+        selectedProjectId,
+        selectedPriority,
+        scope,
+      ]);
 
       if (previousData) {
         const nextData = {
@@ -154,10 +294,19 @@ export default function KanbanPage() {
         };
 
         let targetTask: any = null;
-        for (const colKey of ["Todo", "InProgress", "Done", "Overdue"] as const) {
+        for (const colKey of [
+          "Todo",
+          "InProgress",
+          "Done",
+          "Overdue",
+        ] as const) {
           const idx = nextData[colKey].findIndex((t: any) => t.id === taskId);
           if (idx !== -1) {
-            targetTask = { ...nextData[colKey][idx], status };
+            targetTask = {
+              ...nextData[colKey][idx],
+              status,
+              progress: status === 2 ? 100 : nextData[colKey][idx].progress,
+            };
             nextData[colKey].splice(idx, 1);
             break;
           }
@@ -165,9 +314,24 @@ export default function KanbanPage() {
 
         if (targetTask) {
           const colName =
-            status === 0 ? "Todo" : status === 1 ? "InProgress" : status === 2 ? "Done" : "Overdue";
+            status === 0
+              ? "Todo"
+              : status === 1
+                ? "InProgress"
+                : status === 2
+                  ? "Done"
+                  : "Overdue";
           nextData[colName].unshift(targetTask);
-          queryClient.setQueryData(["kanbanTasks", search, selectedProjectId, selectedPriority, scope], nextData);
+          queryClient.setQueryData(
+            [
+              "kanbanTasks",
+              search,
+              selectedProjectId,
+              selectedPriority,
+              scope,
+            ],
+            nextData,
+          );
         }
       }
 
@@ -175,7 +339,16 @@ export default function KanbanPage() {
     },
     onError: (err: any, _vars, context) => {
       if (context?.previousData) {
-        queryClient.setQueryData(["kanbanTasks", search, selectedProjectId, selectedPriority, scope], context.previousData);
+        queryClient.setQueryData(
+          [
+            "kanbanTasks",
+            search,
+            selectedProjectId,
+            selectedPriority,
+            scope,
+          ],
+          context.previousData,
+        );
       }
       toast.error(err.response?.data?.message || "Gagal mengubah status tugas");
     },
@@ -187,21 +360,42 @@ export default function KanbanPage() {
     },
   });
 
-  // Start Timer Mutation
+  // Start Live Timer Mutation
   const startTimerMutation = useMutation({
     mutationFn: async (taskId: number) => {
       const res = await apiClient.post("/timesheets/start", { taskId });
       return res.data;
     },
     onSuccess: () => {
-      toast.success("Live timer dimulai!");
+      toast.success("Live timer tugas dimulai!");
       queryClient.invalidateQueries({ queryKey: ["activeTimers"] });
     },
-    onError: (err: any) => toast.error(err.response?.data?.message || "Gagal memulai timer"),
+    onError: (err: any) =>
+      toast.error(err.response?.data?.message || "Gagal memulai timer"),
+  });
+
+  // Stop Live Timer Mutation
+  const stopTimerMutation = useMutation({
+    mutationFn: async (sessionId: number) => {
+      const res = await apiClient.post(`/timesheets/${sessionId}/stop`);
+      return res.data;
+    },
+    onSuccess: (data: any) => {
+      toast.success(
+        `Timer dihentikan! Durasi tercatat: ${data.durationHours || 0} jam.`,
+      );
+      queryClient.invalidateQueries({ queryKey: ["activeTimers"] });
+      queryClient.invalidateQueries({ queryKey: ["kanbanTasks"] });
+    },
+    onError: (err: any) =>
+      toast.error(err.response?.data?.message || "Gagal menghentikan timer"),
   });
 
   // Drag Handlers
-  const handleDragStart = (e: React.DragEvent<HTMLDivElement>, taskId: number) => {
+  const handleDragStart = (
+    e: React.DragEvent<HTMLDivElement>,
+    taskId: number,
+  ) => {
     setDraggedTaskId(taskId);
     e.dataTransfer.setData("text/plain", taskId.toString());
     e.dataTransfer.effectAllowed = "move";
@@ -212,7 +406,10 @@ export default function KanbanPage() {
     setActiveDropColId(null);
   };
 
-  const handleDragOverColumn = (e: React.DragEvent<HTMLDivElement>, colId: string) => {
+  const handleDragOverColumn = (
+    e: React.DragEvent<HTMLDivElement>,
+    colId: string,
+  ) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
     if (activeDropColId !== colId) {
@@ -226,7 +423,10 @@ export default function KanbanPage() {
     }
   };
 
-  const handleDropColumn = (e: React.DragEvent<HTMLDivElement>, col: (typeof columns)[0]) => {
+  const handleDropColumn = (
+    e: React.DragEvent<HTMLDivElement>,
+    col: KanbanColumn,
+  ) => {
     e.preventDefault();
     setActiveDropColId(null);
     setDraggedTaskId(null);
@@ -238,7 +438,10 @@ export default function KanbanPage() {
     patchStatusMutation.mutate({ taskId, status: col.statusValue });
   };
 
-  const hasActiveFilters = search.trim() !== "" || selectedProjectId !== "all" || selectedPriority !== "all";
+  const hasActiveFilters =
+    search.trim() !== "" ||
+    selectedProjectId !== "all" ||
+    selectedPriority !== "all";
 
   const resetFilters = () => {
     setSearch("");
@@ -251,21 +454,47 @@ export default function KanbanPage() {
     setCreateModalOpen(true);
   };
 
+  // Mobile Navigation Index
+  const currentMobileIndex = columns.findIndex(
+    (c) => c.id === selectedMobileColumn,
+  );
+  const handlePrevMobileColumn = () => {
+    const prevIdx =
+      (currentMobileIndex - 1 + columns.length) % columns.length;
+    setSelectedMobileColumn(columns[prevIdx].id);
+  };
+  const handleNextMobileColumn = () => {
+    const nextIdx = (currentMobileIndex + 1) % columns.length;
+    setSelectedMobileColumn(columns[nextIdx].id);
+  };
+
+  const totalTasksCount =
+    (kanbanData.Todo?.length || 0) +
+    (kanbanData.InProgress?.length || 0) +
+    (kanbanData.Done?.length || 0) +
+    (kanbanData.Overdue?.length || 0);
+
   return (
     <div className="space-y-6 px-2 py-4 lg:px-6">
       {/* 1. Header Section */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 dark:bg-indigo-950/80 dark:text-indigo-400">
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600 shadow-xs dark:bg-indigo-950/80 dark:text-indigo-400">
               <KanbanIcon className="h-5 w-5" />
             </div>
             <div>
-              <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight text-gray-900 dark:text-white">
-                Papan Kanban Interaktif
-              </h1>
+              <div className="flex items-center gap-2">
+                <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight text-gray-900 dark:text-white">
+                  Papan Kanban Interaktif
+                </h1>
+                <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-bold text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-400">
+                  {totalTasksCount} Tugas
+                </span>
+              </div>
               <p className="text-xs text-gray-500 dark:text-gray-400">
-                Tarik dan letakkan (*Drag & Drop*) kartu tugas antar kolom status untuk alur kerja yang gesit.
+                Visualisasikan alur kerja agile dengan tarik & letakkan (*Drag &
+                Drop*) kartu antar kolom status.
               </p>
             </div>
           </div>
@@ -275,14 +504,14 @@ export default function KanbanPage() {
           <Button
             variant="outline"
             onClick={() => setImportModalOpen(true)}
-            className="gap-2 border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/40 text-xs"
+            className="gap-2 border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/40 text-xs h-9"
           >
             <FileSpreadsheet className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
             Impor Excel
           </Button>
 
           <Link href="/tasks">
-            <Button variant="outline" className="gap-2 text-xs">
+            <Button variant="outline" className="gap-2 text-xs h-9">
               <List className="h-4 w-4" />
               Tampilan Tabel
             </Button>
@@ -290,7 +519,7 @@ export default function KanbanPage() {
 
           <Button
             onClick={() => openCreateDialogForStatus(0)}
-            className="gap-2 bg-indigo-600 font-semibold text-white shadow-md shadow-indigo-500/20 hover:bg-indigo-700 text-xs"
+            className="gap-2 bg-indigo-600 font-semibold text-white shadow-md shadow-indigo-500/20 hover:bg-indigo-700 text-xs h-9"
           >
             <Plus className="h-4 w-4" />
             Tugas Baru
@@ -308,7 +537,7 @@ export default function KanbanPage() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Cari tugas berdasarkan judul atau deskripsi..."
-              className="pl-9 text-xs"
+              className="pl-9 text-xs h-9"
             />
           </div>
 
@@ -340,10 +569,10 @@ export default function KanbanPage() {
                 className="rounded-xl border border-gray-200 bg-transparent px-2.5 py-1.5 text-xs font-medium text-gray-800 dark:border-gray-800 dark:text-gray-200"
               >
                 <option value="all">Semua Prioritas</option>
-                <option value="0">Low</option>
-                <option value="1">Medium</option>
-                <option value="2">High</option>
-                <option value="3">Critical</option>
+                <option value="0">Rendah (Low)</option>
+                <option value="1">Sedang (Medium)</option>
+                <option value="2">Tinggi (High)</option>
+                <option value="3">Kritis (Critical)</option>
               </select>
             </div>
 
@@ -393,21 +622,74 @@ export default function KanbanPage() {
         </div>
       </div>
 
-      {/* 3. Mobile Column Segmented Control (< md) */}
-      <div className="flex gap-1 overflow-x-auto rounded-xl bg-gray-100 p-1 md:hidden dark:bg-gray-800">
-        {columns.map((col) => (
+      {/* 3. Mobile Column Segmented Switcher (< md) per FSD 5.6 */}
+      <div className="space-y-2 md:hidden">
+        <div className="flex items-center justify-between gap-1">
           <button
-            key={col.id}
-            onClick={() => setSelectedMobileColumn(col.id)}
-            className={`flex-1 whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
-              selectedMobileColumn === col.id
-                ? "bg-white text-indigo-700 shadow-xs dark:bg-gray-900 dark:text-indigo-400"
-                : "text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
-            }`}
+            type="button"
+            onClick={handlePrevMobileColumn}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-600 shadow-xs active:bg-gray-100 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-300"
+            aria-label="Kolom Sebelumnya"
           >
-            {col.emoji} {col.id} ({(kanbanData[col.id] || []).length})
+            <ChevronLeft className="h-4 w-4" />
           </button>
-        ))}
+
+          <div className="grid flex-1 grid-cols-4 gap-1 rounded-2xl bg-gray-100 p-1 dark:bg-gray-800/90 shadow-inner">
+            {columns.map((col) => {
+              const count = (kanbanData[col.id] || []).length;
+              const isActive = selectedMobileColumn === col.id;
+              return (
+                <button
+                  key={col.id}
+                  onClick={() => setSelectedMobileColumn(col.id)}
+                  className={`relative flex items-center justify-center gap-1 rounded-xl py-2 px-1 text-xs font-extrabold transition-all duration-200 ${
+                    isActive
+                      ? "bg-white text-gray-900 shadow-xs ring-1 ring-black/5 dark:bg-gray-900 dark:text-white dark:ring-white/10"
+                      : "text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
+                  }`}
+                >
+                  <span className="text-sm">{col.emoji}</span>
+                  <span className="hidden sm:inline text-[11px] truncate">
+                    {col.shortTitle}
+                  </span>
+                  <span
+                    className={`ml-0.5 rounded-full px-1.5 py-0.2 text-[10px] font-black ${
+                      isActive
+                        ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300"
+                        : "bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300"
+                    }`}
+                  >
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          <button
+            type="button"
+            onClick={handleNextMobileColumn}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-600 shadow-xs active:bg-gray-100 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-300"
+            aria-label="Kolom Berikutnya"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* Mobile active column context indicator */}
+        <div className="flex items-center justify-between px-1 text-xs text-gray-500 dark:text-gray-400">
+          <span>
+            Menampilkan kolom:{" "}
+            <strong className="text-gray-900 dark:text-white">
+              {
+                columns.find((c) => c.id === selectedMobileColumn)?.title
+              }
+            </strong>
+          </span>
+          <span>
+            {(kanbanData[selectedMobileColumn] || []).length} tugas
+          </span>
+        </div>
       </div>
 
       {/* 4. 4-Column Board Grid */}
@@ -423,18 +705,20 @@ export default function KanbanPage() {
               onDragOver={(e) => handleDragOverColumn(e, col.id)}
               onDragLeave={handleDragLeaveColumn}
               onDrop={(e) => handleDropColumn(e, col)}
-              className={`flex flex-col rounded-2xl border transition-all duration-200 p-4 shadow-xs min-h-[520px] ${
+              className={`flex flex-col rounded-2xl border transition-all duration-200 p-4 shadow-xs min-h-[540px] ${
                 isDropActive
                   ? `${col.dropZoneHighlight} scale-[1.01]`
-                  : "border-gray-200/80 bg-gray-50/60 dark:border-gray-800 dark:bg-gray-900/60"
+                  : "border-gray-200/80 bg-gray-50/70 dark:border-gray-800 dark:bg-gray-900/60"
               } ${!isMobileVisible ? "hidden md:flex" : "flex"}`}
             >
               {/* Column Header */}
-              <div className="mb-3 flex items-center justify-between border-b border-gray-200/70 pb-3 dark:border-gray-800">
+              <div className="mb-3.5 flex items-center justify-between border-b border-gray-200/70 pb-3 dark:border-gray-800">
                 <div className="flex items-center gap-2">
-                  <span className={`h-2.5 w-2.5 rounded-full ${col.badgeColor}`} />
-                  <h3 className="font-bold text-xs text-gray-900 dark:text-white uppercase tracking-wider">
-                    {col.id}
+                  <span
+                    className={`h-2.5 w-2.5 rounded-full ${col.badgeColor}`}
+                  />
+                  <h3 className="font-extrabold text-xs text-gray-900 dark:text-white uppercase tracking-wider">
+                    {col.shortTitle}
                   </h3>
                   <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-black text-gray-600 shadow-xs dark:bg-gray-800 dark:text-gray-300">
                     {tasksInCol.length}
@@ -445,8 +729,8 @@ export default function KanbanPage() {
                 <button
                   type="button"
                   onClick={() => openCreateDialogForStatus(col.statusValue)}
-                  className="rounded-lg p-1 text-gray-400 hover:bg-gray-200 hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-gray-200"
-                  title={`Tambah tugas ke ${col.id}`}
+                  className="rounded-lg p-1 text-gray-400 hover:bg-gray-200 hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-gray-200 transition"
+                  title={`Tambah tugas baru ke ${col.title}`}
                 >
                   <Plus className="h-4 w-4" />
                 </button>
@@ -454,20 +738,31 @@ export default function KanbanPage() {
 
               {/* Drop Target Hint Banner (Visible when dragging over) */}
               {isDropActive && (
-                <div className="mb-3 rounded-xl border border-dashed border-indigo-400 bg-indigo-50/90 py-2.5 text-center text-xs font-bold text-indigo-700 animate-pulse dark:border-indigo-600 dark:bg-indigo-950/70 dark:text-indigo-300">
-                  Lepaskan untuk pindah ke {col.id}
+                <div className="mb-3 rounded-xl border border-dashed border-indigo-400 bg-indigo-50/90 py-3 text-center text-xs font-bold text-indigo-700 animate-pulse dark:border-indigo-600 dark:bg-indigo-950/70 dark:text-indigo-300">
+                  Lepaskan kartu di sini untuk memindahkan ke {col.shortTitle}
                 </div>
               )}
 
               {/* Task Cards Container */}
-              <div className="flex-1 space-y-3 overflow-y-auto max-h-[calc(100vh-250px)] pr-1">
+              <div className="flex-1 space-y-3.5 overflow-y-auto max-h-[calc(100vh-250px)] pr-1">
                 {tasksInCol.map((task: any) => {
                   const isBeingDragged = draggedTaskId === task.id;
-                  const prio = priorityConfig[task.priority] || priorityConfig[1];
+                  const prio =
+                    priorityConfig[task.priority] || priorityConfig[1];
                   const isOverdue =
                     task.dueDate &&
                     new Date(task.dueDate) < new Date() &&
                     task.status !== 2;
+
+                  // Active timer check
+                  const activeSession = activeTimers.find(
+                    (t) => t.taskId === task.id,
+                  );
+                  const isTimerRunning = Boolean(activeSession);
+                  const elapsedSec =
+                    liveElapsedSeconds[task.id] ||
+                    activeSession?.currentElapsedSeconds ||
+                    0;
 
                   return (
                     <div
@@ -478,50 +773,116 @@ export default function KanbanPage() {
                       className={`group relative rounded-xl border p-4 shadow-xs transition-all duration-200 cursor-grab active:cursor-grabbing select-none ${
                         isBeingDragged
                           ? "opacity-35 scale-[0.98] border-dashed border-indigo-500 bg-indigo-50/50"
-                          : "border-gray-200/80 bg-white hover:border-indigo-400 hover:shadow-md dark:border-gray-800 dark:bg-gray-850 dark:hover:border-indigo-600"
+                          : isTimerRunning
+                            ? "border-emerald-400 bg-white shadow-emerald-500/10 ring-2 ring-emerald-500/30 dark:border-emerald-600 dark:bg-gray-850"
+                            : "border-gray-200/80 bg-white hover:border-indigo-400 hover:shadow-md dark:border-gray-800 dark:bg-gray-850 dark:hover:border-indigo-600"
                       }`}
                     >
-                      {/* Drag Handle, Priority & Project Badges */}
+                      {/* Top Bar: Drag Handle, Project & Priority Badges */}
                       <div className="flex items-center justify-between gap-1.5">
                         <div className="flex items-center gap-1.5 truncate">
                           <GripVertical className="h-3.5 w-3.5 shrink-0 text-gray-300 group-hover:text-gray-500 transition dark:text-gray-600 dark:group-hover:text-gray-400" />
                           {task.projectName ? (
                             <span
-                              className="rounded px-1.5 py-0.5 text-[9px] font-bold text-white truncate max-w-[110px]"
-                              style={{ backgroundColor: task.projectColor || "#4F46E5" }}
+                              className="rounded px-1.5 py-0.5 text-[9px] font-bold text-white truncate max-w-[120px]"
+                              style={{
+                                backgroundColor: task.projectColor || "#4F46E5",
+                              }}
                             >
                               {task.projectName}
                             </span>
                           ) : (
-                            <span className="text-[10px] text-gray-400">Umum</span>
+                            <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[9px] font-medium text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+                              Umum
+                            </span>
                           )}
                         </div>
 
                         {/* Priority Badge */}
-                        <span className={`shrink-0 rounded border px-1.5 py-0.2 text-[9px] font-bold ${prio.badge}`}>
+                        <span
+                          className={`shrink-0 rounded border px-1.5 py-0.2 text-[9px] font-bold ${prio.badge}`}
+                        >
                           {prio.label}
                         </span>
                       </div>
 
-                      {/* Title */}
-                      <Link href={`/tasks/${task.id}`}>
-                        <h4 className="mt-2 text-sm font-bold text-gray-900 hover:text-indigo-600 dark:text-white dark:hover:text-indigo-400 leading-snug">
-                          {task.title}
-                        </h4>
-                      </Link>
+                      {/* Title & Quick Preview Trigger */}
+                      <div className="mt-2 flex items-start justify-between gap-2">
+                        <Link
+                          href={`/tasks/${task.id}`}
+                          className="flex-1"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <h4 className="text-sm font-bold text-gray-900 hover:text-indigo-600 dark:text-white dark:hover:text-indigo-400 leading-snug transition-colors">
+                            {task.title}
+                          </h4>
+                        </Link>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setQuickViewTask(task);
+                          }}
+                          className="shrink-0 p-1 text-gray-300 hover:text-indigo-600 dark:text-gray-600 dark:hover:text-indigo-400 transition"
+                          title="Lihat Pratinjau Cepat"
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
 
                       {/* Milestone Tag */}
                       {task.milestone && (
-                        <div className="mt-1 text-[10px] text-gray-400 font-medium">
-                          {task.milestone}
+                        <div className="mt-1 flex items-center gap-1 text-[10px] text-gray-400 font-medium">
+                          <MilestoneIcon className="h-3 w-3 text-indigo-400" />
+                          <span>{task.milestone}</span>
+                        </div>
+                      )}
+
+                      {/* Live Timer Running Indicator Banner */}
+                      {isTimerRunning && (
+                        <div className="mt-2.5 flex items-center justify-between rounded-lg bg-emerald-50 px-2.5 py-1.5 text-[11px] font-bold text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                          <div className="flex items-center gap-1.5">
+                            <span className="relative flex h-2 w-2">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+                            </span>
+                            <span>Timer: {formatElapsedTimer(elapsedSec)}</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (activeSession) {
+                                stopTimerMutation.mutate(
+                                  activeSession.sessionId,
+                                );
+                              }
+                            }}
+                            className="rounded px-1.5 py-0.5 text-[10px] font-extrabold bg-rose-600 text-white hover:bg-rose-700 shadow-xs transition"
+                            title="Hentikan Timer"
+                          >
+                            Stop
+                          </button>
                         </div>
                       )}
 
                       {/* Obstacle Alert */}
                       {task.obstacle && (
-                        <div className="mt-2 flex items-start gap-1.5 rounded-lg bg-red-50 p-2 text-[11px] text-red-700 dark:bg-red-950/40 dark:text-red-300">
-                          <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-600" />
-                          <span className="line-clamp-2 leading-tight">{task.obstacle}</span>
+                        <div className="mt-2 flex items-start gap-1.5 rounded-lg bg-rose-50 p-2 text-[11px] text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 border border-rose-200/60 dark:border-rose-900/60">
+                          <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-rose-600" />
+                          <span className="line-clamp-2 leading-tight">
+                            <strong>Kendala:</strong> {task.obstacle}
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Solution Highlight */}
+                      {task.solution && (
+                        <div className="mt-1.5 flex items-start gap-1.5 rounded-lg bg-emerald-50 p-2 text-[11px] text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-900/60">
+                          <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
+                          <span className="line-clamp-2 leading-tight">
+                            <strong>Solusi:</strong> {task.solution}
+                          </span>
                         </div>
                       )}
 
@@ -532,7 +893,8 @@ export default function KanbanPage() {
                           <div className="flex items-center gap-1 font-semibold text-indigo-600 dark:text-indigo-400">
                             <CheckSquare className="h-3.5 w-3.5" />
                             <span>
-                              {task.completedSubtasksCount || 0}/{task.subtasksCount}
+                              {task.completedSubtasksCount || 0}/
+                              {task.subtasksCount} Subtugas
                             </span>
                           </div>
                         ) : (
@@ -541,14 +903,19 @@ export default function KanbanPage() {
 
                         {/* Due Date Indicator */}
                         {task.dueDate && (
-                          <div className={`flex items-center gap-1 font-medium text-[10px] ${
-                            isOverdue
-                              ? "text-red-600 font-bold dark:text-red-400"
-                              : "text-gray-400"
-                          }`}>
+                          <div
+                            className={`flex items-center gap-1 font-medium text-[10px] ${
+                              isOverdue
+                                ? "text-rose-600 font-bold dark:text-rose-400"
+                                : "text-gray-400"
+                            }`}
+                          >
                             <Calendar className="h-3 w-3" />
                             <span>
-                              {new Date(task.dueDate).toLocaleDateString("id-ID", { day: "numeric", month: "short" })}
+                              {new Date(task.dueDate).toLocaleDateString(
+                                "id-ID",
+                                { day: "numeric", month: "short" },
+                              )}
                               {isOverdue && " (Overdue)"}
                             </span>
                           </div>
@@ -565,7 +932,7 @@ export default function KanbanPage() {
                         </div>
                         <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
                           <div
-                            className={`h-full transition-all ${
+                            className={`h-full transition-all duration-300 ${
                               task.progress === 100
                                 ? "bg-emerald-500"
                                 : "bg-indigo-600"
@@ -575,34 +942,43 @@ export default function KanbanPage() {
                         </div>
                       </div>
 
-                      {/* Card Footer: Assignee, Timer, Quick Move */}
+                      {/* Card Footer: Assignee PIC (Prominent) + Quick Action Buttons */}
                       <div className="mt-3 flex items-center justify-between border-t border-gray-100 pt-2.5 dark:border-gray-800">
-                        {/* Assignee Avatar / Name */}
-                        <div className="flex items-center gap-1.5 truncate max-w-[120px]">
-                          <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-[10px] font-bold text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
+                        {/* Assignee Avatar & Name */}
+                        <div
+                          className="flex items-center gap-1.5 min-w-0 pr-2"
+                          title={`Ditugaskan kepada: ${task.assignedToUserName || "Belum ada PIC"}`}
+                        >
+                          <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-[10px] font-bold text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 ring-1 ring-indigo-200 dark:ring-indigo-800">
                             {(task.assignedToUserName || "U")[0].toUpperCase()}
                           </div>
-                          <span className="truncate text-[10px] font-medium text-gray-600 dark:text-gray-300">
-                            {task.assignedToUserName || "Belum ada PIC"}
+                          <span className="truncate text-[11px] font-semibold text-gray-700 dark:text-gray-200">
+                            {task.assignedToUserName || (
+                              <span className="text-gray-400 italic">
+                                Belum ada PIC
+                              </span>
+                            )}
                           </span>
                         </div>
 
-                        {/* Timer & Quick Column Select */}
-                        <div className="flex items-center gap-1.5">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-6 w-6 p-0 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/50"
-                            title="Mulai Live Timer Untuk Tugas Ini"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              startTimerMutation.mutate(task.id);
-                            }}
-                          >
-                            <Play className="h-3 w-3 fill-current" />
-                          </Button>
+                        {/* Timer Button & Quick Column Transitions */}
+                        <div className="flex items-center gap-1 shrink-0">
+                          {!isTimerRunning && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-6 w-6 p-0 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/50"
+                              title="Mulai Live Timer Untuk Tugas Ini"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                startTimerMutation.mutate(task.id);
+                              }}
+                            >
+                              <Play className="h-3 w-3 fill-current" />
+                            </Button>
+                          )}
 
-                          {/* Quick Column Transition */}
+                          {/* Quick Status Select */}
                           <select
                             value={task.status}
                             onClick={(e) => e.stopPropagation()}
@@ -613,12 +989,13 @@ export default function KanbanPage() {
                                 status: Number(e.target.value),
                               });
                             }}
-                            className="rounded-lg border border-gray-200 bg-transparent px-1.5 py-0.5 text-[10px] font-semibold text-gray-700 dark:border-gray-700 dark:text-gray-300"
+                            className="rounded-lg border border-gray-200 bg-transparent px-1.5 py-0.5 text-[10px] font-bold text-gray-700 dark:border-gray-700 dark:text-gray-300"
+                            title="Pindah Status Tugas"
                           >
-                            <option value={0}>Todo</option>
-                            <option value={1}>InProgress</option>
-                            <option value={2}>Done</option>
-                            <option value={3}>Overdue</option>
+                            <option value={0}>📋 Todo</option>
+                            <option value={1}>🔄 InProgress</option>
+                            <option value={2}>✅ Done</option>
+                            <option value={3}>⚠️ Overdue</option>
                           </select>
                         </div>
                       </div>
@@ -626,16 +1003,17 @@ export default function KanbanPage() {
                   );
                 })}
 
+                {/* Empty State */}
                 {tasksInCol.length === 0 && !isDropActive && (
-                  <div className="py-14 text-center text-xs text-gray-400 border border-dashed border-gray-200 rounded-xl dark:border-gray-800">
-                    Tidak ada tugas di kolom ini.
-                    <br />
+                  <div className="py-14 text-center text-xs text-gray-400 border border-dashed border-gray-200/90 rounded-2xl dark:border-gray-800 p-4">
+                    <p>Tidak ada tugas di kolom {col.shortTitle}.</p>
                     <button
                       type="button"
                       onClick={() => openCreateDialogForStatus(col.statusValue)}
-                      className="mt-2 text-indigo-600 hover:underline font-semibold dark:text-indigo-400"
+                      className="mt-2.5 inline-flex items-center gap-1 text-indigo-600 hover:underline font-bold dark:text-indigo-400"
                     >
-                      + Tambah Tugas
+                      <Plus className="h-3.5 w-3.5" />
+                      Tambah Tugas
                     </button>
                   </div>
                 )}
@@ -644,6 +1022,124 @@ export default function KanbanPage() {
           );
         })}
       </div>
+
+      {/* 5. Quick View Task Modal */}
+      {quickViewTask && (
+        <Dialog
+          open={Boolean(quickViewTask)}
+          onOpenChange={(open) => !open && setQuickViewTask(null)}
+        >
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <div className="flex items-center justify-between gap-2 pr-6">
+                <span className="rounded bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-600 dark:bg-indigo-950 dark:text-indigo-400">
+                  Tugas #{quickViewTask.id}
+                </span>
+                <span
+                  className={`rounded border px-2 py-0.5 text-[10px] font-bold ${
+                    priorityConfig[quickViewTask.priority]?.badge
+                  }`}
+                >
+                  Prioritas: {priorityConfig[quickViewTask.priority]?.label}
+                </span>
+              </div>
+              <DialogTitle className="mt-2 text-base font-extrabold text-gray-900 dark:text-white leading-snug">
+                {quickViewTask.title}
+              </DialogTitle>
+            </DialogHeader>
+
+            <DialogBody className="space-y-4 py-2">
+              {/* Project & Category info */}
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="rounded-xl border border-gray-100 bg-gray-50/80 p-2.5 dark:border-gray-800 dark:bg-gray-800/60">
+                  <span className="text-[10px] text-gray-400 block mb-0.5">
+                    Proyek
+                  </span>
+                  <span className="font-bold text-gray-800 dark:text-gray-200 truncate block">
+                    {quickViewTask.projectName || "Umum"}
+                  </span>
+                </div>
+                <div className="rounded-xl border border-gray-100 bg-gray-50/80 p-2.5 dark:border-gray-800 dark:bg-gray-800/60">
+                  <span className="text-[10px] text-gray-400 block mb-0.5">
+                    PIC Ditugaskan
+                  </span>
+                  <span className="font-bold text-gray-800 dark:text-gray-200 truncate block">
+                    {quickViewTask.assignedToUserName || "Belum ada PIC"}
+                  </span>
+                </div>
+              </div>
+
+              {/* Description */}
+              {quickViewTask.description && (
+                <div>
+                  <h5 className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1">
+                    Deskripsi
+                  </h5>
+                  <p className="rounded-xl bg-gray-50 p-2.5 text-xs text-gray-700 dark:bg-gray-800/70 dark:text-gray-300 whitespace-pre-wrap leading-relaxed">
+                    {quickViewTask.description}
+                  </p>
+                </div>
+              )}
+
+              {/* Obstacle & Solution */}
+              {quickViewTask.obstacle && (
+                <div className="rounded-xl bg-rose-50 p-2.5 text-xs text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 border border-rose-200">
+                  <strong className="block mb-0.5 text-rose-800 dark:text-rose-200">
+                    Kendala / Obstacle:
+                  </strong>
+                  {quickViewTask.obstacle}
+                </div>
+              )}
+
+              {quickViewTask.solution && (
+                <div className="rounded-xl bg-emerald-50 p-2.5 text-xs text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200">
+                  <strong className="block mb-0.5 text-emerald-800 dark:text-emerald-200">
+                    Solusi / Tindak Lanjut:
+                  </strong>
+                  {quickViewTask.solution}
+                </div>
+              )}
+
+              {/* Progress & Milestone */}
+              <div className="space-y-1.5">
+                <div className="flex justify-between text-xs font-semibold">
+                  <span>Progres Penyelesaian</span>
+                  <span>{quickViewTask.progress}%</span>
+                </div>
+                <div className="h-2 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
+                  <div
+                    className="h-full bg-indigo-600 transition-all duration-300"
+                    style={{ width: `${quickViewTask.progress}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* Quick Actions in Modal */}
+              <div className="pt-2 flex items-center justify-between border-t border-gray-100 dark:border-gray-800">
+                <Link
+                  href={`/tasks/${quickViewTask.id}`}
+                  className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  Buka Halaman Detail Penuh
+                </Link>
+
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    startTimerMutation.mutate(quickViewTask.id);
+                    setQuickViewTask(null);
+                  }}
+                  className="gap-1.5 bg-emerald-600 text-white hover:bg-emerald-700 text-xs h-8"
+                >
+                  <Play className="h-3 w-3 fill-current" />
+                  Mulai Timer
+                </Button>
+              </div>
+            </DialogBody>
+          </DialogContent>
+        </Dialog>
+      )}
 
       {/* Modal Impor Excel */}
       <ImportExcelDialog
