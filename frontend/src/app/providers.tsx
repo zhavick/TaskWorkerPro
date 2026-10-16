@@ -6,6 +6,8 @@ import { useState } from "react";
 import { Toaster } from "sonner";
 import { SessionInactivityGuard } from "@/components/guards/SessionInactivityGuard";
 
+import { ThemeFontProvider } from "@/context/ThemeFontContext";
+
 export default function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
     () =>
@@ -22,12 +24,14 @@ export default function Providers({ children }: { children: React.ReactNode }) {
 
   return (
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-      <QueryClientProvider client={queryClient}>
-        <SessionInactivityGuard timeoutMinutes={60} warningMinutes={5}>
-          {children}
-        </SessionInactivityGuard>
-        <Toaster richColors position="top-right" />
-      </QueryClientProvider>
+      <ThemeFontProvider>
+        <QueryClientProvider client={queryClient}>
+          <SessionInactivityGuard timeoutMinutes={60} warningMinutes={5}>
+            {children}
+          </SessionInactivityGuard>
+          <Toaster richColors position="top-right" />
+        </QueryClientProvider>
+      </ThemeFontProvider>
     </ThemeProvider>
   );
 }

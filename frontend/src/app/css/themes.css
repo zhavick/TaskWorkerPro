@@ -1,0 +1,752 @@
+/* ==========================================================================
+   TrackerKerja Pro - Dynamic Themes & Font System (FSD 5.3)
+   40 Eye-Friendly Themes (22 Light + 18 Dark) & 5 Google Fonts
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   GLOBAL FONT SWITCHER (5 GOOGLE FONTS)
+   -------------------------------------------------------------------------- */
+[data-font="inter"],
+[data-font="inter"] body {
+  font-family: var(--font-inter), system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+}
+
+[data-font="jakarta"],
+[data-font="jakarta"] body {
+  font-family: var(--font-jakarta), system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+}
+
+[data-font="outfit"],
+[data-font="outfit"] body {
+  font-family: var(--font-outfit), system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+}
+
+[data-font="poppins"],
+[data-font="poppins"] body {
+  font-family: var(--font-poppins), system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+}
+
+[data-font="roboto"],
+[data-font="roboto"] body {
+  font-family: var(--font-roboto), system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+}
+
+/* ==========================================================================
+   22 TEMA TERANG (LIGHT THEMES)
+   ========================================================================== */
+
+/* 1. Indigo Nebula (Default) */
+[data-theme-palette="indigo-nebula"] {
+  --primary-50: #eff3ff;
+  --primary-100: #dae2ff;
+  --primary-200: #becdff;
+  --primary-300: #91aeff;
+  --primary-400: #5e84fc;
+  --primary-500: #3758f9;
+  --primary-600: #2237ee;
+  --primary-700: #1a25db;
+  --primary-800: #1c20b1;
+  --primary-900: #1c228c;
+  --primary-950: #161755;
+  --neutral-brand-color: #465fff;
+}
+
+/* 2. Emerald Forest */
+[data-theme-palette="emerald-forest"] {
+  --primary-50: #ecfdf5;
+  --primary-100: #d1fae5;
+  --primary-200: #a7f3d0;
+  --primary-300: #6ee7b7;
+  --primary-400: #34d399;
+  --primary-500: #10b981;
+  --primary-600: #059669;
+  --primary-700: #047857;
+  --primary-800: #065f46;
+  --primary-900: #064e3b;
+  --primary-950: #022c22;
+  --neutral-brand-color: #10b981;
+}
+
+/* 3. Ocean Azure */
+[data-theme-palette="ocean-azure"] {
+  --primary-50: #f0f9ff;
+  --primary-100: #e0f2fe;
+  --primary-200: #bae6fd;
+  --primary-300: #7dd3fc;
+  --primary-400: #38bdf8;
+  --primary-500: #0ea5e9;
+  --primary-600: #0284c7;
+  --primary-700: #0369a1;
+  --primary-800: #075985;
+  --primary-900: #0c4a6e;
+  --primary-950: #082f49;
+  --neutral-brand-color: #0ea5e9;
+}
+
+/* 4. Sunset Crimson */
+[data-theme-palette="sunset-crimson"] {
+  --primary-50: #fff1f2;
+  --primary-100: #ffe4e6;
+  --primary-200: #fecdd3;
+  --primary-300: #fda4af;
+  --primary-400: #fb7185;
+  --primary-500: #f43f5e;
+  --primary-600: #e11d48;
+  --primary-700: #be123c;
+  --primary-800: #9f1239;
+  --primary-900: #881337;
+  --primary-950: #4c0519;
+  --neutral-brand-color: #f43f5e;
+}
+
+/* 5. Cyberpunk Neon */
+[data-theme-palette="cyberpunk-neon"] {
+  --primary-50: #ecfeff;
+  --primary-100: #cffafe;
+  --primary-200: #a5f3fc;
+  --primary-300: #67e8f9;
+  --primary-400: #22d3ee;
+  --primary-500: #06b6d4;
+  --primary-600: #0891b2;
+  --primary-700: #0e7490;
+  --primary-800: #155e75;
+  --primary-900: #164e63;
+  --primary-950: #083344;
+  --neutral-brand-color: #06b6d4;
+}
+
+/* 6. Royal Amethyst */
+[data-theme-palette="royal-amethyst"] {
+  --primary-50: #f5f3ff;
+  --primary-100: #ede9fe;
+  --primary-200: #ddd6fe;
+  --primary-300: #c4b5fd;
+  --primary-400: #a78bfa;
+  --primary-500: #8b5cf6;
+  --primary-600: #7c3aed;
+  --primary-700: #6d28d9;
+  --primary-800: #5b21b6;
+  --primary-900: #4c1d95;
+  --primary-950: #2e1065;
+  --neutral-brand-color: #8b5cf6;
+}
+
+/* 7. Amber Gold */
+[data-theme-palette="amber-gold"] {
+  --primary-50: #fffbeb;
+  --primary-100: #fef3c7;
+  --primary-200: #fde68a;
+  --primary-300: #fcd34d;
+  --primary-400: #fbbf24;
+  --primary-500: #f59e0b;
+  --primary-600: #d97706;
+  --primary-700: #b45309;
+  --primary-800: #92400e;
+  --primary-900: #78350f;
+  --primary-950: #451a03;
+  --neutral-brand-color: #f59e0b;
+}
+
+/* 8. Slate Minimalist */
+[data-theme-palette="slate-minimalist"] {
+  --primary-50: #f8fafc;
+  --primary-100: #f1f5f9;
+  --primary-200: #e2e8f0;
+  --primary-300: #cbd5e1;
+  --primary-400: #94a3b8;
+  --primary-500: #64748b;
+  --primary-600: #475569;
+  --primary-700: #334155;
+  --primary-800: #1e293b;
+  --primary-900: #0f172a;
+  --primary-950: #020617;
+  --neutral-brand-color: #64748b;
+}
+
+/* 9. Nordic Teal */
+[data-theme-palette="nordic-teal"] {
+  --primary-50: #f0fdfa;
+  --primary-100: #ccfbf1;
+  --primary-200: #99f6e4;
+  --primary-300: #5eead4;
+  --primary-400: #2dd4bf;
+  --primary-500: #14b8a6;
+  --primary-600: #0d9488;
+  --primary-700: #0f766e;
+  --primary-800: #115e59;
+  --primary-900: #134e4a;
+  --primary-950: #042f2e;
+  --neutral-brand-color: #14b8a6;
+}
+
+/* 10. Midnight Titanium */
+[data-theme-palette="midnight-titanium"] {
+  --primary-50: #f8fafc;
+  --primary-100: #e2e8f0;
+  --primary-200: #cbd5e1;
+  --primary-300: #94a3b8;
+  --primary-400: #64748b;
+  --primary-500: #475569;
+  --primary-600: #334155;
+  --primary-700: #1e293b;
+  --primary-800: #0f172a;
+  --primary-900: #090d16;
+  --primary-950: #030712;
+  --neutral-brand-color: #334155;
+}
+
+/* 11. Sakura Blossom */
+[data-theme-palette="sakura-blossom"] {
+  --primary-50: #fdf2f8;
+  --primary-100: #fce7f3;
+  --primary-200: #fbcfe8;
+  --primary-300: #f9a8d4;
+  --primary-400: #f472b6;
+  --primary-500: #ec4899;
+  --primary-600: #db2777;
+  --primary-700: #be185d;
+  --primary-800: #9d174d;
+  --primary-900: #831843;
+  --primary-950: #500724;
+  --neutral-brand-color: #ec4899;
+}
+
+/* 12. Citrus Lime */
+[data-theme-palette="citrus-lime"] {
+  --primary-50: #f7fee7;
+  --primary-100: #ecfccb;
+  --primary-200: #d9f99d;
+  --primary-300: #bef264;
+  --primary-400: #a3e635;
+  --primary-500: #84cc16;
+  --primary-600: #65a30d;
+  --primary-700: #4d7c0f;
+  --primary-800: #3f6212;
+  --primary-900: #365314;
+  --primary-950: #1a2e05;
+  --neutral-brand-color: #84cc16;
+}
+
+/* 13. Terracotta Clay */
+[data-theme-palette="terracotta-clay"] {
+  --primary-50: #fff7ed;
+  --primary-100: #ffedd5;
+  --primary-200: #fed7aa;
+  --primary-300: #fdba74;
+  --primary-400: #fb923c;
+  --primary-500: #f97316;
+  --primary-600: #ea580c;
+  --primary-700: #c2410c;
+  --primary-800: #9a3412;
+  --primary-900: #7c2d12;
+  --primary-950: #431407;
+  --neutral-brand-color: #ea580c;
+}
+
+/* 14. Lavender Mist */
+[data-theme-palette="lavender-mist"] {
+  --primary-50: #faf5ff;
+  --primary-100: #f3e8ff;
+  --primary-200: #e9d5ff;
+  --primary-300: #d8b4fe;
+  --primary-400: #c084fc;
+  --primary-500: #a855f7;
+  --primary-600: #9333ea;
+  --primary-700: #7e22ce;
+  --primary-800: #6b21a8;
+  --primary-900: #581c87;
+  --primary-950: #3b0764;
+  --neutral-brand-color: #a855f7;
+}
+
+/* 15. Peacock Cyan */
+[data-theme-palette="peacock-cyan"] {
+  --primary-50: #ecfeff;
+  --primary-100: #cffafe;
+  --primary-200: #a5f3fc;
+  --primary-300: #67e8f9;
+  --primary-400: #22d3ee;
+  --primary-500: #06b6d4;
+  --primary-600: #0891b2;
+  --primary-700: #0e7490;
+  --primary-800: #155e75;
+  --primary-900: #164e63;
+  --primary-950: #083344;
+  --neutral-brand-color: #0891b2;
+}
+
+/* 16. Coffee Mocha */
+[data-theme-palette="coffee-mocha"] {
+  --primary-50: #fefce8;
+  --primary-100: #fef9c3;
+  --primary-200: #fef08a;
+  --primary-300: #fde047;
+  --primary-400: #facc15;
+  --primary-500: #b45309;
+  --primary-600: #92400e;
+  --primary-700: #78350f;
+  --primary-800: #451a03;
+  --primary-900: #291002;
+  --primary-950: #1c0b02;
+  --neutral-brand-color: #78350f;
+}
+
+/* 17. Sapphire Sky */
+[data-theme-palette="sapphire-sky"] {
+  --primary-50: #eff6ff;
+  --primary-100: #dbeafe;
+  --primary-200: #bfdbfe;
+  --primary-300: #93c5fd;
+  --primary-400: #60a5fa;
+  --primary-500: #3b82f6;
+  --primary-600: #2563eb;
+  --primary-700: #1d4ed8;
+  --primary-800: #1e40af;
+  --primary-900: #1e3a8a;
+  --primary-950: #172554;
+  --neutral-brand-color: #2563eb;
+}
+
+/* 18. Coral Reef */
+[data-theme-palette="coral-reef"] {
+  --primary-50: #fff7ed;
+  --primary-100: #ffedd5;
+  --primary-200: #fed7aa;
+  --primary-300: #fdba74;
+  --primary-400: #fb923c;
+  --primary-500: #f97316;
+  --primary-600: #ea580c;
+  --primary-700: #c2410c;
+  --primary-800: #9a3412;
+  --primary-900: #7c2d12;
+  --primary-950: #431407;
+  --neutral-brand-color: #f97316;
+}
+
+/* 19. Mint Breeze */
+[data-theme-palette="mint-breeze"] {
+  --primary-50: #f0fdf4;
+  --primary-100: #dcfce7;
+  --primary-200: #bbf7d0;
+  --primary-300: #86efac;
+  --primary-400: #4ade80;
+  --primary-500: #22c55e;
+  --primary-600: #16a34a;
+  --primary-700: #15803d;
+  --primary-800: #166534;
+  --primary-900: #14532d;
+  --primary-950: #052e16;
+  --neutral-brand-color: #16a34a;
+}
+
+/* 20. Autumn Maple */
+[data-theme-palette="autumn-maple"] {
+  --primary-50: #fef2f2;
+  --primary-100: #fee2e2;
+  --primary-200: #fecaca;
+  --primary-300: #fca5a5;
+  --primary-400: #f87171;
+  --primary-500: #ef4444;
+  --primary-600: #dc2626;
+  --primary-700: #b91c1c;
+  --primary-800: #991b1b;
+  --primary-900: #7f1d1d;
+  --primary-950: #450a0a;
+  --neutral-brand-color: #dc2626;
+}
+
+/* 21. Rose Quartz */
+[data-theme-palette="rose-quartz"] {
+  --primary-50: #fff1f2;
+  --primary-100: #ffe4e6;
+  --primary-200: #fecdd3;
+  --primary-300: #fda4af;
+  --primary-400: #fb7185;
+  --primary-500: #f43f5e;
+  --primary-600: #e11d48;
+  --primary-700: #be123c;
+  --primary-800: #9f1239;
+  --primary-900: #881337;
+  --primary-950: #4c0519;
+  --neutral-brand-color: #fb7185;
+}
+
+/* 22. Desert Sand */
+[data-theme-palette="desert-sand"] {
+  --primary-50: #fefce8;
+  --primary-100: #fef9c3;
+  --primary-200: #fef08a;
+  --primary-300: #fde047;
+  --primary-400: #facc15;
+  --primary-500: #eab308;
+  --primary-600: #ca8a04;
+  --primary-700: #a16207;
+  --primary-800: #854d0e;
+  --primary-900: #713f12;
+  --primary-950: #422006;
+  --neutral-brand-color: #ca8a04;
+}
+
+/* ==========================================================================
+   18 TEMA GELAP (DARK THEMES)
+   ========================================================================== */
+
+/* 23. Nordic Frost (Dark) */
+[data-theme-palette="nordic-frost"] {
+  --primary-50: #f0f9ff;
+  --primary-100: #e0f2fe;
+  --primary-200: #bae6fd;
+  --primary-300: #7dd3fc;
+  --primary-400: #38bdf8;
+  --primary-500: #0ea5e9;
+  --primary-600: #0284c7;
+  --primary-700: #0369a1;
+  --primary-800: #075985;
+  --primary-900: #0c4a6e;
+  --primary-950: #082f49;
+  --neutral-brand-color: #38bdf8;
+  --background-50: #07111e;
+  --background-100: #0d1b2a;
+  --background-soft-50: #0d1b2a;
+}
+
+/* 24. Midnight OLED (Pitch Black Dark) */
+[data-theme-palette="midnight-oled"] {
+  --primary-50: #eff6ff;
+  --primary-100: #dbeafe;
+  --primary-200: #bfdbfe;
+  --primary-300: #93c5fd;
+  --primary-400: #60a5fa;
+  --primary-500: #3b82f6;
+  --primary-600: #2563eb;
+  --primary-700: #1d4ed8;
+  --primary-800: #1e40af;
+  --primary-900: #1e3a8a;
+  --primary-950: #172554;
+  --neutral-brand-color: #3b82f6;
+  --background-50: #000000;
+  --background-100: #050505;
+  --background-soft-50: #080808;
+  --border-color-base-50: #1a1a1a;
+  --border-color-base-100: #141414;
+}
+
+/* 25. Cyberpunk Synthwave (Neon Pink & Cyan on Deep Violet) */
+[data-theme-palette="cyberpunk-synthwave"] {
+  --primary-50: #fdf2f8;
+  --primary-100: #fce7f3;
+  --primary-200: #fbcfe8;
+  --primary-300: #f9a8d4;
+  --primary-400: #f472b6;
+  --primary-500: #ec4899;
+  --primary-600: #db2777;
+  --primary-700: #be185d;
+  --primary-800: #9d174d;
+  --primary-900: #831843;
+  --primary-950: #500724;
+  --neutral-brand-color: #06b6d4;
+  --background-50: #0f0728;
+  --background-100: #190d3d;
+  --background-soft-50: #1d0f47;
+  --border-color-base-50: #2e1764;
+}
+
+/* 26. Emerald Matrix (Terminal Green on Deep Obsidian) */
+[data-theme-palette="emerald-matrix"] {
+  --primary-50: #ecfdf5;
+  --primary-100: #d1fae5;
+  --primary-200: #a7f3d0;
+  --primary-300: #6ee7b7;
+  --primary-400: #34d399;
+  --primary-500: #10b981;
+  --primary-600: #059669;
+  --primary-700: #047857;
+  --primary-800: #065f46;
+  --primary-900: #064e3b;
+  --primary-950: #022c22;
+  --neutral-brand-color: #10b981;
+  --background-50: #021a0f;
+  --background-100: #042717;
+  --background-soft-50: #06331f;
+  --border-color-base-50: #0a462b;
+}
+
+/* 27. Dracula Eclipse (Purple, Pink & Slate Dark) */
+[data-theme-palette="dracula-eclipse"] {
+  --primary-50: #f5f3ff;
+  --primary-100: #ede9fe;
+  --primary-200: #ddd6fe;
+  --primary-300: #c4b5fd;
+  --primary-400: #a78bfa;
+  --primary-500: #bd93f9;
+  --primary-600: #a855f7;
+  --primary-700: #9333ea;
+  --primary-800: #7e22ce;
+  --primary-900: #6b21a8;
+  --primary-950: #3b0764;
+  --neutral-brand-color: #ff79c6;
+  --background-50: #1e1f29;
+  --background-100: #282a36;
+  --background-soft-50: #343746;
+  --border-color-base-50: #44475a;
+}
+
+/* 28. Abyssal Ocean (Deep Ocean Blue) */
+[data-theme-palette="abyssal-ocean"] {
+  --primary-50: #f0f9ff;
+  --primary-100: #e0f2fe;
+  --primary-200: #bae6fd;
+  --primary-300: #7dd3fc;
+  --primary-400: #38bdf8;
+  --primary-500: #0ea5e9;
+  --primary-600: #0284c7;
+  --primary-700: #0369a1;
+  --primary-800: #075985;
+  --primary-900: #0c4a6e;
+  --primary-950: #082f49;
+  --neutral-brand-color: #38bdf8;
+  --background-50: #06101e;
+  --background-100: #0b1a2e;
+  --background-soft-50: #10243e;
+  --border-color-base-50: #1a365d;
+}
+
+/* 29. Solar Ember (Warm Amber & Fire on Coal) */
+[data-theme-palette="solar-ember"] {
+  --primary-50: #fff7ed;
+  --primary-100: #ffedd5;
+  --primary-200: #fed7aa;
+  --primary-300: #fdba74;
+  --primary-400: #fb923c;
+  --primary-500: #f97316;
+  --primary-600: #ea580c;
+  --primary-700: #c2410c;
+  --primary-800: #9a3412;
+  --primary-900: #7c2d12;
+  --primary-950: #431407;
+  --neutral-brand-color: #f97316;
+  --background-50: #170d07;
+  --background-100: #24140b;
+  --background-soft-50: #301b0f;
+  --border-color-base-50: #4d2b17;
+}
+
+/* 30. Neon Violet */
+[data-theme-palette="neon-violet"] {
+  --primary-50: #faf5ff;
+  --primary-100: #f3e8ff;
+  --primary-200: #e9d5ff;
+  --primary-300: #d8b4fe;
+  --primary-400: #c084fc;
+  --primary-500: #a855f7;
+  --primary-600: #9333ea;
+  --primary-700: #7e22ce;
+  --primary-800: #6b21a8;
+  --primary-900: #581c87;
+  --primary-950: #3b0764;
+  --neutral-brand-color: #c084fc;
+  --background-50: #14092b;
+  --background-100: #1e0e3e;
+  --background-soft-50: #2a1456;
+  --border-color-base-50: #3c1e7a;
+}
+
+/* 31. Crimson Vampire */
+[data-theme-palette="crimson-vampire"] {
+  --primary-50: #fff1f2;
+  --primary-100: #ffe4e6;
+  --primary-200: #fecdd3;
+  --primary-300: #fda4af;
+  --primary-400: #fb7185;
+  --primary-500: #f43f5e;
+  --primary-600: #e11d48;
+  --primary-700: #be123c;
+  --primary-800: #9f1239;
+  --primary-900: #881337;
+  --primary-950: #4c0519;
+  --neutral-brand-color: #ef4444;
+  --background-50: #1c0608;
+  --background-100: #2c0a0e;
+  --background-soft-50: #3d0e14;
+  --border-color-base-50: #57141d;
+}
+
+/* 32. Deep Forest */
+[data-theme-palette="deep-forest"] {
+  --primary-50: #f0fdf4;
+  --primary-100: #dcfce7;
+  --primary-200: #bbf7d0;
+  --primary-300: #86efac;
+  --primary-400: #4ade80;
+  --primary-500: #22c55e;
+  --primary-600: #16a34a;
+  --primary-700: #15803d;
+  --primary-800: #166534;
+  --primary-900: #14532d;
+  --primary-950: #052e16;
+  --neutral-brand-color: #22c55e;
+  --background-50: #06180d;
+  --background-100: #0a2615;
+  --background-soft-50: #0f351d;
+  --border-color-base-50: #164e2b;
+}
+
+/* 33. Space Cadet */
+[data-theme-palette="space-cadet"] {
+  --primary-50: #eef2ff;
+  --primary-100: #e0e7ff;
+  --primary-200: #c7d2fe;
+  --primary-300: #a5b4fc;
+  --primary-400: #818cf8;
+  --primary-500: #6366f1;
+  --primary-600: #4f46e5;
+  --primary-700: #4338ca;
+  --primary-800: #3730a3;
+  --primary-900: #312e81;
+  --primary-950: #1e1b4b;
+  --neutral-brand-color: #818cf8;
+  --background-50: #0b0f19;
+  --background-100: #111827;
+  --background-soft-50: #182238;
+  --border-color-base-50: #253350;
+}
+
+/* 34. Monochrome Noir */
+[data-theme-palette="monochrome-noir"] {
+  --primary-50: #f9fafb;
+  --primary-100: #f3f4f6;
+  --primary-200: #e5e7eb;
+  --primary-300: #d1d5db;
+  --primary-400: #9ca3af;
+  --primary-500: #6b7280;
+  --primary-600: #4b5563;
+  --primary-700: #374151;
+  --primary-800: #1f2937;
+  --primary-900: #111827;
+  --primary-950: #030712;
+  --neutral-brand-color: #e5e7eb;
+  --background-50: #121212;
+  --background-100: #1a1a1a;
+  --background-soft-50: #242424;
+  --border-color-base-50: #333333;
+}
+
+/* 35. Amethyst Dark */
+[data-theme-palette="amethyst-dark"] {
+  --primary-50: #f5f3ff;
+  --primary-100: #ede9fe;
+  --primary-200: #ddd6fe;
+  --primary-300: #c4b5fd;
+  --primary-400: #a78bfa;
+  --primary-500: #8b5cf6;
+  --primary-600: #7c3aed;
+  --primary-700: #6d28d9;
+  --primary-800: #5b21b6;
+  --primary-900: #4c1d95;
+  --primary-950: #2e1065;
+  --neutral-brand-color: #c084fc;
+  --background-50: #1a102f;
+  --background-100: #251743;
+  --background-soft-50: #311f58;
+  --border-color-base-50: #452b7a;
+}
+
+/* 36. Aurora Borealis */
+[data-theme-palette="aurora-borealis"] {
+  --primary-50: #f0fdfa;
+  --primary-100: #ccfbf1;
+  --primary-200: #99f6e4;
+  --primary-300: #5eead4;
+  --primary-400: #2dd4bf;
+  --primary-500: #14b8a6;
+  --primary-600: #0d9488;
+  --primary-700: #0f766e;
+  --primary-800: #115e59;
+  --primary-900: #134e4a;
+  --primary-950: #042f2e;
+  --neutral-brand-color: #2dd4bf;
+  --background-50: #051f1d;
+  --background-100: #092e2b;
+  --background-soft-50: #0e3f3b;
+  --border-color-base-50: #165b55;
+}
+
+/* 37. Obsidian Gold */
+[data-theme-palette="obsidian-gold"] {
+  --primary-50: #fffbeb;
+  --primary-100: #fef3c7;
+  --primary-200: #fde68a;
+  --primary-300: #fcd34d;
+  --primary-400: #fbbf24;
+  --primary-500: #f59e0b;
+  --primary-600: #d97706;
+  --primary-700: #b45309;
+  --primary-800: #92400e;
+  --primary-900: #78350f;
+  --primary-950: #451a03;
+  --neutral-brand-color: #fbbf24;
+  --background-50: #141204;
+  --background-100: #211d08;
+  --background-soft-50: #2e280c;
+  --border-color-base-50: #473f15;
+}
+
+/* 38. Twilight Slate */
+[data-theme-palette="twilight-slate"] {
+  --primary-50: #f8fafc;
+  --primary-100: #f1f5f9;
+  --primary-200: #e2e8f0;
+  --primary-300: #cbd5e1;
+  --primary-400: #94a3b8;
+  --primary-500: #64748b;
+  --primary-600: #475569;
+  --primary-700: #334155;
+  --primary-800: #1e293b;
+  --primary-900: #0f172a;
+  --primary-950: #020617;
+  --neutral-brand-color: #94a3b8;
+  --background-50: #0f172a;
+  --background-100: #1e293b;
+  --background-soft-50: #293548;
+  --border-color-base-50: #38455a;
+}
+
+/* 39. Toxic Green */
+[data-theme-palette="toxic-green"] {
+  --primary-50: #f7fee7;
+  --primary-100: #ecfccb;
+  --primary-200: #d9f99d;
+  --primary-300: #bef264;
+  --primary-400: #a3e635;
+  --primary-500: #84cc16;
+  --primary-600: #65a30d;
+  --primary-700: #4d7c0f;
+  --primary-800: #3f6212;
+  --primary-900: #365314;
+  --primary-950: #1a2e05;
+  --neutral-brand-color: #a3e635;
+  --background-50: #0c1803;
+  --background-100: #142706;
+  --background-soft-50: #1c3609;
+  --border-color-base-50: #2b520e;
+}
+
+/* 40. Carbon Graphite */
+[data-theme-palette="carbon-graphite"] {
+  --primary-50: #fafafa;
+  --primary-100: #f4f4f5;
+  --primary-200: #e4e4e7;
+  --primary-300: #d4d4d8;
+  --primary-400: #a1a1aa;
+  --primary-500: #71717a;
+  --primary-600: #52525b;
+  --primary-700: #3f3f46;
+  --primary-800: #27272a;
+  --primary-900: #18181b;
+  --primary-950: #09090b;
+  --neutral-brand-color: #a1a1aa;
+  --background-50: #18181b;
+  --background-100: #27272a;
+  --background-soft-50: #333338;
+  --border-color-base-50: #44444b;
+}

@@ -4,6 +4,7 @@
 
 @import "./css/default.css";
 @import "./css/dark.css";
+@import "./css/themes.css";
 
 @theme {
   --color-primary-50: var(--primary-50);

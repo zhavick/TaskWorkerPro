@@ -2,6 +2,7 @@
 
 import { MenuIcon } from "@/components/common/header/icons";
 import ThemeToggle from "@/components/common/header/theme-toggle";
+import ThemeCustomizerDialog from "./theme-customizer-dialog";
 import { UserProfileButton } from "@/components/common/header/user-profile";
 import { ThreeDots } from "@/components/common/sidebar/icon";
 import { cn } from "@/utils/cn";
@@ -84,6 +85,7 @@ export default function Header({ onMenuClick }: { onMenuClick?: () => void }) {
               <HelpCircle className="h-5 w-5" />
             </button>
             <ThemeToggle />
+            <ThemeCustomizerDialog />
             <NotificationsButton />
             <UserProfileButton />
           </div>
@@ -120,6 +122,7 @@ function MobileInfoDrawer({
             </button>
             <NotificationsButton />
             <ThemeToggle />
+            <ThemeCustomizerDialog />
             <SearchBar />
           </div>
 
