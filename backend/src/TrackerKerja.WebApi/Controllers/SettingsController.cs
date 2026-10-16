@@ -21,11 +21,16 @@ public class SettingsController : ControllerBase
     }
 
     [HttpGet]
+    [AllowAnonymous]
     public async Task<IActionResult> GetAllSettings()
     {
         var settings = await _context.SystemSettings
             .AsNoTracking()
-            .Select(s => new SystemSettingDto(s.Key, s.Value, s.Description, s.UpdatedAt))
+            .Select(s => new SystemSettingDto(
+                s.Key,
+                s.Key.Contains("Pass") && !string.IsNullOrEmpty(s.Value) ? "••••••••" : s.Value,
+                s.Description,
+                s.UpdatedAt))
             .ToListAsync();
 
         return Ok(new { success = true, data = settings });

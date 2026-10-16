@@ -5,8 +5,10 @@ import ThemeToggle from "@/components/common/header/theme-toggle";
 import ThemeCustomizerDialog from "./theme-customizer-dialog";
 import { UserProfileButton } from "@/components/common/header/user-profile";
 import { ThreeDots } from "@/components/common/sidebar/icon";
+import { useAppSettings } from "@/hooks/use-app-settings";
 import { cn } from "@/utils/cn";
-import { LogoWithText } from "@/utils/icon";
+import { Logo } from "@/utils/icon";
+import Link from "next/link";
 import React from "react";
 import { HelpCircle } from "lucide-react";
 import { NotificationsButton } from "./notifications";
@@ -17,6 +19,7 @@ import { ActiveTimersWidget } from "./active-timers-widget";
 //  Main Header
 export default function Header({ onMenuClick }: { onMenuClick?: () => void }) {
   const [isDrawerOpen, setIsDrawerOpen] = React.useState(false);
+  const { appName } = useAppSettings();
 
   const handleOpenGuide = () => {
     window.dispatchEvent(new CustomEvent("wtp:open_user_guide"));
@@ -39,9 +42,18 @@ export default function Header({ onMenuClick }: { onMenuClick?: () => void }) {
             </button>
           </div>
 
-          {/* Center: Logo */}
+          {/* Center: Logo & App Name */}
           <div className="flex items-center justify-center">
-            <LogoWithText />
+            <Link
+              href="/"
+              className="flex items-center gap-2 max-w-[200px] overflow-hidden"
+              title={appName}
+            >
+              <Logo className="h-7 w-7 shrink-0" />
+              <span className="truncate text-base font-bold tracking-tight text-text-primary">
+                {appName}
+              </span>
+            </Link>
           </div>
 
           {/* Right: Three-dot */}
