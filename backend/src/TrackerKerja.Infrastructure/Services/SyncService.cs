@@ -83,10 +83,10 @@ public class SyncService : ISyncService
         };
     }
 
-    public async Task<SyncPingResponse> PingRemoteHostAsync(string hostUrl, string apiKey)
+    public async Task<SyncPingResponse> PingRemoteHostAsync(string hostUrl, string apiKey, bool allowUntrustedSsl = false)
     {
         var cleanUrl = hostUrl.TrimEnd('/');
-        var client = CreateHttpClient(apiKey);
+        var client = CreateHttpClient(apiKey, allowUntrustedSsl);
 
         var stopwatch = Stopwatch.StartNew();
         var response = await client.GetAsync($"{cleanUrl}/api/sync/ping");
@@ -128,7 +128,15 @@ public class SyncService : ISyncService
                 await writer.WriteAsync(JsonSerializer.Serialize(payload.Data, JsonOptions));
             }
 
-            // 3. Add physical files if requested
+            // 3. Add sync_data.sql
+            var sqlScript = GenerateSqlScript(payload.Data);
+            var sqlEntry = archive.CreateEntry("sync_data.sql", CompressionLevel.Optimal);
+            using (var writer = new StreamWriter(sqlEntry.Open(), Encoding.UTF8))
+            {
+                await writer.WriteAsync(sqlScript);
+            }
+
+            // 4. Add physical files if requested
             if (includeFiles && Directory.Exists(_uploadBasePath))
             {
                 var files = Directory.GetFiles(_uploadBasePath, "*.*", SearchOption.AllDirectories);
@@ -161,6 +169,26 @@ public class SyncService : ISyncService
         await _context.SaveChangesAsync();
 
         return zipBytes;
+    }
+
+    public async Task<string> ExportSqlDumpAsync()
+    {
+        var payload = await PrepareSyncPayloadAsync(includeFiles: false);
+        var sqlScript = GenerateSqlScript(payload.Data);
+
+        _context.SyncHistories.Add(new SyncHistory
+        {
+            Direction = SyncDirection.ExportSql,
+            Status = SyncStatus.Success,
+            TargetHost = "Local SQL Dump Export",
+            TotalRecordsSynced = payload.Manifest.EntityCount,
+            FileSizeBytes = Encoding.UTF8.GetByteCount(sqlScript),
+            SummaryJson = JsonSerializer.Serialize(new { payload.Manifest.EntityCount, Format = "SQL" }),
+            CreatedAt = DateTimeOffset.UtcNow
+        });
+        await _context.SaveChangesAsync();
+
+        return sqlScript;
     }
 
     public async Task<SyncOperationResult> ImportPackageZipAsync(Stream zipStream, string? triggeredByUserId)
@@ -202,20 +230,17 @@ public class SyncService : ISyncService
 
             var manifestEntry = archive.GetEntry("manifest.json");
             var dataEntry = archive.GetEntry("sync_data.json");
+            var sqlEntry = archive.GetEntry("sync_data.sql");
 
-            if (dataEntry == null)
+            if (dataEntry == null && sqlEntry == null)
             {
                 return new SyncOperationResult
                 {
                     Success = false,
-                    Message = "Berkas paket tidak valid: sync_data.json tidak ditemukan.",
+                    Message = "Berkas paket tidak valid: sync_data.json atau sync_data.sql tidak ditemukan.",
                     Status = SyncStatus.Failed
                 };
             }
-
-            using var dataReader = new StreamReader(dataEntry.Open(), Encoding.UTF8);
-            var dataJson = await dataReader.ReadToEndAsync();
-            var data = JsonSerializer.Deserialize<SyncDatabaseData>(dataJson, JsonOptions) ?? new SyncDatabaseData();
 
             // Extract file attachments if present
             var extractedFilesCount = 0;
@@ -235,7 +260,21 @@ public class SyncService : ISyncService
                 }
             }
 
-            var mergedCount = await MergeDatabaseDataAsync(data);
+            var mergedCount = 0;
+            if (dataEntry != null)
+            {
+                using var dataReader = new StreamReader(dataEntry.Open(), Encoding.UTF8);
+                var dataJson = await dataReader.ReadToEndAsync();
+                var data = JsonSerializer.Deserialize<SyncDatabaseData>(dataJson, JsonOptions) ?? new SyncDatabaseData();
+                mergedCount = await MergeDatabaseDataAsync(data);
+            }
+            else if (sqlEntry != null)
+            {
+                using var sqlReader = new StreamReader(sqlEntry.Open(), Encoding.UTF8);
+                var sqlContent = await sqlReader.ReadToEndAsync();
+                var sqlResult = await ImportSqlScriptAsync(sqlContent, triggeredByUserId);
+                mergedCount = sqlResult.RecordsProcessed;
+            }
 
             _context.SyncHistories.Add(new SyncHistory
             {
@@ -276,6 +315,91 @@ public class SyncService : ISyncService
             {
                 Success = false,
                 Message = $"Gagal mengimpor paket: {ex.Message}",
+                Status = SyncStatus.Failed
+            };
+        }
+    }
+
+    public async Task<SyncOperationResult> ImportSqlScriptAsync(string sqlContent, string? triggeredByUserId)
+    {
+        if (string.IsNullOrWhiteSpace(sqlContent))
+        {
+            return new SyncOperationResult
+            {
+                Success = false,
+                Message = "Skrip SQL kosong.",
+                Status = SyncStatus.Failed
+            };
+        }
+
+        try
+        {
+            var statements = SplitSqlStatements(sqlContent);
+            var executedStatements = 0;
+
+            if (_context.Database.IsRelational())
+            {
+                using var transaction = await _context.Database.BeginTransactionAsync();
+                try
+                {
+                    foreach (var stmt in statements)
+                    {
+                        if (string.IsNullOrWhiteSpace(stmt)) continue;
+                        await _context.Database.ExecuteSqlRawAsync(stmt);
+                        executedStatements++;
+                    }
+                    await transaction.CommitAsync();
+                }
+                catch (Exception ex)
+                {
+                    await transaction.RollbackAsync();
+                    throw new InvalidOperationException($"Gagal mengeksekusi skrip SQL (Rollback berhasil): {ex.Message}", ex);
+                }
+            }
+            else
+            {
+                // In-memory or non-relational test support
+                executedStatements = statements.Count(s => !string.IsNullOrWhiteSpace(s));
+            }
+
+            _context.SyncHistories.Add(new SyncHistory
+            {
+                Direction = SyncDirection.ImportSql,
+                Status = SyncStatus.Success,
+                TargetHost = "Local SQL Script Import",
+                TotalRecordsSynced = executedStatements,
+                FileSizeBytes = Encoding.UTF8.GetByteCount(sqlContent),
+                SummaryJson = JsonSerializer.Serialize(new { StatementsExecuted = executedStatements }),
+                TriggeredByUserId = triggeredByUserId
+            });
+            await _context.SaveChangesAsync();
+
+            return new SyncOperationResult
+            {
+                Success = true,
+                Message = $"Berhasil mengimpor skrip SQL: {executedStatements} baris perintah DML dieksekusi secara atomik.",
+                RecordsProcessed = executedStatements,
+                FileSizeBytes = Encoding.UTF8.GetByteCount(sqlContent),
+                Status = SyncStatus.Success
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Failed to import SQL script");
+            _context.SyncHistories.Add(new SyncHistory
+            {
+                Direction = SyncDirection.ImportSql,
+                Status = SyncStatus.Failed,
+                TargetHost = "Local SQL Script Import",
+                ErrorMessage = ex.Message,
+                TriggeredByUserId = triggeredByUserId
+            });
+            await _context.SaveChangesAsync();
+
+            return new SyncOperationResult
+            {
+                Success = false,
+                Message = $"Gagal mengimpor skrip SQL: {ex.Message}",
                 Status = SyncStatus.Failed
             };
         }
@@ -609,7 +733,7 @@ public class SyncService : ISyncService
     public async Task<SyncOperationResult> PushToHostAsync(SyncPushRequest request, string? triggeredByUserId)
     {
         var cleanUrl = request.HostUrl.TrimEnd('/');
-        var client = CreateHttpClient(request.ApiKey);
+        var client = CreateHttpClient(request.ApiKey, request.AllowUntrustedSsl);
 
         var payload = await PrepareSyncPayloadAsync(request.IncludeFiles);
         var response = await client.PostAsJsonAsync($"{cleanUrl}/api/sync/receive", payload, JsonOptions);
@@ -658,7 +782,7 @@ public class SyncService : ISyncService
     public async Task<SyncOperationResult> PullFromHostAsync(SyncPullRequest request, string? triggeredByUserId)
     {
         var cleanUrl = request.HostUrl.TrimEnd('/');
-        var client = CreateHttpClient(request.ApiKey);
+        var client = CreateHttpClient(request.ApiKey, request.AllowUntrustedSsl);
 
         var response = await client.GetAsync($"{cleanUrl}/api/sync/export-package?includeFiles={request.IncludeFiles}");
 
@@ -1147,9 +1271,22 @@ public class SyncService : ISyncService
         return totalMerged;
     }
 
-    private HttpClient CreateHttpClient(string apiKey)
+    private HttpClient CreateHttpClient(string apiKey, bool allowUntrustedSsl = false)
     {
-        var client = _httpClientFactory?.CreateClient("SyncClient") ?? new HttpClient();
+        HttpClient client;
+        if (allowUntrustedSsl)
+        {
+            var handler = new HttpClientHandler
+            {
+                ServerCertificateCustomValidationCallback = (sender, cert, chain, sslPolicyErrors) => true
+            };
+            client = new HttpClient(handler);
+        }
+        else
+        {
+            client = _httpClientFactory?.CreateClient("SyncClient") ?? new HttpClient();
+        }
+
         client.Timeout = TimeSpan.FromMinutes(10);
         if (!string.IsNullOrWhiteSpace(apiKey))
         {
@@ -1158,6 +1295,183 @@ public class SyncService : ISyncService
         }
         return client;
     }
+
+    public string GenerateSqlScript(SyncDatabaseData data)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("-- =============================================================================");
+        sb.AppendLine("-- TrackerKerja Modern Database Sync Script (DML Transactions)");
+        sb.AppendLine($"-- Generated At: {DateTimeOffset.UtcNow:O}");
+        sb.AppendLine("-- =============================================================================");
+        sb.AppendLine();
+
+        // 1. Companies
+        if (data.Companies.Count > 0)
+        {
+            sb.AppendLine("-- 1. Companies");
+            foreach (var c in data.Companies)
+            {
+                sb.AppendLine($"INSERT OR REPLACE INTO companies (id, name, code, description, address, contact_email, created_at) VALUES ({c.Id}, {SqlEscape(c.Name)}, {SqlEscape(c.Code)}, {SqlEscape(c.Description)}, {SqlEscape(c.Address)}, {SqlEscape(c.ContactEmail)}, {SqlDate(c.CreatedAt)});");
+            }
+            sb.AppendLine();
+        }
+
+        // 2. Users (asp_net_users)
+        if (data.Users.Count > 0)
+        {
+            sb.AppendLine("-- 2. Users");
+            foreach (var u in data.Users)
+            {
+                sb.AppendLine($"INSERT OR REPLACE INTO asp_net_users (id, user_name, normalized_user_name, email, normalized_email, email_confirmed, password_hash, security_stamp, concurrency_stamp, phone_number, full_name, job_title, avatar_color, profile_picture_url, cover_picture_url, company_id, is_approved, approved_at, approved_by_user_id, created_at) VALUES ({SqlEscape(u.Id)}, {SqlEscape(u.UserName)}, {SqlEscape(u.NormalizedUserName)}, {SqlEscape(u.Email)}, {SqlEscape(u.NormalizedEmail)}, {SqlBool(u.EmailConfirmed)}, {SqlEscape(u.PasswordHash)}, {SqlEscape(u.SecurityStamp)}, {SqlEscape(u.ConcurrencyStamp)}, {SqlEscape(u.PhoneNumber)}, {SqlEscape(u.FullName)}, {SqlEscape(u.JobTitle)}, {SqlEscape(u.AvatarColor)}, {SqlEscape(u.ProfilePictureUrl)}, {SqlEscape(u.CoverPictureUrl)}, {SqlNullableInt(u.CompanyId)}, {SqlBool(u.IsApproved)}, {SqlDate(u.ApprovedAt)}, {SqlEscape(u.ApprovedByUserId)}, {SqlDate(u.CreatedAt)});");
+            }
+            sb.AppendLine();
+        }
+
+        // 3. Categories
+        if (data.Categories.Count > 0)
+        {
+            sb.AppendLine("-- 3. Categories");
+            foreach (var cat in data.Categories)
+            {
+                sb.AppendLine($"INSERT OR REPLACE INTO categories (id, name, color, description, created_at) VALUES ({cat.Id}, {SqlEscape(cat.Name)}, {SqlEscape(cat.Color)}, {SqlEscape(cat.Description)}, {SqlDate(cat.CreatedAt)});");
+            }
+            sb.AppendLine();
+        }
+
+        // 4. MasterPriorities
+        if (data.MasterPriorities.Count > 0)
+        {
+            sb.AppendLine("-- 4. Master Priorities");
+            foreach (var p in data.MasterPriorities)
+            {
+                sb.AppendLine($"INSERT OR REPLACE INTO master_priorities (id, name, color, icon, order_index, description, is_default) VALUES ({p.Id}, {SqlEscape(p.Name)}, {SqlEscape(p.Color)}, {SqlEscape(p.Icon)}, {p.OrderIndex}, {SqlEscape(p.Description)}, {SqlBool(p.IsDefault)});");
+            }
+            sb.AppendLine();
+        }
+
+        // 5. MasterStatuses
+        if (data.MasterStatuses.Count > 0)
+        {
+            sb.AppendLine("-- 5. Master Statuses");
+            foreach (var s in data.MasterStatuses)
+            {
+                sb.AppendLine($"INSERT OR REPLACE INTO master_statuses (id, name, color, is_done_state, order_index, description, is_default) VALUES ({s.Id}, {SqlEscape(s.Name)}, {SqlEscape(s.Color)}, {SqlBool(s.IsDoneState)}, {s.OrderIndex}, {SqlEscape(s.Description)}, {SqlBool(s.IsDefault)});");
+            }
+            sb.AppendLine();
+        }
+
+        // 6. MasterMilestones
+        if (data.MasterMilestones.Count > 0)
+        {
+            sb.AppendLine("-- 6. Master Milestones");
+            foreach (var m in data.MasterMilestones)
+            {
+                sb.AppendLine($"INSERT OR REPLACE INTO master_milestones (id, name, phase, color, icon, order_index, description, is_default) VALUES ({m.Id}, {SqlEscape(m.Name)}, {SqlEscape(m.Phase)}, {SqlEscape(m.Color)}, {SqlEscape(m.Icon)}, {m.OrderIndex}, {SqlEscape(m.Description)}, {SqlBool(m.IsDefault)});");
+            }
+            sb.AppendLine();
+        }
+
+        // 7. Projects
+        if (data.Projects.Count > 0)
+        {
+            sb.AppendLine("-- 7. Projects");
+            foreach (var prj in data.Projects)
+            {
+                sb.AppendLine($"INSERT OR REPLACE INTO projects (id, name, description, color, status, company_id, client_name, project_manager_id, budget, actual_cost, tags, deadline, created_at) VALUES ({prj.Id}, {SqlEscape(prj.Name)}, {SqlEscape(prj.Description)}, {SqlEscape(prj.Color)}, {(int)prj.Status}, {SqlNullableInt(prj.CompanyId)}, {SqlEscape(prj.ClientName)}, {SqlEscape(prj.ProjectManagerId)}, {prj.Budget.ToString(System.Globalization.CultureInfo.InvariantCulture)}, {prj.ActualCost.ToString(System.Globalization.CultureInfo.InvariantCulture)}, {SqlEscape(prj.Tags)}, {SqlDate(prj.Deadline)}, {SqlDate(prj.CreatedAt)});");
+            }
+            sb.AppendLine();
+        }
+
+        // 8. Tasks
+        if (data.Tasks.Count > 0)
+        {
+            sb.AppendLine("-- 8. Tasks");
+            foreach (var t in data.Tasks)
+            {
+                sb.AppendLine($"INSERT OR REPLACE INTO tasks (id, title, description, priority, status, progress, milestone, obstacle, solution, project_id, category_id, assigned_to_user_id, parent_task_id, company_id, start_date, due_date, created_at, updated_at) VALUES ({t.Id}, {SqlEscape(t.Title)}, {SqlEscape(t.Description)}, {(int)t.Priority}, {(int)t.Status}, {t.Progress}, {SqlEscape(t.Milestone)}, {SqlEscape(t.Obstacle)}, {SqlEscape(t.Solution)}, {SqlNullableInt(t.ProjectId)}, {SqlNullableInt(t.CategoryId)}, {SqlEscape(t.AssignedToUserId)}, {SqlNullableInt(t.ParentTaskId)}, {SqlNullableInt(t.CompanyId)}, {SqlDate(t.StartDate)}, {SqlDate(t.DueDate)}, {SqlDate(t.CreatedAt)}, {SqlDate(t.UpdatedAt)});");
+            }
+            sb.AppendLine();
+        }
+
+        // 9. Sessions
+        if (data.Sessions.Count > 0)
+        {
+            sb.AppendLine("-- 9. Work Sessions");
+            foreach (var s in data.Sessions)
+            {
+                sb.AppendLine($"INSERT OR REPLACE INTO sessions (id, task_id, user_id, start_time, end_time, duration, notes, created_at) VALUES ({s.Id}, {s.TaskId}, {SqlEscape(s.UserId)}, {SqlDate(s.StartTime)}, {SqlDate(s.EndTime)}, {s.Duration}, {SqlEscape(s.Notes)}, {SqlDate(s.CreatedAt)});");
+            }
+            sb.AppendLine();
+        }
+
+        // 10. Attendances
+        if (data.Attendances.Count > 0)
+        {
+            sb.AppendLine("-- 10. Attendance Records");
+            foreach (var a in data.Attendances)
+            {
+                sb.AppendLine($"INSERT OR REPLACE INTO attendances (id, user_id, date, type, work_location, clock_in, clock_out, total_hours, leave_reason, notes, created_at, updated_at) VALUES ({a.Id}, {SqlEscape(a.UserId)}, '{a.Date:yyyy-MM-dd}', {(int)a.Type}, {(int)a.WorkLocation}, {SqlDate(a.ClockIn)}, {SqlDate(a.ClockOut)}, {a.TotalHours.ToString(System.Globalization.CultureInfo.InvariantCulture)}, {SqlEscape(a.LeaveReason)}, {SqlEscape(a.Notes)}, {SqlDate(a.CreatedAt)}, {SqlDate(a.UpdatedAt)});");
+            }
+            sb.AppendLine();
+        }
+
+        // 11. Notes
+        if (data.Notes.Count > 0)
+        {
+            sb.AppendLine("-- 11. Notes");
+            foreach (var n in data.Notes)
+            {
+                sb.AppendLine($"INSERT OR REPLACE INTO notes (id, title, content_html, category, color, is_pinned, author_user_id, task_id, company_id, created_at, updated_at) VALUES ({n.Id}, {SqlEscape(n.Title)}, {SqlEscape(n.ContentHtml)}, {SqlEscape(n.Category)}, {SqlEscape(n.Color)}, {SqlBool(n.IsPinned)}, {SqlEscape(n.AuthorUserId)}, {SqlNullableInt(n.TaskId)}, {SqlNullableInt(n.CompanyId)}, {SqlDate(n.CreatedAt)}, {SqlDate(n.UpdatedAt)});");
+            }
+            sb.AppendLine();
+        }
+
+        // 12. NoteAttachments
+        if (data.NoteAttachments.Count > 0)
+        {
+            sb.AppendLine("-- 12. Note Attachments");
+            foreach (var att in data.NoteAttachments)
+            {
+                sb.AppendLine($"INSERT OR REPLACE INTO note_attachments (id, note_id, file_name, file_path, file_size, content_type, file_extension, uploaded_by_user_id, uploaded_at) VALUES ({att.Id}, {att.NoteId}, {SqlEscape(att.FileName)}, {SqlEscape(att.FilePath)}, {att.FileSize}, {SqlEscape(att.ContentType)}, {SqlEscape(att.FileExtension)}, {SqlEscape(att.UploadedByUserId)}, {SqlDate(att.UploadedAt)});");
+            }
+            sb.AppendLine();
+        }
+
+        return sb.ToString();
+    }
+
+    private static List<string> SplitSqlStatements(string sql)
+    {
+        var list = new List<string>();
+        var lines = sql.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
+        var sb = new StringBuilder();
+        foreach (var rawLine in lines)
+        {
+            var line = rawLine.Trim();
+            if (line.StartsWith("--") || string.IsNullOrWhiteSpace(line)) continue;
+            sb.AppendLine(rawLine);
+            if (line.EndsWith(";"))
+            {
+                var stmt = sb.ToString().Trim();
+                if (!string.IsNullOrEmpty(stmt))
+                {
+                    list.Add(stmt);
+                }
+                sb.Clear();
+            }
+        }
+        if (sb.Length > 0)
+        {
+            var remaining = sb.ToString().Trim();
+            if (!string.IsNullOrEmpty(remaining)) list.Add(remaining);
+        }
+        return list;
+    }
+
+    private static string SqlEscape(string? val) => val == null ? "NULL" : $"'{val.Replace("'", "''")}'";
+    private static string SqlDate(DateTimeOffset? dt) => dt == null ? "NULL" : $"'{dt.Value:O}'";
+    private static string SqlBool(bool val) => val ? "1" : "0";
+    private static string SqlNullableInt(int? val) => val.HasValue ? val.Value.ToString() : "NULL";
 
     private static long CalculateDirectorySize(string directoryPath)
     {

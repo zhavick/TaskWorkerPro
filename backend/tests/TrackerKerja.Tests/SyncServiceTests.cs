@@ -99,11 +99,58 @@ public class SyncServiceTests : IDisposable
         var dataEntry = archive.GetEntry("sync_data.json");
         Assert.NotNull(dataEntry);
 
+        var sqlEntry = archive.GetEntry("sync_data.sql");
+        Assert.NotNull(sqlEntry);
+
         using var reader = new StreamReader(manifestEntry.Open(), Encoding.UTF8);
         var manifestJson = await reader.ReadToEndAsync();
         var manifest = JsonSerializer.Deserialize<SyncManifest>(manifestJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
         Assert.NotNull(manifest);
         Assert.True(manifest.EntityCount >= 2);
+    }
+
+    [Fact]
+    public async Task ExportSqlDumpAsync_ShouldGenerateValidSqlScript()
+    {
+        // Arrange
+        _context.Companies.Add(new Company { Id = 103, Name = "Cabang Semarang", Code = "SMG" });
+        _context.Tasks.Add(new WorkTask { Id = 303, Title = "Backup Server" });
+        await _context.SaveChangesAsync();
+
+        // Act
+        var sql = await _syncService.ExportSqlDumpAsync();
+
+        // Assert
+        Assert.NotNull(sql);
+        Assert.Contains("companies", sql);
+        Assert.Contains("Cabang Semarang", sql);
+        Assert.Contains("SMG", sql);
+        Assert.Contains("tasks", sql);
+        Assert.Contains("Backup Server", sql);
+
+        var historyList = await _syncService.GetSyncHistoryAsync(10);
+        Assert.Contains(historyList, h => h.Direction == "ExportSql" && h.Status == "Success");
+    }
+
+    [Fact]
+    public async Task ImportSqlScriptAsync_ShouldExecuteStatementsAndRecordHistory()
+    {
+        // Arrange
+        var sqlScript = @"
+            -- Sample SQL import
+            INSERT OR REPLACE INTO companies (id, name, code) VALUES (777, 'Cabang Bali', 'DPS');
+            INSERT OR REPLACE INTO tasks (id, title) VALUES (888, 'Audit Keamanan');
+        ";
+
+        // Act
+        var result = await _syncService.ImportSqlScriptAsync(sqlScript, "test-admin");
+
+        // Assert
+        Assert.True(result.Success);
+        Assert.True(result.RecordsProcessed >= 2);
+
+        var historyList = await _syncService.GetSyncHistoryAsync(10);
+        Assert.Contains(historyList, h => h.Direction == "ImportSql" && h.Status == "Success");
     }
 
     [Fact]

@@ -18,6 +18,16 @@ builder.Services.AddControllers(options =>
 builder.Services.AddScoped<TrackerKerja.Infrastructure.Filters.AuditLogActionFilter>();
 builder.Services.AddHttpContextAccessor();
 
+// Form & Request Size Limits (200MB for Sync Packages & Uploads)
+builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(options =>
+{
+    options.MultipartBodyLengthLimit = 209715200; // 200 MB
+});
+builder.WebHost.ConfigureKestrel(serverOptions =>
+{
+    serverOptions.Limits.MaxRequestBodySize = 209715200; // 200 MB
+});
+
 // 2. Database Context (PostgreSQL via Npgsql)
 builder.Services.AddDbContext<AppDbContext>(options =>
 {

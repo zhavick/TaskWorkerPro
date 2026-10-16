@@ -24,6 +24,7 @@ public record SyncPushRequest
     public string HostUrl { get; init; } = string.Empty;
     public string ApiKey { get; init; } = string.Empty;
     public bool IncludeFiles { get; init; } = true;
+    public bool AllowUntrustedSsl { get; init; } = false;
 }
 
 public record SyncPullRequest
@@ -31,6 +32,7 @@ public record SyncPullRequest
     public string HostUrl { get; init; } = string.Empty;
     public string ApiKey { get; init; } = string.Empty;
     public bool IncludeFiles { get; init; } = true;
+    public bool AllowUntrustedSsl { get; init; } = false;
 }
 
 public record SyncManifest

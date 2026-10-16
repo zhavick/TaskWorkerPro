@@ -6,7 +6,9 @@ public enum SyncDirection
     Pull,
     ExportZip,
     ImportZip,
-    Receive
+    Receive,
+    ExportSql,
+    ImportSql
 }
 
 public enum SyncStatus

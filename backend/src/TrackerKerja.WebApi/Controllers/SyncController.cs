@@ -47,7 +47,7 @@ public class SyncController : ControllerBase
 
         try
         {
-            var pingInfo = await _syncService.PingRemoteHostAsync(request.HostUrl, request.ApiKey);
+            var pingInfo = await _syncService.PingRemoteHostAsync(request.HostUrl, request.ApiKey, request.AllowUntrustedSsl);
             return Ok(pingInfo);
         }
         catch (Exception ex)
@@ -119,6 +119,20 @@ public class SyncController : ControllerBase
         return File(zipBytes, "application/zip", fileName);
     }
 
+    [HttpGet("export-sql")]
+    [AllowAnonymous]
+    public async Task<IActionResult> ExportSql()
+    {
+        if (!IsSyncAuthorized())
+        {
+            return Unauthorized(new { success = false, message = "Kunci otorisasi sinkronisasi X-Sync-Key tidak valid." });
+        }
+
+        var sqlContent = await _syncService.ExportSqlDumpAsync();
+        var fileName = $"trackerkerja_sync_dump_{DateTime.UtcNow:yyyyMMdd_HHmmss}.sql";
+        return File(System.Text.Encoding.UTF8.GetBytes(sqlContent), "application/sql", fileName);
+    }
+
     [HttpPost("import-package")]
     [Authorize]
     public async Task<IActionResult> ImportPackage(IFormFile file)
@@ -130,18 +144,28 @@ public class SyncController : ControllerBase
 
         if (file == null || file.Length == 0)
         {
-            return BadRequest(new { success = false, message = "Berkas paket .zip tidak ditemukan atau kosong." });
+            return BadRequest(new { success = false, message = "Berkas paket tidak ditemukan atau kosong." });
         }
 
         var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
-        if (ext != ".zip")
+        if (ext != ".zip" && ext != ".sql")
         {
-            return BadRequest(new { success = false, message = "Hanya berkas berekstensi .zip yang diizinkan." });
+            return BadRequest(new { success = false, message = "Hanya berkas berekstensi .zip atau .sql yang diizinkan." });
         }
 
-        using var stream = file.OpenReadStream();
-        var result = await _syncService.ImportPackageZipAsync(stream, _tenantService.UserId);
-        return Ok(result);
+        if (ext == ".sql")
+        {
+            using var reader = new StreamReader(file.OpenReadStream(), System.Text.Encoding.UTF8);
+            var sqlContent = await reader.ReadToEndAsync();
+            var result = await _syncService.ImportSqlScriptAsync(sqlContent, _tenantService.UserId);
+            return Ok(result);
+        }
+        else
+        {
+            using var stream = file.OpenReadStream();
+            var result = await _syncService.ImportPackageZipAsync(stream, _tenantService.UserId);
+            return Ok(result);
+        }
     }
 
     [HttpGet("history")]
@@ -159,7 +183,7 @@ public class SyncController : ControllerBase
 
     private bool IsAdmin()
     {
-        return _tenantService.IsAdmin || (User.Identity?.IsAuthenticated == true && User.IsInRole("Administrator"));
+        return _tenantService.IsAdmin || (User.Identity?.IsAuthenticated == true && (User.IsInRole("Administrator") || User.IsInRole("SuperAdmin")));
     }
 
     private bool IsSyncAuthorized()
@@ -169,7 +193,11 @@ public class SyncController : ControllerBase
             return true;
         }
 
-        var syncKeyHeader = Request.Headers["X-Sync-Key"].FirstOrDefault();
+        var syncKeyHeader = Request.Headers["X-Sync-Key"].FirstOrDefault()
+            ?? Request.Headers["ApiSecretKey"].FirstOrDefault()
+            ?? Request.Query["key"].FirstOrDefault()
+            ?? Request.Query["apiKey"].FirstOrDefault();
+
         var configuredKey = _configuration["SyncSettings:ApiKey"] ?? "TRACKERKERJA_SYNC_SECRET_DEFAULT_2026";
 
         return !string.IsNullOrWhiteSpace(syncKeyHeader) &&
@@ -177,4 +205,4 @@ public class SyncController : ControllerBase
     }
 }
 
-public record PingHostRequest(string HostUrl, string ApiKey);
+public record PingHostRequest(string HostUrl, string ApiKey, bool AllowUntrustedSsl = false);

@@ -109,6 +109,7 @@ export default function ConfigurationPage() {
   const [hostUrl, setHostUrl] = useState("http://localhost:5000");
   const [syncApiKey, setSyncApiKey] = useState("");
   const [includeFiles, setIncludeFiles] = useState(true);
+  const [allowUntrustedSsl, setAllowUntrustedSsl] = useState(false);
   const [pingResult, setPingResult] = useState<{
     ready: boolean;
     latencyMs: number;
@@ -326,7 +327,7 @@ export default function ConfigurationPage() {
   // ==========================================
   const pingHostMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiClient.post("/sync/ping-host", { hostUrl, apiKey: syncApiKey });
+      const res = await apiClient.post("/sync/ping-host", { hostUrl, apiKey: syncApiKey, allowUntrustedSsl });
       return res.data;
     },
     onSuccess: (data: any) => {
@@ -345,7 +346,7 @@ export default function ConfigurationPage() {
 
   const pushMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiClient.post("/sync/push", { hostUrl, apiKey: syncApiKey, includeFiles });
+      const res = await apiClient.post("/sync/push", { hostUrl, apiKey: syncApiKey, includeFiles, allowUntrustedSsl });
       return res.data;
     },
     onSuccess: (data: any) => {
@@ -360,7 +361,7 @@ export default function ConfigurationPage() {
 
   const pullMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiClient.post("/sync/pull", { hostUrl, apiKey: syncApiKey, includeFiles });
+      const res = await apiClient.post("/sync/pull", { hostUrl, apiKey: syncApiKey, includeFiles, allowUntrustedSsl });
       return res.data;
     },
     onSuccess: (data: any) => {
@@ -398,7 +399,32 @@ export default function ConfigurationPage() {
     },
   });
 
-  const importZipMutation = useMutation({
+  const exportSqlMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiClient.get("/sync/export-sql", {
+        responseType: "blob",
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", `trackerkerja_sync_dump_${Date.now()}.sql`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      return true;
+    },
+    onSuccess: () => {
+      toast.success("Skrip DML .SQL berhasil diunduh!");
+      refetchHistory();
+      refetchPing();
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || "Gagal mengekspor skrip .SQL");
+    },
+  });
+
+  const importPackageMutation = useMutation({
     mutationFn: async (file: File) => {
       const formData = new FormData();
       formData.append("file", file);
@@ -408,13 +434,13 @@ export default function ConfigurationPage() {
       return res.data;
     },
     onSuccess: (data: any) => {
-      toast.success(data.message || "Paket .ZIP berhasil diimpor!");
+      toast.success(data.message || "Paket sinkronisasi berhasil diterapkan!");
       setImportFile(null);
       refetchHistory();
       refetchPing();
     },
     onError: (err: any) => {
-      toast.error(err.response?.data?.message || "Gagal mengimpor paket .ZIP");
+      toast.error(err.response?.data?.message || "Gagal mengimpor berkas paket");
     },
   });
 
@@ -1760,20 +1786,38 @@ export default function ConfigurationPage() {
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 pt-1">
-                    <input
-                      type="checkbox"
-                      id="syncIncludeFiles"
-                      checked={includeFiles}
-                      onChange={(e) => setIncludeFiles(e.target.checked)}
-                      className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                    />
-                    <label
-                      htmlFor="syncIncludeFiles"
-                      className="text-xs font-medium text-gray-700 dark:text-gray-300"
-                    >
-                      Sertakan seluruh berkas lampiran fisik (uploads/)
-                    </label>
+                  <div className="flex flex-col gap-2 pt-1">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="syncIncludeFiles"
+                        checked={includeFiles}
+                        onChange={(e) => setIncludeFiles(e.target.checked)}
+                        className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                      />
+                      <label
+                        htmlFor="syncIncludeFiles"
+                        className="text-xs font-medium text-gray-700 dark:text-gray-300"
+                      >
+                        Sertakan seluruh berkas lampiran fisik (uploads/)
+                      </label>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="syncUntrustedSsl"
+                        checked={allowUntrustedSsl}
+                        onChange={(e) => setAllowUntrustedSsl(e.target.checked)}
+                        className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                      />
+                      <label
+                        htmlFor="syncUntrustedSsl"
+                        className="text-xs font-medium text-gray-700 dark:text-gray-300"
+                      >
+                        Izinkan sertifikat SSL self-signed / internal (Bypass SSL error)
+                      </label>
+                    </div>
                   </div>
 
                   {/* Ping Result Banner */}
@@ -1785,7 +1829,15 @@ export default function ConfigurationPage() {
                           {pingResult.message}
                         </span>
                       </div>
-                      <span className="rounded-md bg-emerald-100 px-2 py-0.5 font-mono text-[11px] font-bold text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300">
+                      <span
+                        className={`rounded-md px-2 py-0.5 font-mono text-[11px] font-bold ${
+                          pingResult.latencyMs < 300
+                            ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300"
+                            : pingResult.latencyMs < 1000
+                            ? "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300"
+                            : "bg-rose-100 text-rose-700 dark:bg-rose-900 dark:text-rose-300"
+                        }`}
+                      >
                         {pingResult.latencyMs} ms
                       </span>
                     </div>
@@ -1828,7 +1880,7 @@ export default function ConfigurationPage() {
               </div>
             </div>
 
-            {/* Panel 2: Offline Air-Gapped Package (.ZIP) */}
+            {/* Panel 2: Offline Air-Gapped Package (.ZIP & .SQL) */}
             <div className="flex flex-col justify-between rounded-2xl border border-gray-100 bg-white p-6 shadow-xs dark:border-gray-800 dark:bg-gray-900">
               <div className="space-y-4">
                 <div className="flex items-center justify-between border-b border-gray-100 pb-3 dark:border-gray-800">
@@ -1838,10 +1890,10 @@ export default function ConfigurationPage() {
                     </div>
                     <div>
                       <h2 className="text-sm font-bold text-gray-900 dark:text-white">
-                        Paket Offline Mandiri (.ZIP)
+                        Paket Offline & SQL Dump (.ZIP / .SQL)
                       </h2>
                       <p className="text-[11px] text-gray-500">
-                        Ekspor & Impor arsip zip untuk pemindahan data via flashdisk
+                        Ekspor & Impor arsip data mandiri untuk pemindahan via flashdisk
                       </p>
                     </div>
                   </div>
@@ -1852,46 +1904,64 @@ export default function ConfigurationPage() {
                   <div className="rounded-xl border border-gray-200/80 bg-gray-50/50 p-4 dark:border-gray-800 dark:bg-gray-800/40">
                     <div className="flex items-center gap-2 mb-2">
                       <Download className="h-4 w-4 text-indigo-600" />
-                      <h3 className="text-xs font-bold text-gray-900 dark:text-white">Ekspor Paket .ZIP</h3>
+                      <h3 className="text-xs font-bold text-gray-900 dark:text-white">Ekspor Data</h3>
                     </div>
                     <p className="text-[11px] text-gray-500 mb-3">
-                      Kemas manifest.json, basis data terenkripsi, dan folder uploads/ menjadi satu file zip.
+                      Kemas manifest.json, skrip SQL DML, dan uploads/ menjadi satu berkas paket.
                     </p>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => exportZipMutation.mutate()}
-                      disabled={exportZipMutation.isPending}
-                      className="w-full gap-1.5 text-xs font-medium"
-                    >
-                      <Download className="h-3.5 w-3.5" />
-                      {exportZipMutation.isPending ? "Mengemas..." : "Unduh Paket .ZIP"}
-                    </Button>
+                    <div className="flex flex-col gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => exportZipMutation.mutate()}
+                        disabled={exportZipMutation.isPending}
+                        className="w-full gap-1.5 text-xs font-medium"
+                      >
+                        <FileArchive className="h-3.5 w-3.5 text-indigo-600" />
+                        {exportZipMutation.isPending ? "Mengemas..." : "Unduh Paket .ZIP"}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => exportSqlMutation.mutate()}
+                        disabled={exportSqlMutation.isPending}
+                        className="w-full gap-1.5 text-xs font-medium border-indigo-200 text-indigo-700 hover:bg-indigo-50 dark:border-indigo-900/50 dark:text-indigo-300"
+                      >
+                        <FileText className="h-3.5 w-3.5" />
+                        {exportSqlMutation.isPending ? "Mengunduh..." : "Ekspor Skrip .SQL"}
+                      </Button>
+                    </div>
                   </div>
 
                   {/* Impor Box */}
                   <div className="rounded-xl border border-gray-200/80 bg-gray-50/50 p-4 dark:border-gray-800 dark:bg-gray-800/40">
                     <div className="flex items-center gap-2 mb-2">
                       <Upload className="h-4 w-4 text-emerald-600" />
-                      <h3 className="text-xs font-bold text-gray-900 dark:text-white">Impor Paket .ZIP</h3>
+                      <h3 className="text-xs font-bold text-gray-900 dark:text-white">Impor Paket (.ZIP / .SQL)</h3>
                     </div>
                     <p className="text-[11px] text-gray-500 mb-2">
-                      Pilih berkas zip paket yang diekspor dari server lain.
+                      Pilih berkas paket .zip atau skrip .sql dari server lain.
                     </p>
                     <input
                       type="file"
-                      accept=".zip"
+                      accept=".zip,.sql"
                       onChange={(e) => setImportFile(e.target.files?.[0] || null)}
                       className="mb-2 block w-full text-[11px] text-gray-500 file:mr-2 file:rounded-md file:border-0 file:bg-gray-200 file:px-2 file:py-1 file:text-[11px] file:font-semibold hover:file:bg-gray-300 dark:file:bg-gray-700 dark:file:text-gray-200"
                     />
+                    {importFile && (
+                      <div className="mb-2 flex items-center justify-between rounded-lg bg-gray-100 px-2.5 py-1 text-[11px] text-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                        <span className="truncate max-w-[180px] font-mono">{importFile.name}</span>
+                        <span className="text-gray-400 font-mono">{formatBytes(importFile.size)}</span>
+                      </div>
+                    )}
                     <Button
                       size="sm"
-                      onClick={() => importFile && importZipMutation.mutate(importFile)}
-                      disabled={importZipMutation.isPending || !importFile}
+                      onClick={() => importFile && importPackageMutation.mutate(importFile)}
+                      disabled={importPackageMutation.isPending || !importFile}
                       className="w-full gap-1.5 bg-emerald-600 text-xs font-medium text-white hover:bg-emerald-700"
                     >
                       <Upload className="h-3.5 w-3.5" />
-                      {importZipMutation.isPending ? "Mengimpor..." : "Terapkan Paket"}
+                      {importPackageMutation.isPending ? "Menerapkan..." : "Terapkan Paket"}
                     </Button>
                   </div>
                 </div>
@@ -1950,45 +2020,77 @@ export default function ConfigurationPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                  {syncHistories.map((h: any) => (
-                    <tr key={h.id} className="transition hover:bg-gray-50/60 dark:hover:bg-gray-800/40">
-                      <td className="py-3 pr-4 font-mono text-[11px] text-gray-500">
-                        {new Date(h.createdAt).toLocaleString("id-ID")}
-                      </td>
-                      <td className="py-3 pr-4">
-                        <span className="inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-semibold bg-indigo-50 text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300">
-                          {h.direction}
-                        </span>
-                      </td>
-                      <td className="py-3 pr-4">
-                        <span
-                          className={`inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-semibold ${
-                            h.status === "Success"
-                              ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300"
-                              : "bg-red-50 text-red-700 dark:bg-red-950/50 dark:text-red-300"
-                          }`}
-                        >
-                          {h.status}
-                        </span>
-                      </td>
-                      <td className="py-3 pr-4 font-mono text-[11px] text-gray-600 dark:text-gray-300">
-                        {h.targetHost || "-"}
-                      </td>
-                      <td className="py-3 pr-4 font-semibold text-gray-900 dark:text-white">
-                        {h.totalRecordsSynced} rekod
-                      </td>
-                      <td className="py-3 pr-4 text-gray-500 font-mono text-[11px]">
-                        {formatBytes(h.fileSizeBytes)}
-                      </td>
-                      <td className="py-3 text-gray-500">
-                        {h.errorMessage ? (
-                          <span className="text-red-600 dark:text-red-400">{h.errorMessage}</span>
-                        ) : (
-                          <span className="text-gray-400">Sukses</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
+                  {syncHistories.map((h: any) => {
+                    const getDirectionBadge = (dir: string) => {
+                      switch (dir) {
+                        case "Push":
+                          return "bg-indigo-50 text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300";
+                        case "Pull":
+                          return "bg-purple-50 text-purple-700 dark:bg-purple-950/50 dark:text-purple-300";
+                        case "ExportZip":
+                          return "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300";
+                        case "ImportZip":
+                          return "bg-cyan-50 text-cyan-700 dark:bg-cyan-950/50 dark:text-cyan-300";
+                        case "ExportSql":
+                          return "bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300";
+                        case "ImportSql":
+                          return "bg-teal-50 text-teal-700 dark:bg-teal-950/50 dark:text-teal-300";
+                        case "Receive":
+                          return "bg-violet-50 text-violet-700 dark:bg-violet-950/50 dark:text-violet-300";
+                        default:
+                          return "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300";
+                      }
+                    };
+
+                    return (
+                      <tr key={h.id} className="transition hover:bg-gray-50/60 dark:hover:bg-gray-800/40">
+                        <td className="py-3 pr-4 font-mono text-[11px] text-gray-500">
+                          {new Date(h.createdAt).toLocaleString("id-ID")}
+                        </td>
+                        <td className="py-3 pr-4">
+                          <span
+                            className={`inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-semibold ${getDirectionBadge(
+                              h.direction
+                            )}`}
+                          >
+                            {h.direction}
+                          </span>
+                        </td>
+                        <td className="py-3 pr-4">
+                          <span
+                            className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-semibold ${
+                              h.status === "Success"
+                                ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300"
+                                : "bg-red-50 text-red-700 dark:bg-red-950/50 dark:text-red-300"
+                            }`}
+                          >
+                            {h.status === "Success" ? (
+                              <CheckCircle2 className="h-3 w-3" />
+                            ) : (
+                              <AlertCircle className="h-3 w-3" />
+                            )}
+                            {h.status}
+                          </span>
+                        </td>
+                        <td className="py-3 pr-4 font-mono text-[11px] text-gray-600 dark:text-gray-300">
+                          {h.targetHost || "-"}
+                        </td>
+                        <td className="py-3 pr-4 font-semibold text-gray-900 dark:text-white">
+                          {h.totalRecordsSynced} rekod
+                        </td>
+                        <td className="py-3 pr-4 text-gray-500 font-mono text-[11px]">
+                          {formatBytes(h.fileSizeBytes)}
+                        </td>
+                        <td className="py-3 text-gray-500">
+                          {h.errorMessage ? (
+                            <span className="text-red-600 dark:text-red-400 font-medium">{h.errorMessage}</span>
+                          ) : (
+                            <span className="text-gray-400">Sukses</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
 
                   {syncHistories.length === 0 && (
                     <tr>
