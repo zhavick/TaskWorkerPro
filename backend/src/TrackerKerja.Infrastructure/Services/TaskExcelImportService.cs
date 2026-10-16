@@ -157,6 +157,28 @@ public class TaskExcelImportService : ITaskExcelImportService
             .Where(u => u.CompanyId == companyId)
             .ToListAsync(cancellationToken);
 
+        var existingTasks = await _context.Tasks
+            .Include(t => t.Project)
+            .Where(t => t.CompanyId == companyId)
+            .ToListAsync(cancellationToken);
+
+        // Pre-build existing task lookup indexes
+        var dbTaskByCode = new Dictionary<string, WorkTask>(StringComparer.OrdinalIgnoreCase);
+        var dbTaskByProjAndTitle = new Dictionary<string, WorkTask>(StringComparer.OrdinalIgnoreCase);
+        var dbTaskByTitle = new Dictionary<string, WorkTask>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var t in existingTasks)
+        {
+            dbTaskByCode[$"TK-{t.Id:D4}"] = t;
+            dbTaskByCode[$"TK-{t.Id}"] = t;
+            dbTaskByCode[t.Id.ToString()] = t;
+            if (t.ProjectId.HasValue)
+            {
+                dbTaskByProjAndTitle[$"{t.ProjectId.Value}|{NormalizeTitle(t.Title)}"] = t;
+            }
+            dbTaskByTitle[NormalizeTitle(t.Title)] = t;
+        }
+
         var company = companyId.HasValue
             ? await _context.Companies.FirstOrDefaultAsync(c => c.Id == companyId.Value, cancellationToken)
             : null;
@@ -164,6 +186,7 @@ public class TaskExcelImportService : ITaskExcelImportService
 
         var rows = new List<TaskImportRowDto>();
         int rowIndex = 0;
+        var seenBatchKeys = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 
         var sheetsToProcess = workbook.Worksheets.Where(ws =>
         {
@@ -306,6 +329,55 @@ public class TaskExcelImportService : ITaskExcelImportService
                     }
                 }
 
+                // Deteksi Duplikasi & Pembaruan (Upsert) terhadap tugas di Database
+                bool isUpdate = false;
+                int? existingTaskId = null;
+                WorkTask? matchedExistingTask = null;
+
+                if (!string.IsNullOrWhiteSpace(taskCode))
+                {
+                    dbTaskByCode.TryGetValue(taskCode.Trim(), out matchedExistingTask);
+                }
+
+                if (matchedExistingTask == null && matchedProjectId.HasValue && !string.IsNullOrWhiteSpace(title))
+                {
+                    dbTaskByProjAndTitle.TryGetValue($"{matchedProjectId.Value}|{NormalizeTitle(title)}", out matchedExistingTask);
+                }
+
+                if (matchedExistingTask == null && !string.IsNullOrWhiteSpace(title))
+                {
+                    dbTaskByTitle.TryGetValue(NormalizeTitle(title), out matchedExistingTask);
+                }
+
+                if (matchedExistingTask != null)
+                {
+                    isUpdate = true;
+                    existingTaskId = matchedExistingTask.Id;
+                    var currentProjName = matchedExistingTask.Project?.Name ?? "Tanpa Proyek";
+                    if (!string.IsNullOrWhiteSpace(projectName) && !string.Equals(currentProjName, projectName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        validationMessages.Add($"(Pembaruan & Pindah Proyek) Tugas #{matchedExistingTask.Id} ('{matchedExistingTask.Title}') dipindahkan dari proyek '{currentProjName}' ke '{projectName}'.");
+                    }
+                    else
+                    {
+                        validationMessages.Add($"(Pembaruan) Tugas #{matchedExistingTask.Id} ('{matchedExistingTask.Title}') sudah ada di sistem dan nilainya akan diperbarui dengan data ter-update.");
+                    }
+                }
+
+                // Deteksi Duplikasi di dalam File Excel itu sendiri
+                var identityKey = !string.IsNullOrWhiteSpace(taskCode)
+                    ? "CODE:" + taskCode.Trim().ToUpperInvariant()
+                    : "TITLE:" + (projectName?.Trim().ToUpperInvariant() ?? "DEF") + "|" + NormalizeTitle(title);
+
+                if (seenBatchKeys.TryGetValue(identityKey, out var previousRowIdx))
+                {
+                    validationMessages.Add($"Duplikasi dengan baris #{previousRowIdx} di file ini terdeteksi; nilai versi ter-update akan digunakan.");
+                }
+                else
+                {
+                    seenBatchKeys[identityKey] = rowIndex;
+                }
+
                 rows.Add(new TaskImportRowDto(
                     rowIndex,
                     string.IsNullOrWhiteSpace(taskCode) ? null : taskCode,
@@ -326,10 +398,13 @@ public class TaskExcelImportService : ITaskExcelImportService
                     string.IsNullOrWhiteSpace(obstacle) ? null : obstacle,
                     string.IsNullOrWhiteSpace(solution) ? null : solution,
                     validationStatus,
-                    validationMessages
+                    validationMessages,
+                    isUpdate,
+                    existingTaskId
                 ));
             }
         }
+
 
         int validCount = rows.Count(r => r.ValidationStatus == TaskImportValidationStatus.Valid);
         int warningCount = rows.Count(r => r.ValidationStatus == TaskImportValidationStatus.Warning);
@@ -382,6 +457,28 @@ public class TaskExcelImportService : ITaskExcelImportService
             .Where(u => u.CompanyId == companyId)
             .ToListAsync(cancellationToken);
 
+        var existingTasks = await _context.Tasks
+            .Include(t => t.Project)
+            .Where(t => t.CompanyId == companyId)
+            .ToListAsync(cancellationToken);
+
+        // Pre-build existing task lookup indexes
+        var dbTaskByCode = new Dictionary<string, WorkTask>(StringComparer.OrdinalIgnoreCase);
+        var dbTaskByProjAndTitle = new Dictionary<string, WorkTask>(StringComparer.OrdinalIgnoreCase);
+        var dbTaskByTitle = new Dictionary<string, WorkTask>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var t in existingTasks)
+        {
+            dbTaskByCode[$"TK-{t.Id:D4}"] = t;
+            dbTaskByCode[$"TK-{t.Id}"] = t;
+            dbTaskByCode[t.Id.ToString()] = t;
+            if (t.ProjectId.HasValue)
+            {
+                dbTaskByProjAndTitle[$"{t.ProjectId.Value}|{NormalizeTitle(t.Title)}"] = t;
+            }
+            dbTaskByTitle[NormalizeTitle(t.Title)] = t;
+        }
+
         var company = companyId.HasValue
             ? await _context.Companies.FirstOrDefaultAsync(c => c.Id == companyId.Value, cancellationToken)
             : null;
@@ -403,9 +500,16 @@ public class TaskExcelImportService : ITaskExcelImportService
         {
             if (!string.IsNullOrEmpty(u.Email)) userCache[u.Email] = u;
             if (!string.IsNullOrEmpty(u.FullName)) userCache[u.FullName] = u;
+            if (!string.IsNullOrEmpty(u.UserName)) userCache[u.UserName] = u;
             userCache[u.Id] = u;
+
+            var local = GetEmailLocalPart(u.Email);
+            if (!string.IsNullOrEmpty(local) && !userCache.ContainsKey(local)) userCache[local] = u;
+            var normName = NormalizePersonName(u.FullName);
+            if (!string.IsNullOrEmpty(normName) && !userCache.ContainsKey(normName)) userCache[normName] = u;
         }
 
+        int totalUpdated = 0;
         var tasksToInsert = new List<WorkTask>();
         var batchTaskMap = new Dictionary<string, WorkTask>(StringComparer.OrdinalIgnoreCase);
 
@@ -416,11 +520,45 @@ public class TaskExcelImportService : ITaskExcelImportService
             defaultProject = existingProjects.FirstOrDefault(p => p.Id == request.DefaultProjectId.Value);
         }
 
+        // 1. Deduplikasi & Seleksi Data Ter-update di dalam Batch Excel (Requirement 1 & 2)
+        var deduplicatedRows = new List<TaskImportRowDto>();
+        var batchIdentityMap = new Dictionary<string, TaskImportRowDto>(StringComparer.OrdinalIgnoreCase);
+
         foreach (var row in candidateRows)
         {
             totalProcessed++;
+            var identityKey = !string.IsNullOrWhiteSpace(row.TaskCode)
+                ? "CODE:" + row.TaskCode.Trim().ToUpperInvariant()
+                : "TITLE:" + (row.ProjectName?.Trim().ToUpperInvariant() ?? "DEF") + "|" + NormalizeTitle(row.Title);
 
-            // 1. Resolve Project
+            if (batchIdentityMap.TryGetValue(identityKey, out var existingRowInBatch))
+            {
+                // Jika ditemukan duplikasi di dalam file, ambil nilai dari versi yang ter-update
+                if (IsCandidateMoreUpdated(row, existingRowInBatch))
+                {
+                    var merged = row with
+                    {
+                        Description = !string.IsNullOrWhiteSpace(row.Description) ? row.Description : existingRowInBatch.Description,
+                        Milestone = !string.IsNullOrWhiteSpace(row.Milestone) ? row.Milestone : existingRowInBatch.Milestone,
+                        Obstacle = !string.IsNullOrWhiteSpace(row.Obstacle) ? row.Obstacle : existingRowInBatch.Obstacle,
+                        Solution = !string.IsNullOrWhiteSpace(row.Solution) ? row.Solution : existingRowInBatch.Solution
+                    };
+                    batchIdentityMap[identityKey] = merged;
+                    int idx = deduplicatedRows.IndexOf(existingRowInBatch);
+                    if (idx >= 0) deduplicatedRows[idx] = merged;
+                }
+            }
+            else
+            {
+                batchIdentityMap[identityKey] = row;
+                deduplicatedRows.Add(row);
+            }
+        }
+
+        // 2. Proses Setiap Baris yang Sudah Ter-deduplikasi
+        foreach (var row in deduplicatedRows)
+        {
+            // A. Resolve Proyek (Requirement 4: pengguna & tugas dapat ditempatkan ke proyek berbeda)
             Project? project = null;
             if (row.MatchedProjectId.HasValue)
             {
@@ -428,16 +566,17 @@ public class TaskExcelImportService : ITaskExcelImportService
             }
             else if (!string.IsNullOrWhiteSpace(row.ProjectName))
             {
+                var cleanProjName = row.ProjectName.Trim();
                 project = existingProjects.FirstOrDefault(p =>
-                    p.Name.Equals(row.ProjectName, StringComparison.OrdinalIgnoreCase));
+                    p.Name.Equals(cleanProjName, StringComparison.OrdinalIgnoreCase));
 
                 if (project == null)
                 {
                     project = new Project
                     {
-                        Name = row.ProjectName.Trim(),
+                        Name = cleanProjName,
                         CompanyId = companyId,
-                        Color = PickColorForProject(row.ProjectName.Trim()),
+                        Color = PickColorForProject(cleanProjName),
                         Status = ProjectStatus.Active,
                         CreatedAt = DateTimeOffset.UtcNow
                     };
@@ -452,7 +591,7 @@ public class TaskExcelImportService : ITaskExcelImportService
                 project = defaultProject;
             }
 
-            // 2. Resolve PIC / Buat User Baru jika belum terdaftar (berdasarkan sheet name / email / nama personil)
+            // B. Resolve PIC (Requirement 3: cari alamat email/nama serupa & cegah redundansi akun)
             string? assignedUserId = row.MatchedUserId;
 
             if (string.IsNullOrEmpty(assignedUserId) && !string.IsNullOrWhiteSpace(row.PicIdentifier))
@@ -480,7 +619,7 @@ public class TaskExcelImportService : ITaskExcelImportService
                     }
                     else if (request.AutoCreateMissingUsers && !string.IsNullOrWhiteSpace(resolvedName) && !string.IsNullOrWhiteSpace(resolvedEmail))
                     {
-                        // Buat akun pengguna baru secara otomatis berdasarkan nama personil
+                        // Buat akun pengguna baru jika benar-benar belum terdaftar
                         var dbUser = await _context.Users.FirstOrDefaultAsync(u => u.Email == resolvedEmail, cancellationToken);
                         if (dbUser != null)
                         {
@@ -535,52 +674,118 @@ public class TaskExcelImportService : ITaskExcelImportService
                 }
             }
 
-            var workTask = new WorkTask
+            // C. Deteksi apakah tugas sudah ada di Database (Requirement 1 & 2: Cegah Duplikasi & Update Nilai Terbaru)
+            WorkTask? targetTask = null;
+            if (row.ExistingTaskId.HasValue)
             {
-                Title = row.Title,
-                Description = row.Description,
-                Priority = row.Priority,
-                Status = row.Status,
-                Progress = row.Progress,
-                Milestone = row.Milestone,
-                Obstacle = row.Obstacle,
-                Solution = row.Solution,
-                Project = project,
-                AssignedToUserId = assignedUserId,
-                CompanyId = companyId,
-                StartDate = row.StartDate,
-                DueDate = row.DueDate,
-                CreatedAt = DateTimeOffset.UtcNow,
-                UpdatedAt = DateTimeOffset.UtcNow
-            };
-
-            tasksToInsert.Add(workTask);
-
-            if (!string.IsNullOrWhiteSpace(row.TaskCode))
+                targetTask = existingTasks.FirstOrDefault(t => t.Id == row.ExistingTaskId.Value);
+            }
+            if (targetTask == null && !string.IsNullOrWhiteSpace(row.TaskCode))
             {
-                batchTaskMap[row.TaskCode.Trim()] = workTask;
+                dbTaskByCode.TryGetValue(row.TaskCode.Trim(), out targetTask);
+            }
+            if (targetTask == null && project != null && !string.IsNullOrWhiteSpace(row.Title))
+            {
+                dbTaskByProjAndTitle.TryGetValue($"{project.Id}|{NormalizeTitle(row.Title)}", out targetTask);
+            }
+            if (targetTask == null && !string.IsNullOrWhiteSpace(row.Title))
+            {
+                dbTaskByTitle.TryGetValue(NormalizeTitle(row.Title), out targetTask);
+            }
+
+            if (targetTask != null)
+            {
+                // UPDATE: Perbarui data yang ada dengan data ter-update
+                targetTask.Title = row.Title;
+                if (!string.IsNullOrWhiteSpace(row.Description)) targetTask.Description = row.Description;
+                targetTask.Priority = row.Priority;
+                targetTask.Status = row.Status;
+                targetTask.Progress = row.Progress;
+                if (!string.IsNullOrWhiteSpace(row.Milestone)) targetTask.Milestone = row.Milestone;
+                if (!string.IsNullOrWhiteSpace(row.Obstacle)) targetTask.Obstacle = row.Obstacle;
+                if (!string.IsNullOrWhiteSpace(row.Solution)) targetTask.Solution = row.Solution;
+                if (row.StartDate.HasValue) targetTask.StartDate = row.StartDate;
+                if (row.DueDate.HasValue) targetTask.DueDate = row.DueDate;
+
+                // Moveable ke project baru / berbeda jika ditentukan di sheet (Requirement 4)
+                if (project != null)
+                {
+                    targetTask.ProjectId = project.Id;
+                    targetTask.Project = project;
+                }
+
+                // Assign ke pengguna yang moveable di project tersebut (Requirement 4)
+                if (!string.IsNullOrEmpty(assignedUserId))
+                {
+                    targetTask.AssignedToUserId = assignedUserId;
+                }
+
+                targetTask.UpdatedAt = DateTimeOffset.UtcNow;
+                totalUpdated++;
+
+                if (!string.IsNullOrWhiteSpace(row.TaskCode))
+                {
+                    batchTaskMap[row.TaskCode.Trim()] = targetTask;
+                }
+            }
+            else
+            {
+                // INSERT: Tambahkan tugas baru
+                var workTask = new WorkTask
+                {
+                    Title = row.Title,
+                    Description = row.Description,
+                    Priority = row.Priority,
+                    Status = row.Status,
+                    Progress = row.Progress,
+                    Milestone = row.Milestone,
+                    Obstacle = row.Obstacle,
+                    Solution = row.Solution,
+                    Project = project,
+                    ProjectId = project?.Id,
+                    AssignedToUserId = assignedUserId,
+                    CompanyId = companyId,
+                    StartDate = row.StartDate,
+                    DueDate = row.DueDate,
+                    CreatedAt = DateTimeOffset.UtcNow,
+                    UpdatedAt = DateTimeOffset.UtcNow
+                };
+
+                tasksToInsert.Add(workTask);
+
+                if (!string.IsNullOrWhiteSpace(row.TaskCode))
+                {
+                    batchTaskMap[row.TaskCode.Trim()] = workTask;
+                }
             }
         }
 
         if (tasksToInsert.Count > 0)
         {
             _context.Tasks.AddRange(tasksToInsert);
-            await _context.SaveChangesAsync(cancellationToken);
-            totalImported = tasksToInsert.Count;
+        }
 
-            // Second pass: resolve parent-child hierarchy within the batch
-            bool hasHierarchyUpdates = false;
-            for (int i = 0; i < candidateRows.Count; i++)
+        await _context.SaveChangesAsync(cancellationToken);
+        totalImported = tasksToInsert.Count + totalUpdated;
+
+        // Resolve relasi hierarki induk-anak tugas dalam batch
+        bool hasHierarchyUpdates = false;
+        foreach (var row in deduplicatedRows)
+        {
+            if (!string.IsNullOrWhiteSpace(row.ParentTaskCode))
             {
-                var row = candidateRows[i];
-                var insertedTask = tasksToInsert[i];
+                WorkTask? currentTask = null;
+                if (!string.IsNullOrWhiteSpace(row.TaskCode) && batchTaskMap.TryGetValue(row.TaskCode.Trim(), out var mapped))
+                {
+                    currentTask = mapped;
+                }
 
-                if (!string.IsNullOrWhiteSpace(row.ParentTaskCode))
+                if (currentTask != null)
                 {
                     var parentCode = row.ParentTaskCode.Trim();
-                    if (batchTaskMap.TryGetValue(parentCode, out var parentTask) && parentTask.Id != insertedTask.Id)
+                    if (batchTaskMap.TryGetValue(parentCode, out var parentTask) && parentTask.Id != currentTask.Id)
                     {
-                        insertedTask.ParentTaskId = parentTask.Id;
+                        currentTask.ParentTaskId = parentTask.Id;
                         hasHierarchyUpdates = true;
                     }
                     else if (int.TryParse(parentCode, out var directParentId))
@@ -588,17 +793,17 @@ public class TaskExcelImportService : ITaskExcelImportService
                         var parentExists = await _context.Tasks.AnyAsync(t => t.Id == directParentId && t.CompanyId == companyId, cancellationToken);
                         if (parentExists)
                         {
-                            insertedTask.ParentTaskId = directParentId;
+                            currentTask.ParentTaskId = directParentId;
                             hasHierarchyUpdates = true;
                         }
                     }
                 }
             }
+        }
 
-            if (hasHierarchyUpdates)
-            {
-                await _context.SaveChangesAsync(cancellationToken);
-            }
+        if (hasHierarchyUpdates)
+        {
+            await _context.SaveChangesAsync(cancellationToken);
         }
 
         if (transaction != null)
@@ -607,7 +812,9 @@ public class TaskExcelImportService : ITaskExcelImportService
         }
 
         var resultDetail = totalUsersCreated > 0
-            ? $"Berhasil mengimpor {totalImported} tugas dari {totalProcessed} baris data ({totalProjectsCreated} proyek baru, {totalUsersCreated} akun personil baru dibuat)."
+            ? $"Berhasil mengimpor {totalImported} tugas dari {totalProcessed} baris data ({totalUpdated} diperbarui, {totalProjectsCreated} proyek baru, {totalUsersCreated} akun personil baru dibuat)."
+            : totalUpdated > 0
+            ? $"Berhasil mengimpor {totalImported} tugas dari {totalProcessed} baris data ({totalUpdated} diperbarui, {totalProjectsCreated} proyek baru dibuat)."
             : $"Berhasil mengimpor {totalImported} tugas dari {totalProcessed} baris data ({totalProjectsCreated} proyek baru dibuat).";
         messages.Add(resultDetail);
 
@@ -616,7 +823,8 @@ public class TaskExcelImportService : ITaskExcelImportService
                 totalImported,
                 totalProjectsCreated,
                 messages,
-                totalUsersCreated
+                totalUsersCreated,
+                totalUpdated
             );
         });
     }
@@ -634,9 +842,11 @@ public class TaskExcelImportService : ITaskExcelImportService
             commitRes.TotalProcessed,
             commitRes.TotalImported,
             commitRes.TotalProjectsCreated,
-            commitRes.Messages
+            commitRes.Messages,
+            commitRes.TotalUpdated
         );
     }
+
 
     private static int FindCol(List<string> headers, params string[] candidates)
     {
@@ -846,52 +1056,105 @@ public class TaskExcelImportService : ITaskExcelImportService
         }
 
         var trimmed = picIdentifier.Trim();
-        var domain = string.IsNullOrWhiteSpace(companyDomain) ? "trackerkerja.local" : companyDomain.Trim().ToLowerInvariant();
+        var domain = string.IsNullOrWhiteSpace(companyDomain) ? "trackerkerja.local" : companyDomain.Trim().ToLowerInvariant().TrimStart('@');
+        var inputNormName = NormalizePersonName(trimmed);
+        var inputLocalPart = GetEmailLocalPart(trimmed);
 
-        // Kasus 1: Input berupa email
-        if (trimmed.Contains('@'))
+        // Tier 1: Exact match on Id, Email, UserName, or FullName (case-insensitive)
+        var foundByExact = existingUsers.FirstOrDefault(u =>
+            (!string.IsNullOrEmpty(u.Email) && u.Email.Equals(trimmed, StringComparison.OrdinalIgnoreCase)) ||
+            (!string.IsNullOrEmpty(u.UserName) && u.UserName.Equals(trimmed, StringComparison.OrdinalIgnoreCase)) ||
+            (!string.IsNullOrEmpty(u.FullName) && u.FullName.Equals(trimmed, StringComparison.OrdinalIgnoreCase)) ||
+            u.Id.Equals(trimmed, StringComparison.OrdinalIgnoreCase));
+
+        if (foundByExact != null)
         {
-            var foundByEmail = existingUsers.FirstOrDefault(u =>
-                u.Email != null && u.Email.Equals(trimmed, StringComparison.OrdinalIgnoreCase));
-
-            if (foundByEmail != null)
-            {
-                return (foundByEmail.Id, foundByEmail.FullName, foundByEmail.Email, false);
-            }
-
-            // Email belum ada -> jadikan calon user baru dengan nama dari user part
-            var localPart = trimmed.Split('@')[0];
-            var generatedName = FormatDisplayName(localPart);
-            return (null, generatedName, trimmed.ToLowerInvariant(), true);
+            return (foundByExact.Id, foundByExact.FullName, foundByExact.Email, false);
         }
 
-        // Kasus 2: Input berupa Nama Personil
-        // Coba cari exact match di FullName atau UserName
-        var foundByName = existingUsers.FirstOrDefault(u =>
-            (u.FullName != null && u.FullName.Equals(trimmed, StringComparison.OrdinalIgnoreCase)) ||
-            (u.UserName != null && u.UserName.Equals(trimmed, StringComparison.OrdinalIgnoreCase)));
-
-        if (foundByName != null)
+        // Tier 2: Normalized Name Matching (ignoring academic titles, greetings, dots, extra whitespace)
+        if (!string.IsNullOrEmpty(inputNormName))
         {
-            return (foundByName.Id, foundByName.FullName, foundByName.Email, false);
-        }
-
-        // Coba cari parsial jika panjang kata kunci cukup
-        if (trimmed.Length >= 4)
-        {
-            var partialMatch = existingUsers.FirstOrDefault(u =>
-                u.FullName != null && u.FullName.Contains(trimmed, StringComparison.OrdinalIgnoreCase));
-            if (partialMatch != null)
+            var foundByNormName = existingUsers.FirstOrDefault(u =>
+                NormalizePersonName(u.FullName) == inputNormName);
+            if (foundByNormName != null)
             {
-                return (partialMatch.Id, partialMatch.FullName, partialMatch.Email, false);
+                return (foundByNormName.Id, foundByNormName.FullName, foundByNormName.Email, false);
             }
         }
 
-        // Personil belum terdaftar -> format nama dan generate email baru
-        var formattedName = FormatDisplayName(trimmed);
-        var emailSlug = GenerateEmailSlug(formattedName, domain);
+        // Tier 3: Email Local-Part Cross Matching (handles both email-to-email and name-to-email)
+        // e.g. Sheet has "budi.santoso@gmail.com" and DB user has "budi.santoso@perusahaan.com"
+        // or Sheet has "Budi Santoso" and DB user has "budi.santoso@perusahaan.com"
+        if (!string.IsNullOrEmpty(inputLocalPart))
+        {
+            var foundByLocal = existingUsers.FirstOrDefault(u =>
+            {
+                var userLocal = GetEmailLocalPart(u.Email);
+                var userNorm = NormalizePersonName(u.FullName);
+                return (!string.IsNullOrEmpty(userLocal) && userLocal == inputLocalPart) ||
+                       (!string.IsNullOrEmpty(userNorm) && userNorm == inputLocalPart) ||
+                       (!string.IsNullOrEmpty(userLocal) && userLocal == inputNormName);
+            });
 
-        // Pastikan slug email tidak kebetulan bentrok dengan existing user
+            if (foundByLocal != null)
+            {
+                return (foundByLocal.Id, foundByLocal.FullName, foundByLocal.Email, false);
+            }
+        }
+
+        // Tier 4: Token overlap matching (First Name and Last Name)
+        var inputTokens = trimmed
+            .Split(new[] { ' ', '.', '_', '-', ',' }, StringSplitOptions.RemoveEmptyEntries)
+            .Where(t => t.Length >= 2 && !t.Any(char.IsDigit))
+            .Select(t => t.ToLowerInvariant())
+            .ToList();
+
+        if (inputTokens.Count >= 2)
+        {
+            foreach (var u in existingUsers)
+            {
+                if (string.IsNullOrWhiteSpace(u.FullName)) continue;
+                var userTokens = u.FullName
+                    .Split(new[] { ' ', '.', '_', '-', ',' }, StringSplitOptions.RemoveEmptyEntries)
+                    .Where(t => t.Length >= 2 && !t.Any(char.IsDigit))
+                    .Select(t => t.ToLowerInvariant())
+                    .ToList();
+
+                if (userTokens.Count >= 2 &&
+                    inputTokens[0] == userTokens[0] &&
+                    inputTokens[^1] == userTokens[^1])
+                {
+                    return (u.Id, u.FullName, u.Email, false);
+                }
+
+                if (inputTokens.All(it => userTokens.Contains(it)) ||
+                    userTokens.All(ut => inputTokens.Contains(ut)))
+                {
+                    return (u.Id, u.FullName, u.Email, false);
+                }
+            }
+        }
+
+        // Tier 5: Levenshtein distance similarity on normalized names (handles minor typos)
+        if (inputNormName.Length >= 4)
+        {
+            foreach (var u in existingUsers)
+            {
+                var userNorm = NormalizePersonName(u.FullName);
+                if (userNorm.Length >= 4 && CalculateSimilarity(inputNormName, userNorm) >= 0.85)
+                {
+                    return (u.Id, u.FullName, u.Email, false);
+                }
+            }
+        }
+
+        // Tier 6: Generate email slug and ensure no collision with existing users
+        var formattedName = FormatDisplayName(trimmed.Contains('@') ? trimmed.Split('@')[0] : trimmed);
+        var emailSlug = trimmed.Contains('@')
+            ? trimmed.ToLowerInvariant()
+            : GenerateEmailSlug(formattedName, domain);
+
         var userWithSameEmail = existingUsers.FirstOrDefault(u =>
             u.Email != null && u.Email.Equals(emailSlug, StringComparison.OrdinalIgnoreCase));
         if (userWithSameEmail != null)
@@ -900,6 +1163,111 @@ public class TaskExcelImportService : ITaskExcelImportService
         }
 
         return (null, formattedName, emailSlug, true);
+    }
+
+    private static string NormalizePersonName(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return string.Empty;
+        var lower = name.Trim().ToLowerInvariant();
+
+        // Strip email domain if present
+        var atIdx = lower.IndexOf('@');
+        if (atIdx >= 0) lower = lower[..atIdx];
+
+        // Strip common Indonesian titles and honorifics
+        string[] titles = ["ir.", "ir ", "dr.", "dr ", "drs.", "drs ", "prof.", "prof ", "h.", "h ", "hj.", "hj ", "pak ", "ibu ", "sdr.", "sdr ", "sdr/i ", "mas ", "mbak "];
+        foreach (var t in titles)
+        {
+            if (lower.StartsWith(t))
+            {
+                lower = lower[t.Length..].Trim();
+            }
+        }
+
+        // Strip common academic suffixes
+        string[] suffixes = [", s.kom", " s.kom", ", m.kom", " m.kom", ", s.t.", " s.t", ", m.t.", " m.t", ", s.e.", " s.e", ", m.m.", " m.m", ", b.sc", " b.sc", ", m.sc", " m.sc", ", ph.d", " ph.d", ", s.pd", " s.pd"];
+        foreach (var s in suffixes)
+        {
+            if (lower.EndsWith(s))
+            {
+                lower = lower[..^s.Length].Trim();
+            }
+        }
+
+        var chars = lower.Where(char.IsLetterOrDigit).ToArray();
+        return new string(chars);
+    }
+
+    private static string GetEmailLocalPart(string? emailOrName)
+    {
+        if (string.IsNullOrWhiteSpace(emailOrName)) return string.Empty;
+        var atIdx = emailOrName.IndexOf('@');
+        var local = atIdx >= 0 ? emailOrName[..atIdx] : emailOrName;
+        var chars = local.ToLowerInvariant().Where(char.IsLetterOrDigit).ToArray();
+        return new string(chars);
+    }
+
+    private static string NormalizeTitle(string? title)
+    {
+        if (string.IsNullOrWhiteSpace(title)) return string.Empty;
+        var chars = title.Trim().ToLowerInvariant().Where(char.IsLetterOrDigit).ToArray();
+        return new string(chars);
+    }
+
+    private static double CalculateSimilarity(string s1, string s2)
+    {
+        if (string.IsNullOrEmpty(s1) || string.IsNullOrEmpty(s2)) return 0.0;
+        if (s1.Equals(s2, StringComparison.OrdinalIgnoreCase)) return 1.0;
+
+        int len1 = s1.Length;
+        int len2 = s2.Length;
+        var d = new int[len1 + 1, len2 + 1];
+
+        for (int i = 0; i <= len1; i++) d[i, 0] = i;
+        for (int j = 0; j <= len2; j++) d[0, j] = j;
+
+        for (int i = 1; i <= len1; i++)
+        {
+            for (int j = 1; j <= len2; j++)
+            {
+                int cost = (s1[i - 1] == s2[j - 1]) ? 0 : 1;
+                d[i, j] = Math.Min(
+                    Math.Min(d[i - 1, j] + 1, d[i, j - 1] + 1),
+                    d[i - 1, j - 1] + cost
+                );
+            }
+        }
+
+        int maxLen = Math.Max(len1, len2);
+        return 1.0 - (double)d[len1, len2] / maxLen;
+    }
+
+    private static bool IsCandidateMoreUpdated(TaskImportRowDto candidate, TaskImportRowDto current)
+    {
+        // 1. Progress: higher progress represents more recent state
+        if (candidate.Progress > current.Progress) return true;
+        if (candidate.Progress < current.Progress) return false;
+
+        // 2. Status: Done > InProgress > Todo
+        if (candidate.Status > current.Status) return true;
+        if (candidate.Status < current.Status) return false;
+
+        // 3. DueDate or StartDate: later dates are more updated
+        if (candidate.DueDate.HasValue && (!current.DueDate.HasValue || candidate.DueDate > current.DueDate)) return true;
+        if (!candidate.DueDate.HasValue && current.DueDate.HasValue) return false;
+
+        // 4. Richness of content (description, obstacle, solution)
+        int candidateScore = (string.IsNullOrWhiteSpace(candidate.Description) ? 0 : 1)
+                           + (string.IsNullOrWhiteSpace(candidate.Solution) ? 0 : 1)
+                           + (string.IsNullOrWhiteSpace(candidate.Obstacle) ? 0 : 1);
+        int currentScore = (string.IsNullOrWhiteSpace(current.Description) ? 0 : 1)
+                         + (string.IsNullOrWhiteSpace(current.Solution) ? 0 : 1)
+                         + (string.IsNullOrWhiteSpace(current.Obstacle) ? 0 : 1);
+        if (candidateScore > currentScore) return true;
+        if (candidateScore < currentScore) return false;
+
+        // 5. Default to latter row index in the spreadsheet
+        return candidate.RowIndex > current.RowIndex;
     }
 
     private static string FormatDisplayName(string raw)
@@ -935,3 +1303,4 @@ public class TaskExcelImportService : ITaskExcelImportService
         return colors[hash % colors.Length];
     }
 }
+

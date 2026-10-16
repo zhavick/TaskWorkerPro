@@ -4,5 +4,7 @@ public record ExcelImportResultDto(
     int TotalProcessed,
     int TotalImported,
     int TotalProjectsCreated,
-    List<string> Messages
+    List<string> Messages,
+    int TotalUpdated = 0
 );
+

@@ -29,7 +29,9 @@ public record TaskImportRowDto(
     string? Obstacle,
     string? Solution,
     TaskImportValidationStatus ValidationStatus,
-    List<string> ValidationMessages
+    List<string> ValidationMessages,
+    bool IsUpdate = false,
+    int? ExistingTaskId = null
 );
 
 public record TaskImportPreviewDto(
@@ -58,5 +60,6 @@ public record TaskImportResultDto(
     int TotalImported,
     int TotalProjectsCreated,
     List<string> Messages,
-    int TotalUsersCreated = 0
+    int TotalUsersCreated = 0,
+    int TotalUpdated = 0
 );

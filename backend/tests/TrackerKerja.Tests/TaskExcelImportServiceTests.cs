@@ -297,4 +297,283 @@ public class TaskExcelImportServiceTests
         Assert.Equal(createdWahana.Id, taskWahana.AssignedToUserId);
         Assert.Equal(createdSiti.Id, taskSiti.AssignedToUserId);
     }
+
+    [Fact]
+    public async Task CommitImportAsync_DeduplicatesInBatch_AndTakesMostUpdatedValues()
+    {
+        using var context = CreateInMemoryContext();
+        var service = new TaskExcelImportService(context);
+
+        var rows = new List<TaskImportRowDto>
+        {
+            new(
+                RowIndex: 1,
+                TaskCode: "DEDUP-01",
+                ParentTaskCode: null,
+                Title: "Integrasi Payment Gateway",
+                Description: "Draft awal integrasi",
+                ProjectName: "Website Redesign",
+                MatchedProjectId: 10,
+                PicIdentifier: "budi@perusahaan.com",
+                MatchedUserId: "user-budi",
+                MatchedUserName: "Budi Santoso",
+                Priority: TaskPriority.Medium,
+                Status: Domain.Enums.TaskStatus.InProgress,
+                Progress: 25,
+                StartDate: DateTimeOffset.UtcNow,
+                DueDate: DateTimeOffset.UtcNow.AddDays(3),
+                Milestone: null,
+                Obstacle: null,
+                Solution: null,
+                ValidationStatus: TaskImportValidationStatus.Valid,
+                ValidationMessages: new()
+            ),
+            new(
+                RowIndex: 2,
+                TaskCode: "DEDUP-01",
+                ParentTaskCode: null,
+                Title: "Integrasi Payment Gateway",
+                Description: "Integrasi selesai dan diverifikasi",
+                ProjectName: "Website Redesign",
+                MatchedProjectId: 10,
+                PicIdentifier: "budi@perusahaan.com",
+                MatchedUserId: "user-budi",
+                MatchedUserName: "Budi Santoso",
+                Priority: TaskPriority.High,
+                Status: Domain.Enums.TaskStatus.Done,
+                Progress: 100,
+                StartDate: DateTimeOffset.UtcNow,
+                DueDate: DateTimeOffset.UtcNow.AddDays(5),
+                Milestone: "Release v1",
+                Obstacle: null,
+                Solution: null,
+                ValidationStatus: TaskImportValidationStatus.Valid,
+                ValidationMessages: new()
+            )
+        };
+
+        var request = new TaskImportCommitRequest(null, null, null, rows);
+        var result = await service.CommitImportAsync(request, 1);
+
+        // Assert: only 1 task inserted, values are from the most updated (row 2)
+        Assert.Equal(1, result.TotalImported);
+        Assert.Equal(0, result.TotalUpdated);
+
+        var tasks = await context.Tasks.Where(t => t.Title == "Integrasi Payment Gateway").ToListAsync();
+        Assert.Single(tasks);
+
+        var task = tasks[0];
+        Assert.Equal(100, task.Progress);
+        Assert.Equal(Domain.Enums.TaskStatus.Done, task.Status);
+        Assert.Equal("Integrasi selesai dan diverifikasi", task.Description);
+        Assert.Equal("Release v1", task.Milestone);
+    }
+
+    [Fact]
+    public async Task CommitImportAsync_UpdatesExistingTaskInDatabase_WithoutDuplication()
+    {
+        using var context = CreateInMemoryContext();
+        var service = new TaskExcelImportService(context);
+
+        // Pre-create existing task in DB
+        var existingTask = new WorkTask
+        {
+            Title = "Migrasi Basis Data",
+            Description = "Skema awal",
+            Priority = TaskPriority.Low,
+            Status = Domain.Enums.TaskStatus.Todo,
+            Progress = 0,
+            ProjectId = 10,
+            CompanyId = 1,
+            CreatedAt = DateTimeOffset.UtcNow.AddDays(-5),
+            UpdatedAt = DateTimeOffset.UtcNow.AddDays(-5)
+        };
+        context.Tasks.Add(existingTask);
+        await context.SaveChangesAsync();
+
+        // Import updated row matching existing task by title & project
+        var rows = new List<TaskImportRowDto>
+        {
+            new(
+                RowIndex: 1,
+                TaskCode: $"TK-{existingTask.Id:D4}",
+                ParentTaskCode: null,
+                Title: "Migrasi Basis Data",
+                Description: "Skema selesai dan diverifikasi",
+                ProjectName: "Website Redesign",
+                MatchedProjectId: 10,
+                PicIdentifier: "budi@perusahaan.com",
+                MatchedUserId: "user-budi",
+                MatchedUserName: "Budi Santoso",
+                Priority: TaskPriority.Critical,
+                Status: Domain.Enums.TaskStatus.Done,
+                Progress: 100,
+                StartDate: DateTimeOffset.UtcNow,
+                DueDate: DateTimeOffset.UtcNow.AddDays(1),
+                Milestone: "Selesai",
+                Obstacle: null,
+                Solution: null,
+                ValidationStatus: TaskImportValidationStatus.Valid,
+                ValidationMessages: new(),
+                IsUpdate: true,
+                ExistingTaskId: existingTask.Id
+            )
+        };
+
+        var request = new TaskImportCommitRequest(null, null, null, rows);
+        var result = await service.CommitImportAsync(request, 1);
+
+        // Total imported is 1, and total updated is 1
+        Assert.Equal(1, result.TotalImported);
+        Assert.Equal(1, result.TotalUpdated);
+
+        // No new duplicate task created
+        var allTasks = await context.Tasks.ToListAsync();
+        Assert.Single(allTasks);
+
+        var updatedTask = allTasks[0];
+        Assert.Equal(existingTask.Id, updatedTask.Id);
+        Assert.Equal(100, updatedTask.Progress);
+        Assert.Equal(Domain.Enums.TaskStatus.Done, updatedTask.Status);
+        Assert.Equal(TaskPriority.Critical, updatedTask.Priority);
+        Assert.Equal("Skema selesai dan diverifikasi", updatedTask.Description);
+        Assert.Equal("user-budi", updatedTask.AssignedToUserId);
+    }
+
+    [Fact]
+    public async Task PreviewImportAsync_MatchesSimilarUserAndEmail_PreventsRedundancy()
+    {
+        using var context = CreateInMemoryContext();
+        var service = new TaskExcelImportService(context);
+
+        using var wb = new XLWorkbook();
+        var ws = wb.Worksheets.Add("Tasks");
+        ws.Cell(1, 1).Value = "Judul Tugas";
+        ws.Cell(1, 2).Value = "Proyek";
+        ws.Cell(1, 3).Value = "PIC";
+
+        // Row 2: Matches "Budi Santoso" via academic title "Ir. Budi Santoso, S.Kom"
+        ws.Cell(2, 1).Value = "Task 1";
+        ws.Cell(2, 2).Value = "Website Redesign";
+        ws.Cell(2, 3).Value = "Ir. Budi Santoso, S.Kom";
+
+        // Row 3: Matches "Dewi Lestari" via email local-part "dewi@otherdomain.com"
+        ws.Cell(3, 1).Value = "Task 2";
+        ws.Cell(3, 2).Value = "Website Redesign";
+        ws.Cell(3, 3).Value = "dewi@otherdomain.com";
+
+        using var ms = new MemoryStream();
+        wb.SaveAs(ms);
+        ms.Position = 0;
+
+        var preview = await service.PreviewImportAsync(ms, "similar-users.xlsx", 1);
+
+        Assert.Equal(2, preview.TotalRows);
+
+        var row1 = preview.Rows.First(r => r.Title == "Task 1");
+        Assert.Equal("user-budi", row1.MatchedUserId);
+        Assert.Equal("Budi Santoso", row1.MatchedUserName);
+
+        var row2 = preview.Rows.First(r => r.Title == "Task 2");
+        Assert.Equal("user-dewi", row2.MatchedUserId);
+        Assert.Equal("Dewi Lestari", row2.MatchedUserName);
+    }
+
+    [Fact]
+    public async Task CommitImportAsync_UserIsMoveableAcrossProjects()
+    {
+        using var context = CreateInMemoryContext();
+        var service = new TaskExcelImportService(context);
+
+        // Pre-create project 2
+        var project2 = new Project { Id = 20, Name = "Mobile App ERP", CompanyId = 1, Color = "#10B981" };
+        context.Projects.Add(project2);
+
+        // Task originally in Project 10 (Website Redesign)
+        var originalTask = new WorkTask
+        {
+            Title = "Implementasi REST API Auth",
+            Description = "Auth module",
+            Priority = TaskPriority.Medium,
+            Status = Domain.Enums.TaskStatus.InProgress,
+            Progress = 50,
+            ProjectId = 10,
+            AssignedToUserId = "user-budi",
+            CompanyId = 1
+        };
+        context.Tasks.Add(originalTask);
+        await context.SaveChangesAsync();
+
+        // Sheet moves this task to Project 20 (Mobile App ERP) and assigns Budi to it
+        var rows = new List<TaskImportRowDto>
+        {
+            new(
+                RowIndex: 1,
+                TaskCode: $"TK-{originalTask.Id:D4}",
+                ParentTaskCode: null,
+                Title: "Implementasi REST API Auth",
+                Description: "Auth module mobile & web",
+                ProjectName: "Mobile App ERP",
+                MatchedProjectId: 20,
+                PicIdentifier: "Budi Santoso",
+                MatchedUserId: "user-budi",
+                MatchedUserName: "Budi Santoso",
+                Priority: TaskPriority.High,
+                Status: Domain.Enums.TaskStatus.Done,
+                Progress: 100,
+                StartDate: DateTimeOffset.UtcNow,
+                DueDate: DateTimeOffset.UtcNow.AddDays(1),
+                Milestone: "Phase 1",
+                Obstacle: null,
+                Solution: null,
+                ValidationStatus: TaskImportValidationStatus.Valid,
+                ValidationMessages: new(),
+                IsUpdate: true,
+                ExistingTaskId: originalTask.Id
+            ),
+            // New task in Project 20 also assigned to Budi
+            new(
+                RowIndex: 2,
+                TaskCode: "NEW-02",
+                ParentTaskCode: null,
+                Title: "Push Notification Setup",
+                Description: "Firebase messaging",
+                ProjectName: "Mobile App ERP",
+                MatchedProjectId: 20,
+                PicIdentifier: "Budi Santoso",
+                MatchedUserId: "user-budi",
+                MatchedUserName: "Budi Santoso",
+                Priority: TaskPriority.High,
+                Status: Domain.Enums.TaskStatus.Todo,
+                Progress: 0,
+                StartDate: DateTimeOffset.UtcNow,
+                DueDate: DateTimeOffset.UtcNow.AddDays(7),
+                Milestone: "Phase 1",
+                Obstacle: null,
+                Solution: null,
+                ValidationStatus: TaskImportValidationStatus.Valid,
+                ValidationMessages: new()
+            )
+        };
+
+        var request = new TaskImportCommitRequest(null, null, null, rows);
+        var result = await service.CommitImportAsync(request, 1);
+
+        Assert.Equal(2, result.TotalImported);
+        Assert.Equal(1, result.TotalUpdated);
+
+        // Verify originalTask was moved to Project 20
+        var reloadedOriginal = await context.Tasks.FirstOrDefaultAsync(t => t.Id == originalTask.Id);
+        Assert.NotNull(reloadedOriginal);
+        Assert.Equal(20, reloadedOriginal.ProjectId);
+        Assert.Equal("user-budi", reloadedOriginal.AssignedToUserId);
+        Assert.Equal(100, reloadedOriginal.Progress);
+
+        // Verify Budi has 2 tasks in Project 20
+        var budiTasksInProj20 = await context.Tasks
+            .Where(t => t.ProjectId == 20 && t.AssignedToUserId == "user-budi")
+            .ToListAsync();
+        Assert.Equal(2, budiTasksInProj20.Count);
+    }
 }
+

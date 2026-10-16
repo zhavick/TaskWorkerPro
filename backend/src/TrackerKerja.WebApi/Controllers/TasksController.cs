@@ -647,8 +647,11 @@ public class TasksController : ControllerBase
             );
 
             var successMessage = result.TotalUsersCreated > 0
-                ? $"Berhasil mengimpor {result.TotalImported} tugas ({result.TotalProjectsCreated} proyek baru, {result.TotalUsersCreated} akun personil baru dibuat)."
+                ? $"Berhasil mengimpor {result.TotalImported} tugas ({result.TotalUpdated} diperbarui, {result.TotalProjectsCreated} proyek baru, {result.TotalUsersCreated} akun personil baru dibuat)."
+                : result.TotalUpdated > 0
+                ? $"Berhasil mengimpor {result.TotalImported} tugas ({result.TotalUpdated} diperbarui, {result.TotalProjectsCreated} proyek baru dibuat)."
                 : $"Berhasil mengimpor {result.TotalImported} tugas ({result.TotalProjectsCreated} proyek baru dibuat).";
+
 
             return Ok(new
             {

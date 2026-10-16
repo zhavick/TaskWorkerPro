@@ -28,6 +28,7 @@ import {
   EyeOff,
   Copy,
   Check,
+  RefreshCw,
 } from "lucide-react";
 import { Button } from "@/components/tailgrids/core/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/tailgrids/core/dialog";
@@ -62,6 +63,8 @@ export interface TaskImportRow {
   solution?: string | null;
   validationStatus: TaskImportValidationStatus;
   validationMessages: string[];
+  isUpdate?: boolean;
+  existingTaskId?: number | null;
 }
 
 export interface TaskImportPreview {
@@ -78,8 +81,10 @@ export interface ImportResult {
   totalImported: number;
   totalProjectsCreated: number;
   totalUsersCreated?: number;
+  totalUpdated?: number;
   messages: string[];
 }
+
 
 export function ImportExcelDialog({ open, onOpenChange, onSuccess }: ImportExcelDialogProps) {
   const queryClient = useQueryClient();
@@ -216,11 +221,10 @@ export function ImportExcelDialog({ open, onOpenChange, onSuccess }: ImportExcel
       const result: ImportResult = data.data;
       setImportResult(result);
       setStep("result");
-      toast.success(
-        `Berhasil mengimpor ${result.totalImported} tugas${
-          (result.totalUsersCreated ?? 0) > 0 ? ` & ${result.totalUsersCreated} akun personil baru dibuat!` : "!"
-        }`
-      );
+      const updatedText = (result.totalUpdated ?? 0) > 0 ? ` (${result.totalUpdated} diperbarui)` : "";
+      const userText = (result.totalUsersCreated ?? 0) > 0 ? ` & ${result.totalUsersCreated} akun personil baru dibuat!` : "!";
+      toast.success(`Berhasil mengimpor ${result.totalImported} tugas${updatedText}${userText}`);
+
 
       // Invalidate relevant queries
       queryClient.invalidateQueries({ queryKey: ["tasksList"] });
@@ -888,8 +892,19 @@ export function ImportExcelDialog({ open, onOpenChange, onSuccess }: ImportExcel
                             {row.rowIndex}
                           </td>
                           <td className="py-2 px-3">
-                            <div className="font-semibold text-gray-900 dark:text-white max-w-xs truncate">
-                              {row.title || <span className="text-rose-500 italic">(Kosong)</span>}
+                            <div className="flex items-center gap-1.5 max-w-xs">
+                              <span className="font-semibold text-gray-900 dark:text-white truncate">
+                                {row.title || <span className="text-rose-500 italic">(Kosong)</span>}
+                              </span>
+                              {row.isUpdate && (
+                                <span
+                                  className="inline-flex items-center gap-0.5 rounded bg-amber-100 px-1 py-0.2 text-[9px] font-bold text-amber-800 dark:bg-amber-950 dark:text-amber-300 shrink-0"
+                                  title="Tugas ini sudah terdaftar dan nilainya akan diperbarui dengan data ter-update"
+                                >
+                                  <RefreshCw className="h-2.5 w-2.5" />
+                                  Update
+                                </span>
+                              )}
                             </div>
                             {row.taskCode && (
                               <div className="text-[10px] text-gray-400 font-mono">
@@ -1025,7 +1040,7 @@ export function ImportExcelDialog({ open, onOpenChange, onSuccess }: ImportExcel
                 <CheckCircle2 className="h-5 w-5 shrink-0" />
                 <span>Impor Excel Selesai Berhasil!</span>
               </div>
-              <div className="mt-3 grid grid-cols-4 gap-2 text-center text-xs">
+              <div className="mt-3 grid grid-cols-2 sm:grid-cols-5 gap-2 text-center text-xs">
                 <div className="rounded-lg bg-white/80 p-2.5 shadow-xs dark:bg-gray-900">
                   <div className="flex items-center justify-center text-gray-500 mb-1">
                     <FileCheck className="h-4 w-4" />
@@ -1042,7 +1057,16 @@ export function ImportExcelDialog({ open, onOpenChange, onSuccess }: ImportExcel
                   <span className="font-extrabold text-base text-indigo-600 dark:text-indigo-400">
                     {importResult.totalImported}
                   </span>
-                  <p className="text-[10px] text-gray-500">Tugas Disimpan</p>
+                  <p className="text-[10px] text-gray-500">Tugas Total</p>
+                </div>
+                <div className="rounded-lg bg-white/80 p-2.5 shadow-xs dark:bg-gray-900">
+                  <div className="flex items-center justify-center text-amber-600 mb-1">
+                    <RefreshCw className="h-4 w-4" />
+                  </div>
+                  <span className="font-extrabold text-base text-amber-600 dark:text-amber-400">
+                    {importResult.totalUpdated ?? 0}
+                  </span>
+                  <p className="text-[10px] text-gray-500">Diperbarui</p>
                 </div>
                 <div className="rounded-lg bg-white/80 p-2.5 shadow-xs dark:bg-gray-900">
                   <div className="flex items-center justify-center text-emerald-600 mb-1">
