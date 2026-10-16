@@ -91,6 +91,94 @@ public class DashboardControllerTests : IDisposable
         Assert.Equal(200, result.StatusCode);
     }
 
+    [Fact]
+    public async Task GetDistribution_ReturnsMemberWorkloadDistribution_IncludingNewMembers()
+    {
+        // Arrange
+        var projectA = new Project { Id = 101, Name = "Integrasi API", Color = "#6366F1", CompanyId = 1 };
+        var projectB = new Project { Id = 102, Name = "Settlement", Color = "#10B981", CompanyId = 1 };
+        _context.Projects.AddRange(projectA, projectB);
+
+        var userSyafix = new AppUser
+        {
+            Id = "user-syafix",
+            UserName = "syafix",
+            FullName = "Syafix",
+            JobTitle = "Senior Developer",
+            IsApproved = true,
+            CompanyId = 1
+        };
+
+        var userSyifa = new AppUser
+        {
+            Id = "user-syifa",
+            UserName = "syifa",
+            FullName = "Syifa",
+            JobTitle = "QA Engineer",
+            IsApproved = true,
+            CompanyId = 1
+        };
+
+        _context.Users.AddRange(userSyafix, userSyifa);
+
+        _context.Tasks.AddRange(
+            new WorkTask
+            {
+                Id = 21,
+                Title = "Endpoint Settlement",
+                ProjectId = 102,
+                AssignedToUserId = "user-syafix",
+                Status = Domain.Enums.TaskStatus.InProgress,
+                CompanyId = 1
+            },
+            new WorkTask
+            {
+                Id = 22,
+                Title = "Webhook Integrasi",
+                ProjectId = 101,
+                AssignedToUserId = "user-syafix",
+                Status = Domain.Enums.TaskStatus.Done,
+                CompanyId = 1
+            },
+            new WorkTask
+            {
+                Id = 23,
+                Title = "Testing API Sanity",
+                ProjectId = 101,
+                AssignedToUserId = "user-syifa",
+                Status = Domain.Enums.TaskStatus.InProgress,
+                CompanyId = 1
+            }
+        );
+
+        await _context.SaveChangesAsync();
+
+        var controller = new DashboardController(_context, _adminTenantService);
+
+        // Act
+        var result = await controller.GetDistribution() as OkObjectResult;
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal(200, result.StatusCode);
+
+        var json = System.Text.Json.JsonSerializer.Serialize(result.Value);
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        var root = doc.RootElement.GetProperty("data");
+
+        Assert.True(root.TryGetProperty("byMember", out var byMemberProp));
+        Assert.Equal(System.Text.Json.JsonValueKind.Array, byMemberProp.ValueKind);
+
+        var memberNames = new List<string>();
+        foreach (var item in byMemberProp.EnumerateArray())
+        {
+            memberNames.Add(item.GetProperty("name").GetString()!);
+        }
+
+        Assert.Contains("Syafix", memberNames);
+        Assert.Contains("Syifa", memberNames);
+    }
+
     private class FakeTenantService : TrackerKerja.Application.Common.Interfaces.ICurrentTenantService
     {
         public FakeTenantService(int? companyId, string? companyCode, string? userId, bool isAdmin)

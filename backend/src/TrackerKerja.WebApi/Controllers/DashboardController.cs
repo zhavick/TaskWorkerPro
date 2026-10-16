@@ -283,6 +283,85 @@ public class DashboardController : ControllerBase
             new { name = "Critical", value = allTasks.Count(t => t.Priority == TaskPriority.Critical), color = "#EF4444" }
         };
 
+        // 4. By Member (Team Workload Distribution)
+        var memberColors = new[]
+        {
+            "#6366F1", "#10B981", "#F59E0B", "#EC4899", "#3B82F6",
+            "#8B5CF6", "#06B6D4", "#F43F5E", "#14B8A6", "#84CC16"
+        };
+
+        var usersQuery = _context.Users.AsNoTracking().Where(u => u.IsApproved);
+        if (_tenantService.CompanyId.HasValue)
+        {
+            usersQuery = usersQuery.Where(u => u.CompanyId == _tenantService.CompanyId.Value);
+        }
+        var companyUsers = await usersQuery.ToListAsync();
+
+        var byMember = companyUsers
+            .Select((u, idx) =>
+            {
+                var userTasks = allTasks.Where(t => t.AssignedToUserId == u.Id).ToList();
+                var count = userTasks.Count;
+                var inProgress = userTasks.Count(t => t.Status == Domain.Enums.TaskStatus.InProgress);
+                var done = userTasks.Count(t => t.Status == Domain.Enums.TaskStatus.Done);
+                var pct = totalCount > 0 ? Math.Round((double)count / totalCount * 100, 1) : 0;
+                var memberProjects = userTasks
+                    .Where(t => t.Project != null)
+                    .Select(t => t.Project!.Name)
+                    .Distinct()
+                    .ToList();
+
+                var displayName = !string.IsNullOrWhiteSpace(u.FullName) ? u.FullName : (u.UserName ?? "Anggota");
+
+                return new
+                {
+                    userId = u.Id,
+                    name = displayName,
+                    userName = u.UserName,
+                    jobTitle = u.JobTitle ?? "Anggota Tim",
+                    avatarUrl = u.ProfilePictureUrl,
+                    color = !string.IsNullOrWhiteSpace(u.AvatarColor) ? u.AvatarColor : memberColors[idx % memberColors.Length],
+                    value = count,
+                    inProgressCount = inProgress,
+                    doneCount = done,
+                    percentage = pct,
+                    projects = memberProjects
+                };
+            })
+            .OrderByDescending(m => m.value)
+            .ThenBy(m => m.name)
+            .ToList();
+
+        // Include unassigned tasks if any
+        var unassignedTasks = allTasks.Where(t => string.IsNullOrEmpty(t.AssignedToUserId)).ToList();
+        if (unassignedTasks.Count > 0)
+        {
+            var unassignedCount = unassignedTasks.Count;
+            var unassignedDone = unassignedTasks.Count(t => t.Status == Domain.Enums.TaskStatus.Done);
+            var unassignedInProgress = unassignedTasks.Count(t => t.Status == Domain.Enums.TaskStatus.InProgress);
+            var unassignedPct = totalCount > 0 ? Math.Round((double)unassignedCount / totalCount * 100, 1) : 0;
+            var unassignedProjects = unassignedTasks
+                .Where(t => t.Project != null)
+                .Select(t => t.Project!.Name)
+                .Distinct()
+                .ToList();
+
+            byMember.Add(new
+            {
+                userId = "unassigned",
+                name = "Belum Ditugaskan",
+                userName = (string?)null,
+                jobTitle = "Pending Alokasi",
+                avatarUrl = (string?)null,
+                color = "#94A3B8",
+                value = unassignedCount,
+                inProgressCount = unassignedInProgress,
+                doneCount = unassignedDone,
+                percentage = unassignedPct,
+                projects = unassignedProjects
+            });
+        }
+
         return Ok(new
         {
             success = true,
@@ -291,7 +370,8 @@ public class DashboardController : ControllerBase
                 totalTasks = totalCount,
                 byProject,
                 byStatus,
-                byPriority
+                byPriority,
+                byMember
             }
         });
     }

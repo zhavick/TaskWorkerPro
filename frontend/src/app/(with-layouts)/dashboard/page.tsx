@@ -47,7 +47,7 @@ export default function DashboardPage() {
   const [userName, setUserName] = useState("Rekan Kerja");
   const [userRole, setUserRole] = useState("Member");
   const [activeChartTab, setActiveChartTab] = useState<"hours" | "tasks">("hours");
-  const [activeDistributionTab, setActiveDistributionTab] = useState<"project" | "status">("project");
+  const [activeDistributionTab, setActiveDistributionTab] = useState<"project" | "status" | "member">("project");
 
   useEffect(() => {
     try {
@@ -251,7 +251,19 @@ export default function DashboardPage() {
     { name: "Overdue", value: taskStats.overdue, color: "#EF4444" },
   ];
 
-  const currentPieData = activeDistributionTab === "project" ? projectDistribution : statusDistribution;
+  const memberDistribution = distributionData?.byMember || [];
+
+  const currentPieData =
+    activeDistributionTab === "project"
+      ? projectDistribution
+      : activeDistributionTab === "status"
+      ? statusDistribution
+      : memberDistribution;
+
+  const hasPieData = currentPieData.some((d: any) => d.value > 0);
+  const safePieData = hasPieData
+    ? currentPieData.filter((d: any) => d.value > 0)
+    : [{ name: "Belum Ada Data", value: 1, color: "#94A3B8" }];
 
   return (
     <div className="space-y-6 px-2 py-4 lg:px-6">
@@ -591,7 +603,7 @@ export default function DashboardPage() {
               </p>
             </div>
 
-            {/* Switcher: Proyek vs Status */}
+            {/* Switcher: Proyek vs Status vs Anggota Tim */}
             <div className="flex items-center rounded-xl bg-gray-100 p-1 dark:bg-gray-800">
               <button
                 onClick={() => setActiveDistributionTab("project")}
@@ -613,6 +625,16 @@ export default function DashboardPage() {
               >
                 Status
               </button>
+              <button
+                onClick={() => setActiveDistributionTab("member")}
+                className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-all ${
+                  activeDistributionTab === "member"
+                    ? "bg-white text-purple-600 shadow-xs dark:bg-gray-900 dark:text-purple-400"
+                    : "text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
+                }`}
+              >
+                Anggota Tim
+              </button>
             </div>
           </div>
 
@@ -633,16 +655,16 @@ export default function DashboardPage() {
                     formatter={(val: any, name: any) => [`${val} Tugas`, name]}
                   />
                   <Pie
-                    data={currentPieData}
+                    data={safePieData}
                     cx="50%"
                     cy="50%"
                     innerRadius={62}
                     outerRadius={88}
-                    paddingAngle={3}
+                    paddingAngle={hasPieData ? 3 : 0}
                     dataKey="value"
                     stroke="none"
                   >
-                    {currentPieData.map((entry: any, index: number) => (
+                    {safePieData.map((entry: any, index: number) => (
                       <Cell key={`cell-${index}`} fill={entry.color || "#6366F1"} />
                     ))}
                   </Pie>
@@ -658,24 +680,86 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* Legend Breakdown */}
-            <div className="mt-3 w-full space-y-2 sm:mt-0">
-              {currentPieData.slice(0, 5).map((item: any) => (
-                <div key={item.name} className="flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2 truncate pr-2">
-                    <span
-                      className="h-2.5 w-2.5 shrink-0 rounded-full"
-                      style={{ backgroundColor: item.color }}
-                    />
-                    <span className="truncate font-medium text-gray-700 dark:text-gray-300">
-                      {item.name}
-                    </span>
-                  </div>
-                  <span className="shrink-0 font-bold text-gray-900 dark:text-white">
-                    {item.value} ({item.percentage || (taskStats.total > 0 ? Math.round((item.value / taskStats.total) * 100) : 0)}%)
-                  </span>
+            {/* Legend / Breakdown List */}
+            <div className="mt-3 w-full sm:mt-0">
+              {activeDistributionTab === "member" ? (
+                <div className="max-h-56 space-y-2 overflow-y-auto pr-1">
+                  {currentPieData.map((item: any) => (
+                    <div
+                      key={item.userId || item.name}
+                      className="rounded-xl border border-gray-100 bg-gray-50/70 p-2.5 transition-all hover:bg-gray-100/90 dark:border-gray-800 dark:bg-gray-800/40 dark:hover:bg-gray-800/80"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 truncate pr-2">
+                          <span
+                            className="h-2.5 w-2.5 shrink-0 rounded-full"
+                            style={{ backgroundColor: item.color }}
+                          />
+                          <div className="truncate">
+                            <span className="block truncate text-xs font-bold text-gray-900 dark:text-white">
+                              {item.name}
+                            </span>
+                            <span className="block text-[10px] text-gray-500 dark:text-gray-400">
+                              {item.jobTitle || "Anggota Tim"}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <span className="font-bold text-xs text-gray-900 dark:text-white">
+                            {item.value} Tugas
+                          </span>
+                          <span className="block text-[10px] font-medium text-gray-400">
+                            {item.percentage}%
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Multi-Project Tags */}
+                      {item.projects && item.projects.length > 0 ? (
+                        <div className="mt-1.5 flex flex-wrap gap-1">
+                          {item.projects.map((proj: string) => (
+                            <span
+                              key={proj}
+                              className="rounded-md bg-white px-1.5 py-0.5 text-[9px] font-semibold text-gray-600 shadow-2xs dark:bg-gray-700 dark:text-gray-300"
+                            >
+                              {proj}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="mt-1 text-[9px] text-gray-400 italic">
+                          Belum ada alokasi proyek
+                        </div>
+                      )}
+                    </div>
+                  ))}
+
+                  {currentPieData.length === 0 && (
+                    <div className="py-6 text-center text-xs text-gray-400">
+                      Belum ada anggota tim terdaftar
+                    </div>
+                  )}
                 </div>
-              ))}
+              ) : (
+                <div className="space-y-2">
+                  {currentPieData.slice(0, 5).map((item: any) => (
+                    <div key={item.name} className="flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-2 truncate pr-2">
+                        <span
+                          className="h-2.5 w-2.5 shrink-0 rounded-full"
+                          style={{ backgroundColor: item.color }}
+                        />
+                        <span className="truncate font-medium text-gray-700 dark:text-gray-300">
+                          {item.name}
+                        </span>
+                      </div>
+                      <span className="shrink-0 font-bold text-gray-900 dark:text-white">
+                        {item.value} ({item.percentage || (taskStats.total > 0 ? Math.round((item.value / taskStats.total) * 100) : 0)}%)
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
