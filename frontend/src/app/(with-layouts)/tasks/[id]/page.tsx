@@ -301,7 +301,7 @@ export default function TaskStudioPage() {
               </Button>
             </Link>
             <div className="h-4 w-px bg-gray-200 dark:bg-gray-800" />
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="font-mono text-xs font-black tracking-wider text-indigo-600 dark:text-indigo-400">
                 TASK #TK-{taskId}
               </span>
@@ -311,6 +311,17 @@ export default function TaskStudioPage() {
                   style={{ backgroundColor: task.projectColor || "#4F46E5" }}
                 >
                   {task.projectName}
+                </span>
+              )}
+              {task?.assignedToUserName ? (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-indigo-200 bg-indigo-50/80 px-2.5 py-0.5 text-xs font-bold text-indigo-800 dark:border-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-300">
+                  <User className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                  Ditugaskan: {task.assignedToUserName}
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 px-2.5 py-0.5 text-xs font-semibold text-gray-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400">
+                  <User className="h-3.5 w-3.5 text-gray-400" />
+                  Belum Ditugaskan
                 </span>
               )}
             </div>
@@ -647,6 +658,30 @@ export default function TaskStudioPage() {
                       </option>
                     ))}
                   </select>
+
+                  {/* Active Selected Assignee Card */}
+                  {(() => {
+                    const activeAssignee = members.find((m: any) => m.id === assignedToUserId);
+                    if (!activeAssignee) return null;
+                    const initials = (activeAssignee.fullName || activeAssignee.userName || "U")
+                      .substring(0, 2)
+                      .toUpperCase();
+                    return (
+                      <div className="mt-2.5 flex items-center gap-2.5 rounded-xl border border-indigo-100 bg-indigo-50/60 p-2.5 dark:border-indigo-900/40 dark:bg-indigo-950/30">
+                        <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-indigo-600 font-bold text-xs text-white">
+                          {initials}
+                        </div>
+                        <div className="truncate">
+                          <span className="block truncate text-xs font-bold text-gray-900 dark:text-white">
+                            {activeAssignee.fullName || activeAssignee.userName}
+                          </span>
+                          <span className="block text-[10px] text-indigo-700 dark:text-indigo-400 font-medium">
+                            {activeAssignee.jobTitle || "Anggota Tim"} {activeAssignee.email ? `• ${activeAssignee.email}` : ""}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {/* Proyek Terkait */}

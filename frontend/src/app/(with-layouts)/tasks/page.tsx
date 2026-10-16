@@ -667,9 +667,9 @@ export default function TasksListPage() {
                   </div>
                 </th>
 
-                {/* Durasi Kerja */}
+                {/* Ditugaskan Kepada (PIC) */}
                 <th className="px-4 py-3.5 font-bold text-gray-700 dark:text-gray-300 select-none">
-                  Durasi Kerja
+                  Ditugaskan Kepada
                 </th>
 
                 {/* Tenggat Waktu */}
@@ -742,11 +742,6 @@ export default function TasksListPage() {
                             </span>
                           )}
                         </div>
-                        {t.assignedToUserName && (
-                          <span className="text-[11px] font-normal text-gray-500 dark:text-gray-400">
-                            PIC: {t.assignedToUserName}
-                          </span>
-                        )}
                       </div>
                     </td>
 
@@ -800,9 +795,27 @@ export default function TasksListPage() {
                       </div>
                     </td>
 
-                    {/* Durasi Kerja */}
-                    <td className="px-4 py-3.5 font-mono font-medium text-gray-600 dark:text-gray-300">
-                      {hours} Jam
+                    {/* Ditugaskan Kepada (PIC) */}
+                    <td className="px-4 py-3.5">
+                      {t.assignedToUserName ? (
+                        <div className="flex items-center gap-2">
+                          <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 font-bold text-xs text-white shadow-2xs">
+                            {t.assignedToUserName.substring(0, 2).toUpperCase()}
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="font-bold text-xs text-gray-900 dark:text-white truncate max-w-[140px]">
+                              {t.assignedToUserName}
+                            </span>
+                            <span className="text-[10px] text-gray-500 dark:text-gray-400">
+                              PIC
+                            </span>
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="inline-flex items-center rounded-md bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+                          Belum Ditugaskan
+                        </span>
+                      )}
                     </td>
 
                     {/* Tenggat */}
@@ -834,19 +847,8 @@ export default function TasksListPage() {
                     {/* Aksi */}
                     <td className="px-4 py-3.5 text-right">
                       <div className="flex items-center justify-end gap-1.5">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-7 gap-1 px-2 text-[11px] border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400"
-                          onClick={() => startTimerMutation.mutate(t.id)}
-                          disabled={startTimerMutation.isPending}
-                          title="Mulai Live Timer"
-                        >
-                          <Play className="h-3 w-3 text-emerald-600 fill-emerald-600" />
-                          Timer
-                        </Button>
                         <Link href={`/tasks/${t.id}`}>
-                          <Button size="sm" variant="ghost" className="h-7 px-2 text-[11px]">
+                          <Button size="sm" variant="ghost" className="h-7 px-2.5 text-xs font-semibold text-indigo-600 hover:bg-indigo-50 dark:text-indigo-400 dark:hover:bg-indigo-950/50">
                             Studio &rarr;
                           </Button>
                         </Link>
