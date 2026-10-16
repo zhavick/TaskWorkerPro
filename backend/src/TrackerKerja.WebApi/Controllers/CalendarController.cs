@@ -55,8 +55,8 @@ public class CalendarController : ControllerBase
             .Include(t => t.AssignedToUser)
             .AsNoTracking();
 
-        // RBAC Scoping: Non-admin is forced to 'mine'
-        var isAdmin = _tenantService.IsAdmin || (User.Identity?.IsAuthenticated == true && User.IsInRole("Administrator"));
+        // RBAC Scoping: Non-admin is forced to 'mine' (FSD 5.14)
+        var isAdmin = _tenantService.IsAdmin || (User.Identity?.IsAuthenticated == true && (User.IsInRole("Administrator") || User.IsInRole("SuperAdmin")));
         var activeFilter = isAdmin && string.Equals(filter, "all", StringComparison.OrdinalIgnoreCase) ? "all" : "mine";
 
         if (activeFilter == "mine")
@@ -65,24 +65,31 @@ public class CalendarController : ControllerBase
             query = query.Where(t => t.AssignedToUserId == currentUserId);
         }
 
-        // Date Range Filtering
+        // Date Range Filtering (integrate tasks with DueDate, StartDate, or CreatedAt fallback)
         if (start.HasValue && end.HasValue)
         {
             var s = start.Value;
             var e = end.Value;
             query = query.Where(t =>
+                (t.DueDate.HasValue && t.DueDate.Value >= s && t.DueDate.Value <= e) ||
                 (t.StartDate.HasValue && t.StartDate.Value <= e && ((t.DueDate.HasValue && t.DueDate.Value >= s) || (!t.DueDate.HasValue && t.StartDate.Value >= s))) ||
-                (t.DueDate.HasValue && t.DueDate.Value >= s && t.DueDate.Value <= e));
+                (!t.DueDate.HasValue && !t.StartDate.HasValue && t.CreatedAt >= s && t.CreatedAt <= e));
         }
         else if (start.HasValue)
         {
             var s = start.Value;
-            query = query.Where(t => (t.DueDate.HasValue && t.DueDate.Value >= s) || (t.StartDate.HasValue && t.StartDate.Value >= s));
+            query = query.Where(t => 
+                (t.DueDate.HasValue && t.DueDate.Value >= s) || 
+                (t.StartDate.HasValue && t.StartDate.Value >= s) ||
+                (!t.DueDate.HasValue && !t.StartDate.HasValue && t.CreatedAt >= s));
         }
         else if (end.HasValue)
         {
             var e = end.Value;
-            query = query.Where(t => (t.StartDate.HasValue && t.StartDate.Value <= e) || (t.DueDate.HasValue && t.DueDate.Value <= e));
+            query = query.Where(t => 
+                (t.StartDate.HasValue && t.StartDate.Value <= e) || 
+                (t.DueDate.HasValue && t.DueDate.Value <= e) ||
+                (!t.DueDate.HasValue && !t.StartDate.HasValue && t.CreatedAt <= e));
         }
 
         // Project and Status filters
@@ -111,14 +118,16 @@ public class CalendarController : ControllerBase
                 : new StyleInfo(t.Status.ToString(), "#6366F1");
 
             var isOverdue = t.DueDate.HasValue && t.DueDate.Value < now && t.Status != Domain.Enums.TaskStatus.Done;
+            var effectiveStart = t.StartDate ?? t.DueDate ?? t.CreatedAt;
+            var effectiveEnd = t.DueDate ?? t.StartDate ?? t.CreatedAt;
 
             return new CalendarEventDto
             {
                 Id = t.Id,
                 Title = t.Title,
                 Description = t.Description,
-                Start = t.StartDate ?? t.DueDate,
-                End = t.DueDate ?? t.StartDate,
+                Start = effectiveStart,
+                End = effectiveEnd,
                 Priority = pInfo.Name,
                 PriorityColor = pInfo.Color,
                 Status = sInfo.Name,
@@ -131,6 +140,7 @@ public class CalendarController : ControllerBase
                 AssignedToUserId = t.AssignedToUserId,
                 AssignedToUserName = t.AssignedToUser?.FullName ?? t.AssignedToUser?.UserName,
                 AssignedToUserAvatarColor = t.AssignedToUser?.AvatarColor ?? "#6366F1",
+                AssignedToUserProfilePictureUrl = t.AssignedToUser?.ProfilePictureUrl,
                 Milestone = t.Milestone,
                 Obstacle = t.Obstacle,
                 Solution = t.Solution,

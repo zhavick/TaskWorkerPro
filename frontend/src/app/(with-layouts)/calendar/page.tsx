@@ -28,6 +28,8 @@ import {
   FolderKanban,
   Check,
   Loader2,
+  Plus,
+  Play,
 } from "lucide-react";
 import { Button } from "@/components/tailgrids/core/button";
 import {
@@ -37,6 +39,7 @@ import {
   DialogTitle,
   DialogBody,
 } from "@/components/tailgrids/core/dialog";
+import { CreateTaskDialog } from "@/components/tasks/create-task-dialog";
 import Link from "next/link";
 
 const MONTH_NAMES = [
@@ -111,6 +114,7 @@ export default function CalendarSchedulePage() {
   // Task Detail Modal State
   const [selectedTask, setSelectedTask] = useState<any | null>(null);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
+  const [createModalOpen, setCreateModalOpen] = useState(false);
 
   // Selected Day agenda popup
   const [selectedDayTasks, setSelectedDayTasks] = useState<{ dateStr: string; tasks: any[] } | null>(null);
@@ -127,6 +131,7 @@ export default function CalendarSchedulePage() {
 
   const isAdmin =
     userProfile?.roles?.includes("Administrator") ||
+    userProfile?.roles?.includes("SuperAdmin") ||
     userProfile?.jobTitle?.toLowerCase().includes("admin") ||
     false;
 
@@ -228,6 +233,20 @@ export default function CalendarSchedulePage() {
     onError: (err: any) => {
       toast.error(err.response?.data?.message || "Gagal memperbarui status tugas");
     },
+  });
+
+  // 5. Start Live Timer Mutation
+  const startTimerMutation = useMutation({
+    mutationFn: async (taskId: number) => {
+      const res = await apiClient.post("/timesheets/start", { taskId });
+      return res.data;
+    },
+    onSuccess: () => {
+      toast.success("Live timer tugas dimulai!");
+      queryClient.invalidateQueries({ queryKey: ["activeTimers"] });
+    },
+    onError: (err: any) =>
+      toast.error(err.response?.data?.message || "Gagal memulai timer"),
   });
 
   // Navigation Handlers
@@ -456,6 +475,15 @@ export default function CalendarSchedulePage() {
 
         {/* Toolbar Action Switchers */}
         <div className="flex flex-wrap items-center gap-2">
+          {/* New Task Button */}
+          <Button
+            onClick={() => setCreateModalOpen(true)}
+            className="gap-1.5 bg-indigo-600 font-bold text-white shadow-xs hover:bg-indigo-700 text-xs h-9"
+          >
+            <Plus className="h-4 w-4" />
+            Tugas Baru
+          </Button>
+
           {/* RBAC Scope Switcher (FSD 5.14) */}
           {isAdmin ? (
             <div className="flex items-center rounded-xl border border-gray-200 bg-white p-1 shadow-2xs dark:border-gray-800 dark:bg-gray-900">
@@ -1335,7 +1363,7 @@ export default function CalendarSchedulePage() {
             )}
 
             {/* Actions */}
-            <div className="mt-4 flex items-center justify-between border-t border-gray-100 pt-3 dark:border-gray-800">
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 pt-3 dark:border-gray-800">
               <Button
                 variant="outline"
                 size="sm"
@@ -1344,12 +1372,26 @@ export default function CalendarSchedulePage() {
                 Tutup
               </Button>
 
-              <Link href={`/tasks/${selectedTask?.id}`}>
-                <Button size="sm" className="gap-2 bg-indigo-600 text-white hover:bg-indigo-700">
-                  <ExternalLink className="h-3.5 w-3.5" />
-                  Buka Studio Edit Tugas
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    startTimerMutation.mutate(selectedTask?.id);
+                  }}
+                  className="gap-1.5 bg-emerald-600 text-white hover:bg-emerald-700 text-xs h-8"
+                  title="Mulai Live Timer Untuk Tugas Ini"
+                >
+                  <Play className="h-3.5 w-3.5 fill-current" />
+                  Mulai Timer
                 </Button>
-              </Link>
+
+                <Link href={`/tasks/${selectedTask?.id}`}>
+                  <Button size="sm" className="gap-2 bg-indigo-600 text-white hover:bg-indigo-700 h-8 text-xs">
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    Studio Detail Tugas
+                  </Button>
+                </Link>
+              </div>
             </div>
           </DialogBody>
         </DialogContent>
@@ -1396,6 +1438,13 @@ export default function CalendarSchedulePage() {
           </DialogBody>
         </DialogContent>
       </Dialog>
+
+      {/* Modal Buat Tugas Baru dari Kalender */}
+      <CreateTaskDialog
+        open={createModalOpen}
+        onOpenChange={setCreateModalOpen}
+        defaultStatus={0}
+      />
     </div>
   );
 }

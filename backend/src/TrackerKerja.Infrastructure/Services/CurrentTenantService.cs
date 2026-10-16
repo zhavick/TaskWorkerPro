@@ -26,5 +26,6 @@ public class CurrentTenantService : ICurrentTenantService
 
     public string? UserId => _httpContextAccessor.HttpContext?.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
 
-    public bool IsAdmin => _httpContextAccessor.HttpContext?.User?.IsInRole("Administrator") ?? false;
+    public bool IsAdmin => (_httpContextAccessor.HttpContext?.User?.IsInRole("Administrator") ?? false)
+                        || (_httpContextAccessor.HttpContext?.User?.IsInRole("SuperAdmin") ?? false);
 }

@@ -19,6 +19,7 @@ public record CalendarEventDto
     public string? AssignedToUserId { get; init; }
     public string? AssignedToUserName { get; init; }
     public string? AssignedToUserAvatarColor { get; init; }
+    public string? AssignedToUserProfilePictureUrl { get; init; }
     public string? Milestone { get; init; }
     public string? Obstacle { get; init; }
     public string? Solution { get; init; }
