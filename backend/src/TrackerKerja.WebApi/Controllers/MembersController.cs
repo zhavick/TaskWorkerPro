@@ -80,7 +80,8 @@ public class MembersController : ControllerBase
             u.LockoutEnd.HasValue && u.LockoutEnd.Value > now,
             u.AssignedTasks.Count,
             u.AssignedTasks.Count(t => t.Status == Domain.Enums.TaskStatus.Done),
-            Math.Round(u.WorkSessions.Where(s => s.EndTime != null).Sum(s => s.Duration) / 3600.0, 1)
+            Math.Round(u.WorkSessions.Where(s => s.EndTime != null).Sum(s => s.Duration) / 3600.0, 1),
+            u.PhoneNumber
         )).ToList();
 
         var groups = members
@@ -132,10 +133,78 @@ public class MembersController : ControllerBase
             user.Company?.Name,
             user.Company?.Code,
             user.IsApproved,
-            new List<string> { user.JobTitle.Contains("Admin") ? "Administrator" : "Member" }
+            new List<string> { user.JobTitle.Contains("Admin") ? "Administrator" : "Member" },
+            user.PhoneNumber,
+            user.CreatedAt
         );
 
         return Ok(new { success = true, data = profile });
+    }
+
+    [HttpPut("{id}")]
+    public async Task<IActionResult> UpdateMember(string id, [FromBody] UpdateMemberRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.FullName))
+        {
+            return BadRequest(new { success = false, message = "Nama lengkap tidak boleh kosong." });
+        }
+
+        var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == id);
+        if (user == null)
+        {
+            return NotFound(new { success = false, message = "Anggota tidak ditemukan." });
+        }
+
+        // Validasi hak akses: Hanya Administrator atau pemilik akun sendiri
+        if (!_tenantService.IsAdmin && _tenantService.UserId != id)
+        {
+            return Forbid();
+        }
+
+        // Validasi tenant bagi non-admin
+        if (!_tenantService.IsAdmin && user.CompanyId != _tenantService.CompanyId)
+        {
+            return Forbid();
+        }
+
+        user.FullName = request.FullName.Trim();
+        user.JobTitle = request.JobTitle.Trim();
+        if (request.PhoneNumber != null)
+        {
+            user.PhoneNumber = request.PhoneNumber.Trim();
+        }
+        if (!string.IsNullOrWhiteSpace(request.AvatarColor))
+        {
+            user.AvatarColor = request.AvatarColor;
+        }
+
+        // Hanya Admin yang dapat memindahkan / mengubah CompanyId
+        if (_tenantService.IsAdmin && request.CompanyId.HasValue && request.CompanyId.Value > 0)
+        {
+            var companyExists = await _context.Companies.AnyAsync(c => c.Id == request.CompanyId.Value);
+            if (!companyExists)
+            {
+                return BadRequest(new { success = false, message = "Perusahaan target tidak valid." });
+            }
+            user.CompanyId = request.CompanyId.Value;
+        }
+
+        await _context.SaveChangesAsync();
+
+        return Ok(new
+        {
+            success = true,
+            message = $"Data profil {user.FullName} berhasil diperbarui.",
+            data = new
+            {
+                user.Id,
+                user.FullName,
+                user.JobTitle,
+                user.PhoneNumber,
+                user.AvatarColor,
+                user.CompanyId
+            }
+        });
     }
 
     [HttpPost("{id}/approve")]

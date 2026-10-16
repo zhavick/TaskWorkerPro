@@ -34,7 +34,16 @@ public record MemberListItemDto(
     bool IsLockedOut = false,
     int TotalTasks = 0,
     int CompletedTasks = 0,
-    double TotalHours = 0.0
+    double TotalHours = 0.0,
+    string? PhoneNumber = null
+);
+
+public record UpdateMemberRequest(
+    string FullName,
+    string JobTitle,
+    string? PhoneNumber = null,
+    string? AvatarColor = null,
+    int? CompanyId = null
 );
 
 public record CompanyMemberGroupDto(

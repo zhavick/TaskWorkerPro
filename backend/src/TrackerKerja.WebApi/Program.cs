@@ -121,6 +121,7 @@ var app = builder.Build();
 
 // 7. HTTP Pipeline
 app.UseMiddleware<ExceptionHandlingMiddleware>();
+app.UseStaticFiles();
 
 // Always enable Swagger for testing/development
 app.UseSwagger();

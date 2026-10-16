@@ -21,6 +21,10 @@ import {
   AlertCircle,
   Loader2,
   ArrowRight,
+  Camera,
+  Upload,
+  Trash2,
+  Image as ImageIcon,
 } from "lucide-react";
 import { Button } from "@/components/tailgrids/core/button";
 import { Input } from "@/components/tailgrids/core/input";
@@ -53,6 +57,85 @@ export default function AccountPage() {
   const [coverPictureUrl, setCoverPictureUrl] = useState("nebula");
   const [customCoverUrl, setCustomCoverUrl] = useState("");
   const [isCustomCover, setIsCustomCover] = useState(false);
+
+  // Upload States & Refs
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [isUploadingCover, setIsUploadingCover] = useState(false);
+  const avatarInputRef = React.useRef<HTMLInputElement>(null);
+  const coverInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error("Ukuran file foto profil maksimal 2MB.");
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    setIsUploadingAvatar(true);
+    try {
+      const res = await apiClient.post("/api/profile/avatar", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      toast.success(res.data?.message || "Foto profil berhasil diperbarui!");
+      queryClient.invalidateQueries({ queryKey: ["user-profile"] });
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || "Gagal mengunggah foto profil.");
+    } finally {
+      setIsUploadingAvatar(false);
+      if (avatarInputRef.current) avatarInputRef.current.value = "";
+    }
+  };
+
+  const handleRemoveAvatar = async () => {
+    try {
+      await apiClient.put("/api/profile", {
+        fullName: fullName.trim() || profile?.fullName,
+        jobTitle: jobTitle.trim() || profile?.jobTitle,
+        avatarColor,
+        phoneNumber: phoneNumber.trim() || null,
+        coverPictureUrl: profile?.coverPictureUrl || null,
+        profilePictureUrl: null,
+      });
+      toast.success("Foto profil telah dihapus.");
+      queryClient.invalidateQueries({ queryKey: ["user-profile"] });
+    } catch (err: any) {
+      toast.error("Gagal menghapus foto profil.");
+    }
+  };
+
+  const handleCoverUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Ukuran file banner cover maksimal 5MB.");
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    setIsUploadingCover(true);
+    try {
+      const res = await apiClient.post("/api/profile/cover", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      toast.success(res.data?.message || "Banner sampul berhasil diperbarui!");
+      setIsCustomCover(true);
+      setCustomCoverUrl(res.data?.url || "");
+      queryClient.invalidateQueries({ queryKey: ["user-profile"] });
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || "Gagal mengunggah banner cover.");
+    } finally {
+      setIsUploadingCover(false);
+      if (coverInputRef.current) coverInputRef.current.value = "";
+    }
+  };
 
   // Sync state when profile loads
   useEffect(() => {
@@ -241,79 +324,182 @@ export default function AccountPage() {
             </div>
           </div>
 
-          {/* Card 2: Pemilih Warna Aksen Avatar */}
-          <div className="rounded-2xl border border-card-border bg-card-surface-area p-5 sm:p-6 shadow-sm space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-card-border">
+          {/* Card 2: Foto Profil & Warna Aksen Avatar */}
+          <div className="rounded-2xl border border-card-border bg-card-surface-area p-5 sm:p-6 shadow-sm space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-card-border gap-4">
               <div className="flex items-center gap-3">
                 <div className="flex size-9 items-center justify-center rounded-lg bg-pink-50 text-pink-600 dark:bg-pink-950/60 dark:text-pink-400">
                   <Palette className="h-5 w-5" />
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-gray-900 dark:text-white">
-                    Warna Aksen Avatar Pengguna
+                    Foto Profil & Aksen Avatar Pengguna
                   </h3>
                   <p className="text-xs text-gray-500 dark:text-gray-400">
-                    Pilih palet warna yang mewakili inisial avatar Anda di seluruh antarmuka
+                    Gunakan foto personal atau inisial nama dengan palet warna aksen
                   </p>
                 </div>
               </div>
 
-              {/* Live Mini Preview */}
+              {/* Upload & Action Buttons */}
               <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-400">Pratinjau:</span>
+                <input
+                  type="file"
+                  ref={avatarInputRef}
+                  onChange={handleAvatarUpload}
+                  accept="image/png,image/jpeg,image/webp"
+                  className="hidden"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={isUploadingAvatar}
+                  onClick={() => avatarInputRef.current?.click()}
+                  className="gap-1.5 text-xs font-semibold text-indigo-600 border-indigo-200 hover:bg-indigo-50 dark:border-indigo-900/40 dark:text-indigo-400"
+                >
+                  {isUploadingAvatar ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Mengunggah...
+                    </>
+                  ) : (
+                    <>
+                      <Camera className="h-3.5 w-3.5" />
+                      Unggah Foto
+                    </>
+                  )}
+                </Button>
+
+                {profile?.profilePictureUrl && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleRemoveAvatar}
+                    className="gap-1.5 text-xs text-rose-600 border-rose-200 hover:bg-rose-50 dark:border-rose-900/40 dark:text-rose-400"
+                    title="Gunakan avatar inisial"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Hapus Foto
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            {/* Live Preview & Info Row */}
+            <div className="flex items-center gap-4 p-3 rounded-xl bg-gray-50/80 dark:bg-gray-800/40 border border-card-border/60">
+              {profile?.profilePictureUrl ? (
+                <img
+                  src={profile.profilePictureUrl}
+                  alt={fullName}
+                  className="size-14 rounded-full ring-2 ring-indigo-500 object-cover shadow-sm shrink-0"
+                />
+              ) : (
                 <div
                   style={{ backgroundColor: avatarColor }}
-                  className="size-9 rounded-full flex items-center justify-center text-white font-bold text-sm shadow-md ring-2 ring-card-border select-none"
+                  className="size-14 rounded-full flex items-center justify-center text-white font-extrabold text-lg shadow-sm ring-2 ring-card-border select-none shrink-0"
                 >
                   {initials}
                 </div>
+              )}
+              <div className="text-xs space-y-0.5">
+                <div className="font-bold text-gray-900 dark:text-white flex items-center gap-1.5">
+                  {profile?.profilePictureUrl ? "Foto Profil Kustom Aktif" : "Avatar Inisial Aktif"}
+                  <span className="text-[10px] font-normal text-gray-400">
+                    (Maks. 2MB, format .png, .jpg, .webp)
+                  </span>
+                </div>
+                <p className="text-gray-500 dark:text-gray-400">
+                  {profile?.profilePictureUrl
+                    ? "Foto ini ditampilkan di avatar header profil dan direktori tim."
+                    : "Warna di bawah menentukan latar belakang inisial avatar Anda."}
+                </p>
               </div>
             </div>
 
             {/* Color Swatches Grid */}
-            <div className="grid grid-cols-4 sm:grid-cols-8 gap-3 pt-1">
-              {AVATAR_COLORS.map((c) => {
-                const isSelected = avatarColor.toLowerCase() === c.value.toLowerCase();
-                return (
-                  <button
-                    key={c.value}
-                    type="button"
-                    onClick={() => setAvatarColor(c.value)}
-                    title={c.name}
-                    className={`group relative flex flex-col items-center gap-1.5 p-2 rounded-xl transition-all border ${
-                      isSelected
-                        ? "bg-gray-100 border-indigo-600 dark:bg-gray-800 dark:border-indigo-400 shadow-sm"
-                        : "border-transparent hover:bg-gray-50 dark:hover:bg-gray-800/60"
-                    }`}
-                  >
-                    <div
-                      style={{ backgroundColor: c.value }}
-                      className="size-8 rounded-full flex items-center justify-center text-white shadow-sm ring-2 ring-black/5 dark:ring-white/10 group-hover:scale-105 transition-transform"
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                Pilih Warna Aksen Avatar Inisial:
+              </label>
+              <div className="grid grid-cols-4 sm:grid-cols-8 gap-3 pt-1">
+                {AVATAR_COLORS.map((c) => {
+                  const isSelected = avatarColor.toLowerCase() === c.value.toLowerCase();
+                  return (
+                    <button
+                      key={c.value}
+                      type="button"
+                      onClick={() => setAvatarColor(c.value)}
+                      title={c.name}
+                      className={`group relative flex flex-col items-center gap-1.5 p-2 rounded-xl transition-all border ${
+                        isSelected
+                          ? "bg-gray-100 border-indigo-600 dark:bg-gray-800 dark:border-indigo-400 shadow-sm"
+                          : "border-transparent hover:bg-gray-50 dark:hover:bg-gray-800/60"
+                      }`}
                     >
-                      {isSelected && <Check className="h-4 w-4 stroke-[3]" />}
-                    </div>
-                    <span className="text-[11px] font-medium text-gray-600 dark:text-gray-300">
-                      {c.name}
-                    </span>
-                  </button>
-                );
-              })}
+                      <div
+                        style={{ backgroundColor: c.value }}
+                        className="size-8 rounded-full flex items-center justify-center text-white shadow-sm ring-2 ring-black/5 dark:ring-white/10 group-hover:scale-105 transition-transform"
+                      >
+                        {isSelected && <Check className="h-4 w-4 stroke-[3]" />}
+                      </div>
+                      <span className="text-[11px] font-medium text-gray-600 dark:text-gray-300">
+                        {c.name}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </div>
 
           {/* Card 3: Galeri Cover Banner Panoramik */}
           <div className="rounded-2xl border border-card-border bg-card-surface-area p-5 sm:p-6 shadow-sm space-y-4">
-            <div className="flex items-center gap-3 pb-3 border-b border-card-border">
-              <div className="flex size-9 items-center justify-center rounded-lg bg-amber-50 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400">
-                <Sparkles className="h-5 w-5" />
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-card-border gap-3">
+              <div className="flex items-center gap-3">
+                <div className="flex size-9 items-center justify-center rounded-lg bg-amber-50 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400">
+                  <Sparkles className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-gray-900 dark:text-white">
+                    Galeri Banner Cover Panoramik
+                  </h3>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Pilih preset gradien atau unggah banner panoramik kustom (maks. 5MB)
+                  </p>
+                </div>
               </div>
+
+              {/* Cover File Upload Trigger */}
               <div>
-                <h3 className="text-base font-bold text-gray-900 dark:text-white">
-                  Galeri Banner Cover Panoramik
-                </h3>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  Pilih preset tema panoramik modern untuk menghiasi header profil Anda
-                </p>
+                <input
+                  type="file"
+                  ref={coverInputRef}
+                  onChange={handleCoverUpload}
+                  accept="image/png,image/jpeg,image/webp"
+                  className="hidden"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={isUploadingCover}
+                  onClick={() => coverInputRef.current?.click()}
+                  className="gap-1.5 text-xs font-semibold text-indigo-600 border-indigo-200 hover:bg-indigo-50 dark:border-indigo-900/40 dark:text-indigo-400"
+                >
+                  {isUploadingCover ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Mengunggah...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="h-3.5 w-3.5" />
+                      Unggah File Banner
+                    </>
+                  )}
+                </Button>
               </div>
             </div>
 
@@ -468,6 +654,26 @@ export default function AccountPage() {
                   <span className="text-gray-500">Peran Akses</span>
                   <span className="font-semibold text-gray-800 dark:text-gray-200">
                     {profile?.roles?.join(", ") || "Member"}
+                  </span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-card-border/60">
+                  <span className="text-gray-500">Nomor Kontak</span>
+                  <span className="font-semibold text-gray-800 dark:text-gray-200 flex items-center gap-1">
+                    <Phone className="h-3 w-3 text-gray-400" />
+                    {profile?.phoneNumber || "Belum diisi"}
+                  </span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-card-border/60">
+                  <span className="text-gray-500">Terdaftar Sejak</span>
+                  <span className="font-semibold text-gray-800 dark:text-gray-200 flex items-center gap-1">
+                    <Calendar className="h-3 w-3 text-gray-400" />
+                    {profile?.createdAt
+                      ? new Date(profile.createdAt).toLocaleDateString("id-ID", {
+                          day: "numeric",
+                          month: "long",
+                          year: "numeric",
+                        })
+                      : "Oktober 2026"}
                   </span>
                 </div>
                 <div className="flex justify-between py-1 border-b border-card-border/60">

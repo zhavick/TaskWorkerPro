@@ -83,6 +83,8 @@ export default function ProfileLayout({ children }: { children: React.ReactNode 
       })
     : "Oktober 2026";
 
+  const isCustomImageCover = profile?.coverPictureUrl && (profile.coverPictureUrl.startsWith("http") || profile.coverPictureUrl.startsWith("/uploads"));
+
   return (
     <div className="mt-4 space-y-6">
       {/* Breadcrumbs Header */}
@@ -114,7 +116,8 @@ export default function ProfileLayout({ children }: { children: React.ReactNode 
         <div className="rounded-2xl border border-card-border bg-card-surface-area overflow-hidden shadow-sm">
           {/* Panoramic Cover */}
           <div
-            className={`w-full h-44 sm:h-56 md:h-64 relative bg-gradient-to-r ${coverGradient} transition-all duration-500 flex items-end p-4 sm:p-6 overflow-hidden`}
+            style={isCustomImageCover ? { backgroundImage: `url(${profile!.coverPictureUrl})`, backgroundSize: "cover", backgroundPosition: "center" } : undefined}
+            className={`w-full h-44 sm:h-56 md:h-64 relative ${isCustomImageCover ? "" : `bg-gradient-to-r ${coverGradient}`} transition-all duration-500 flex items-end p-4 sm:p-6 overflow-hidden`}
           >
             {/* Background Grid Pattern Overlay */}
             <div
@@ -139,12 +142,20 @@ export default function ProfileLayout({ children }: { children: React.ReactNode 
               {/* Avatar + Main Info */}
               <div className="flex flex-col sm:flex-row items-center sm:items-end gap-4 text-center sm:text-left">
                 {/* Dynamic Avatar */}
-                <div
-                  style={{ backgroundColor: avatarBg }}
-                  className="size-24 sm:size-28 rounded-full ring-4 ring-card-surface-area shadow-xl flex items-center justify-center text-white font-extrabold text-3xl sm:text-4xl shrink-0 transition-transform duration-300 hover:scale-105 select-none"
-                >
-                  {initials}
-                </div>
+                {profile?.profilePictureUrl ? (
+                  <img
+                    src={profile.profilePictureUrl}
+                    alt={profile.fullName || "User Avatar"}
+                    className="size-24 sm:size-28 rounded-full ring-4 ring-card-surface-area shadow-xl object-cover shrink-0 transition-transform duration-300 hover:scale-105"
+                  />
+                ) : (
+                  <div
+                    style={{ backgroundColor: avatarBg }}
+                    className="size-24 sm:size-28 rounded-full ring-4 ring-card-surface-area shadow-xl flex items-center justify-center text-white font-extrabold text-3xl sm:text-4xl shrink-0 transition-transform duration-300 hover:scale-105 select-none"
+                  >
+                    {initials}
+                  </div>
+                )}
 
                 {/* User Name & Metadata */}
                 <div className="space-y-1">

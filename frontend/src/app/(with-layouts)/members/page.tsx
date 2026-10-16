@@ -31,6 +31,11 @@ import {
   Activity,
   Loader2,
   Code,
+  Edit3,
+  Save,
+  RotateCcw,
+  Palette,
+  User,
 } from "lucide-react";
 import { Button } from "@/components/tailgrids/core/button";
 import { Input } from "@/components/tailgrids/core/input";
@@ -74,6 +79,17 @@ interface CompanyGroup {
   members: MemberItem[];
 }
 
+const AVATAR_COLORS = [
+  "#6366F1",
+  "#10B981",
+  "#F59E0B",
+  "#EF4444",
+  "#3B82F6",
+  "#8B5CF6",
+  "#EC4899",
+  "#06B6D4",
+];
+
 export default function MembersPage() {
   const queryClient = useQueryClient();
 
@@ -84,6 +100,23 @@ export default function MembersPage() {
 
   // Modal Dialog States
   const [detailMember, setDetailMember] = useState<MemberItem | null>(null);
+  const [isEditingMember, setIsEditingMember] = useState(false);
+  const [editFullName, setEditFullName] = useState("");
+  const [editJobTitle, setEditJobTitle] = useState("");
+  const [editPhoneNumber, setEditPhoneNumber] = useState("");
+  const [editAvatarColor, setEditAvatarColor] = useState("#6366F1");
+  const [editCompanyId, setEditCompanyId] = useState<number | undefined>(undefined);
+
+  const handleOpenDetail = (m: MemberItem) => {
+    setDetailMember(m);
+    setIsEditingMember(false);
+    setEditFullName(m.fullName);
+    setEditJobTitle(m.jobTitle);
+    setEditPhoneNumber(m.phoneNumber || "");
+    setEditAvatarColor(m.avatarColor || "#6366F1");
+    setEditCompanyId(m.companyId);
+  };
+
   const [resetTarget, setResetTarget] = useState<MemberItem | null>(null);
   const [newPassword, setNewPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -214,6 +247,50 @@ export default function MembersPage() {
       queryClient.invalidateQueries({ queryKey: ["membersList"] });
     },
     onError: (err: any) => toast.error(err.response?.data?.message || "Gagal menghapus anggota"),
+  });
+
+  const updateMemberMutation = useMutation({
+    mutationFn: async (payload: {
+      id: string;
+      fullName: string;
+      jobTitle: string;
+      phoneNumber?: string | null;
+      avatarColor?: string | null;
+      companyId?: number | null;
+    }) => {
+      const res = await apiClient.put(`/members/${payload.id}`, {
+        fullName: payload.fullName,
+        jobTitle: payload.jobTitle,
+        phoneNumber: payload.phoneNumber || null,
+        avatarColor: payload.avatarColor || null,
+        companyId: payload.companyId || null,
+      });
+      return res.data;
+    },
+    onSuccess: (data) => {
+      toast.success(data.message || "Data profil anggota berhasil diperbarui!");
+      queryClient.invalidateQueries({ queryKey: ["membersList"] });
+      setIsEditingMember(false);
+      if (detailMember) {
+        setDetailMember({
+          ...detailMember,
+          fullName: editFullName,
+          jobTitle: editJobTitle,
+          phoneNumber: editPhoneNumber,
+          avatarColor: editAvatarColor,
+          companyId: editCompanyId || detailMember.companyId,
+          companyName:
+            groups.find((g) => g.companyId === editCompanyId)?.companyName ||
+            detailMember.companyName,
+          companyCode:
+            groups.find((g) => g.companyId === editCompanyId)?.companyCode ||
+            detailMember.companyCode,
+        });
+      }
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || "Gagal memperbarui data anggota");
+    },
   });
 
   // Filter Logic
@@ -475,7 +552,7 @@ export default function MembersPage() {
                     member={m}
                     isAdmin={isAdmin}
                     currentUserId={userProfile?.id}
-                    onOpenDetail={() => setDetailMember(m)}
+                    onOpenDetail={() => handleOpenDetail(m)}
                     onOpenAudit={() => setAuditTarget(m)}
                     onResetPassword={() => {
                       setResetTarget(m);
@@ -521,7 +598,7 @@ export default function MembersPage() {
               member={m}
               isAdmin={isAdmin}
               currentUserId={userProfile?.id}
-              onOpenDetail={() => setDetailMember(m)}
+              onOpenDetail={() => handleOpenDetail(m)}
               onOpenAudit={() => setAuditTarget(m)}
               onResetPassword={() => {
                 setResetTarget(m);
@@ -770,178 +847,363 @@ export default function MembersPage() {
       </Dialog>
 
       {/* ======================================================== */}
-      {/* MODAL 3: DETAIL PROFIL LENGKAP ANGGOTA                   */}
+      {/* MODAL 3: DETAIL PROFIL LENGKAP & EDIT ANGGOTA            */}
       {/* ======================================================== */}
       <Dialog isOpen={!!detailMember} onOpenChange={(open) => !open && setDetailMember(null)}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400">
-              <ShieldCheck className="h-5 w-5" />
-              <DialogTitle className="text-base font-extrabold text-gray-900 dark:text-white">
-                Detail Profil Anggota
-              </DialogTitle>
+            <div className="flex items-center justify-between w-full">
+              <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400">
+                <ShieldCheck className="h-5 w-5" />
+                <DialogTitle className="text-base font-extrabold text-gray-900 dark:text-white">
+                  {isEditingMember ? "Edit Profil Anggota" : "Detail Profil Anggota"}
+                </DialogTitle>
+              </div>
+
+              {(isAdmin || detailMember?.id === userProfile?.id) && (
+                <button
+                  type="button"
+                  onClick={() => setIsEditingMember(!isEditingMember)}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:text-indigo-400 transition-colors"
+                >
+                  {isEditingMember ? (
+                    <>
+                      <Eye className="h-3.5 w-3.5" />
+                      Lihat Ringkasan
+                    </>
+                  ) : (
+                    <>
+                      <Edit3 className="h-3.5 w-3.5" />
+                      Edit Data
+                    </>
+                  )}
+                </button>
+              )}
             </div>
           </DialogHeader>
 
           {detailMember && (
             <DialogBody className="space-y-5 py-2">
-              {/* Header Profile Info */}
-              <div className="flex items-center gap-4">
-                <div
-                  className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl text-xl font-black text-white shadow-md"
-                  style={{ backgroundColor: detailMember.avatarColor || "#6366F1" }}
+              {isEditingMember ? (
+                /* FORM EDIT ANGGOTA */
+                <form
+                  id="edit-member-form"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (!editFullName.trim()) {
+                      toast.error("Nama lengkap tidak boleh kosong.");
+                      return;
+                    }
+                    if (!editJobTitle.trim()) {
+                      toast.error("Spesialisasi / jabatan tidak boleh kosong.");
+                      return;
+                    }
+                    updateMemberMutation.mutate({
+                      id: detailMember.id,
+                      fullName: editFullName.trim(),
+                      jobTitle: editJobTitle.trim(),
+                      phoneNumber: editPhoneNumber.trim() || null,
+                      avatarColor: editAvatarColor,
+                      companyId: editCompanyId,
+                    });
+                  }}
+                  className="space-y-4"
                 >
-                  {detailMember.fullName.slice(0, 2).toUpperCase()}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-lg font-black text-gray-900 dark:text-white truncate">
-                      {detailMember.fullName}
-                    </h3>
-                    {!detailMember.isApproved ? (
-                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-black text-amber-700">
-                        Pending
-                      </span>
-                    ) : detailMember.isLockedOut ? (
-                      <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-black text-red-700">
-                        Terkunci
-                      </span>
-                    ) : (
-                      <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-black text-emerald-700">
-                        Aktif
-                      </span>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
+                      <User className="h-3.5 w-3.5 text-indigo-500" />
+                      Nama Lengkap <span className="text-rose-500">*</span>
+                    </label>
+                    <Input
+                      value={editFullName}
+                      onChange={(e) => setEditFullName(e.target.value)}
+                      placeholder="Nama lengkap anggota"
+                      required
+                      className="text-xs font-medium"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
+                      <Briefcase className="h-3.5 w-3.5 text-indigo-500" />
+                      Spesialisasi / Jabatan <span className="text-rose-500">*</span>
+                    </label>
+                    <Input
+                      value={editJobTitle}
+                      onChange={(e) => setEditJobTitle(e.target.value)}
+                      placeholder="contoh: Backend Engineer"
+                      required
+                      className="text-xs font-medium"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
+                      <Phone className="h-3.5 w-3.5 text-indigo-500" />
+                      Nomor WhatsApp / Kontak
+                    </label>
+                    <Input
+                      value={editPhoneNumber}
+                      onChange={(e) => setEditPhoneNumber(e.target.value)}
+                      placeholder="+62 812-3456-7890"
+                      className="text-xs font-medium"
+                    />
+                  </div>
+
+                  {isAdmin && groups.length > 0 && (
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
+                        <Building className="h-3.5 w-3.5 text-indigo-500" />
+                        Perusahaan / Tenant
+                      </label>
+                      <select
+                        value={editCompanyId ?? detailMember.companyId}
+                        onChange={(e) => setEditCompanyId(Number(e.target.value))}
+                        className="w-full text-xs font-medium rounded-xl border border-gray-300 bg-white p-2.5 text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      >
+                        {groups.map((g) => (
+                          <option key={g.companyId} value={g.companyId}>
+                            [{g.companyCode}] {g.companyName}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {/* Avatar Color Swatches */}
+                  <div className="space-y-2 pt-1">
+                    <label className="text-xs font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
+                      <Palette className="h-3.5 w-3.5 text-indigo-500" />
+                      Warna Aksen Avatar
+                    </label>
+                    <div className="grid grid-cols-8 gap-2">
+                      {AVATAR_COLORS.map((col) => {
+                        const isSelected = editAvatarColor.toLowerCase() === col.toLowerCase();
+                        return (
+                          <button
+                            key={col}
+                            type="button"
+                            onClick={() => setEditAvatarColor(col)}
+                            style={{ backgroundColor: col }}
+                            className="size-7 rounded-lg flex items-center justify-center text-white shadow-xs transition-transform hover:scale-110"
+                          >
+                            {isSelected && <Check className="h-3.5 w-3.5 stroke-[3]" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </form>
+              ) : (
+                /* READ-ONLY RINGKASAN PROFIL */
+                <>
+                  {/* Header Profile Info */}
+                  <div className="flex items-center gap-4">
+                    <div
+                      className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl text-xl font-black text-white shadow-md"
+                      style={{ backgroundColor: detailMember.avatarColor || "#6366F1" }}
+                    >
+                      {detailMember.fullName.slice(0, 2).toUpperCase()}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-lg font-black text-gray-900 dark:text-white truncate">
+                          {detailMember.fullName}
+                        </h3>
+                        {!detailMember.isApproved ? (
+                          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-black text-amber-700">
+                            Pending
+                          </span>
+                        ) : detailMember.isLockedOut ? (
+                          <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-black text-red-700">
+                            Terkunci
+                          </span>
+                        ) : (
+                          <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-black text-emerald-700">
+                            Aktif
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs font-semibold text-gray-600 dark:text-gray-300">
+                        {detailMember.jobTitle}
+                      </p>
+                      <p className="text-[11px] text-gray-400">
+                        ID Pengguna: <span className="font-mono">{detailMember.id}</span>
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Attributes Grid */}
+                  <div className="grid grid-cols-2 gap-3 text-xs">
+                    <div className="rounded-xl border border-gray-100 bg-gray-50/70 p-3 dark:border-gray-800 dark:bg-gray-800/40">
+                      <span className="text-[10px] text-gray-400 block mb-1">Email Korporat</span>
+                      <div className="flex items-center gap-1.5 font-semibold text-gray-900 dark:text-white truncate">
+                        <Mail className="h-3.5 w-3.5 text-gray-400 shrink-0" />
+                        <span className="truncate">{detailMember.email}</span>
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border border-gray-100 bg-gray-50/70 p-3 dark:border-gray-800 dark:bg-gray-800/40">
+                      <span className="text-[10px] text-gray-400 block mb-1">Nomor Telepon</span>
+                      <div className="flex items-center gap-1.5 font-semibold text-gray-900 dark:text-white truncate">
+                        <Phone className="h-3.5 w-3.5 text-gray-400 shrink-0" />
+                        <span>{detailMember.phoneNumber || "Tidak tercatat"}</span>
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border border-gray-100 bg-gray-50/70 p-3 dark:border-gray-800 dark:bg-gray-800/40">
+                      <span className="text-[10px] text-gray-400 block mb-1">Entitas Perusahaan</span>
+                      <div className="flex items-center gap-1.5 font-semibold text-gray-900 dark:text-white truncate">
+                        <Building className="h-3.5 w-3.5 text-indigo-500 shrink-0" />
+                        <span>
+                          [{detailMember.companyCode}] {detailMember.companyName}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border border-gray-100 bg-gray-50/70 p-3 dark:border-gray-800 dark:bg-gray-800/40">
+                      <span className="text-[10px] text-gray-400 block mb-1">Tanggal Terdaftar</span>
+                      <div className="flex items-center gap-1.5 font-semibold text-gray-900 dark:text-white">
+                        <Clock className="h-3.5 w-3.5 text-gray-400 shrink-0" />
+                        <span>
+                          {new Date(detailMember.createdAt).toLocaleDateString("id-ID", {
+                            day: "numeric",
+                            month: "long",
+                            year: "numeric",
+                          })}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Productivity & Work Performance */}
+                  <div className="rounded-2xl border border-gray-200/80 bg-white p-4 shadow-2xs dark:border-gray-800 dark:bg-gray-900">
+                    <h4 className="text-xs font-black uppercase tracking-wider text-gray-400 mb-3">
+                      Ringkasan Kinerja & Beban Kerja
+                    </h4>
+                    <div className="grid grid-cols-3 gap-3 text-center">
+                      <div className="rounded-xl bg-gray-50 p-2.5 dark:bg-gray-800/60">
+                        <span className="text-[10px] text-gray-400 block">Total Tugas</span>
+                        <span className="text-lg font-black text-gray-900 dark:text-white">
+                          {detailMember.totalTasks}
+                        </span>
+                      </div>
+                      <div className="rounded-xl bg-gray-50 p-2.5 dark:bg-gray-800/60">
+                        <span className="text-[10px] text-gray-400 block">Tugas Selesai</span>
+                        <span className="text-lg font-black text-emerald-600 dark:text-emerald-400">
+                          {detailMember.completedTasks}
+                        </span>
+                      </div>
+                      <div className="rounded-xl bg-gray-50 p-2.5 dark:bg-gray-800/60">
+                        <span className="text-[10px] text-gray-400 block">Total Jam Log</span>
+                        <span className="text-lg font-black text-sky-600 dark:text-sky-400">
+                          {detailMember.totalHours.toFixed(1)}j
+                        </span>
+                      </div>
+                    </div>
+
+                    {detailMember.totalTasks > 0 && (
+                      <div className="mt-3 space-y-1">
+                        <div className="flex items-center justify-between text-[11px] font-semibold text-gray-500">
+                          <span>Penyelesaian Tugas</span>
+                          <span>
+                            {(
+                              (detailMember.completedTasks / detailMember.totalTasks) *
+                              100
+                            ).toFixed(0)}
+                            %
+                          </span>
+                        </div>
+                        <div className="h-2 w-full rounded-full bg-gray-100 overflow-hidden dark:bg-gray-800">
+                          <div
+                            className="h-full rounded-full bg-emerald-500"
+                            style={{
+                              width: `${Math.min(
+                                100,
+                                (detailMember.completedTasks / detailMember.totalTasks) * 100
+                              )}%`,
+                            }}
+                          />
+                        </div>
+                      </div>
                     )}
                   </div>
-                  <p className="text-xs font-semibold text-gray-600 dark:text-gray-300">
-                    {detailMember.jobTitle}
-                  </p>
-                  <p className="text-[11px] text-gray-400">
-                    ID Pengguna: <span className="font-mono">{detailMember.id}</span>
-                  </p>
-                </div>
-              </div>
-
-              {/* Attributes Grid */}
-              <div className="grid grid-cols-2 gap-3 text-xs">
-                <div className="rounded-xl border border-gray-100 bg-gray-50/70 p-3 dark:border-gray-800 dark:bg-gray-800/40">
-                  <span className="text-[10px] text-gray-400 block mb-1">Email Korporat</span>
-                  <div className="flex items-center gap-1.5 font-semibold text-gray-900 dark:text-white truncate">
-                    <Mail className="h-3.5 w-3.5 text-gray-400 shrink-0" />
-                    <span className="truncate">{detailMember.email}</span>
-                  </div>
-                </div>
-
-                <div className="rounded-xl border border-gray-100 bg-gray-50/70 p-3 dark:border-gray-800 dark:bg-gray-800/40">
-                  <span className="text-[10px] text-gray-400 block mb-1">Nomor Telepon</span>
-                  <div className="flex items-center gap-1.5 font-semibold text-gray-900 dark:text-white truncate">
-                    <Phone className="h-3.5 w-3.5 text-gray-400 shrink-0" />
-                    <span>{detailMember.phoneNumber || "Tidak tercatat"}</span>
-                  </div>
-                </div>
-
-                <div className="rounded-xl border border-gray-100 bg-gray-50/70 p-3 dark:border-gray-800 dark:bg-gray-800/40">
-                  <span className="text-[10px] text-gray-400 block mb-1">Entitas Perusahaan</span>
-                  <div className="flex items-center gap-1.5 font-semibold text-gray-900 dark:text-white truncate">
-                    <Building className="h-3.5 w-3.5 text-indigo-500 shrink-0" />
-                    <span>
-                      [{detailMember.companyCode}] {detailMember.companyName}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="rounded-xl border border-gray-100 bg-gray-50/70 p-3 dark:border-gray-800 dark:bg-gray-800/40">
-                  <span className="text-[10px] text-gray-400 block mb-1">Tanggal Terdaftar</span>
-                  <div className="flex items-center gap-1.5 font-semibold text-gray-900 dark:text-white">
-                    <Clock className="h-3.5 w-3.5 text-gray-400 shrink-0" />
-                    <span>
-                      {new Date(detailMember.createdAt).toLocaleDateString("id-ID", {
-                        day: "numeric",
-                        month: "long",
-                        year: "numeric",
-                      })}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Productivity & Work Performance */}
-              <div className="rounded-2xl border border-gray-200/80 bg-white p-4 shadow-2xs dark:border-gray-800 dark:bg-gray-900">
-                <h4 className="text-xs font-black uppercase tracking-wider text-gray-400 mb-3">
-                  Ringkasan Kinerja & Beban Kerja
-                </h4>
-                <div className="grid grid-cols-3 gap-3 text-center">
-                  <div className="rounded-xl bg-gray-50 p-2.5 dark:bg-gray-800/60">
-                    <span className="text-[10px] text-gray-400 block">Total Tugas</span>
-                    <span className="text-lg font-black text-gray-900 dark:text-white">
-                      {detailMember.totalTasks}
-                    </span>
-                  </div>
-                  <div className="rounded-xl bg-gray-50 p-2.5 dark:bg-gray-800/60">
-                    <span className="text-[10px] text-gray-400 block">Tugas Selesai</span>
-                    <span className="text-lg font-black text-emerald-600 dark:text-emerald-400">
-                      {detailMember.completedTasks}
-                    </span>
-                  </div>
-                  <div className="rounded-xl bg-gray-50 p-2.5 dark:bg-gray-800/60">
-                    <span className="text-[10px] text-gray-400 block">Total Jam Log</span>
-                    <span className="text-lg font-black text-sky-600 dark:text-sky-400">
-                      {detailMember.totalHours.toFixed(1)}j
-                    </span>
-                  </div>
-                </div>
-
-                {detailMember.totalTasks > 0 && (
-                  <div className="mt-3 space-y-1">
-                    <div className="flex items-center justify-between text-[11px] font-semibold text-gray-500">
-                      <span>Penyelesaian Tugas</span>
-                      <span>
-                        {(
-                          (detailMember.completedTasks / detailMember.totalTasks) *
-                          100
-                        ).toFixed(0)}
-                        %
-                      </span>
-                    </div>
-                    <div className="h-2 w-full rounded-full bg-gray-100 overflow-hidden dark:bg-gray-800">
-                      <div
-                        className="h-full rounded-full bg-emerald-500"
-                        style={{
-                          width: `${Math.min(
-                            100,
-                            (detailMember.completedTasks / detailMember.totalTasks) * 100
-                          )}%`,
-                        }}
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
+                </>
+              )}
             </DialogBody>
           )}
 
           <DialogFooter className="flex items-center justify-between sm:justify-between w-full">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                const target = detailMember;
-                setDetailMember(null);
-                setAuditTarget(target);
-              }}
-              className="gap-1.5 text-xs text-indigo-600 border-indigo-200 hover:bg-indigo-50 dark:border-indigo-900/40 dark:text-indigo-400"
-            >
-              <Activity className="h-3.5 w-3.5" />
-              Buka Log Aktivitas
-            </Button>
+            {isEditingMember ? (
+              <>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  type="button"
+                  onClick={() => setIsEditingMember(false)}
+                  className="text-xs"
+                >
+                  Batal
+                </Button>
 
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setDetailMember(null)}
-              className="text-xs"
-            >
-              Tutup
-            </Button>
+                <Button
+                  size="sm"
+                  type="submit"
+                  form="edit-member-form"
+                  disabled={updateMemberMutation.isPending}
+                  className="gap-1.5 text-xs bg-indigo-600 hover:bg-indigo-700 text-white"
+                >
+                  {updateMemberMutation.isPending ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Menyimpan...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="h-3.5 w-3.5" />
+                      Simpan Perubahan
+                    </>
+                  )}
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    const target = detailMember;
+                    setDetailMember(null);
+                    setAuditTarget(target);
+                  }}
+                  className="gap-1.5 text-xs text-indigo-600 border-indigo-200 hover:bg-indigo-50 dark:border-indigo-900/40 dark:text-indigo-400"
+                >
+                  <Activity className="h-3.5 w-3.5" />
+                  Buka Log Aktivitas
+                </Button>
+
+                <div className="flex items-center gap-2">
+                  {(isAdmin || detailMember?.id === userProfile?.id) && (
+                    <Button
+                      size="sm"
+                      onClick={() => setIsEditingMember(true)}
+                      className="gap-1.5 text-xs bg-indigo-600 hover:bg-indigo-700 text-white"
+                    >
+                      <Edit3 className="h-3.5 w-3.5" />
+                      Edit Profil
+                    </Button>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setDetailMember(null)}
+                    className="text-xs"
+                  >
+                    Tutup
+                  </Button>
+                </div>
+              </>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1202,12 +1464,18 @@ function MemberCard({
           </div>
         </div>
 
-        {/* Info Details: Email & Company */}
+        {/* Info Details: Email, Phone & Company */}
         <div className="mt-4 space-y-1.5 text-xs text-gray-500 dark:text-gray-400">
           <div className="flex items-center gap-2 truncate">
             <Mail className="h-3.5 w-3.5 shrink-0 text-gray-400" />
             <span className="truncate">{m.email}</span>
           </div>
+          {m.phoneNumber && (
+            <div className="flex items-center gap-2 truncate">
+              <Phone className="h-3.5 w-3.5 shrink-0 text-gray-400" />
+              <span className="truncate">{m.phoneNumber}</span>
+            </div>
+          )}
           <div className="flex items-center gap-2">
             <Building className="h-3.5 w-3.5 shrink-0 text-gray-400" />
             <span className="truncate">
