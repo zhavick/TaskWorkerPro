@@ -75,3 +75,35 @@ public record AttendanceMonthlySummaryDto(
     double AverageDailyHours
 );
 
+public record TeamMemberDailyAttendanceDto(
+    int Day,
+    AttendanceType Type,
+    double TotalHours,
+    WorkLocation WorkLocation,
+    DateTimeOffset? ClockIn,
+    DateTimeOffset? ClockOut
+);
+
+public record TeamMemberMonthlyAttendanceItemDto(
+    string UserId,
+    string FullName,
+    string? JobTitle,
+    string? AvatarUrl,
+    int TotalPresent,
+    int TotalLeave,
+    int TotalSick,
+    int TotalPermission,
+    int TotalBusinessTrip,
+    double TotalHours,
+    List<TeamMemberDailyAttendanceDto> DailyRecords
+);
+
+public record TeamMonthlyAttendanceReportDto(
+    int Month,
+    int Year,
+    int DaysInMonth,
+    int TotalTeamMembers,
+    double TeamTotalHours,
+    List<TeamMemberMonthlyAttendanceItemDto> Members
+);
+

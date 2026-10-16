@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "@/services/api/client";
 import {
@@ -21,6 +21,10 @@ import {
   User,
   Filter,
   Check,
+  Users,
+  LayoutGrid,
+  ListFilter,
+  Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/tailgrids/core/button";
 import { Input } from "@/components/tailgrids/core/input";
@@ -59,6 +63,12 @@ export default function AttendancePage() {
   const [reconcileDate, setReconcileDate] = useState(
     currentDate.toISOString().split("T")[0]
   );
+  const [reconciliationView, setReconciliationView] = useState<"monthly" | "daily">("monthly");
+  const [reconcileMonth, setReconcileMonth] = useState(currentDate.getMonth() + 1);
+  const [reconcileYear, setReconcileYear] = useState(currentDate.getFullYear());
+
+  // Live Timer State (Clock In Berjalan)
+  const [liveTimer, setLiveTimer] = useState<string>("00:00:00");
 
   // Clock In / Out states
   const [workLocation, setWorkLocation] = useState(1);
@@ -105,6 +115,33 @@ export default function AttendancePage() {
     },
   });
 
+  // Live ticking timer effect for clocked in session
+  useEffect(() => {
+    if (
+      todayStatus?.hasClockedIn &&
+      !todayStatus?.hasClockedOut &&
+      todayStatus?.type === 1 &&
+      todayStatus?.clockInTime
+    ) {
+      const clockInDate = new Date(todayStatus.clockInTime).getTime();
+      const updateTimer = () => {
+        const now = Date.now();
+        const diffSeconds = Math.max(0, Math.floor((now - clockInDate) / 1000));
+        const hours = Math.floor(diffSeconds / 3600);
+        const minutes = Math.floor((diffSeconds % 3600) / 60);
+        const seconds = diffSeconds % 60;
+        setLiveTimer(
+          `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`
+        );
+      };
+      updateTimer();
+      const interval = setInterval(updateTimer, 1000);
+      return () => clearInterval(interval);
+    } else {
+      setLiveTimer("00:00:00");
+    }
+  }, [todayStatus]);
+
   // 2. Personal History
   const { data: myHistory = [] } = useQuery<any[]>({
     queryKey: ["attendanceMyHistory", selectedMonth, selectedYear],
@@ -127,7 +164,7 @@ export default function AttendancePage() {
     },
   });
 
-  // 4. Team Reconciliation (Admin)
+  // 4. Team Daily Reconciliation (Admin)
   const { data: reconciliation = [] } = useQuery<any[]>({
     queryKey: ["attendanceReconciliation", reconcileDate],
     queryFn: async () => {
@@ -136,10 +173,22 @@ export default function AttendancePage() {
       );
       return res.data.data;
     },
-    enabled: activeTab === "reconciliation",
+    enabled: activeTab === "reconciliation" && reconciliationView === "daily",
   });
 
-  // 5. Team Members (for manual entry)
+  // 5. Team Monthly Reconciliation Report (Admin)
+  const { data: teamMonthlyReport, isLoading: loadingMonthly } = useQuery<any>({
+    queryKey: ["teamMonthlyAttendance", reconcileMonth, reconcileYear],
+    queryFn: async () => {
+      const res = await apiClient.get(
+        `/attendances/monthly?month=${reconcileMonth}&year=${reconcileYear}`
+      );
+      return res.data.data;
+    },
+    enabled: activeTab === "reconciliation" && reconciliationView === "monthly",
+  });
+
+  // 6. Team Members (for manual entry)
   const { data: members = [] } = useQuery<any[]>({
     queryKey: ["membersListForAttendance"],
     queryFn: async () => {
@@ -236,6 +285,7 @@ export default function AttendancePage() {
       toast.success("Presensi anggota berhasil direkonsiliasi!");
       setReconcileModalOpen(false);
       queryClient.invalidateQueries({ queryKey: ["attendanceReconciliation"] });
+      queryClient.invalidateQueries({ queryKey: ["teamMonthlyAttendance"] });
     },
     onError: (err: any) =>
       toast.error(err.response?.data?.message || "Gagal menyimpan rekonsiliasi"),
@@ -266,6 +316,7 @@ export default function AttendancePage() {
       setManualLeaveReason("");
       setManualNotes("");
       queryClient.invalidateQueries({ queryKey: ["attendanceReconciliation"] });
+      queryClient.invalidateQueries({ queryKey: ["teamMonthlyAttendance"] });
     },
     onError: (err: any) =>
       toast.error(err.response?.data?.message || err.message || "Gagal menyimpan presensi manual"),
@@ -318,15 +369,32 @@ export default function AttendancePage() {
                 <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
                   Status Presensi Hari Ini
                 </span>
-                <h3 className="mt-1 text-xl font-extrabold text-gray-900 dark:text-white">
-                  {todayStatus?.type && todayStatus.type !== 1
-                    ? `Status: ${attendanceTypeLabels[todayStatus.type]?.label || "Non-Hadir"}`
-                    : todayStatus?.hasClockedOut
-                    ? `Presensi Selesai (${todayStatus.totalHours} Jam Kerja)`
-                    : todayStatus?.hasClockedIn
-                    ? "Sedang Bekerja (Clock In Aktif)"
-                    : "Belum Melakukan Presensi Hari Ini"}
-                </h3>
+                <div className="mt-1 flex flex-wrap items-center gap-3">
+                  <h3 className="text-xl font-extrabold text-gray-900 dark:text-white">
+                    {todayStatus?.type && todayStatus.type !== 1
+                      ? `Status: ${attendanceTypeLabels[todayStatus.type]?.label || "Non-Hadir"}`
+                      : todayStatus?.hasClockedOut
+                      ? `Presensi Selesai (${todayStatus.totalHours} Jam Kerja)`
+                      : todayStatus?.hasClockedIn
+                      ? "Sedang Bekerja (Clock In Aktif)"
+                      : "Belum Melakukan Presensi Hari Ini"}
+                  </h3>
+
+                  {todayStatus?.hasClockedIn && !todayStatus?.hasClockedOut && todayStatus?.type === 1 && (
+                    <span className="inline-flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs shadow-xs dark:bg-emerald-950/40">
+                      <span className="relative flex h-2.5 w-2.5">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                      </span>
+                      <span className="font-mono text-sm font-black tracking-wider text-emerald-800 dark:text-emerald-200">
+                        {liveTimer}
+                      </span>
+                      <span className="rounded bg-emerald-600 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white">
+                        LIVE
+                      </span>
+                    </span>
+                  )}
+                </div>
                 <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                   {todayStatus?.clockInTime ? (
                     <>
@@ -580,122 +648,487 @@ export default function AttendancePage() {
         </div>
       ) : (
         /* Team Reconciliation Tab (Admin Only) */
-        <div className="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-xs dark:border-gray-800 dark:bg-gray-900">
-          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h4 className="font-bold text-sm text-gray-900 dark:text-white">
-                Audit & Rekonsiliasi Presensi Anggota Tim
-              </h4>
-              <p className="text-[11px] text-gray-500">
-                Verifikasi kehadiran seluruh anggota tim pada tanggal terpilih, lakukan koreksi, atau buat entri manual.
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-1.5 shadow-xs dark:border-gray-800 dark:bg-gray-900">
-                <Calendar className="h-3.5 w-3.5 text-gray-400" />
-                <input
-                  type="date"
-                  value={reconcileDate}
-                  onChange={(e) => setReconcileDate(e.target.value)}
-                  className="bg-transparent text-xs text-gray-700 outline-none dark:text-gray-200"
-                />
+        <div className="space-y-5">
+          {/* Sub-view Switcher & Action Bar */}
+          <div className="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-xs dark:border-gray-800 dark:bg-gray-900">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 dark:bg-indigo-950 dark:text-indigo-400">
+                    <Users className="h-3.5 w-3.5" />
+                  </span>
+                  <h4 className="font-bold text-base text-gray-900 dark:text-white">
+                    Rekonsiliasi & Audit Kehadiran Tim
+                  </h4>
+                </div>
+                <p className="mt-1 text-xs text-gray-500">
+                  Pantau rekapitulasi kehadiran bulanan seluruh staf, audit log presensi per tanggal, dan lakukan koreksi data.
+                </p>
               </div>
 
-              <Button
-                onClick={() => setManualModalOpen(true)}
-                className="gap-1.5 bg-indigo-600 font-semibold text-white shadow-md shadow-indigo-500/20 hover:bg-indigo-700 text-xs"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                Tambah Presensi Manual
-              </Button>
+              {/* View Switcher Buttons */}
+              <div className="flex flex-wrap items-center gap-2.5">
+                <div className="flex rounded-xl bg-gray-100 p-1 dark:bg-gray-800">
+                  <button
+                    onClick={() => setReconciliationView("monthly")}
+                    className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition ${
+                      reconciliationView === "monthly"
+                        ? "bg-white text-indigo-700 shadow-xs dark:bg-gray-900 dark:text-indigo-400"
+                        : "text-gray-500 hover:text-gray-900 dark:text-gray-400"
+                    }`}
+                  >
+                    <LayoutGrid className="h-3.5 w-3.5" />
+                    Rekapitulasi Bulanan
+                  </button>
+                  <button
+                    onClick={() => setReconciliationView("daily")}
+                    className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition ${
+                      reconciliationView === "daily"
+                        ? "bg-white text-indigo-700 shadow-xs dark:bg-gray-900 dark:text-indigo-400"
+                        : "text-gray-500 hover:text-gray-900 dark:text-gray-400"
+                    }`}
+                  >
+                    <ListFilter className="h-3.5 w-3.5" />
+                    Audit Harian
+                  </button>
+                </div>
+
+                <Button
+                  onClick={() => setManualModalOpen(true)}
+                  className="gap-1.5 bg-indigo-600 font-semibold text-white shadow-md shadow-indigo-500/20 hover:bg-indigo-700 text-xs"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Tambah Presensi Manual
+                </Button>
+              </div>
+            </div>
+
+            {/* Filter Bar based on view */}
+            <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-gray-100 pt-3 dark:border-gray-800">
+              {reconciliationView === "monthly" ? (
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <span className="text-xs font-semibold text-gray-600 dark:text-gray-300">
+                    Periode Rekap:
+                  </span>
+                  <select
+                    value={reconcileMonth}
+                    onChange={(e) => setReconcileMonth(Number(e.target.value))}
+                    className="rounded-xl border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 shadow-xs dark:border-gray-800 dark:bg-gray-900 dark:text-gray-200"
+                  >
+                    {monthNames.map((name, idx) => (
+                      <option key={idx} value={idx + 1}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+
+                  <select
+                    value={reconcileYear}
+                    onChange={(e) => setReconcileYear(Number(e.target.value))}
+                    className="rounded-xl border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 shadow-xs dark:border-gray-800 dark:bg-gray-900 dark:text-gray-200"
+                  >
+                    {[selectedYear - 1, selectedYear, selectedYear + 1].map((yr) => (
+                      <option key={yr} value={yr}>
+                        {yr}
+                      </option>
+                    ))}
+                  </select>
+
+                  <span className="text-[11px] text-gray-400">
+                    Menampilkan matriks presensi {monthNames[reconcileMonth - 1]} {reconcileYear}
+                  </span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2.5">
+                  <span className="text-xs font-semibold text-gray-600 dark:text-gray-300">
+                    Pilih Tanggal Audit:
+                  </span>
+                  <div className="flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-1.5 shadow-xs dark:border-gray-800 dark:bg-gray-900">
+                    <Calendar className="h-3.5 w-3.5 text-gray-400" />
+                    <input
+                      type="date"
+                      value={reconcileDate}
+                      onChange={(e) => setReconcileDate(e.target.value)}
+                      className="bg-transparent text-xs text-gray-700 outline-none dark:text-gray-200"
+                    />
+                  </div>
+                  <span className="text-[11px] text-gray-400">
+                    Audit log kehadiran staf pada {reconcileDate}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr className="border-b border-gray-100 bg-gray-50/75 dark:border-gray-800 dark:bg-gray-800/50">
-                  <th className="px-4 py-3 font-bold text-gray-600 dark:text-gray-300">Nama Anggota</th>
-                  <th className="px-4 py-3 font-bold text-gray-600 dark:text-gray-300">Tanggal</th>
-                  <th className="px-4 py-3 font-bold text-gray-600 dark:text-gray-300">Status</th>
-                  <th className="px-4 py-3 font-bold text-gray-600 dark:text-gray-300">Lokasi</th>
-                  <th className="px-4 py-3 font-bold text-gray-600 dark:text-gray-300">Masuk</th>
-                  <th className="px-4 py-3 font-bold text-gray-600 dark:text-gray-300">Pulang</th>
-                  <th className="px-4 py-3 font-bold text-gray-600 dark:text-gray-300">Total Jam</th>
-                  <th className="px-4 py-3 font-bold text-gray-600 dark:text-gray-300">Alasan/Catatan</th>
-                  <th className="px-4 py-3 text-right font-bold text-gray-600 dark:text-gray-300">Aksi</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                {reconciliation.map((r: any) => {
-                  const typeConfig = attendanceTypeLabels[r.type] || attendanceTypeLabels[1];
-                  return (
-                    <tr key={r.id} className="transition hover:bg-gray-50/60 dark:hover:bg-gray-800/40">
-                      <td className="px-4 py-3 font-semibold text-gray-900 dark:text-white">
-                        {r.userName}
-                      </td>
-                      <td className="px-4 py-3 font-mono text-gray-500">{r.date}</td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-bold ${typeConfig.color}`}
-                        >
-                          {typeConfig.label}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
-                        {r.type === 1 ? locationLabels[r.workLocation] : "-"}
-                      </td>
-                      <td className="px-4 py-3 font-mono text-emerald-600 dark:text-emerald-400">
-                        {r.clockIn ? new Date(r.clockIn).toLocaleTimeString("id-ID") : "-"}
-                      </td>
-                      <td className="px-4 py-3 font-mono text-amber-600 dark:text-amber-400">
-                        {r.clockOut ? new Date(r.clockOut).toLocaleTimeString("id-ID") : "-"}
-                      </td>
-                      <td className="px-4 py-3 font-mono font-bold text-gray-900 dark:text-white">
-                        {r.totalHours > 0 ? `${r.totalHours} Jam` : "-"}
-                      </td>
-                      <td className="px-4 py-3 text-gray-500 max-w-xs truncate">
-                        {r.leaveReason || r.notes || "-"}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-7 gap-1 px-2 text-[11px]"
-                          onClick={() => {
-                            setSelectedRecord(r);
-                            setReconcileType(r.type);
-                            setReconcileLoc(r.workLocation);
-                            setReconcileClockIn(
-                              r.clockIn ? new Date(r.clockIn).toISOString().slice(0, 16) : ""
-                            );
-                            setReconcileClockOut(
-                              r.clockOut ? new Date(r.clockOut).toISOString().slice(0, 16) : ""
-                            );
-                            setReconcileLeaveReason(r.leaveReason || "");
-                            setReconcileNotes(r.notes || "");
-                            setReconcileModalOpen(true);
-                          }}
-                        >
-                          <Edit2 className="h-3 w-3" />
-                          Koreksi
-                        </Button>
-                      </td>
-                    </tr>
-                  );
-                })}
+          {/* View Content: Monthly Matrix */}
+          {reconciliationView === "monthly" ? (
+            <div className="space-y-4">
+              {/* Monthly KPI Summary Cards */}
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                <div className="rounded-2xl border border-gray-200/80 bg-white p-4 shadow-xs dark:border-gray-800 dark:bg-gray-900">
+                  <div className="flex items-center justify-between text-gray-500">
+                    <span className="text-xs font-semibold">Total Jam Kerja Tim</span>
+                    <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 dark:bg-indigo-950/80 dark:text-indigo-400">
+                      <Clock className="h-4 w-4" />
+                    </div>
+                  </div>
+                  <p className="mt-2 text-2xl font-black text-gray-900 dark:text-white">
+                    {teamMonthlyReport?.teamTotalHours ?? 0}{" "}
+                    <span className="text-xs font-normal text-gray-500">Jam</span>
+                  </p>
+                  <p className="text-[11px] text-gray-400 mt-0.5">
+                    Periode {monthNames[reconcileMonth - 1]} {reconcileYear}
+                  </p>
+                </div>
 
-                {reconciliation.length === 0 && (
-                  <tr>
-                    <td colSpan={9} className="py-8 text-center text-gray-400">
-                      Tidak ada catatan presensi pada tanggal {reconcileDate}.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+                <div className="rounded-2xl border border-gray-200/80 bg-white p-4 shadow-xs dark:border-gray-800 dark:bg-gray-900">
+                  <div className="flex items-center justify-between text-gray-500">
+                    <span className="text-xs font-semibold">Anggota Terdaftar</span>
+                    <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 dark:bg-emerald-950/80 dark:text-emerald-400">
+                      <Users className="h-4 w-4" />
+                    </div>
+                  </div>
+                  <p className="mt-2 text-2xl font-black text-gray-900 dark:text-white">
+                    {teamMonthlyReport?.totalTeamMembers ?? 0}{" "}
+                    <span className="text-xs font-normal text-gray-500">Personel</span>
+                  </p>
+                  <p className="text-[11px] text-gray-400 mt-0.5">Staf aktif perusahaan</p>
+                </div>
+
+                <div className="rounded-2xl border border-gray-200/80 bg-white p-4 shadow-xs dark:border-gray-800 dark:bg-gray-900">
+                  <div className="flex items-center justify-between text-gray-500">
+                    <span className="text-xs font-semibold">Total Kehadiran Tim</span>
+                    <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-teal-50 text-teal-600 dark:bg-teal-950/80 dark:text-teal-400">
+                      <CheckCircle2 className="h-4 w-4" />
+                    </div>
+                  </div>
+                  <p className="mt-2 text-2xl font-black text-emerald-600 dark:text-emerald-400">
+                    {teamMonthlyReport?.members?.reduce(
+                      (acc: number, m: any) => acc + (m.totalPresent || 0),
+                      0
+                    ) ?? 0}{" "}
+                    <span className="text-xs font-normal text-gray-500">Hari</span>
+                  </p>
+                  <p className="text-[11px] text-gray-400 mt-0.5">Kumulatif seluruh staf</p>
+                </div>
+
+                <div className="rounded-2xl border border-gray-200/80 bg-white p-4 shadow-xs dark:border-gray-800 dark:bg-gray-900">
+                  <div className="flex items-center justify-between text-gray-500">
+                    <span className="text-xs font-semibold">Izin / Sakit / Cuti</span>
+                    <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-50 text-amber-600 dark:bg-amber-950/80 dark:text-amber-400">
+                      <Palmtree className="h-4 w-4" />
+                    </div>
+                  </div>
+                  <p className="mt-2 text-2xl font-black text-amber-600 dark:text-amber-400">
+                    {teamMonthlyReport?.members?.reduce(
+                      (acc: number, m: any) =>
+                        acc +
+                        (m.totalLeave || 0) +
+                        (m.totalSick || 0) +
+                        (m.totalPermission || 0) +
+                        (m.totalBusinessTrip || 0),
+                      0
+                    ) ?? 0}{" "}
+                    <span className="text-xs font-normal text-gray-500">Hari</span>
+                  </p>
+                  <p className="text-[11px] text-gray-400 mt-0.5">Total non-hadir terdata</p>
+                </div>
+              </div>
+
+              {/* Monthly Matrix Grid Table */}
+              <div className="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-xs dark:border-gray-800 dark:bg-gray-900">
+                <div className="mb-3 flex items-center justify-between">
+                  <h5 className="font-bold text-sm text-gray-900 dark:text-white flex items-center gap-2">
+                    <LayoutGrid className="h-4 w-4 text-indigo-600" />
+                    <span>Matriks Kehadiran Tim ({monthNames[reconcileMonth - 1]} {reconcileYear})</span>
+                  </h5>
+                  <div className="flex items-center gap-2 text-[11px] text-gray-500">
+                    <span className="inline-flex items-center gap-1">
+                      <span className="h-2 w-2 rounded-full bg-emerald-500"></span> Hadir
+                    </span>
+                    <span className="inline-flex items-center gap-1">
+                      <span className="h-2 w-2 rounded-full bg-rose-500"></span> Sakit
+                    </span>
+                    <span className="inline-flex items-center gap-1">
+                      <span className="h-2 w-2 rounded-full bg-amber-500"></span> Izin
+                    </span>
+                    <span className="inline-flex items-center gap-1">
+                      <span className="h-2 w-2 rounded-full bg-sky-500"></span> Cuti
+                    </span>
+                    <span className="inline-flex items-center gap-1">
+                      <span className="h-2 w-2 rounded-full bg-purple-500"></span> Dinas
+                    </span>
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="border-b border-gray-100 bg-gray-50/75 dark:border-gray-800 dark:bg-gray-800/50">
+                        <th className="px-3 py-2.5 font-bold text-gray-700 dark:text-gray-300 min-w-[200px]">
+                          Anggota Tim
+                        </th>
+                        <th className="px-2.5 py-2.5 text-center font-bold text-gray-700 dark:text-gray-300">
+                          Total Jam
+                        </th>
+                        <th className="px-2 py-2.5 text-center font-bold text-emerald-700 dark:text-emerald-400">
+                          Hadir
+                        </th>
+                        <th className="px-2 py-2.5 text-center font-bold text-rose-700 dark:text-rose-400">
+                          Sakit
+                        </th>
+                        <th className="px-2 py-2.5 text-center font-bold text-amber-700 dark:text-amber-400">
+                          Izin
+                        </th>
+                        <th className="px-2 py-2.5 text-center font-bold text-sky-700 dark:text-sky-400">
+                          Cuti
+                        </th>
+                        <th className="px-2 py-2.5 text-center font-bold text-purple-700 dark:text-purple-400">
+                          Dinas
+                        </th>
+                        {/* Days of Month columns */}
+                        {Array.from(
+                          { length: teamMonthlyReport?.daysInMonth || 31 },
+                          (_, i) => i + 1
+                        ).map((day) => (
+                          <th
+                            key={day}
+                            className="px-1.5 py-2.5 text-center font-mono text-[11px] text-gray-500 dark:text-gray-400 min-w-[26px]"
+                          >
+                            {day}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                      {teamMonthlyReport?.members?.map((m: any) => {
+                        const dailyMap = new Map(
+                          m.dailyRecords?.map((d: any) => [d.day, d])
+                        );
+                        return (
+                          <tr
+                            key={m.userId}
+                            className="transition hover:bg-gray-50/60 dark:hover:bg-gray-800/40"
+                          >
+                            {/* Member Profile */}
+                            <td className="px-3 py-2.5">
+                              <div className="flex items-center gap-2.5">
+                                {m.avatarUrl ? (
+                                  <img
+                                    src={m.avatarUrl}
+                                    alt={m.fullName}
+                                    className="h-7 w-7 rounded-full object-cover border border-gray-200 dark:border-gray-700"
+                                  />
+                                ) : (
+                                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-indigo-100 text-indigo-700 font-bold text-[11px] dark:bg-indigo-950 dark:text-indigo-300">
+                                    {m.fullName?.slice(0, 2).toUpperCase() || "US"}
+                                  </div>
+                                )}
+                                <div className="min-w-0">
+                                  <p className="truncate font-semibold text-gray-900 dark:text-white text-xs">
+                                    {m.fullName}
+                                  </p>
+                                  <p className="truncate text-[10px] text-gray-400">
+                                    {m.jobTitle || "Anggota Tim"}
+                                  </p>
+                                </div>
+                              </div>
+                            </td>
+
+                            {/* Counters */}
+                            <td className="px-2.5 py-2.5 text-center font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                              {m.totalHours > 0 ? `${m.totalHours}h` : "-"}
+                            </td>
+                            <td className="px-2 py-2.5 text-center font-bold text-emerald-600 dark:text-emerald-400">
+                              {m.totalPresent || 0}
+                            </td>
+                            <td className="px-2 py-2.5 text-center font-bold text-rose-600 dark:text-rose-400">
+                              {m.totalSick || 0}
+                            </td>
+                            <td className="px-2 py-2.5 text-center font-bold text-amber-600 dark:text-amber-400">
+                              {m.totalPermission || 0}
+                            </td>
+                            <td className="px-2 py-2.5 text-center font-bold text-sky-600 dark:text-sky-400">
+                              {m.totalLeave || 0}
+                            </td>
+                            <td className="px-2 py-2.5 text-center font-bold text-purple-600 dark:text-purple-400">
+                              {m.totalBusinessTrip || 0}
+                            </td>
+
+                            {/* Days Matrix Cells */}
+                            {Array.from(
+                              { length: teamMonthlyReport?.daysInMonth || 31 },
+                              (_, i) => i + 1
+                            ).map((day) => {
+                              const rec = dailyMap.get(day) as any;
+                              if (!rec) {
+                                return (
+                                  <td
+                                    key={day}
+                                    className="px-1 py-2 text-center text-gray-200 dark:text-gray-700 font-mono text-[10px]"
+                                  >
+                                    ·
+                                  </td>
+                                );
+                              }
+
+                              let badgeClass = "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300";
+                              let char = "·";
+                              let title = "";
+
+                              if (rec.type === 1) {
+                                badgeClass = "bg-emerald-500 text-white shadow-xs shadow-emerald-500/30";
+                                char = "H";
+                                title = `Hadir: ${rec.totalHours} Jam (${locationLabels[rec.workLocation] || "WFO"})`;
+                              } else if (rec.type === 2) {
+                                badgeClass = "bg-sky-500 text-white";
+                                char = "C";
+                                title = "Cuti";
+                              } else if (rec.type === 3) {
+                                badgeClass = "bg-rose-500 text-white";
+                                char = "S";
+                                title = "Sakit";
+                              } else if (rec.type === 4) {
+                                badgeClass = "bg-amber-500 text-white";
+                                char = "I";
+                                title = "Izin";
+                              } else if (rec.type === 5) {
+                                badgeClass = "bg-purple-500 text-white";
+                                char = "D";
+                                title = "Dinas Luar";
+                              }
+
+                              return (
+                                <td key={day} className="px-0.5 py-1 text-center">
+                                  <span
+                                    title={title}
+                                    className={`inline-flex h-5 w-5 items-center justify-center rounded-md font-bold text-[10px] ${badgeClass}`}
+                                  >
+                                    {char}
+                                  </span>
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        );
+                      })}
+
+                      {(!teamMonthlyReport?.members || teamMonthlyReport.members.length === 0) && (
+                        <tr>
+                          <td
+                            colSpan={7 + (teamMonthlyReport?.daysInMonth || 31)}
+                            className="py-10 text-center text-gray-400"
+                          >
+                            Tidak ada data presensi tim untuk periode ini.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* View Content: Daily Audit */
+            <div className="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-xs dark:border-gray-800 dark:bg-gray-900">
+              <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h5 className="font-bold text-sm text-gray-900 dark:text-white flex items-center gap-2">
+                    <ListFilter className="h-4 w-4 text-indigo-600" />
+                    <span>Audit Presensi Harian ({reconcileDate})</span>
+                  </h5>
+                  <p className="text-[11px] text-gray-500">
+                    Daftar log kehadiran seluruh anggota tim pada tanggal terpilih beserta opsi koreksi jam kerja.
+                  </p>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="border-b border-gray-100 bg-gray-50/75 dark:border-gray-800 dark:bg-gray-800/50">
+                      <th className="px-4 py-3 font-bold text-gray-600 dark:text-gray-300">Nama Anggota</th>
+                      <th className="px-4 py-3 font-bold text-gray-600 dark:text-gray-300">Tanggal</th>
+                      <th className="px-4 py-3 font-bold text-gray-600 dark:text-gray-300">Status</th>
+                      <th className="px-4 py-3 font-bold text-gray-600 dark:text-gray-300">Lokasi</th>
+                      <th className="px-4 py-3 font-bold text-gray-600 dark:text-gray-300">Masuk</th>
+                      <th className="px-4 py-3 font-bold text-gray-600 dark:text-gray-300">Pulang</th>
+                      <th className="px-4 py-3 font-bold text-gray-600 dark:text-gray-300">Total Jam</th>
+                      <th className="px-4 py-3 font-bold text-gray-600 dark:text-gray-300">Alasan/Catatan</th>
+                      <th className="px-4 py-3 text-right font-bold text-gray-600 dark:text-gray-300">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                    {reconciliation.map((r: any) => {
+                      const typeConfig = attendanceTypeLabels[r.type] || attendanceTypeLabels[1];
+                      return (
+                        <tr key={r.id} className="transition hover:bg-gray-50/60 dark:hover:bg-gray-800/40">
+                          <td className="px-4 py-3 font-semibold text-gray-900 dark:text-white">
+                            {r.userName}
+                          </td>
+                          <td className="px-4 py-3 font-mono text-gray-500">{r.date}</td>
+                          <td className="px-4 py-3">
+                            <span
+                              className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-bold ${typeConfig.color}`}
+                            >
+                              {typeConfig.label}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
+                            {r.type === 1 ? locationLabels[r.workLocation] : "-"}
+                          </td>
+                          <td className="px-4 py-3 font-mono text-emerald-600 dark:text-emerald-400">
+                            {r.clockIn ? new Date(r.clockIn).toLocaleTimeString("id-ID") : "-"}
+                          </td>
+                          <td className="px-4 py-3 font-mono text-amber-600 dark:text-amber-400">
+                            {r.clockOut ? new Date(r.clockOut).toLocaleTimeString("id-ID") : "-"}
+                          </td>
+                          <td className="px-4 py-3 font-mono font-bold text-gray-900 dark:text-white">
+                            {r.totalHours > 0 ? `${r.totalHours} Jam` : "-"}
+                          </td>
+                          <td className="px-4 py-3 text-gray-500 max-w-xs truncate">
+                            {r.leaveReason || r.notes || "-"}
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 gap-1 px-2 text-[11px]"
+                              onClick={() => {
+                                setSelectedRecord(r);
+                                setReconcileType(r.type);
+                                setReconcileLoc(r.workLocation);
+                                setReconcileClockIn(
+                                  r.clockIn ? new Date(r.clockIn).toISOString().slice(0, 16) : ""
+                                );
+                                setReconcileClockOut(
+                                  r.clockOut ? new Date(r.clockOut).toISOString().slice(0, 16) : ""
+                                );
+                                setReconcileLeaveReason(r.leaveReason || "");
+                                setReconcileNotes(r.notes || "");
+                                setReconcileModalOpen(true);
+                              }}
+                            >
+                              <Edit2 className="h-3 w-3" />
+                              Koreksi
+                            </Button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+
+                    {reconciliation.length === 0 && (
+                      <tr>
+                        <td colSpan={9} className="py-8 text-center text-gray-400">
+                          Tidak ada catatan presensi pada tanggal {reconcileDate}.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

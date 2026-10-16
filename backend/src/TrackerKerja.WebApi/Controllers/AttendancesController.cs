@@ -11,6 +11,7 @@ namespace TrackerKerja.WebApi.Controllers;
 
 [ApiController]
 [Route("api/attendances")]
+[Route("api/attendance")]
 [Authorize]
 public class AttendancesController : ControllerBase
 {
@@ -285,6 +286,96 @@ public class AttendancesController : ControllerBase
             .ToListAsync();
 
         return Ok(new { success = true, date = targetDate, data = records });
+    }
+
+    [HttpGet("monthly")]
+    [Authorize(Roles = "Administrator")]
+    public async Task<IActionResult> GetMonthlyTeamReconciliation(
+        [FromQuery] int? month = null,
+        [FromQuery] int? year = null,
+        [FromQuery] int? companyId = null)
+    {
+        var now = DateTime.UtcNow;
+        int targetMonth = month ?? now.Month;
+        int targetYear = year ?? now.Year;
+        var targetCompany = companyId ?? _tenantService.CompanyId;
+
+        var membersQuery = _context.Users.AsNoTracking().Where(u => u.IsApproved);
+        if (targetCompany.HasValue)
+        {
+            membersQuery = membersQuery.Where(u => u.CompanyId == targetCompany.Value);
+        }
+
+        var members = await membersQuery
+            .OrderBy(u => u.FullName)
+            .Select(u => new
+            {
+                u.Id,
+                u.FullName,
+                u.JobTitle,
+                AvatarUrl = u.ProfilePictureUrl
+            })
+            .ToListAsync();
+
+        var memberIds = members.Select(m => m.Id).ToList();
+
+        var records = await _context.Attendances
+            .AsNoTracking()
+            .Where(a => memberIds.Contains(a.UserId) && a.Date.Month == targetMonth && a.Date.Year == targetYear)
+            .ToListAsync();
+
+        int daysInMonth = DateTime.DaysInMonth(targetYear, targetMonth);
+        var memberItems = new List<TeamMemberMonthlyAttendanceItemDto>();
+        double grandTotalHours = 0.0;
+
+        foreach (var member in members)
+        {
+            var userRecords = records.Where(r => r.UserId == member.Id).ToList();
+            int present = userRecords.Count(r => r.Type == AttendanceType.Present);
+            int leave = userRecords.Count(r => r.Type == AttendanceType.Leave);
+            int sick = userRecords.Count(r => r.Type == AttendanceType.Sick);
+            int permission = userRecords.Count(r => r.Type == AttendanceType.Permission);
+            int trip = userRecords.Count(r => r.Type == AttendanceType.BusinessTrip);
+            double totalHours = Math.Round(userRecords.Sum(r => r.TotalHours), 2);
+            grandTotalHours += totalHours;
+
+            var dailyList = userRecords
+                .OrderBy(r => r.Date.Day)
+                .Select(r => new TeamMemberDailyAttendanceDto(
+                    r.Date.Day,
+                    r.Type,
+                    r.TotalHours,
+                    r.WorkLocation,
+                    r.ClockIn,
+                    r.ClockOut
+                ))
+                .ToList();
+
+            memberItems.Add(new TeamMemberMonthlyAttendanceItemDto(
+                member.Id,
+                member.FullName,
+                member.JobTitle,
+                member.AvatarUrl,
+                present,
+                leave,
+                sick,
+                permission,
+                trip,
+                totalHours,
+                dailyList
+            ));
+        }
+
+        var report = new TeamMonthlyAttendanceReportDto(
+            targetMonth,
+            targetYear,
+            daysInMonth,
+            members.Count,
+            Math.Round(grandTotalHours, 2),
+            memberItems
+        );
+
+        return Ok(new { success = true, data = report });
     }
 
     [HttpPut("reconciliation/{id}")]
