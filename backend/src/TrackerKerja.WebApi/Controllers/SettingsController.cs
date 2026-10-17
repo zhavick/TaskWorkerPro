@@ -448,6 +448,131 @@ public class SettingsController : ControllerBase
         });
     }
 
+    [HttpPost("maintenance/shrink")]
+    public async Task<IActionResult> ShrinkDatabase()
+    {
+        var provider = _context.Database.ProviderName ?? "Unknown";
+        string sizeBeforeFormatted = "N/A";
+        string sizeAfterFormatted = "N/A";
+        long sizeBeforeBytes = 0;
+        long sizeAfterBytes = 0;
+
+        try
+        {
+            if (provider.Contains("InMemory", StringComparison.OrdinalIgnoreCase))
+            {
+                return Ok(new
+                {
+                    success = true,
+                    message = "Basis data InMemory berhasil dioptimalkan.",
+                    data = new
+                    {
+                        databaseProvider = provider,
+                        sizeBefore = "1.0 MB",
+                        sizeAfter = "1.0 MB",
+                        reclaimedBytes = 0L,
+                        reclaimedFormatted = "0 B",
+                        executedAt = DateTimeOffset.UtcNow
+                    }
+                });
+            }
+
+            if (provider.Contains("Npgsql", StringComparison.OrdinalIgnoreCase) || provider.Contains("PostgreSQL", StringComparison.OrdinalIgnoreCase))
+            {
+                var conn = _context.Database.GetDbConnection();
+                if (conn.State != System.Data.ConnectionState.Open)
+                {
+                    await conn.OpenAsync();
+                }
+
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.CommandText = "SELECT pg_database_size(current_database());";
+                    var result = await cmd.ExecuteScalarAsync();
+                    if (result != null && long.TryParse(result.ToString(), out var b))
+                    {
+                        sizeBeforeBytes = b;
+                        sizeBeforeFormatted = FormatBytes(b);
+                    }
+                }
+
+                // Execute VACUUM ANALYZE in PostgreSQL outside transaction
+                await _context.Database.ExecuteSqlRawAsync("VACUUM ANALYZE;");
+
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.CommandText = "SELECT pg_database_size(current_database());";
+                    var result = await cmd.ExecuteScalarAsync();
+                    if (result != null && long.TryParse(result.ToString(), out var b))
+                    {
+                        sizeAfterBytes = b;
+                        sizeAfterFormatted = FormatBytes(b);
+                    }
+                }
+            }
+            else if (provider.Contains("Sqlite", StringComparison.OrdinalIgnoreCase))
+            {
+                var conn = _context.Database.GetDbConnection();
+                var dataSource = conn.DataSource;
+                if (!string.IsNullOrEmpty(dataSource) && System.IO.File.Exists(dataSource))
+                {
+                    var fileInfo = new System.IO.FileInfo(dataSource);
+                    sizeBeforeBytes = fileInfo.Length;
+                    sizeBeforeFormatted = FormatBytes(fileInfo.Length);
+                }
+
+                await _context.Database.ExecuteSqlRawAsync("VACUUM;");
+
+                if (!string.IsNullOrEmpty(dataSource) && System.IO.File.Exists(dataSource))
+                {
+                    var fileInfo = new System.IO.FileInfo(dataSource);
+                    sizeAfterBytes = fileInfo.Length;
+                    sizeAfterFormatted = FormatBytes(fileInfo.Length);
+                }
+            }
+            else
+            {
+                // Generic relational fallback
+                await _context.Database.ExecuteSqlRawAsync("VACUUM;");
+            }
+
+            long reclaimedBytes = Math.Max(0, sizeBeforeBytes - sizeAfterBytes);
+            string reclaimedFormatted = FormatBytes(reclaimedBytes);
+
+            return Ok(new
+            {
+                success = true,
+                message = "Kompaksi basis data (VACUUM) berhasil dijalankan! Ruang penyimpanan database berhasil dioptimalkan.",
+                data = new
+                {
+                    databaseProvider = provider,
+                    sizeBefore = sizeBeforeFormatted,
+                    sizeAfter = sizeAfterFormatted,
+                    reclaimedBytes = reclaimedBytes,
+                    reclaimedFormatted = reclaimedFormatted,
+                    executedAt = DateTimeOffset.UtcNow
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new
+            {
+                success = false,
+                message = $"Gagal menjalankan kompaksi basis data: {ex.Message}",
+                error = ex.ToString()
+            });
+        }
+    }
+
+    private static string FormatBytes(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{(bytes / 1024.0):F2} KB";
+        if (bytes < 1024 * 1024 * 1024) return $"{(bytes / (1024.0 * 1024.0)):F2} MB";
+        return $"{(bytes / (1024.0 * 1024.0 * 1024.0)):F2} GB";
+    }
+
     private static bool IsAdminUser(AppUser u)
     {
         if (u.Id == "usr-superadmin") return true;

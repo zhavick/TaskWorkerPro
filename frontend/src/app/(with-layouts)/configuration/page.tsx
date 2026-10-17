@@ -625,6 +625,32 @@ export default function ConfigurationPage() {
     },
   });
 
+  // Shrink / VACUUM Database Mutation (FSD 6.2.3)
+  const [shrinkResult, setShrinkResult] = useState<{
+    databaseProvider: string;
+    sizeBefore: string;
+    sizeAfter: string;
+    reclaimedFormatted: string;
+    executedAt: string;
+  } | null>(null);
+
+  const shrinkMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiClient.post("/settings/maintenance/shrink");
+      return res.data;
+    },
+    onSuccess: (data: any) => {
+      toast.success(data.message || "Kompaksi basis data (VACUUM) berhasil!");
+      if (data.data) {
+        setShrinkResult(data.data);
+      }
+      refetchMaintenanceStats();
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || "Gagal melakukan kompaksi basis data");
+    },
+  });
+
   const handleFieldChange = (key: string, value: string) => {
     setSettings((prev) => ({ ...prev, [key]: value }));
   };
@@ -2506,6 +2532,81 @@ export default function ConfigurationPage() {
                 </Button>
               </div>
             </div>
+          </div>
+
+          {/* Bagian 4: Optimasi & Kompaksi Basis Data (SQLite / PostgreSQL Database Shrink & VACUUM - FSD 6.2.3) */}
+          <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-xs dark:border-gray-800 dark:bg-gray-900">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-gray-100 pb-4 dark:border-gray-800">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 dark:bg-indigo-950 dark:text-indigo-400">
+                  <Database className="h-5 w-5" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-gray-900 dark:text-white">
+                    Bagian 4: Kompaksi &amp; Defragmentasi Basis Data (VACUUM Engine)
+                  </h4>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Kompak penyimpanan SQLite / PostgreSQL dengan mereklamasi ruang kosong pasca pembersihan data
+                  </p>
+                </div>
+              </div>
+
+              <Button
+                onClick={() => shrinkMutation.mutate()}
+                disabled={shrinkMutation.isPending}
+                className="gap-2 bg-indigo-600 text-white hover:bg-indigo-700 shadow-md shadow-indigo-600/20"
+              >
+                {shrinkMutation.isPending ? (
+                  <>
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                    Menjalankan VACUUM...
+                  </>
+                ) : (
+                  <>
+                    <HardDrive className="h-4 w-4" />
+                    Jalankan Kompaksi (VACUUM)
+                  </>
+                )}
+              </Button>
+            </div>
+
+            <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-4">
+              <div className="rounded-xl border border-gray-100 bg-gray-50/70 p-3.5 dark:border-gray-800 dark:bg-gray-800/40">
+                <span className="text-[11px] font-semibold text-gray-500 dark:text-gray-400">Database Engine</span>
+                <div className="mt-1 flex items-center gap-1.5 font-mono text-sm font-bold text-gray-900 dark:text-white">
+                  <Server className="h-4 w-4 text-indigo-500" />
+                  {shrinkResult?.databaseProvider ?? "PostgreSQL / SQLite"}
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-gray-100 bg-gray-50/70 p-3.5 dark:border-gray-800 dark:bg-gray-800/40">
+                <span className="text-[11px] font-semibold text-gray-500 dark:text-gray-400">Ukuran Sebelum</span>
+                <div className="mt-1 font-mono text-sm font-bold text-gray-700 dark:text-gray-300">
+                  {shrinkResult?.sizeBefore ?? "—"}
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-gray-100 bg-gray-50/70 p-3.5 dark:border-gray-800 dark:bg-gray-800/40">
+                <span className="text-[11px] font-semibold text-gray-500 dark:text-gray-400">Ukuran Sesudah</span>
+                <div className="mt-1 font-mono text-sm font-bold text-emerald-600 dark:text-emerald-400">
+                  {shrinkResult?.sizeAfter ?? "—"}
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-gray-100 bg-gray-50/70 p-3.5 dark:border-gray-800 dark:bg-gray-800/40">
+                <span className="text-[11px] font-semibold text-gray-500 dark:text-gray-400">Ruang Terpulihkan</span>
+                <div className="mt-1 font-mono text-sm font-bold text-indigo-600 dark:text-indigo-400">
+                  {shrinkResult?.reclaimedFormatted ?? "—"}
+                </div>
+              </div>
+            </div>
+
+            {shrinkResult && (
+              <div className="mt-3 flex items-center gap-2 text-[11px] text-gray-400">
+                <Clock className="h-3.5 w-3.5" />
+                <span>Terakhir dieksekusi: {new Date(shrinkResult.executedAt).toLocaleString("id-ID")}</span>
+              </div>
+            )}
           </div>
         </div>
       )}
