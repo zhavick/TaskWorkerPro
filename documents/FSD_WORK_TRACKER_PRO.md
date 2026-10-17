@@ -4,15 +4,15 @@
 ---
 
 ### INFORMASI DOKUMEN
-- **Nama Aplikasi**: Work Tracker Pro (TrackerKerja)
-- **Versi Dokumen**: 3.8 (Full-Width Responsive Studio Layout, QA E2E Tracking Suite & Projects REST API Edition)
+- **Nama Aplikasi**: Work Tracker Pro (TrackerKerja Modern)
+- **Versi Dokumen**: 3.9 (Full-Width Responsive Studio Layout, QA E2E Tracking Suite, Docker Automation & Announcements Edition)
 - **Status**: Disetujui & Terimplementasi Penuh (Production-Ready)
-- **Target Platform**: Web Application (ASP.NET Core 8.0 MVC / REST API / Docker Linux Container)
-- **Basis Data**: Entity Framework Core 8.0 dengan SQLite Database Engine (`/app/data/trackerkerja.db` via `./db_data` volume)
+- **Target Platform**: Web Application (Next.js 16 TurboPack Frontend / ASP.NET Core 8.0 Web API / Docker Multi-Container)
+- **Basis Data**: Entity Framework Core 8.0 dengan PostgreSQL 16 & SQLite Database Engine
 - **Engine Spreadsheet**: ClosedXML 0.104.2 (Format ARMS 21-kolom, Template Standar 9-kolom, & Timesheet Personal)
 - **Dokumentasi REST API**: OpenAPI 3.0 via Swashbuckle Swagger UI (`/swagger`) dengan Strict JWT Bearer Authorization & Postman Collection
-- **Repositori Source Code**: [https://github.com/zhavick/TrackerKerja.git](https://github.com/zhavick/TrackerKerja.git)
-- **Tanggal Rilis & Pembaruan**: 08 Oktober 2026
+- **Repositori Source Code**: [https://github.com/zhavick/TaskWorkerPro.git](https://github.com/zhavick/TaskWorkerPro.git) (Branch `modern`)
+- **Tanggal Rilis & Pembaruan**: 17 Oktober 2026
 
 ---
 
@@ -48,6 +48,7 @@
    - [5.20 Modul Gamifikasi, Daily Check-In, Aturan Streak, Master Badge Gaul & Klaim Hadiah](#520-modul-gamifikasi-daily-check-in-aturan-streak-master-badge-gaul--klaim-hadiah)
    - [5.21 Modul Tata Letak Studio Bentang Penuh (Full-Width Responsive Studio Layout)](#521-modul-tata-letak-studio-bentang-penuh-full-width-responsive-studio-layout)
    - [5.22 Paket Pengujian Mutu (Quality Assurance - QA) & Matriks Pelacakan End-to-End](#522-paket-pengujian-mutu-quality-assurance---qa--matriks-pelacakan-end-to-end)
+   - [5.23 Modul Pengumuman Resmi & Modal Popup Terpadu (Announcement Module)](#523-modul-pengumuman-resmi--modal-popup-terpadu-announcement-module)
 6. [Spesifikasi Non-Fungsional, Keamanan & Privasi Data](#6-spesifikasi-non-fungsional-keamanan--privasi-data)
 7. [Panduan Docker Containerization, Git Repository & Deployment](#7-panduan-docker-containerization-git-repository--deployment)
 
@@ -883,8 +884,8 @@ dotnet run --urls=http://localhost:5000
 
 ### 7.4 Repositori GitHub & Sinkronisasi Kode
 
-- **URL Repositori**: 👉 **`https://github.com/zhavick/TrackerKerja.git`**
-- **Branch Utama**: `main`
+- **URL Repositori**: 👉 **`https://github.com/zhavick/TaskWorkerPro.git`**
+- **Branch Utama**: `modern`
 - **Script Push Otomatis**:
 ```powershell
 .\git-push.ps1
@@ -893,8 +894,10 @@ dotnet run --urls=http://localhost:5000
 ---
 
 ### 📦 Berkas Referensi Terkait
-- **Dokumentasi Pengguna**: [USER_GUIDE.md](file:///c:/TEMP/VSCODE/TrackerKerja/USER_GUIDE.md)
-- **Panduan Docker**: [DOCKER_GUIDE.md](file:///c:/TEMP/VSCODE/TrackerKerja/DOCKER_GUIDE.md)
-- **Ringkasan Proyek**: [README.md](file:///c:/TEMP/VSCODE/TrackerKerja/README.md)
-- **Postman Collection**: `TrackerKerja_Postman_Collection.json`
-- **Postman Environment**: `TrackerKerja_Postman_Environment.json`
+- **Dokumentasi Pengguna**: [USER_GUIDE.md](file:///c:/TEMP/VSCODE/TrackerKerjaModern/documents/USER_GUIDE.md)
+- **Panduan Docker**: [DOCKER_GUIDE.md](file:///c:/TEMP/VSCODE/TrackerKerjaModern/DOCKER_GUIDE.md)
+- **Ringkasan Proyek**: [README.md](file:///c:/TEMP/VSCODE/TrackerKerjaModern/README.md)
+- **Panduan QA & SOP**: [QA/README.md](file:///c:/TEMP/VSCODE/TrackerKerjaModern/QA/README.md)
+- **Spreadsheet Pelacakan QA**: [Tracking_Test_Case_E2E_TrackerKerja.xlsx](file:///c:/TEMP/VSCODE/TrackerKerjaModern/QA/Tracking_Test_Case_E2E_TrackerKerja.xlsx)
+- **Postman Collection**: [TrackerKerja_Postman_Collection.json](file:///c:/TEMP/VSCODE/TrackerKerjaModern/TrackerKerja_Postman_Collection.json)
+- **Postman Environment**: [TrackerKerja_Postman_Environment.json](file:///c:/TEMP/VSCODE/TrackerKerjaModern/TrackerKerja_Postman_Environment.json)

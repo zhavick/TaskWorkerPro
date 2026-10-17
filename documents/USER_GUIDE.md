@@ -1,9 +1,9 @@
 # Buku Panduan Pengguna (User Guide)
-# Work Tracker Pro (TrackerKerja)
+# Work Tracker Pro (TrackerKerja Modern)
 
-> **Versi Aplikasi**: 3.8 (Full-Width Studio Layout, Projects REST API & Enterprise QA Testing Edition)  
+> **Versi Aplikasi**: 3.9 (Next.js 16 TurboPack & ASP.NET Core 8 Web API Modern Edition)  
 > **Target Pengguna**: Seluruh Karyawan, System Analyst, Developer, QA, Technical Writer, Project Lead, dan Administrator  
-> **Terakhir Diperbarui**: 08 Oktober 2026  
+> **Terakhir Diperbarui**: 17 Oktober 2026  
 
 ---
 
@@ -798,6 +798,51 @@ Buka berkas `Tracking_Test_Case_E2E_TrackerKerja.xlsx` menggunakan Microsoft Exc
 
 ### Q6: Dari mana saja sumber poin yang bisa saya gunakan untuk klaim hadiah?
 > **Jawaban**: Poin penukaran hadiah dibatasi secara ketat hanya dari akumulasi **Poin Master Badge yang telah Anda raih** ditambah **Poin Daily Check-In & Bonus Streak**. Poin tidak dapat dimanipulasi atau diisi secara manual.
+
+---
+
+## 18. Panduan Menjalankan Aplikasi via Docker
+
+### 18.1 Menjalankan Kontainer via Helper Script
+Pengguna sistem operasi Windows dapat mengoperasikan aplikasi secara instan menggunakan script `docker-run.ps1`:
+```powershell
+# Menjalankan seluruh kontainer (Frontend, Backend, Database)
+.\docker-run.ps1 up
+
+# Memeriksa kesehatan kontainer dan koneksi database
+.\docker-run.ps1 init-data
+
+# Melihat live streaming logs
+.\docker-run.ps1 logs
+```
+
+### 18.2 Akses Aplikasi
+- **Frontend Web UI**: [http://localhost:3000](http://localhost:3000)
+- **Backend API & Swagger**: [http://localhost:5008/swagger](http://localhost:5008/swagger)
+- **PostgreSQL Database**: Port `5432` (`trackerkerja_db`)
+
+---
+
+## 19. Modul Pengumuman Resmi & Notifikasi Modal Popup
+
+### 19.1 Penayangan Pengumuman bagi Pengguna
+- Pengumuman aktif yang disiarkan oleh Administrator akan otomatis muncul sebagai **Dialog Modal Popup** saat pengguna masuk ke aplikasi.
+- **Kategori Pengumuman**:
+  - *Informasi Penting*: Berwarna merah/rose dengan lencana darurat (*urgent*).
+  - *Pengumuman Umum*: Berwarna ungu/indigo untuk informasi operasional reguler.
+- **Opsi "Jangan Tampilkan Lagi"**: Pengguna dapat mencentang opsi ini agar pengumuman yang sudah dibaca tidak muncul kembali berulang kali.
+- **Pencegahan Tumpang-Tindih (Anti-Overlap)**: Dialog pengumuman tidak akan pernah bertumpuk dengan panduan pengguna atau tur spotlight.
+
+---
+
+## 20. Pemeliharaan Basis Data & Kompaksi Ruang Penyimpanan (VACUUM)
+
+Khusus pengguna dengan hak akses **Administrator**:
+1. Buka menu **Konfigurasi** dari sidebar navigasi.
+2. Klik tab **Pemeliharaan Data**.
+3. Gulir ke **Bagian 4: Kompaksi & Defragmentasi Basis Data (VACUUM Engine)**.
+4. Klik tombol **Jalankan Kompaksi (VACUUM)**.
+5. Sistem akan menjalankan proses `VACUUM ANALYZE` (PostgreSQL) atau `VACUUM` (SQLite) untuk memulihkan ruang penyimpanan disk pasca pembersihan data dan menampilkan rincian kapasitas ruang yang berhasil dioptimalkan.
 
 ---
 

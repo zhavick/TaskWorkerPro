@@ -1,12 +1,12 @@
 # 📘 TECHNICAL SPECIFICATION DOCUMENT (TSD)
-# WORK TRACKER PRO (TRACKERKERJA)
+# WORK TRACKER PRO (TRACKERKERJA MODERN)
 
-> **Dokumen Spesifikasi Teknis: Arsitektur Pengambilan Data, Controller, API Endpoint, Layanan Backend, dan Desain Basis Data Relasional**  
-> **Versi Sistem:** v3.8 Full-Width Studio Layout, Projects REST API & Enterprise QA Testing Edition  
-> **Target Framework:** .NET 8.0 (C# 12), ASP.NET Core MVC & RESTful Web API, Entity Framework Core 8  
-> **Mesin Basis Data:** SQLite 3 (Write-Ahead Logging / WAL Mode)  
+> **Dokumen Spesifikasi Teknis: Arsitektur Pengambilan Data, Controller, API Endpoint, Layanan Backend, Desain Basis Data Relasional, dan Otomasi Deployment**  
+> **Versi Sistem:** v3.9 Full-Width Studio Layout, Projects REST API, Docker Automation & Enterprise QA Testing Edition  
+> **Target Framework:** Next.js 16 (React 19, TypeScript), .NET 8.0 (C# 12 Web API), Entity Framework Core 8  
+> **Mesin Basis Data:** PostgreSQL 16 & SQLite 3 (Write-Ahead Logging / WAL Mode)  
 > **Status Dokumen:** Approved & Published  
-> **Tanggal Rilis:** 08 Oktober 2026  
+> **Tanggal Rilis:** 17 Oktober 2026  
 
 ---
 
@@ -34,6 +34,9 @@
    - 2.14 Modul Autentikasi, Token JWT & Validasi Sesi (Auth & Session Guard)
    - 2.15 Arsitektur Tata Letak Studio Bentang Penuh (Full-Width Responsive Studio Layout)
    - 2.16 Spesifikasi Teknis Pengujian Mutu Terpadu (QA Verification Engine & E2E Test Matrix Architecture)
+   - 2.17 Modul Pengumuman Resmi & Modal Popup Terpadu (Announcement Module)
+   - 2.18 Modul Kompaksi Basis Data & Defragmentasi Storage (VACUUM Engine)
+   - 2.19 Panduan Docker Containerization, Git Helper & Postman Collection
 3. [SECTION KHUSUS: DATABASE SPECIFICATION & ARCHITECTURE](#3-section-khusus-database-specification--architecture)
    - 3.1 Filosofi Desain Basis Data & Storage Engine
    - 3.2 Entity Relationship Diagram (ERD Lengkap)
@@ -55,12 +58,12 @@
 
 | Properti Dokumen | Rincian Teknis |
 | :--- | :--- |
-| **Nama Dokumen** | Technical Specification Document (TSD) Work Tracker Pro |
-| **Kode Dokumen** | TSD-WTP-3.8-202610 |
-| **Versi Aplikasi** | v3.8 Full-Width Studio Layout, Projects REST API & Enterprise QA Testing Edition |
+| **Nama Dokumen** | Technical Specification Document (TSD) Work Tracker Pro (TrackerKerja Modern) |
+| **Kode Dokumen** | TSD-WTP-3.9-202610 |
+| **Versi Aplikasi** | v3.9 Full-Width Studio Layout, Projects REST API, Docker Automation & Enterprise QA Testing Edition |
 | **Arsitek Sistem** | Senior Systems & Software Engineering Team |
 | **Klasifikasi Akses** | Internal Development Team, Technical Leads, DevOps, & DB Administrator |
-| **Tanggal Pembaruan** | 08 Oktober 2026 |
+| **Tanggal Pembaruan** | 17 Oktober 2026 |
 
 ---
 
@@ -853,6 +856,65 @@ graph TD
   - *Blocked / Major Defect*: Oranye Amber (`#FEF3C7` background, `#92400E` text font).
   - *Header Kolom*: Biru Navy Eksekutif (`#1E3A8A` background, `#FFFFFF` text font).
 - **Ergonomi Data**: Penerapan fitur *Freeze Panes* pada baris judul kolom dan *Auto-fit Column Width* dengan margin bantalan 3 karakter untuk kemudahan inspeksi auditor.
+
+---
+
+### 2.17 Modul Pengumuman Resmi & Modal Popup Terpadu (Announcement Module)
+
+#### A. Ringkasan Endpoint & Fungsi
+
+| Tipe | Route / URL | Controller | Nama Fungsi / Prosedur | Keterangan |
+| :--- | :--- | :--- | :--- | :--- |
+| **API** | `GET /api/announcements/active` | `AnnouncementsController` | `Task<IActionResult> GetActiveAnnouncements()` | Mengambil pengumuman aktif berstatus Sedang Tayang untuk modal popup |
+| **API** | `GET /api/announcements` | `AnnouncementsController` | `Task<IActionResult> GetAll(...)` | Mengambil seluruh pengumuman untuk manajemen admin dengan filter kategori |
+| **API** | `POST /api/announcements` | `AnnouncementsController` | `Task<IActionResult> Create([FromBody] dto)` | Admin membuat pengumuman baru (Penting vs Umum) |
+| **API** | `PUT /api/announcements/{id}` | `AnnouncementsController` | `Task<IActionResult> Update(id, [FromBody] dto)`| Mengedit pengumuman yang sudah ada |
+| **API** | `DELETE /api/announcements/{id}` | `AnnouncementsController` | `Task<IActionResult> Delete(id)` | Menghapus pengumuman dari basis data |
+| **API** | `POST /api/announcements/{id}/mark-read` | `AnnouncementsController` | `Task<IActionResult> MarkAsRead(id)` | Menandai "Jangan Tampilkan Lagi" per pengguna di database/localStorage |
+
+#### B. Aturan Urutan Tampilan & Anti-Overlap Sequencing Rule
+Modal popup pengumuman (`AnnouncementModal`) memiliki pencegah visual overlap:
+1. Menahan penayangan jika salah satu modal panduan sedang terbuka (`isUserGuideOpen || isOnboardingTourActive`).
+2. Menangkap event `wtp:panduan_closed` untuk memicu penayangan pengumuman secara halus dengan delay 350ms.
+
+---
+
+### 2.18 Modul Kompaksi Basis Data & Defragmentasi Storage (VACUUM Engine)
+
+#### A. Ringkasan Endpoint & Fungsi
+
+| Tipe | Route / URL | Controller | Nama Fungsi / Prosedur | Keterangan |
+| :--- | :--- | :--- | :--- | :--- |
+| **API** | `POST /api/settings/maintenance/shrink` | `SettingsController` | `Task<IActionResult> ShrinkDatabase()` | Menjalankan `VACUUM ANALYZE` (PostgreSQL) atau `VACUUM` (SQLite) |
+| **API** | `GET /api/settings/maintenance/stats` | `SettingsController` | `Task<IActionResult> GetMaintenanceStats()` | Menghitung inventori rekod operasional yang dapat dibersihkan |
+| **API** | `POST /api/settings/maintenance/purge` | `SettingsController` | `Task<IActionResult> PurgeOperationalData(...)`| Pembersihan total / parsial rekod operasional dengan proteksi master |
+
+#### B. Logika Kompaksi & Pengukuran Ruang Terpulihkan
+1. Mendeteksi provider database aktif (`_context.Database.ProviderName`).
+2. Pada **PostgreSQL**:
+   - Membaca ukuran awal via query `SELECT pg_database_size(current_database());`.
+   - Menjalankan perintah non-transaksional `VACUUM ANALYZE;`.
+   - Membaca ukuran akhir dan menghitung selisih ruang penyimpanan yang terpulihkan (*reclaimed bytes*).
+3. Pada **SQLite**:
+   - Membaca panjang file biner `.db` awal via `FileInfo.Length`.
+   - Menjalankan perintah SQL `VACUUM;`.
+   - Membaca panjang file setelah kompaksi untuk menghitung reduksi ukuran fisik.
+
+---
+
+### 2.19 Panduan Docker Containerization, Git Helper & Postman Collection
+
+#### A. Multi-Container Topologi & Orchestration
+1. **Layanan Docker Compose (`docker-compose.yml`)**:
+   - `postgres`: Image `postgres:16-alpine`, port 5432, volume `pgdata`.
+   - `backend`: Image multi-stage build .NET 8 SDK & ASP.NET Core Runtime, port 5008, volume `backend_uploads`.
+   - `frontend`: Image multi-stage build Node 20 Alpine, standalone Next.js 16 TurboPack, port 3000.
+2. **Helper Scripts Operasional**:
+   - `docker-run.ps1`: Script PowerShell untuk perintah `up`, `down`, `logs`, `status`, `restart`, dan `init-data`.
+   - `git-push.ps1`: Script PowerShell otomatisasi staging, semantic commit, dan remote push.
+3. **Postman API Artifacts**:
+   - `TrackerKerja_Postman_Collection.json`: Koleksi Postman 2.1 memuat 10 grup endpoint terstruktur dengan auto-save token JWT.
+   - `TrackerKerja_Postman_Environment.json`: Environment Postman dengan `base_url` port 5008.
 
 ---
 
