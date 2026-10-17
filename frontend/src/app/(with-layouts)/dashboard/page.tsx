@@ -390,7 +390,7 @@ export default function DashboardPage() {
       </div>
 
       {/* 3. 5 Personal Metric Cards (FSD Bagian 5.20.7 & USER_GUIDE Bagian 2.1) */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+      <div id="tour-metrics" data-tour="tour-metrics" className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
         {/* Card 1: Total Tugas */}
         <div className="rounded-2xl border border-gray-200/80 bg-white p-4.5 shadow-xs transition-shadow hover:shadow-sm dark:border-gray-800 dark:bg-gray-900">
           <div className="flex items-center justify-between">

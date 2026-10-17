@@ -308,13 +308,28 @@ export function UserGuideModal({
             TrackerKerja Modern v3.8 Production Ready
           </div>
 
-          <Button
-            id="closeUserGuideOkBtn"
-            onClick={handleClose}
-            className="bg-indigo-600 font-bold text-white shadow-md hover:bg-indigo-700"
-          >
-            Tutup Panduan
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              id="startTourFromGuideBtn"
+              variant="outline"
+              onClick={() => {
+                handleClose();
+                window.dispatchEvent(new CustomEvent("wtp:start_onboarding_tour"));
+              }}
+              className="gap-1.5 border-indigo-200 text-indigo-700 hover:bg-indigo-50 dark:border-indigo-800 dark:text-indigo-300 dark:hover:bg-indigo-950/40"
+            >
+              <Sparkles className="h-4 w-4 text-amber-500" />
+              Mulai Tur Layar (6 Spotlight)
+            </Button>
+
+            <Button
+              id="closeUserGuideOkBtn"
+              onClick={handleClose}
+              className="bg-indigo-600 font-bold text-white shadow-md hover:bg-indigo-700"
+            >
+              Tutup Panduan
+            </Button>
+          </div>
         </div>
       </div>
     </div>

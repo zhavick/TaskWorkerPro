@@ -5,6 +5,7 @@ import Sidebar from "@/components/common/sidebar";
 import { FloatingTimerBar } from "@/components/common/floating-timer-bar";
 import { AnnouncementModal } from "@/components/common/announcement-modal";
 import { UserGuideModal } from "@/components/common/user-guide-modal";
+import { OnboardingTour } from "@/components/common/onboarding-tour";
 import { SheetContent, SheetOverlay, SheetTitle } from "@/components/tailgrids/core/sheet";
 import { cn } from "@/utils/cn";
 import { ReactNode, useState, useEffect } from "react";
@@ -86,6 +87,9 @@ export default function WithLayout({ children }: { children: ReactNode }) {
         isOpen={isUserGuideOpen}
         onClose={() => setIsUserGuideOpen(false)}
       />
+
+      {/* Global Interactive Onboarding Tour (FSD 5.19 - 6 Spotlights) */}
+      <OnboardingTour />
     </div>
   );
 }

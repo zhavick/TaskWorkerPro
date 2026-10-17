@@ -114,7 +114,7 @@ export default function Sidebar({
                                 {section.items.map((item) => (
                                     <NavItem
                                         key={item.title}
-                                        id={item.title}
+                                        id={(item as any).id || item.title}
                                         icon={item.icon}
                                         label={item.title}
                                         href={item.url}

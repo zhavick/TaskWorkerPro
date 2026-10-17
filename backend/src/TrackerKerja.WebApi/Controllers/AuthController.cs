@@ -289,4 +289,20 @@ public class AuthController : ControllerBase
             expiresInMinutes = 15
         });
     }
+
+    [HttpGet("companies")]
+    public async Task<IActionResult> GetCompanies()
+    {
+        var companies = await _context.Companies
+            .OrderBy(c => c.Name)
+            .Select(c => new
+            {
+                c.Id,
+                c.Name,
+                c.Code
+            })
+            .ToListAsync();
+
+        return Ok(companies);
+    }
 }

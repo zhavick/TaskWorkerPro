@@ -43,6 +43,8 @@ export default function NavItem({
         <Tooltip placement="right">
           <TooltipTrigger asChild>
             <Link
+              id={id}
+              data-tour={id}
               href={href ?? items?.[0]?.url ?? "#"}
               onClick={onItemClick}
               className={cn(
@@ -68,6 +70,7 @@ export default function NavItem({
     return (
       <Collapsible
         id={id}
+        data-tour={id}
         className="border-none bg-transparent data-expanded:pb-0!"
       >
         <CollapsibleTrigger
@@ -124,6 +127,8 @@ export default function NavItem({
   return (
     href && (
       <Link
+        id={id}
+        data-tour={id}
         href={href}
         onClick={onItemClick}
         className={cn(

@@ -34,6 +34,7 @@ export const NAV_DATA = [
         items: [],
       },
       {
+        id: "tour-tasks",
         title: "Tugas & Kanban",
         icon: <CheckSquare className="h-5 w-5" />,
         items: [
@@ -48,12 +49,14 @@ export const NAV_DATA = [
         items: [],
       },
       {
+        id: "tour-attendance",
         title: "Presensi Kehadiran",
         icon: <CalendarCheck className="h-5 w-5" />,
         url: "/attendance",
         items: [],
       },
       {
+        id: "tour-calendar",
         title: "Kalender Jadwal",
         icon: <CalendarDays className="h-5 w-5" />,
         url: "/calendar",
@@ -92,6 +95,7 @@ export const NAV_DATA = [
         items: [],
       },
       {
+        id: "tour-sql",
         title: "Developer Tools",
         icon: <Code className="h-5 w-5" />,
         items: [

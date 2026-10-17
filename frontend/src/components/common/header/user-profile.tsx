@@ -20,7 +20,7 @@ import {
 import { AltArrowDownIcon } from "@/utils/icon";
 import Link from "next/link";
 
-import { HelpCircle } from "lucide-react";
+import { HelpCircle, Sparkles } from "lucide-react";
 
 interface UserProfileMenuItem {
   href?: string;
@@ -72,6 +72,10 @@ export function UserProfileButton() {
     window.dispatchEvent(new CustomEvent("wtp:open_user_guide"));
   };
 
+  const handleStartTour = () => {
+    window.dispatchEvent(new CustomEvent("wtp:start_onboarding_tour"));
+  };
+
   const menuItems: UserProfileMenuItem[] = [
     {
       href: "/profile",
@@ -82,6 +86,11 @@ export function UserProfileButton() {
       href: "/configuration",
       icon: <GearIcon />,
       label: "Konfigurasi Sistem",
+    },
+    {
+      icon: <Sparkles className="h-4 w-4 text-amber-500" />,
+      label: "Tur Layar Interaktif",
+      onClick: handleStartTour,
     },
     {
       icon: <HelpCircle className="h-4 w-4" />,

@@ -68,6 +68,8 @@ export default function ThemeCustomizerDialog() {
     <>
       {/* Trigger Button in Header */}
       <button
+        id="tour-theme"
+        data-tour="tour-theme"
         onClick={() => setIsOpen(true)}
         title="Theme & Font Studio (40 Tema)"
         aria-label="Theme & Font Studio"
