@@ -48,20 +48,27 @@ const RARITY_CONFIG: Record<
     glowClass: "",
   },
   1: {
+    label: "Common",
+    badgeClass: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800",
+    borderClass: "border-emerald-200 dark:border-emerald-900/50",
+    bgClass: "from-emerald-50/30 to-white dark:from-emerald-950/20 dark:to-gray-900",
+    glowClass: "",
+  },
+  2: {
     label: "Rare",
     badgeClass: "bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-400 border border-blue-200 dark:border-blue-800",
     borderClass: "border-blue-200 dark:border-blue-900/50",
     bgClass: "from-blue-50/30 to-white dark:from-blue-950/20 dark:to-gray-900",
     glowClass: "shadow-xs shadow-blue-500/10",
   },
-  2: {
+  3: {
     label: "Epic",
     badgeClass: "bg-purple-50 text-purple-700 dark:bg-purple-950/60 dark:text-purple-400 border border-purple-200 dark:border-purple-800",
     borderClass: "border-purple-200 dark:border-purple-900/50",
     bgClass: "from-purple-50/30 to-white dark:from-purple-950/20 dark:to-gray-900",
     glowClass: "shadow-md shadow-purple-500/15",
   },
-  3: {
+  4: {
     label: "Legendary",
     badgeClass: "bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-400 border border-amber-200 dark:border-amber-800 font-bold",
     borderClass: "border-amber-300 dark:border-amber-700/60",

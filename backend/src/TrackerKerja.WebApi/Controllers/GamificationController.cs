@@ -16,11 +16,16 @@ public class GamificationController : ControllerBase
 {
     private readonly AppDbContext _context;
     private readonly ICurrentTenantService _tenantService;
+    private readonly IBadgeEvaluationService? _badgeService;
 
-    public GamificationController(AppDbContext context, ICurrentTenantService tenantService)
+    public GamificationController(
+        AppDbContext context,
+        ICurrentTenantService tenantService,
+        IBadgeEvaluationService? badgeService = null)
     {
         _context = context;
         _tenantService = tenantService;
+        _badgeService = badgeService;
     }
 
     [HttpGet("status")]
@@ -28,6 +33,11 @@ public class GamificationController : ControllerBase
     {
         var userId = _tenantService.UserId;
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
+        if (_badgeService != null)
+        {
+            await _badgeService.EvaluateBadgesAsync(userId);
+        }
 
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
         var currentMonth = today.Month;
@@ -135,25 +145,40 @@ public class GamificationController : ControllerBase
             }
         }
 
+        bool isMonthlyMilestone = newStreak >= 30;
+        int pointsEarned = 10;
+        if (isMonthlyMilestone)
+        {
+            pointsEarned += 500; // Monthly streak 30-day bonus per FSD 5.20.3
+        }
+
         var entry = new DailyCheckIn
         {
             UserId = userId,
             CheckInDate = today,
             CheckInTime = DateTimeOffset.UtcNow,
-            PointsEarned = 10,
+            PointsEarned = pointsEarned,
             StreakDay = newStreak,
-            IsMonthlyMilestone = false
+            IsMonthlyMilestone = isMonthlyMilestone
         };
 
         _context.DailyCheckIns.Add(entry);
         await _context.SaveChangesAsync();
 
+        if (_badgeService != null)
+        {
+            await _badgeService.EvaluateBadgesAsync(userId);
+        }
+
         return Ok(new
         {
             success = true,
-            message = $"Check-In berhasil! Anda mendapatkan +10 Poin. Rangkaian Streak: {newStreak} Hari.",
-            pointsEarned = 10,
-            streakDay = newStreak
+            message = isMonthlyMilestone
+                ? $"Luar biasa! Anda mencapai Monthly Streak 30 Hari! +{pointsEarned} Poin diperoleh & reward milestone terbuka!"
+                : $"Check-In berhasil! Anda mendapatkan +{pointsEarned} Poin. Rangkaian Streak: {newStreak} Hari.",
+            pointsEarned,
+            streakDay = newStreak,
+            isMonthlyMilestone
         });
     }
 
@@ -233,6 +258,11 @@ public class GamificationController : ControllerBase
     public async Task<IActionResult> GetBadges()
     {
         var userId = _tenantService.UserId;
+        if (!string.IsNullOrEmpty(userId) && _badgeService != null)
+        {
+            await _badgeService.EvaluateBadgesAsync(userId);
+        }
+
         var masterBadges = await _context.MasterBadges
             .Where(b => b.IsActive)
             .OrderBy(b => b.OrderIndex)
@@ -293,8 +323,24 @@ public class GamificationController : ControllerBase
 
         if (reward.Stock <= 0) return BadRequest(new { success = false, message = "Stok hadiah ini sudah habis." });
 
-        // Calculate user current available points
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
+
+        // Validasi Monthly Streak Milestone Reward (FSD 5.20.3)
+        if (reward.IsMonthlyMilestoneReward)
+        {
+            var hasMilestone = await _context.DailyCheckIns
+                .AnyAsync(c => c.UserId == userId && c.CheckInDate.Month == today.Month && c.CheckInDate.Year == today.Year && c.IsMonthlyMilestone);
+            if (!hasMilestone)
+            {
+                return BadRequest(new
+                {
+                    success = false,
+                    message = "Hadiah ini khusus untuk pengguna yang telah meraih Monthly Streak Milestone (Streak 30 Hari)."
+                });
+            }
+        }
+
+        // Calculate user current available points
         var checkInPts = await _context.DailyCheckIns
             .Where(c => c.UserId == userId && c.CheckInDate.Month == today.Month && c.CheckInDate.Year == today.Year)
             .SumAsync(c => c.PointsEarned);

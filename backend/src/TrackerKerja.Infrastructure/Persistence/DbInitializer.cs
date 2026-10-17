@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using TrackerKerja.Domain.Entities;
+using TrackerKerja.Domain.Enums;
 using TrackerKerja.Infrastructure.Services;
 
 namespace TrackerKerja.Infrastructure.Persistence;
@@ -112,6 +113,87 @@ public static class DbInitializer
         {
             adminUser.PasswordHash = PasswordHasher.HashPassword("AdminSecurePassword2026!");
             adminUser.IsApproved = true;
+            await context.SaveChangesAsync();
+        }
+
+        // 3. Pastikan Koleksi 40+ Master Badge Gaul & Modern Anak Muda (FSD 5.20.4)
+        if (!await context.MasterBadges.AnyAsync())
+        {
+            var badges = new List<MasterBadge>
+            {
+                // Kategori: Tugas & Eksekusi
+                new MasterBadge { Code = "FIRST_TASK", Name = "First Blood Eksekusi", Description = "Selesaikan tugas kerja pertama Anda dalam sistem.", Category = "Tugas", Icon = "check-circle", Color = "#10B981", Points = 50, Rarity = BadgeRarity.Common, OrderIndex = 1 },
+                new MasterBadge { Code = "TASK_5", Name = "Sat Set Anti Wacana", Description = "Tuntaskan 5 tugas kerja tanpa menunda-nunda.", Category = "Tugas", Icon = "zap", Color = "#3B82F6", Points = 75, Rarity = BadgeRarity.Common, OrderIndex = 2 },
+                new MasterBadge { Code = "TASK_10", Name = "Si Paling Eksekutor", Description = "Selesaikan 10 tugas kerja dengan hasil memuaskan.", Category = "Tugas", Icon = "check-square", Color = "#6366F1", Points = 150, Rarity = BadgeRarity.Rare, OrderIndex = 3 },
+                new MasterBadge { Code = "TASK_25", Name = "Algojo Backlog", Description = "Babat habis 25 tugas kerja dari backlog sprint.", Category = "Tugas", Icon = "layers", Color = "#8B5CF6", Points = 300, Rarity = BadgeRarity.Rare, OrderIndex = 4 },
+                new MasterBadge { Code = "TASK_50", Name = "Mesin Pencetak Done", Description = "Kumpulkan 50 tugas kerja berstatus Done.", Category = "Tugas", Icon = "check-check", Color = "#EC4899", Points = 600, Rarity = BadgeRarity.Epic, OrderIndex = 5 },
+                new MasterBadge { Code = "TASK_100", Name = "Dewa Sprint", Description = "100 tugas tuntas! Anda adalah legenda hidup eksekusi kerja.", Category = "Tugas", Icon = "crown", Color = "#F59E0B", Points = 1200, Rarity = BadgeRarity.Legendary, OrderIndex = 6 },
+
+                // Kategori: Timesheet & Jam Kerja
+                new MasterBadge { Code = "HOURS_1", Name = "Langkah Perdana", Description = "Catat 1 jam kerja pertama di lembar timesheet.", Category = "Timesheet", Icon = "clock", Color = "#06B6D4", Points = 25, Rarity = BadgeRarity.Common, OrderIndex = 7 },
+                new MasterBadge { Code = "HOURS_10", Name = "Kopi & Keringat", Description = "Akumulasi 10 jam fokus kerja produktif nyata.", Category = "Timesheet", Icon = "coffee", Color = "#10B981", Points = 100, Rarity = BadgeRarity.Common, OrderIndex = 8 },
+                new MasterBadge { Code = "HOURS_40", Name = "Jawara Timesheet", Description = "Tembus 40 jam kerja setara 1 minggu penuh.", Category = "Timesheet", Icon = "timer", Color = "#3B82F6", Points = 250, Rarity = BadgeRarity.Rare, OrderIndex = 9 },
+                new MasterBadge { Code = "HOURS_100", Name = "Detik Demi Detik", Description = "Akumulasi 100 jam kerja tercatat presisi di timesheet.", Category = "Timesheet", Icon = "hourglass", Color = "#6366F1", Points = 500, Rarity = BadgeRarity.Rare, OrderIndex = 10 },
+                new MasterBadge { Code = "HOURS_200", Name = "Man-Days Glider", Description = "Raih 200 jam kerja setara 25 Man-Days efisiensi tinggi.", Category = "Timesheet", Icon = "activity", Color = "#8B5CF6", Points = 1000, Rarity = BadgeRarity.Epic, OrderIndex = 11 },
+                new MasterBadge { Code = "HOURS_500", Name = "Dedikasi Tanpa Batas", Description = "500 jam kerja penuh loyalitas dan dedikasi profesional.", Category = "Timesheet", Icon = "shield", Color = "#F59E0B", Points = 2500, Rarity = BadgeRarity.Legendary, OrderIndex = 12 },
+
+                // Kategori: Presensi & Kehadiran
+                new MasterBadge { Code = "ATTEND_1", Name = "Hadir Perdana", Description = "Lakukan presensi Clock-In pertama kali dalam sistem.", Category = "Presensi", Icon = "calendar-check", Color = "#10B981", Points = 25, Rarity = BadgeRarity.Common, OrderIndex = 13 },
+                new MasterBadge { Code = "ATTEND_10", Name = "Presensi Rajin", Description = "10 hari presensi tepat waktu di jam operasional kantor.", Category = "Presensi", Icon = "calendar", Color = "#3B82F6", Points = 100, Rarity = BadgeRarity.Common, OrderIndex = 14 },
+                new MasterBadge { Code = "ATTEND_25", Name = "Pejuang Absensi", Description = "25 hari hadir konsisten tanpa absen satu hari pun.", Category = "Presensi", Icon = "calendar-days", Color = "#6366F1", Points = 250, Rarity = BadgeRarity.Rare, OrderIndex = 15 },
+                new MasterBadge { Code = "WFO_HERO", Name = "Pejuang Aspal WFO", Description = "5 kali presensi kerja langsung di kantor fisik (WFO).", Category = "Presensi", Icon = "building", Color = "#F59E0B", Points = 100, Rarity = BadgeRarity.Common, OrderIndex = 16 },
+                new MasterBadge { Code = "WFH_HERO", Name = "WFH Tetap Gacor", Description = "5 kali presensi kerja remote (WFH) dengan produktivitas tinggi.", Category = "Presensi", Icon = "laptop", Color = "#06B6D4", Points = 100, Rarity = BadgeRarity.Common, OrderIndex = 17 },
+
+                // Kategori: Daily Check-In & Streak
+                new MasterBadge { Code = "CHECKIN_1", Name = "Sapaan Perdana", Description = "Klaim poin Daily Check-In pertama Anda.", Category = "Streak", Icon = "sparkler", Color = "#F59E0B", Points = 10, Rarity = BadgeRarity.Common, OrderIndex = 18 },
+                new MasterBadge { Code = "CHECKIN_7", Name = "Konsistensi Mingguan", Description = "7 hari aktif menjalankan check-in harian.", Category = "Streak", Icon = "flame", Color = "#F97316", Points = 100, Rarity = BadgeRarity.Common, OrderIndex = 19 },
+                new MasterBadge { Code = "CHECKIN_15", Name = "Jawara 15 Hari", Description = "Capai target milestone 15 hari check-in bulanan (50% target).", Category = "Streak", Icon = "award", Color = "#EF4444", Points = 250, Rarity = BadgeRarity.Rare, OrderIndex = 20 },
+                new MasterBadge { Code = "CHECKIN_30", Name = "Raja Sebulan Penuh", Description = "Tembus 30 hari check-in penuh (100% target saldo).", Category = "Streak", Icon = "crown", Color = "#8B5CF6", Points = 500, Rarity = BadgeRarity.Epic, OrderIndex = 21 },
+                new MasterBadge { Code = "STREAK_3", Name = "Percikan Api", Description = "Pertahankan streak check-in berturut-turut selama 3 hari.", Category = "Streak", Icon = "flame", Color = "#F59E0B", Points = 50, Rarity = BadgeRarity.Common, OrderIndex = 22 },
+                new MasterBadge { Code = "STREAK_7", Name = "Api Membara", Description = "Streak 7 hari berturut-turut tanpa pernah terputus.", Category = "Streak", Icon = "zap", Color = "#F97316", Points = 150, Rarity = BadgeRarity.Rare, OrderIndex = 23 },
+                new MasterBadge { Code = "STREAK_14", Name = "Pantang Kendor", Description = "Streak 14 hari konsistensi baja tanpa kendur.", Category = "Streak", Icon = "flame", Color = "#EF4444", Points = 350, Rarity = BadgeRarity.Epic, OrderIndex = 24 },
+                new MasterBadge { Code = "STREAK_30", Name = "Sultan Check-In 30 Hari", Description = "Raih streak 30 hari utuh! Membuka klaim reward bulanan eksklusif.", Category = "Streak", Icon = "crown", Color = "#F59E0B", Points = 1000, Rarity = BadgeRarity.Legendary, OrderIndex = 25 },
+
+                // Kategori: Utilitas Developer & Catatan
+                new MasterBadge { Code = "NOTE_1", Name = "Pencatat Ulung", Description = "Buat catatan kerja atau SOP pertama Anda.", Category = "Catatan", Icon = "book-open", Color = "#10B981", Points = 25, Rarity = BadgeRarity.Common, OrderIndex = 26 },
+                new MasterBadge { Code = "NOTE_5", Name = "Ensiklopedia Proyek", Description = "Dokumentasikan 5 catatan teknis dan SOP tim.", Category = "Catatan", Icon = "library", Color = "#3B82F6", Points = 125, Rarity = BadgeRarity.Rare, OrderIndex = 27 },
+                new MasterBadge { Code = "DEWA_SQL", Name = "Dewa SQL", Description = "Format dan rapikan kueri database menggunakan SQL Beautifier.", Category = "Developer", Icon = "database", Color = "#6366F1", Points = 75, Rarity = BadgeRarity.Common, OrderIndex = 28 },
+                new MasterBadge { Code = "PAWANG_JSON", Name = "Pawang JSON", Description = "Validasi dan format payload JSON dengan JSON Tools.", Category = "Developer", Icon = "code", Color = "#8B5CF6", Points = 75, Rarity = BadgeRarity.Common, OrderIndex = 29 },
+
+                // Kategori: Kolaborasi, Kendala & Solusi
+                new MasterBadge { Code = "SI_CURHAT", Name = "Jujur Pada Kendala", Description = "Dokumentasikan kendala kerja (Obstacle) untuk transparansi tim.", Category = "Tugas", Icon = "alert-circle", Color = "#F59E0B", Points = 50, Rarity = BadgeRarity.Common, OrderIndex = 30 },
+                new MasterBadge { Code = "SI_SOLUTIF", Name = "Si Paling Solutif", Description = "Sertakan solusi teknis (Solution) cerdas untuk menyelesaikan tugas.", Category = "Tugas", Icon = "lightbulb", Color = "#10B981", Points = 75, Rarity = BadgeRarity.Common, OrderIndex = 31 },
+                new MasterBadge { Code = "PEMBABAT_SUBTASK", Name = "Ahli Dekomposisi", Description = "Pecah tugas besar menjadi hierarki sub-tugas terstruktur.", Category = "Tugas", Icon = "list-tree", Color = "#06B6D4", Points = 50, Rarity = BadgeRarity.Common, OrderIndex = 32 },
+                new MasterBadge { Code = "PEMBURU_REWARD", Name = "Pemberani Tukar Poin", Description = "Klaim reward nyata pertama Anda dari Reward Store.", Category = "Reward", Icon = "gift", Color = "#EC4899", Points = 100, Rarity = BadgeRarity.Common, OrderIndex = 33 },
+                new MasterBadge { Code = "MVP_KANTOR", Name = "MVP Idola Kantor", Description = "Masuk 3 besar peringkat teratas leaderboard gamifikasi.", Category = "Prestasi", Icon = "star", Color = "#F59E0B", Points = 500, Rarity = BadgeRarity.Epic, OrderIndex = 34 },
+                new MasterBadge { Code = "TIMER_MASTER", Name = "Penjinak Multi-Timer", Description = "Operasikan lebih dari 1 sesi timer secara bersamaan.", Category = "Timesheet", Icon = "timer", Color = "#6366F1", Points = 50, Rarity = BadgeRarity.Common, OrderIndex = 35 },
+                new MasterBadge { Code = "KALENDER_PRO", Name = "Pengatur Jadwal Elit", Description = "Eksplorasi visualisasi tugas dalam kalender 4-mode.", Category = "Tugas", Icon = "calendar-days", Color = "#3B82F6", Points = 50, Rarity = BadgeRarity.Common, OrderIndex = 36 },
+                new MasterBadge { Code = "TEMA_STILIS", Name = "Fashionista UI", Description = "Ganti tema visual workspace dari 40 tema eye-friendly.", Category = "Sistem", Icon = "palette", Color = "#8B5CF6", Points = 25, Rarity = BadgeRarity.Common, OrderIndex = 37 },
+                new MasterBadge { Code = "IMPORT_WIZARD", Name = "Penyihir Spreadsheet", Description = "Impor data tugas tim dari berkas Excel multi-sheet.", Category = "Tugas", Icon = "file-spreadsheet", Color = "#10B981", Points = 100, Rarity = BadgeRarity.Rare, OrderIndex = 38 },
+                new MasterBadge { Code = "EXPORT_NINJA", Name = "Ninja Laporan ARMS", Description = "Unduh laporan spreadsheet ClosedXML format ARMS 21-kolom.", Category = "Tugas", Icon = "download", Color = "#06B6D4", Points = 100, Rarity = BadgeRarity.Rare, OrderIndex = 39 },
+                new MasterBadge { Code = "PEJUANG_LEMBUR", Name = "Lembur Bergengsi", Description = "Rekam sesi kerja produktif di atas pukul 18:00.", Category = "Timesheet", Icon = "moon", Color = "#F59E0B", Points = 75, Rarity = BadgeRarity.Common, OrderIndex = 40 },
+                new MasterBadge { Code = "SQUAD_LEADER", Name = "Nahkoda Proyek", Description = "Selesaikan proyek tim hingga mencapai progress tuntas 100%.", Category = "Prestasi", Icon = "flag", Color = "#6366F1", Points = 500, Rarity = BadgeRarity.Epic, OrderIndex = 41 },
+                new MasterBadge { Code = "ULTIMATE_LEGEND", Name = "Legenda Hidup TrackerKerja", Description = "Akumulasikan lebih dari 2000 total poin gamifikasi.", Category = "Prestasi", Icon = "sparkle", Color = "#F59E0B", Points = 1000, Rarity = BadgeRarity.Legendary, OrderIndex = 42 }
+            };
+
+            context.MasterBadges.AddRange(badges);
+            await context.SaveChangesAsync();
+        }
+
+        // 4. Pastikan Katalog Hadiah Nyata (FSD 5.20.5 & 5.20.6)
+        if (!await context.RewardItems.AnyAsync())
+        {
+            var rewards = new List<RewardItem>
+            {
+                new RewardItem { Name = "Voucher Kopi Kenangan / Janji Jiwa 50K", Description = "Voucher digital belanja kopi favorit senilai Rp 50.000.", PointCost = 500, Stock = 50, Category = "F&B", Icon = "coffee", Color = "#10B981", IsActive = true, IsMonthlyMilestoneReward = false, OrderIndex = 1 },
+                new RewardItem { Name = "Saldo E-Wallet GoPay / OVO Rp 100.000", Description = "Transfer saldo dompet digital langsung ke nomor ponsel Anda.", PointCost = 1000, Stock = 30, Category = "E-Wallet", Icon = "wallet", Color = "#3B82F6", IsActive = true, IsMonthlyMilestoneReward = false, OrderIndex = 2 },
+                new RewardItem { Name = "Tumbler Stainless Steel TrackerKerja Pro", Description = "Botol minum eksklusif insulasi suhu panas & dingin 500ml.", PointCost = 1500, Stock = 20, Category = "Merchandise", Icon = "glass-water", Color = "#6366F1", IsActive = true, IsMonthlyMilestoneReward = false, OrderIndex = 3 },
+                new RewardItem { Name = "T-Shirt Developer 'Si Paling Done' Exclusive", Description = "Kaos katun combed 30s premium dengan sablon tipografi modern.", PointCost = 2000, Stock = 15, Category = "Merchandise", Icon = "shirt", Color = "#8B5CF6", IsActive = true, IsMonthlyMilestoneReward = false, OrderIndex = 4 },
+                new RewardItem { Name = "Wireless Bluetooth ANC Earbuds", Description = "Headset nirkabel dengan fitur Active Noise Cancelling untuk fokus kerja.", PointCost = 3500, Stock = 10, Category = "Gadget", Icon = "headphones", Color = "#EC4899", IsActive = true, IsMonthlyMilestoneReward = false, OrderIndex = 5 },
+                new RewardItem { Name = "Mechanical Keyboard RGB Hot-Swappable", Description = "Keyboard mekanik 75% khusus pencapai Monthly Streak 30 Hari.", PointCost = 5000, Stock = 5, Category = "Gadget", Icon = "keyboard", Color = "#F59E0B", IsActive = true, IsMonthlyMilestoneReward = true, OrderIndex = 6 }
+            };
+
+            context.RewardItems.AddRange(rewards);
             await context.SaveChangesAsync();
         }
     }
