@@ -1,0 +1,794 @@
+{
+  "info": {
+    "_postman_id": "8e90c0e0-8c0e-4e66-928a-trackerkerja-2026",
+    "name": "TaskWorker Pro (TrackerKerja Modern) API Collection",
+    "description": "Koleksi Postman API Resmi untuk Pengujian & Otomasi Seluruh 19 Modul Sistem TaskWorker Pro v2.0.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. Autentikasi & Akun",
+      "item": [
+        {
+          "name": "Login Pengguna",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.data && jsonData.data.token) {",
+                  "    pm.environment.set('jwt_token', jsonData.data.token);",
+                  "    console.log('JWT Token saved successfully.');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@trackerkerja.local\",\n  \"password\": \"Password123!\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Registrasi Pengguna Baru",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Budi Santoso\",\n  \"email\": \"budi@perusahaan.co.id\",\n  \"password\": \"Password123!\",\n  \"jobTitle\": \"Frontend Engineer\",\n  \"companyCode\": \"CORP-ALPHA\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/register",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "register"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Refresh Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refresh_token}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/refresh-token",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "refresh-token"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Dashboard & Metrik",
+      "item": [
+        {
+          "name": "Statistik Eksekutif Dashboard",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/dashboard/stats",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "dashboard",
+                "stats"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Beban Kerja Tim (Workload Analytics)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/dashboard/workload",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "dashboard",
+                "workload"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Manajemen Tugas (Tasks)",
+      "item": [
+        {
+          "name": "Ambil Seluruh Tugas (Hierarki WBS)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasks",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "tasks"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Buat Tugas Baru",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Implementasi Modul Sinkronisasi Host Induk\",\n  \"description\": \"Mengembangkan endpoint push dan pull dengan proteksi zip-slip.\",\n  \"priority\": 2,\n  \"status\": 1,\n  \"progress\": 25,\n  \"projectId\": 1,\n  \"startDate\": \"2026-10-18\",\n  \"dueDate\": \"2026-10-25\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/tasks",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "tasks"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Detail Tugas Berdasarkan ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasks/1",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "tasks",
+                "1"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Data Tugas & Solusi Kendala",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Implementasi Modul Sinkronisasi Host Induk\",\n  \"description\": \"Mengembangkan endpoint push dan pull dengan proteksi zip-slip.\",\n  \"priority\": 2,\n  \"status\": 2,\n  \"progress\": 100,\n  \"obstacle\": \"Koneksi jaringan sempat terputus saat payload besar\",\n  \"solution\": \"Ditambahkan chunked stream buffer dan timeout retry 3x\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/tasks/1",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "tasks",
+                "1"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Manajemen Proyek (Projects)",
+      "item": [
+        {
+          "name": "Ambil Daftar Proyek",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/projects",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "projects"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Buat Proyek Baru",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Portal Enterprise Wahana Holding\",\n  \"description\": \"Pengembangan portal holding multi-company dengan isolasi tenant.\",\n  \"clientName\": \"PT Wahana Holding\",\n  \"color\": \"#6366F1\",\n  \"budget\": 150000000,\n  \"deadline\": \"2026-12-31\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/projects",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "projects"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Timesheets & Multi-Timer",
+      "item": [
+        {
+          "name": "Ambil Riwayat Sesi Timesheet",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/timesheets",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "timesheets"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Catat Sesi Kerja Manual Cepat (+1h)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"taskId\": 1,\n  \"durationMinutes\": 60,\n  \"notes\": \"Code review dan perbaikan skrip pengujian E2E\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/timesheets/log-session",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "timesheets",
+                "log-session"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Presensi & Absensi",
+      "item": [
+        {
+          "name": "Status Presensi Hari Ini",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/attendances/today",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "attendances",
+                "today"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Check-In Presensi (WFO GPS)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"workLocation\": 1,\n  \"latitude\": -6.2,\n  \"longitude\": 106.816666,\n  \"notes\": \"Check in kantor pusat\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/attendances/check-in",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "attendances",
+                "check-in"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Check-Out Presensi",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"notes\": \"Pekerjaan hari ini selesai 100%\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/attendances/check-out",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "attendances",
+                "check-out"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Gamifikasi & Badges",
+      "item": [
+        {
+          "name": "Ambil Status Gamifikasi Pengguna",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gamification/status",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gamification",
+                "status"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Daily Check-In Harian (+10 Poin & Streak)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gamification/daily-check-in",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gamification",
+                "daily-check-in"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Galeri 42 Master Badges Gaul",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gamification/badges",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gamification",
+                "badges"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Katalog Hadiah (Reward Items)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gamification/rewards",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gamification",
+                "rewards"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Klaim Hadiah",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rewardItemId\": 1,\n  \"contactNumber\": \"08123456789\",\n  \"shippingAddress\": \"Gedung Cyber 2 Lantai 15, Jl. HR Rasuna Said\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/gamification/claim-reward",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gamification",
+                "claim-reward"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "8. Pemeliharaan Basis Data (Maintenance)",
+      "item": [
+        {
+          "name": "Kompaksi Basis Data (VACUUM / Shrink)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/settings/maintenance/shrink",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "settings",
+                "maintenance",
+                "shrink"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Statistik Pemeliharaan Data",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/settings/maintenance/stats",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "settings",
+                "maintenance",
+                "stats"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "9. Multi-Instance Sync",
+      "item": [
+        {
+          "name": "Health Check Host Induk",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/sync/health",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "sync",
+                "health"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "10. Pengumuman Resmi (Announcements)",
+      "item": [
+        {
+          "name": "Ambil Pengumuman Aktif (Modal Popup)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/announcements/active",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "announcements",
+                "active"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
