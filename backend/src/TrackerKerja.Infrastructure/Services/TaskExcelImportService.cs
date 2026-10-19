@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.RegularExpressions;
 using ClosedXML.Excel;
 using Microsoft.EntityFrameworkCore;
 using TrackerKerja.Application.Common.Interfaces;
@@ -188,15 +189,16 @@ public class TaskExcelImportService : ITaskExcelImportService
         int rowIndex = 0;
         var seenBatchKeys = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 
-        var sheetsToProcess = workbook.Worksheets.Where(ws =>
+        var sheetsToProcess = new List<IXLWorksheet>();
+        int totalSheets = workbook.Worksheets.Count;
+        for (int sIdx = 1; sIdx <= totalSheets; sIdx++)
         {
-            var nameLower = ws.Name.Trim().ToLowerInvariant();
-            if (nameLower.Contains("lookup") || nameLower.Contains("dashboard") ||
-                nameLower.Contains("template") || nameLower.Contains("panduan") ||
-                nameLower.Contains("guide") || nameLower.Contains("readme"))
-                return false;
-            return ws.FirstRowUsed() != null;
-        }).ToList();
+            var ws = workbook.Worksheet(sIdx);
+            if (!IsIgnoredSheet(ws, sIdx, totalSheets))
+            {
+                sheetsToProcess.Add(ws);
+            }
+        }
 
         foreach (var ws in sheetsToProcess)
         {
@@ -236,8 +238,8 @@ public class TaskExcelImportService : ITaskExcelImportService
 
             if (titleCol == 0) continue;
 
-            // Ekstrak nama personil dari nama sheet (misal sheet bernama "Budi", "Dewi Sartika", "Wahana")
-            var sheetPerson = ExtractPersonFromSheetName(ws.Name);
+            // Ekstrak nama personil & email yang mereka miliki dari sheet (atau header metadata)
+            var sheetPersonnel = ResolveSheetPersonnel(ws, headerRow.RowNumber(), picEmailCol, existingUsers, companyDomain);
 
             var lastRow = ws.LastRowUsed()?.RowNumber() ?? 0;
 
@@ -257,11 +259,24 @@ public class TaskExcelImportService : ITaskExcelImportService
                 var obstacle = obstacleCol > 0 ? ws.Cell(r, obstacleCol).GetString().Trim() : null;
                 var solution = solutionCol > 0 ? ws.Cell(r, solutionCol).GetString().Trim() : null;
 
-                // Tentukan nama/email PIC dari baris, atau fallback ke Nama Sheet
+                // Tentukan nama/email PIC dari baris, atau fallback ke SheetPersonnel
                 string? picText = null;
-                if (picEmailCol > 0) picText = ws.Cell(r, picEmailCol).GetString().Trim();
-                if (string.IsNullOrWhiteSpace(picText) && picNameCol > 0) picText = ws.Cell(r, picNameCol).GetString().Trim();
-                if (string.IsNullOrWhiteSpace(picText) && !string.IsNullOrWhiteSpace(sheetPerson)) picText = sheetPerson;
+                if (picEmailCol > 0)
+                {
+                    var rawEmail = ws.Cell(r, picEmailCol).GetString().Trim();
+                    if (!IsInvalidPersonValue(rawEmail)) picText = rawEmail;
+                }
+                if (string.IsNullOrWhiteSpace(picText) && picNameCol > 0)
+                {
+                    var rawName = ws.Cell(r, picNameCol).GetString().Trim();
+                    if (!IsInvalidPersonValue(rawName)) picText = rawName;
+                }
+                if (string.IsNullOrWhiteSpace(picText) && sheetPersonnel != null)
+                {
+                    picText = !string.IsNullOrWhiteSpace(sheetPersonnel.Email)
+                        ? sheetPersonnel.Email
+                        : sheetPersonnel.Name;
+                }
 
                 // Abaikan baris kosong total
                 if (string.IsNullOrWhiteSpace(title) && string.IsNullOrWhiteSpace(projectName) && string.IsNullOrWhiteSpace(taskCode))
@@ -310,15 +325,20 @@ public class TaskExcelImportService : ITaskExcelImportService
                 // Match user / PIC
                 string? matchedUserId = null;
                 string? matchedUserName = null;
-                if (!string.IsNullOrWhiteSpace(picText))
+                if (!string.IsNullOrWhiteSpace(picText) && !IsInvalidPersonValue(picText))
                 {
-                    var (matchedId, resolvedName, resolvedEmail, isNew) = MatchUser(picText, existingUsers, companyDomain);
+                    var (matchedId, resolvedName, resolvedEmail, isNew) = MatchUser(
+                        picText,
+                        sheetPersonnel?.Email,
+                        existingUsers,
+                        companyDomain);
+
                     if (!isNew && matchedId != null)
                     {
                         matchedUserId = matchedId;
                         matchedUserName = resolvedName;
                     }
-                    else
+                    else if (!string.IsNullOrWhiteSpace(resolvedName) && !IsInvalidPersonValue(resolvedName))
                     {
                         matchedUserName = resolvedName;
                         validationMessages.Add($"Personil '{resolvedName}' ({resolvedEmail}) akan otomatis dibuatkan akun pengguna baru.");
@@ -597,7 +617,11 @@ public class TaskExcelImportService : ITaskExcelImportService
             if (string.IsNullOrEmpty(assignedUserId) && !string.IsNullOrWhiteSpace(row.PicIdentifier))
             {
                 var picKey = row.PicIdentifier.Trim();
-                if (userCache.TryGetValue(picKey, out var cachedUser))
+                if (IsInvalidPersonValue(picKey))
+                {
+                    assignedUserId = null;
+                }
+                else if (userCache.TryGetValue(picKey, out var cachedUser))
                 {
                     assignedUserId = cachedUser.Id;
                 }
@@ -617,7 +641,7 @@ public class TaskExcelImportService : ITaskExcelImportService
                         assignedUserId = existingByEmail.Id;
                         userCache[picKey] = existingByEmail;
                     }
-                    else if (request.AutoCreateMissingUsers && !string.IsNullOrWhiteSpace(resolvedName) && !string.IsNullOrWhiteSpace(resolvedEmail))
+                    else if (request.AutoCreateMissingUsers && !string.IsNullOrWhiteSpace(resolvedName) && !string.IsNullOrWhiteSpace(resolvedEmail) && !IsInvalidPersonValue(resolvedName) && !IsInvalidPersonValue(resolvedEmail))
                     {
                         // Buat akun pengguna baru jika benar-benar belum terdaftar
                         var dbUser = await _context.Users.FirstOrDefaultAsync(u => u.Email == resolvedEmail, cancellationToken);
@@ -1006,6 +1030,289 @@ public class TaskExcelImportService : ITaskExcelImportService
         return ws.FirstRowUsed();
     }
 
+    private sealed record SheetPersonnel(string Name, string? Email, string? MatchedUserId);
+
+    private static bool IsInvalidPersonValue(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return true;
+        var v = value.Trim().ToLowerInvariant();
+
+        if (v.StartsWith("#n/a") || v.StartsWith("n/a") && (v.Length <= 4 || v.Contains("sheet") || v.Contains("-") || v.Contains(":")))
+            return true;
+
+        return v is "n/a" or "#n/a" or "na" or "#na" or "-" or "--" or "---"
+            or "null" or "none" or "nil" or "(blank)" or "blank"
+            or "unassigned" or "tbd" or "belum ditentukan" or "tidak ada"
+            or "kosong" or "0" or "undefined" or "#ref!" or "#value!"
+            or "#name?" or "#div/0!" or "sheet" or "sheet1" or "sheet2"
+            or "sheet 1" or "sheet 2" or "n.a" or "n.a." or "n/a.";
+    }
+
+    private static bool IsIgnoredSheet(IXLWorksheet ws, int sheetIndex, int totalSheets)
+    {
+        if (ws.FirstRowUsed() == null) return true;
+
+        var nameClean = ws.Name.Trim();
+        var nameLower = nameClean.ToLowerInvariant();
+
+        // 1. Explicit generic ignored names (everywhere)
+        var ignoredKeywords = new[]
+        {
+            "dashboard", "summary", "rekap", "ringkasan", "overview", "laporan",
+            "master", "master data", "masterdata", "data master", "lookup", "look up",
+            "reference", "referensi", "ref", "parameter", "dropdown", "dropdowns", "kamus",
+            "template", "panduan", "guide", "readme", "petunjuk", "instruksi",
+            "keterangan", "cover", "sampul", "intro", "monitoring", "grafik", "chart"
+        };
+
+        if (ignoredKeywords.Any(k => nameLower.Contains(k)))
+        {
+            // Exception: If this is the ONLY sheet in the workbook and has "template" with task data, allow it
+            if (totalSheets == 1 && nameLower.Contains("template"))
+            {
+                var header = DetectHeaderRow(ws);
+                if (header != null) return false;
+            }
+            return true;
+        }
+
+        // 2. Specific check for Sheet 1 (Index 1)
+        // "sheet 1 jika berisikan informasi dashboard tidak perlu di ambil"
+        if (sheetIndex == 1 && totalSheets > 1)
+        {
+            int maxRow = Math.Min(ws.LastRowUsed()?.RowNumber() ?? 1, 15);
+            int maxCol = Math.Min(ws.LastColumnUsed()?.ColumnNumber() ?? 1, 20);
+            bool hasDashboardClues = false;
+
+            for (int r = 1; r <= maxRow; r++)
+            {
+                var row = ws.Row(r);
+                for (int c = 1; c <= maxCol; c++)
+                {
+                    var val = row.Cell(c).GetString().Trim().ToLowerInvariant();
+                    if (val.Contains("dashboard") || val.Contains("ringkasan") || val.Contains("executive summary") ||
+                        val.Contains("rekapitulasi") || val.Contains("total proyek") || val.Contains("total tugas") ||
+                        val.Contains("kpi") || val.Contains("monitoring project") || val.Contains("overall progress"))
+                    {
+                        hasDashboardClues = true;
+                        break;
+                    }
+                }
+                if (hasDashboardClues) break;
+            }
+
+            var header = DetectHeaderRow(ws);
+            if (hasDashboardClues || header == null)
+            {
+                return true;
+            }
+
+            var headers = Enumerable.Range(1, Math.Min(maxCol, 40))
+                .Select(c => ws.Cell(header.RowNumber(), c).GetString().Trim().ToLowerInvariant())
+                .ToList();
+            int titleCol = FindCol(headers, "judul tugas", "task title", "title", "judul", "aktivitas", "activity", "pekerjaan", "uraian pekerjaan", "deskripsi pekerjaan", "uraian tugas", "nama tugas", "nama task", "task name", "uraian", "kegiatan", "work item");
+            if (titleCol == 0 && (nameLower.StartsWith("sheet") || hasDashboardClues))
+            {
+                return true;
+            }
+        }
+
+        // 3. Specific check for Sheet 2 (Index 2)
+        // "jika sheet 2 berisikan master data, juga tidak perlu di ambil"
+        if (sheetIndex == 2 && totalSheets > 2)
+        {
+            int maxRow = Math.Min(ws.LastRowUsed()?.RowNumber() ?? 1, 15);
+            int maxCol = Math.Min(ws.LastColumnUsed()?.ColumnNumber() ?? 1, 20);
+            bool hasMasterClues = false;
+
+            for (int r = 1; r <= maxRow; r++)
+            {
+                var row = ws.Row(r);
+                for (int c = 1; c <= maxCol; c++)
+                {
+                    var val = row.Cell(c).GetString().Trim().ToLowerInvariant();
+                    if (val.Contains("master data") || val.Contains("data master") || val.Contains("lookup") ||
+                        val.Contains("daftar pilihan") || val.Contains("dropdown") || val.Contains("referensi") ||
+                        val.Contains("daftar status") || val.Contains("daftar prioritas") || val.Contains("daftar kategori"))
+                    {
+                        hasMasterClues = true;
+                        break;
+                    }
+                }
+                if (hasMasterClues) break;
+            }
+
+            var header = DetectHeaderRow(ws);
+            if (hasMasterClues || header == null)
+            {
+                return true;
+            }
+
+            var headers = Enumerable.Range(1, Math.Min(maxCol, 40))
+                .Select(c => ws.Cell(header.RowNumber(), c).GetString().Trim().ToLowerInvariant())
+                .ToList();
+            int titleCol = FindCol(headers, "judul tugas", "task title", "title", "judul", "aktivitas", "activity", "pekerjaan", "uraian pekerjaan", "deskripsi pekerjaan", "uraian tugas", "nama tugas", "nama task", "task name", "uraian", "kegiatan", "work item");
+            if (titleCol == 0 && (nameLower.StartsWith("sheet") || hasMasterClues))
+            {
+                return true;
+            }
+        }
+
+        // 4. Any sheet without a valid task header or title column should be ignored
+        var sheetHeader = DetectHeaderRow(ws);
+        if (sheetHeader == null) return true;
+
+        var lastColNum = Math.Min(ws.LastColumnUsed()?.ColumnNumber() ?? 1, 40);
+        var hList = Enumerable.Range(1, lastColNum)
+            .Select(c => ws.Cell(sheetHeader.RowNumber(), c).GetString().Trim().ToLowerInvariant())
+            .ToList();
+        int tCol = FindCol(hList, "judul tugas", "task title", "title", "judul", "aktivitas", "activity", "pekerjaan", "uraian pekerjaan", "deskripsi pekerjaan", "uraian tugas", "nama tugas", "nama task", "task name", "uraian", "kegiatan", "work item");
+        if (tCol == 0)
+        {
+            tCol = FindCol(hList, "uraian", "kegiatan", "aktivitas", "pekerjaan", "item");
+            if (tCol == 0 && hList.Count >= 2 && hList[0].Contains("no"))
+            {
+                tCol = 2;
+            }
+        }
+
+        return tCol == 0;
+    }
+
+    private static string? FindEmailInWorksheet(IXLWorksheet ws, int headerRowNum, int emailCol)
+    {
+        // 1. Check metadata rows above header row
+        int maxMetaRow = Math.Min(Math.Max(headerRowNum, 10), ws.LastRowUsed()?.RowNumber() ?? 10);
+        int maxMetaCol = Math.Min(ws.LastColumnUsed()?.ColumnNumber() ?? 10, 20);
+
+        for (int r = 1; r <= maxMetaRow; r++)
+        {
+            var row = ws.Row(r);
+            for (int c = 1; c <= maxMetaCol; c++)
+            {
+                var cellStr = row.Cell(c).GetString().Trim();
+                if (string.IsNullOrWhiteSpace(cellStr) || !cellStr.Contains('@')) continue;
+
+                var match = Regex.Match(cellStr, @"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}");
+                if (match.Success)
+                {
+                    return match.Value.ToLowerInvariant();
+                }
+            }
+        }
+
+        // 2. Check the email column in the task rows
+        if (emailCol > 0)
+        {
+            int lastRow = ws.LastRowUsed()?.RowNumber() ?? headerRowNum;
+            for (int r = headerRowNum + 1; r <= lastRow; r++)
+            {
+                var cellStr = ws.Cell(r, emailCol).GetString().Trim();
+                if (string.IsNullOrWhiteSpace(cellStr) || !cellStr.Contains('@') || IsInvalidPersonValue(cellStr)) continue;
+
+                var match = Regex.Match(cellStr, @"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}");
+                if (match.Success)
+                {
+                    return match.Value.ToLowerInvariant();
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private static SheetPersonnel? ResolveSheetPersonnel(
+        IXLWorksheet ws,
+        int headerRowNum,
+        int emailCol,
+        List<AppUser> existingUsers,
+        string companyDomain)
+    {
+        var sheetPersonName = ExtractPersonFromSheetName(ws.Name);
+        string? emailInSheet = null;
+
+        // Check metadata rows strictly above header row
+        if (headerRowNum > 1)
+        {
+            int maxMetaRow = Math.Min(headerRowNum - 1, 15);
+            int maxCol = Math.Min(ws.LastColumnUsed()?.ColumnNumber() ?? 10, 15);
+            for (int r = 1; r <= maxMetaRow; r++)
+            {
+                var row = ws.Row(r);
+                for (int c = 1; c <= maxCol; c++)
+                {
+                    var val = row.Cell(c).GetString().Trim();
+                    if (string.IsNullOrWhiteSpace(val)) continue;
+
+                    if (string.IsNullOrWhiteSpace(sheetPersonName))
+                    {
+                        var nameMatch = Regex.Match(val, @"^(?:nama(?:\s*personil|\s*karyawan|\s*user)?|pic|personil|petugas)\s*[:=]\s*(.+)$", RegexOptions.IgnoreCase);
+                        if (nameMatch.Success)
+                        {
+                            var cand = nameMatch.Groups[1].Value.Trim();
+                            if (!IsInvalidPersonValue(cand) && cand.Length >= 2)
+                            {
+                                sheetPersonName = FormatDisplayName(cand);
+                            }
+                        }
+                    }
+
+                    if (string.IsNullOrWhiteSpace(emailInSheet) && val.Contains('@'))
+                    {
+                        var match = Regex.Match(val, @"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}");
+                        if (match.Success)
+                        {
+                            emailInSheet = match.Value.ToLowerInvariant();
+                        }
+                    }
+                }
+            }
+        }
+
+        // If sheet name itself contains an email
+        if (string.IsNullOrWhiteSpace(emailInSheet) && sheetPersonName != null && sheetPersonName.Contains('@'))
+        {
+            emailInSheet = sheetPersonName.ToLowerInvariant();
+            sheetPersonName = FormatDisplayName(sheetPersonName.Split('@')[0]);
+        }
+
+        // Only treat as personnel sheet if a person's name or metadata was detected
+        if (string.IsNullOrWhiteSpace(sheetPersonName))
+        {
+            return null;
+        }
+
+        // If sheet is a personnel sheet, search email column in task rows if not already found in metadata
+        if (string.IsNullOrWhiteSpace(emailInSheet) && emailCol > 0)
+        {
+            int lastRow = ws.LastRowUsed()?.RowNumber() ?? headerRowNum;
+            for (int r = headerRowNum + 1; r <= lastRow; r++)
+            {
+                var cellStr = ws.Cell(r, emailCol).GetString().Trim();
+                if (string.IsNullOrWhiteSpace(cellStr) || !cellStr.Contains('@') || IsInvalidPersonValue(cellStr)) continue;
+
+                var match = Regex.Match(cellStr, @"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}");
+                if (match.Success)
+                {
+                    emailInSheet = match.Value.ToLowerInvariant();
+                    break;
+                }
+            }
+        }
+
+        var (matchedId, resolvedName, resolvedEmail, _) = MatchUser(sheetPersonName, emailInSheet, existingUsers, companyDomain);
+
+        var finalName = !string.IsNullOrWhiteSpace(resolvedName)
+            ? resolvedName
+            : sheetPersonName;
+
+        var finalEmail = !string.IsNullOrWhiteSpace(resolvedEmail)
+            ? resolvedEmail
+            : emailInSheet;
+
+        return new SheetPersonnel(finalName, finalEmail, matchedId);
+    }
+
     private static string? ExtractPersonFromSheetName(string sheetName)
     {
         if (string.IsNullOrWhiteSpace(sheetName)) return null;
@@ -1013,36 +1320,90 @@ public class TaskExcelImportService : ITaskExcelImportService
         var clean = sheetName.Trim();
         var lower = clean.ToLowerInvariant();
 
-        // Abaikan nama sheet yang bersifat umum / bukan personil
         var genericKeywords = new[]
         {
             "sheet", "sheets", "halaman", "rekap", "summary", "dashboard", "lookup",
             "master", "data", "tugas", "tasks", "task", "table", "all", "export",
             "import", "panduan", "guide", "readme", "template", "report", "daftar",
-            "list", "project", "projects", "proyek", "item", "items"
+            "list", "project", "projects", "proyek", "item", "items", "referensi",
+            "reference", "dropdown", "parameter", "grafik", "chart", "monitoring"
         };
 
-        if (genericKeywords.Any(g => lower.Equals(g, StringComparison.OrdinalIgnoreCase) ||
-                                     lower.StartsWith(g + " ", StringComparison.OrdinalIgnoreCase) ||
-                                     lower.StartsWith(g + "_", StringComparison.OrdinalIgnoreCase) ||
-                                     lower.StartsWith(g + "-", StringComparison.OrdinalIgnoreCase)))
+        if (genericKeywords.Any(g => lower == g ||
+                                     lower.StartsWith(g + " ") ||
+                                     lower.StartsWith(g + "_") ||
+                                     lower.StartsWith(g + "-") ||
+                                     Regex.IsMatch(lower, $"^{g}\\s*\\d+$")))
+        {
+            var afterHyphen = clean.Split('-', ':');
+            if (afterHyphen.Length > 1)
+            {
+                var candidate = afterHyphen[^1].Trim();
+                var candidateLower = candidate.ToLowerInvariant();
+                if (candidate.Length >= 2 && !genericKeywords.Contains(candidateLower) && !IsInvalidPersonValue(candidate))
+                {
+                    clean = candidate;
+                }
+                else
+                {
+                    return null;
+                }
+            }
+            else
+            {
+                var matchParen = Regex.Match(clean, @"\(([^)]+)\)");
+                if (matchParen.Success)
+                {
+                    var candidate = matchParen.Groups[1].Value.Trim();
+                    var candidateLower = candidate.ToLowerInvariant();
+                    if (candidate.Length >= 2 && !genericKeywords.Contains(candidateLower) && !IsInvalidPersonValue(candidate))
+                    {
+                        clean = candidate;
+                    }
+                    else
+                    {
+                        return null;
+                    }
+                }
+                else
+                {
+                    return null;
+                }
+            }
+        }
+
+        clean = Regex.Replace(clean, @"^\s*\d+[\s\.\-_/:]+", "").Trim();
+        clean = Regex.Replace(clean, @"^\[.*?\]\s*", "").Trim();
+        clean = Regex.Replace(clean, @"^PIC\s*[-:_]?\s*", "", RegexOptions.IgnoreCase).Trim();
+
+        if (!clean.Contains('@'))
+        {
+            clean = Regex.Replace(clean, @"\s*\([^)]*\)$", "").Trim();
+        }
+
+        if (clean.Contains('_') && !clean.Contains('@'))
+        {
+            clean = clean.Replace('_', ' ').Trim();
+        }
+
+        clean = clean.Trim('[', ']', '(', ')', '_', '-', ' ', ':');
+
+        if (IsInvalidPersonValue(clean) || clean.Length < 2)
         {
             return null;
         }
 
-        // Jika ada prefix atau separator seperti "Tim A - Budi" atau "[PIC] Wahana", ambil nama intinya
-        if (clean.Contains('-'))
+        if (!clean.Any(char.IsLetter))
         {
-            var parts = clean.Split('-');
-            var candidate = parts[^1].Trim();
-            if (candidate.Length >= 2 && !candidate.Any(char.IsDigit))
-            {
-                clean = candidate;
-            }
+            return null;
         }
 
-        clean = clean.Trim('[', ']', '(', ')', '_', ' ');
-        return clean.Length >= 2 ? clean : null;
+        if (genericKeywords.Contains(clean.ToLowerInvariant()))
+        {
+            return null;
+        }
+
+        return clean;
     }
 
     private static (string? userId, string? userName, string? userEmail, bool isNew) MatchUser(
@@ -1050,9 +1411,25 @@ public class TaskExcelImportService : ITaskExcelImportService
         List<AppUser> existingUsers,
         string? companyDomain = null)
     {
-        if (string.IsNullOrWhiteSpace(picIdentifier))
+        return MatchUser(picIdentifier, null, existingUsers, companyDomain);
+    }
+
+    private static (string? userId, string? userName, string? userEmail, bool isNew) MatchUser(
+        string picIdentifier,
+        string? knownEmail,
+        List<AppUser> existingUsers,
+        string? companyDomain = null)
+    {
+        if (IsInvalidPersonValue(picIdentifier))
         {
-            return (null, null, null, false);
+            if (!string.IsNullOrWhiteSpace(knownEmail) && !IsInvalidPersonValue(knownEmail))
+            {
+                picIdentifier = knownEmail;
+            }
+            else
+            {
+                return (null, null, null, false);
+            }
         }
 
         var trimmed = picIdentifier.Trim();
@@ -1072,7 +1449,7 @@ public class TaskExcelImportService : ITaskExcelImportService
             return (foundByExact.Id, foundByExact.FullName, foundByExact.Email, false);
         }
 
-        // Tier 2: Normalized Name Matching (ignoring academic titles, greetings, dots, extra whitespace)
+        // Tier 2: Normalized Name Matching
         if (!string.IsNullOrEmpty(inputNormName))
         {
             var foundByNormName = existingUsers.FirstOrDefault(u =>
@@ -1083,9 +1460,7 @@ public class TaskExcelImportService : ITaskExcelImportService
             }
         }
 
-        // Tier 3: Email Local-Part Cross Matching (handles both email-to-email and name-to-email)
-        // e.g. Sheet has "budi.santoso@gmail.com" and DB user has "budi.santoso@perusahaan.com"
-        // or Sheet has "Budi Santoso" and DB user has "budi.santoso@perusahaan.com"
+        // Tier 3: Email Local-Part Cross Matching
         if (!string.IsNullOrEmpty(inputLocalPart))
         {
             var foundByLocal = existingUsers.FirstOrDefault(u =>
@@ -1136,7 +1511,7 @@ public class TaskExcelImportService : ITaskExcelImportService
             }
         }
 
-        // Tier 5: Levenshtein distance similarity on normalized names (handles minor typos)
+        // Tier 5: Levenshtein distance similarity on normalized names
         if (inputNormName.Length >= 4)
         {
             foreach (var u in existingUsers)
@@ -1149,11 +1524,24 @@ public class TaskExcelImportService : ITaskExcelImportService
             }
         }
 
-        // Tier 6: Generate email slug and ensure no collision with existing users
+        // Tier 5.5: Check known email match against existing users if picIdentifier did not match
+        if (!string.IsNullOrWhiteSpace(knownEmail))
+        {
+            var foundByKnownEmail = existingUsers.FirstOrDefault(u =>
+                !string.IsNullOrEmpty(u.Email) && u.Email.Equals(knownEmail.Trim(), StringComparison.OrdinalIgnoreCase));
+            if (foundByKnownEmail != null)
+            {
+                return (foundByKnownEmail.Id, foundByKnownEmail.FullName, foundByKnownEmail.Email, false);
+            }
+        }
+
+        // Tier 6: Generate or use known email
         var formattedName = FormatDisplayName(trimmed.Contains('@') ? trimmed.Split('@')[0] : trimmed);
-        var emailSlug = trimmed.Contains('@')
-            ? trimmed.ToLowerInvariant()
-            : GenerateEmailSlug(formattedName, domain);
+        var emailSlug = !string.IsNullOrWhiteSpace(knownEmail) && knownEmail.Contains('@')
+            ? knownEmail.Trim().ToLowerInvariant()
+            : (trimmed.Contains('@')
+                ? trimmed.ToLowerInvariant()
+                : GenerateEmailSlug(formattedName, domain));
 
         var userWithSameEmail = existingUsers.FirstOrDefault(u =>
             u.Email != null && u.Email.Equals(emailSlug, StringComparison.OrdinalIgnoreCase));

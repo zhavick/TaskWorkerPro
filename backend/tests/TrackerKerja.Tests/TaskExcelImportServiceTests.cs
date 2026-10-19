@@ -575,5 +575,111 @@ public class TaskExcelImportServiceTests
             .ToListAsync();
         Assert.Equal(2, budiTasksInProj20.Count);
     }
+
+    [Fact]
+    public async Task PreviewAndCommit_IgnoresDashboardAndMasterSheets_AndExtractsMemberSheetNamesAndEmails_NoNAUsers()
+    {
+        using var context = CreateInMemoryContext();
+        var service = new TaskExcelImportService(context);
+
+        using var wb = new XLWorkbook();
+
+        // Sheet 1: Dashboard information (should be skipped!)
+        var wsDashboard = wb.Worksheets.Add("Dashboard Project");
+        wsDashboard.Cell(1, 1).Value = "DASHBOARD MONITORING & REKAPITULASI PROYEK";
+        wsDashboard.Cell(2, 1).Value = "Total Proyek: 5";
+        wsDashboard.Cell(2, 2).Value = "Total Tugas: 42";
+        wsDashboard.Cell(3, 1).Value = "Progres Keseluruhan: 78%";
+
+        // Sheet 2: Master Data lookup (should be skipped!)
+        var wsMaster = wb.Worksheets.Add("Master Data");
+        wsMaster.Cell(1, 1).Value = "Kamus Data & Lookup Status";
+        wsMaster.Cell(2, 1).Value = "Todo";
+        wsMaster.Cell(2, 2).Value = "InProgress";
+        wsMaster.Cell(2, 3).Value = "Done";
+
+        // Sheet 3: Personnel "Budi Santoso" with top email metadata and rows containing "N/A" and "#N/A"
+        var wsBudi = wb.Worksheets.Add("Budi Santoso");
+        wsBudi.Cell(1, 1).Value = "Nama: Budi Santoso";
+        wsBudi.Cell(1, 2).Value = "Email: budi@perusahaan.com";
+        wsBudi.Cell(3, 1).Value = "No";
+        wsBudi.Cell(3, 2).Value = "Judul Tugas";
+        wsBudi.Cell(3, 3).Value = "Proyek";
+        wsBudi.Cell(3, 4).Value = "Status";
+        wsBudi.Cell(3, 5).Value = "PIC";
+
+        wsBudi.Cell(4, 1).Value = 1;
+        wsBudi.Cell(4, 2).Value = "Implementasi UI Dashboard Modern";
+        wsBudi.Cell(4, 3).Value = "Website Redesign";
+        wsBudi.Cell(4, 4).Value = "InProgress";
+        wsBudi.Cell(4, 5).Value = "N/A"; // Formula error or N/A placeholder in Excel
+
+        wsBudi.Cell(5, 1).Value = 2;
+        wsBudi.Cell(5, 2).Value = "Refactor State Management";
+        wsBudi.Cell(5, 3).Value = "Website Redesign";
+        wsBudi.Cell(5, 4).Value = "Done";
+        wsBudi.Cell(5, 5).Value = "#N/A"; // Formula error in Excel
+
+        // Sheet 4: Personnel "Ahmad Fauzi" (new member) with email in table
+        var wsAhmad = wb.Worksheets.Add("Ahmad Fauzi");
+        wsAhmad.Cell(1, 1).Value = "Judul Tugas";
+        wsAhmad.Cell(1, 2).Value = "Proyek";
+        wsAhmad.Cell(1, 3).Value = "Status";
+        wsAhmad.Cell(1, 4).Value = "Email PIC";
+
+        wsAhmad.Cell(2, 1).Value = "Setup CI/CD Pipeline Otomatis";
+        wsAhmad.Cell(2, 2).Value = "Website Redesign";
+        wsAhmad.Cell(2, 3).Value = "Todo";
+        wsAhmad.Cell(2, 4).Value = "ahmad.fauzi@perusahaan.com";
+
+        using var ms = new MemoryStream();
+        wb.SaveAs(ms);
+        ms.Position = 0;
+
+        // 1. Preview
+        var preview = await service.PreviewImportAsync(ms, "tim-rekap.xlsx", 1);
+
+        // Dashboard (Sheet 1) and Master Data (Sheet 2) MUST be ignored -> Exactly 3 task rows from Sheet 3 & 4
+        Assert.Equal(3, preview.TotalRows);
+
+        // Verify Sheet 3 rows took Budi Santoso, and NEVER "N/A"
+        var task1 = preview.Rows.First(r => r.Title == "Implementasi UI Dashboard Modern");
+        Assert.Equal("user-budi", task1.MatchedUserId);
+        Assert.Equal("Budi Santoso", task1.MatchedUserName);
+        Assert.NotEqual("N/A", task1.PicIdentifier);
+
+        var task2 = preview.Rows.First(r => r.Title == "Refactor State Management");
+        Assert.Equal("user-budi", task2.MatchedUserId);
+        Assert.Equal("Budi Santoso", task2.MatchedUserName);
+        Assert.NotEqual("#N/A", task2.PicIdentifier);
+
+        // Verify Sheet 4 took Ahmad Fauzi and his email
+        var task3 = preview.Rows.First(r => r.Title == "Setup CI/CD Pipeline Otomatis");
+        Assert.Equal("Ahmad Fauzi", task3.MatchedUserName);
+        Assert.Equal("ahmad.fauzi@perusahaan.com", task3.PicIdentifier);
+
+        // 2. Commit
+        var commitReq = new TaskImportCommitRequest(null, null, null, preview.Rows);
+        var commitRes = await service.CommitImportAsync(commitReq, 1);
+
+        Assert.Equal(3, commitRes.TotalImported);
+
+        // Assert NO user with "N/A" or "N A" was ever created
+        var naUser = await context.Users.FirstOrDefaultAsync(u => u.FullName.Contains("N/A") || u.FullName == "N A" || u.Email.Contains("n.a"));
+        Assert.Null(naUser);
+
+        // Assert Ahmad Fauzi was created with correct name and email
+        var ahmadUser = await context.Users.FirstOrDefaultAsync(u => u.Email == "ahmad.fauzi@perusahaan.com");
+        Assert.NotNull(ahmadUser);
+        Assert.Equal("Ahmad Fauzi", ahmadUser.FullName);
+
+        // Assert tasks correctly assigned in DB
+        var savedTask1 = await context.Tasks.FirstOrDefaultAsync(t => t.Title == "Implementasi UI Dashboard Modern");
+        var savedTask3 = await context.Tasks.FirstOrDefaultAsync(t => t.Title == "Setup CI/CD Pipeline Otomatis");
+        Assert.NotNull(savedTask1);
+        Assert.NotNull(savedTask3);
+        Assert.Equal("user-budi", savedTask1.AssignedToUserId);
+        Assert.Equal(ahmadUser.Id, savedTask3.AssignedToUserId);
+    }
 }
 

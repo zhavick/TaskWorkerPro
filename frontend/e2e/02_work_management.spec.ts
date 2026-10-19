@@ -39,7 +39,7 @@ test.describe("Module 02: Work Management (PROJ, TASK, KANBAN, TIME)", () => {
     await expect(page.getByRole("heading", { name: "Daftar Tugas Operasional" })).toBeVisible();
 
     // Verify task title appears in the table
-    await expect(page.getByText("Implementasi JWT Dual Auth & Session Inactivity")).toBeVisible();
+    await expect(page.getByRole("table").getByText("Implementasi JWT Dual Auth & Session Inactivity")).toBeVisible();
     await expect(page.getByText("Optimasi ClosedXML ARMS 21-Kolom & Standar 9-Kolom")).toBeVisible();
 
     // Verify filter input

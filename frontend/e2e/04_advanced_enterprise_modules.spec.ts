@@ -90,13 +90,21 @@ test.describe("Module 04: Advanced Enterprise Modules (GAME, DEV, AUDIT, SYNC, T
   test("TC-THEME-01: Theme switch toggles dark and light mode seamlessly", async ({ page }) => {
     await page.goto("/dashboard");
 
-    // Open Theme & Font Studio dialog
+    // Open Theme & Font Studio dialog with hydration resilience
     const themeStudioBtn = page.getByRole("button", { name: "Theme & Font Studio" });
     await expect(themeStudioBtn).toBeVisible();
+    await page.waitForTimeout(300);
     await themeStudioBtn.click();
 
+    // If still hydrating on fast CI, retry click
+    const dialogTitle = page.getByText("Theme & Typography Studio");
+    if (!(await dialogTitle.isVisible().catch(() => false))) {
+      await page.waitForTimeout(400);
+      await themeStudioBtn.click();
+    }
+
     // Assert Theme Studio Dialog opens
-    await expect(page.getByText("Theme & Typography Studio")).toBeVisible();
+    await expect(dialogTitle).toBeVisible();
     await expect(page.getByText("40 Tema Eye-Friendly")).toBeVisible();
 
     // Select a theme preset card from the modal
