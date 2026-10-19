@@ -18,6 +18,8 @@ builder.Services.AddControllers(options =>
 .AddJsonOptions(options =>
 {
     options.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+    options.JsonSerializerOptions.Converters.Add(new TrackerKerja.Infrastructure.Converters.NullableDateTimeOffsetJsonConverter());
+    options.JsonSerializerOptions.Converters.Add(new TrackerKerja.Infrastructure.Converters.DateTimeOffsetJsonConverter());
 });
 builder.Services.AddScoped<TrackerKerja.Infrastructure.Filters.AuditLogActionFilter>();
 builder.Services.AddHttpContextAccessor();

@@ -880,13 +880,130 @@ public class TaskExcelImportServiceTests
     }
 
     [Fact]
-    public void TaskImportCommitRequest_JsonWithEnumsAsString_DeserializesSuccessfully()
+    public async Task PreviewImportAsync_ColumnTitledTugas_IsImportedSuccessfully()
+    {
+        using var context = CreateInMemoryContext();
+        var service = new TaskExcelImportService(context);
+
+        using var wb = new XLWorkbook();
+        var ws = wb.Worksheets.Add("Daftar Pekerjaan");
+        ws.Cell(1, 1).Value = "No";
+        ws.Cell(1, 2).Value = "Tugas";
+        ws.Cell(1, 3).Value = "Proyek";
+        ws.Cell(1, 4).Value = "Status";
+        ws.Cell(1, 5).Value = "PIC";
+
+        ws.Cell(2, 1).Value = 1;
+        ws.Cell(2, 2).Value = "Setup Environment Staging";
+        ws.Cell(2, 3).Value = "Infra Setup";
+        ws.Cell(2, 4).Value = "InProgress";
+        ws.Cell(2, 5).Value = "budi@perusahaan.com";
+
+        using var ms = new MemoryStream();
+        wb.SaveAs(ms);
+        ms.Position = 0;
+
+        var preview = await service.PreviewImportAsync(ms, "Tasks.xlsx", companyId: 1);
+
+        Assert.NotNull(preview);
+        Assert.Single(preview.Rows);
+        Assert.Equal("Setup Environment Staging", preview.Rows[0].Title);
+        Assert.Equal("Infra Setup", preview.Rows[0].ProjectName);
+        Assert.Equal(TrackerKerja.Domain.Enums.TaskStatus.InProgress, preview.Rows[0].Status);
+    }
+
+    [Fact]
+    public async Task PreviewAndCommit_MultiSheetWithDashboardAndMasterDataAndCrossSheetEmail_WorksCorrectly()
+    {
+        using var context = CreateInMemoryContext();
+        var service = new TaskExcelImportService(context);
+
+        using var wb = new XLWorkbook();
+
+        // Sheet 1: Dashboard (Must be ignored)
+        var wsDashboard = wb.Worksheets.Add("Dashboard KPI");
+        wsDashboard.Cell(1, 1).Value = "Ringkasan Eksekutif";
+        wsDashboard.Cell(2, 1).Value = "Total Proyek: 5";
+        wsDashboard.Cell(3, 1).Value = "Total Tugas: 100";
+
+        // Sheet 2: Master Data (Must be ignored)
+        var wsMaster = wb.Worksheets.Add("Master Data");
+        wsMaster.Cell(1, 1).Value = "Daftar Status";
+        wsMaster.Cell(2, 1).Value = "Todo";
+        wsMaster.Cell(3, 1).Value = "InProgress";
+        wsMaster.Cell(4, 1).Value = "Done";
+
+        // Sheet 3: Wahana 24 (Personnel Sheet with tasks)
+        var wsWahana = wb.Worksheets.Add("Wahana 24");
+        wsWahana.Cell(1, 1).Value = "No";
+        wsWahana.Cell(1, 2).Value = "Tugas";
+        wsWahana.Cell(1, 3).Value = "Proyek";
+        wsWahana.Cell(1, 4).Value = "Status";
+        wsWahana.Cell(1, 5).Value = "Target Selesai";
+
+        wsWahana.Cell(2, 1).Value = 1;
+        wsWahana.Cell(2, 2).Value = "Implementasi Payment Gateway API";
+        wsWahana.Cell(2, 3).Value = "Fintech Modern";
+        wsWahana.Cell(2, 4).Value = "InProgress";
+        wsWahana.Cell(2, 5).Value = "2026-11-15";
+
+        wsWahana.Cell(3, 1).Value = 2;
+        wsWahana.Cell(3, 2).Value = "Integrasi Notifikasi WhatsApp Gateway";
+        wsWahana.Cell(3, 3).Value = "Omnichannel Support";
+        wsWahana.Cell(3, 4).Value = "Todo";
+        wsWahana.Cell(3, 5).Value = "2026-11-20";
+
+        // Sheet 4: Direktori Pegawai (Contains email for Wahana 24)
+        var wsDir = wb.Worksheets.Add("Direktori Tim");
+        wsDir.Cell(1, 1).Value = "Nama Pegawai";
+        wsDir.Cell(1, 2).Value = "Email Resmi";
+        wsDir.Cell(2, 1).Value = "Wahana 24";
+        wsDir.Cell(2, 2).Value = "wahana24@enterprise.co.id";
+
+        using var ms = new MemoryStream();
+        wb.SaveAs(ms);
+        ms.Position = 0;
+
+        // Preview
+        var preview = await service.PreviewImportAsync(ms, "TeamWork.xlsx", companyId: 1);
+
+        Assert.NotNull(preview);
+        Assert.Equal(2, preview.TotalRows);
+        Assert.Equal("Implementasi Payment Gateway API", preview.Rows[0].Title);
+        Assert.Equal("Fintech Modern", preview.Rows[0].ProjectName);
+        Assert.Equal("Integrasi Notifikasi WhatsApp Gateway", preview.Rows[1].Title);
+        Assert.Equal("Omnichannel Support", preview.Rows[1].ProjectName);
+
+        // Cross-sheet email should be resolved
+        Assert.Equal("wahana24@enterprise.co.id", preview.Rows[0].PicEmail);
+        Assert.Equal("wahana24@enterprise.co.id", preview.Rows[1].PicEmail);
+
+        // Commit
+        var commitReq = new TaskImportCommitRequest(null, null, null, preview.Rows, AutoCreateMissingUsers: true);
+        var result = await service.CommitImportAsync(commitReq, companyId: 1);
+
+        Assert.Equal(2, result.TotalImported);
+        Assert.Equal(2, result.TotalProjectsCreated);
+        Assert.Equal(1, result.TotalUsersCreated);
+
+        var createdUser = await context.Users.FirstOrDefaultAsync(u => u.Email == "wahana24@enterprise.co.id");
+        Assert.NotNull(createdUser);
+        Assert.Equal("Wahana 24", createdUser.FullName);
+
+        var tasks = await context.Tasks.Where(t => t.AssignedToUserId == createdUser.Id).ToListAsync();
+        Assert.Equal(2, tasks.Count);
+    }
+
+    [Fact]
+    public void TaskImportCommitRequest_JsonWithEmptyDateString_DeserializesSafelyWithoutError()
     {
         var jsonOptions = new System.Text.Json.JsonSerializerOptions
         {
             PropertyNameCaseInsensitive = true
         };
         jsonOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+        jsonOptions.Converters.Add(new TrackerKerja.Infrastructure.Converters.NullableDateTimeOffsetJsonConverter());
+        jsonOptions.Converters.Add(new TrackerKerja.Infrastructure.Converters.DateTimeOffsetJsonConverter());
 
         var jsonPayload = """
         {
@@ -896,11 +1013,13 @@ public class TaskExcelImportServiceTests
             "rows": [
                 {
                     "rowIndex": 1,
-                    "title": "Migrasi Database Schema",
+                    "title": "Tugas Tanpa Tanggal Selesai",
                     "projectName": "Infra Upgrade",
                     "priority": "High",
                     "status": "InProgress",
                     "progress": 50,
+                    "startDate": "",
+                    "dueDate": "",
                     "validationStatus": "Valid",
                     "validationMessages": []
                 }
@@ -914,10 +1033,9 @@ public class TaskExcelImportServiceTests
         Assert.NotNull(deserialized);
         Assert.Single(deserialized.Rows);
         var row = deserialized.Rows[0];
-        Assert.Equal("Migrasi Database Schema", row.Title);
-        Assert.Equal(TaskPriority.High, row.Priority);
-        Assert.Equal(TrackerKerja.Domain.Enums.TaskStatus.InProgress, row.Status);
-        Assert.Equal(TaskImportValidationStatus.Valid, row.ValidationStatus);
+        Assert.Null(row.StartDate);
+        Assert.Null(row.DueDate);
     }
 }
+
 

@@ -148,7 +148,16 @@ public class TaskExcelImportService : ITaskExcelImportService
         int? companyId,
         CancellationToken cancellationToken = default)
     {
-        using var workbook = new XLWorkbook(fileStream);
+        using var memoryStream = new MemoryStream();
+        await fileStream.CopyToAsync(memoryStream, cancellationToken);
+        memoryStream.Position = 0;
+        using var workbook = new XLWorkbook(memoryStream);
+
+        if (!companyId.HasValue)
+        {
+            var firstCompany = await _context.Companies.FirstOrDefaultAsync(cancellationToken);
+            if (firstCompany != null) companyId = firstCompany.Id;
+        }
 
         var existingProjects = await _context.Projects
             .Where(p => !companyId.HasValue || p.CompanyId == companyId || p.CompanyId == null)
@@ -214,7 +223,7 @@ public class TaskExcelImportService : ITaskExcelImportService
             int parentCodeCol = FindCol(headers, "kode induk tugas", "parent task code", "parent_code", "parent code", "induk tugas", "parent");
             int projectCol = FindCol(headers, "nama proyek", "project_name", "project", "proyek", "nama project", "aplikasi", "nama aplikasi", "sistem");
             int milestoneCol = FindCol(headers, "modul", "milestone", "jenis_task", "jenis task", "kategori", "fitur", "tahapan");
-            int titleCol = FindCol(headers, "judul tugas", "task title", "title", "judul", "aktivitas", "activity", "pekerjaan", "uraian pekerjaan", "deskripsi pekerjaan", "uraian tugas", "nama tugas", "nama task", "task name", "uraian", "kegiatan", "work item");
+            int titleCol = FindCol(headers, "judul tugas", "judul", "task title", "title", "tugas", "task", "tasks", "nama tugas", "nama task", "task name", "aktivitas", "activity", "pekerjaan", "uraian pekerjaan", "deskripsi pekerjaan", "uraian tugas", "uraian", "kegiatan", "work item", "work items", "action item", "fitur", "rincian tugas", "daftar tugas", "item");
             int descCol = FindCol(headers, "deskripsi", "description", "keterangan", "detail", "catatan");
             int priorityCol = FindCol(headers, "prioritas", "priority", "urgensi", "level");
             int statusCol = FindCol(headers, "status", "keadaan", "progress status", "kondisi");
@@ -229,7 +238,7 @@ public class TaskExcelImportService : ITaskExcelImportService
             // Jika titleCol tidak terdeteksi via nama umum, gunakan fallback kolom teks pertama yang relevan
             if (titleCol == 0)
             {
-                titleCol = FindCol(headers, "uraian", "kegiatan", "aktivitas", "pekerjaan", "item");
+                titleCol = FindCol(headers, "tugas", "task", "uraian", "kegiatan", "aktivitas", "pekerjaan", "item");
                 if (titleCol == 0 && headers.Count >= 2)
                 {
                     titleCol = headers[0].Contains("no") && headers.Count > 1 ? 2 : 1;
@@ -338,10 +347,14 @@ public class TaskExcelImportService : ITaskExcelImportService
                 string? matchedUserName = null;
                 string? resolvedPicEmail = effectiveEmail;
 
-                if (!string.IsNullOrWhiteSpace(picText) && !IsInvalidPersonValue(picText))
+                var picToMatch = !string.IsNullOrWhiteSpace(picText) && !IsInvalidPersonValue(picText)
+                    ? picText
+                    : (!string.IsNullOrWhiteSpace(effectiveEmail) && !IsInvalidPersonValue(effectiveEmail) ? effectiveEmail : null);
+
+                if (!string.IsNullOrWhiteSpace(picToMatch))
                 {
                     var (matchedId, resolvedName, resolvedEmail, isNew) = MatchUser(
-                        picText,
+                        picToMatch,
                         effectiveEmail,
                         existingUsers,
                         companyDomain);
@@ -479,6 +492,12 @@ public class TaskExcelImportService : ITaskExcelImportService
         if (candidateRows.Count == 0)
         {
             return new TaskImportResultDto(0, 0, 0, ["Tidak ada baris valid yang dipilih untuk diimpor."]);
+        }
+
+        if (!companyId.HasValue)
+        {
+            var firstCompany = await _context.Companies.FirstOrDefaultAsync(cancellationToken);
+            if (firstCompany != null) companyId = firstCompany.Id;
         }
 
         var isRelational = _context.Database.IsRelational();
@@ -782,8 +801,8 @@ public class TaskExcelImportService : ITaskExcelImportService
                 if (!string.IsNullOrWhiteSpace(row.Milestone)) targetTask.Milestone = row.Milestone;
                 if (!string.IsNullOrWhiteSpace(row.Obstacle)) targetTask.Obstacle = row.Obstacle;
                 if (!string.IsNullOrWhiteSpace(row.Solution)) targetTask.Solution = row.Solution;
-                if (row.StartDate.HasValue) targetTask.StartDate = row.StartDate;
-                if (row.DueDate.HasValue) targetTask.DueDate = row.DueDate;
+                if (row.StartDate.HasValue) targetTask.StartDate = row.StartDate.Value.ToUniversalTime();
+                if (row.DueDate.HasValue) targetTask.DueDate = row.DueDate.Value.ToUniversalTime();
 
                 // Moveable ke project baru / berbeda jika ditentukan di sheet (Requirement 4)
                 if (project != null)
@@ -823,8 +842,8 @@ public class TaskExcelImportService : ITaskExcelImportService
                     ProjectId = project?.Id,
                     AssignedToUserId = assignedUserId,
                     CompanyId = companyId,
-                    StartDate = row.StartDate,
-                    DueDate = row.DueDate,
+                    StartDate = row.StartDate.HasValue ? row.StartDate.Value.ToUniversalTime() : null,
+                    DueDate = row.DueDate.HasValue ? row.DueDate.Value.ToUniversalTime() : null,
                     CreatedAt = DateTimeOffset.UtcNow,
                     UpdatedAt = DateTimeOffset.UtcNow
                 };
@@ -953,6 +972,10 @@ public class TaskExcelImportService : ITaskExcelImportService
                     {
                         continue;
                     }
+                    if ((c == "tugas" || c == "task") && (h.Contains("kode") || h.Contains("code") || h.Contains("induk") || h.Contains("parent") || h.Contains("id") || h.Contains("no ") || h.Contains("no.")))
+                    {
+                        continue;
+                    }
                     return i + 1;
                 }
             }
@@ -1018,7 +1041,7 @@ public class TaskExcelImportService : ITaskExcelImportService
 
         if (DateTimeOffset.TryParse(str, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var dto))
         {
-            return dto;
+            return dto.ToUniversalTime();
         }
         if (DateTime.TryParse(str, CultureInfo.InvariantCulture, DateTimeStyles.None, out var dt))
         {
@@ -1042,35 +1065,52 @@ public class TaskExcelImportService : ITaskExcelImportService
 
         var taskKeywords = new[]
         {
-            "judul tugas", "task title", "task name", "nama tugas", "nama task",
-            "judul", "uraian pekerjaan", "deskripsi pekerjaan", "uraian tugas",
-            "aktivitas", "activity", "pekerjaan", "kegiatan", "work item"
+            "judul tugas", "judul", "task title", "title", "tugas", "task", "tasks",
+            "nama tugas", "nama task", "task name", "aktivitas", "activity", "pekerjaan",
+            "uraian pekerjaan", "deskripsi pekerjaan", "uraian tugas", "uraian", "kegiatan",
+            "work item", "work items", "action item", "fitur", "rincian tugas", "daftar tugas", "item"
         };
 
         var otherHeaderKeywords = new[]
         {
             "proyek", "project", "pic", "email", "status", "prioritas", "priority",
             "progres", "progress", "deadline", "target", "mulai", "selesai", "kode",
-            "no", "nomor", "keterangan", "deskripsi", "description", "milestone"
+            "no", "nomor", "keterangan", "deskripsi", "description", "milestone", "modul",
+            "kendala", "solusi", "estimasi", "jam", "kategori", "bobot", "persen", "%"
         };
 
-        // Pass 1: Look for a row having an explicit task title column AND other header columns
+        IXLRow? bestRow = null;
+        int bestScore = 0;
+
         for (int r = firstRow; r <= maxScanRow; r++)
         {
             var row = ws.Row(r);
             var lastCol = Math.Min(ws.LastColumnUsed()?.ColumnNumber() ?? 1, 40);
 
+            int nonEmptyCols = 0;
             bool hasTaskTitleCol = false;
             int otherMatches = 0;
+            bool isMetadataRow = false;
 
             for (int c = 1; c <= lastCol; c++)
             {
                 var val = row.Cell(c).GetString().Trim().ToLowerInvariant();
                 if (string.IsNullOrWhiteSpace(val)) continue;
+                nonEmptyCols++;
+
+                // If cell ends with colon or equals, likely a metadata key-value row (e.g. "Nama:", "Proyek =")
+                if (val.EndsWith(':') || val.EndsWith('='))
+                {
+                    isMetadataRow = true;
+                }
 
                 if (!hasTaskTitleCol && taskKeywords.Any(k => val.Contains(k)))
                 {
-                    hasTaskTitleCol = true;
+                    // Ensure it's not a code or id column like "kode tugas"
+                    if (!val.Contains("kode") && !val.Contains("code") && !val.Contains("id") && !val.Contains("induk"))
+                    {
+                        hasTaskTitleCol = true;
+                    }
                 }
                 else if (otherHeaderKeywords.Any(k => val.Contains(k)))
                 {
@@ -1078,46 +1118,29 @@ public class TaskExcelImportService : ITaskExcelImportService
                 }
             }
 
-            if (hasTaskTitleCol && (otherMatches >= 1 || lastCol >= 2))
+            // Exclude single-cell banner titles or obvious metadata rows
+            if (nonEmptyCols < 2 || isMetadataRow) continue;
+
+            int score = (hasTaskTitleCol ? 20 : 0) + (otherMatches * 5) + nonEmptyCols;
+            if (score > bestScore)
             {
-                return row;
+                bestScore = score;
+                bestRow = row;
             }
         }
 
-        // Pass 2: Fallback to any row with at least 2 distinct header keywords
-        for (int r = firstRow; r <= maxScanRow; r++)
+        if (bestRow != null && bestScore >= 15)
         {
-            var row = ws.Row(r);
-            var lastCol = Math.Min(ws.LastColumnUsed()?.ColumnNumber() ?? 1, 40);
-            var matchedKeywords = new HashSet<string>();
-
-            for (int c = 1; c <= lastCol; c++)
-            {
-                var val = row.Cell(c).GetString().Trim().ToLowerInvariant();
-                if (string.IsNullOrWhiteSpace(val)) continue;
-
-                foreach (var k in taskKeywords.Concat(otherHeaderKeywords))
-                {
-                    if (val.Contains(k))
-                    {
-                        matchedKeywords.Add(k);
-                    }
-                }
-            }
-
-            if (matchedKeywords.Count >= 2 && lastCol >= 2)
-            {
-                return row;
-            }
+            return bestRow;
         }
 
-        // Fallback jika ada baris pertama yang memiliki setidaknya 3 kolom terisi
+        // Fallback jika baris pertama memiliki setidaknya 3 kolom terisi
         var first = ws.FirstRowUsed();
         if (first != null && (ws.LastColumnUsed()?.ColumnNumber() ?? 0) >= 3)
         {
             return first;
         }
-        return null;
+        return bestRow;
     }
 
     private sealed record SheetPersonnel(string Name, string? Email, string? MatchedUserId, string? DefaultProjectName = null);
@@ -1199,7 +1222,7 @@ public class TaskExcelImportService : ITaskExcelImportService
             var headers = Enumerable.Range(1, Math.Min(maxCol, 40))
                 .Select(c => ws.Cell(header.RowNumber(), c).GetString().Trim().ToLowerInvariant())
                 .ToList();
-            int titleCol = FindCol(headers, "judul tugas", "task title", "title", "judul", "aktivitas", "activity", "pekerjaan", "uraian pekerjaan", "deskripsi pekerjaan", "uraian tugas", "nama tugas", "nama task", "task name", "uraian", "kegiatan", "work item");
+            int titleCol = FindCol(headers, "judul tugas", "task title", "title", "judul", "aktivitas", "activity", "pekerjaan", "uraian pekerjaan", "deskripsi pekerjaan", "uraian tugas", "nama tugas", "nama task", "task name", "uraian", "kegiatan", "work item", "tugas", "task", "tasks", "action item", "fitur");
             if (titleCol == 0 && (nameLower.StartsWith("sheet") || hasDashboardClues))
             {
                 return true;
@@ -1208,7 +1231,7 @@ public class TaskExcelImportService : ITaskExcelImportService
 
         // 3. Specific check for Sheet 2 (Index 2)
         // "jika sheet 2 berisikan master data, juga tidak perlu di ambil"
-        if (sheetIndex == 2 && totalSheets > 2)
+        if (sheetIndex == 2 && totalSheets >= 2)
         {
             int maxRow = Math.Min(ws.LastRowUsed()?.RowNumber() ?? 1, 15);
             int maxCol = Math.Min(ws.LastColumnUsed()?.ColumnNumber() ?? 1, 20);
@@ -1240,7 +1263,7 @@ public class TaskExcelImportService : ITaskExcelImportService
             var headers = Enumerable.Range(1, Math.Min(maxCol, 40))
                 .Select(c => ws.Cell(header.RowNumber(), c).GetString().Trim().ToLowerInvariant())
                 .ToList();
-            int titleCol = FindCol(headers, "judul tugas", "task title", "title", "judul", "aktivitas", "activity", "pekerjaan", "uraian pekerjaan", "deskripsi pekerjaan", "uraian tugas", "nama tugas", "nama task", "task name", "uraian", "kegiatan", "work item");
+            int titleCol = FindCol(headers, "judul tugas", "task title", "title", "judul", "aktivitas", "activity", "pekerjaan", "uraian pekerjaan", "deskripsi pekerjaan", "uraian tugas", "nama tugas", "nama task", "task name", "uraian", "kegiatan", "work item", "tugas", "task", "tasks", "action item", "fitur");
             if (titleCol == 0 && (nameLower.StartsWith("sheet") || hasMasterClues))
             {
                 return true;
@@ -1255,10 +1278,10 @@ public class TaskExcelImportService : ITaskExcelImportService
         var hList = Enumerable.Range(1, lastColNum)
             .Select(c => ws.Cell(sheetHeader.RowNumber(), c).GetString().Trim().ToLowerInvariant())
             .ToList();
-        int tCol = FindCol(hList, "judul tugas", "task title", "title", "judul", "aktivitas", "activity", "pekerjaan", "uraian pekerjaan", "deskripsi pekerjaan", "uraian tugas", "nama tugas", "nama task", "task name", "uraian", "kegiatan", "work item");
+        int tCol = FindCol(hList, "judul tugas", "task title", "title", "judul", "aktivitas", "activity", "pekerjaan", "uraian pekerjaan", "deskripsi pekerjaan", "uraian tugas", "nama tugas", "nama task", "task name", "uraian", "kegiatan", "work item", "tugas", "task", "tasks", "action item", "fitur");
         if (tCol == 0)
         {
-            tCol = FindCol(hList, "uraian", "kegiatan", "aktivitas", "pekerjaan", "item");
+            tCol = FindCol(hList, "uraian", "kegiatan", "aktivitas", "pekerjaan", "item", "tugas", "task", "tasks");
             if (tCol == 0 && hList.Count >= 2 && hList[0].Contains("no"))
             {
                 tCol = 2;
@@ -1369,7 +1392,7 @@ public class TaskExcelImportService : ITaskExcelImportService
 
         var tokens = personName.ToLowerInvariant()
             .Split(new[] { ' ', '.', '_', '-' }, StringSplitOptions.RemoveEmptyEntries)
-            .Where(t => t.Length >= 3)
+            .Where(t => t.Length >= 2)
             .ToList();
 
         if (tokens.Count == 0) return null;
@@ -1378,8 +1401,24 @@ public class TaskExcelImportService : ITaskExcelImportService
         {
             if (otherWs == currentWs) continue;
 
-            var lastRow = Math.Min(otherWs.LastRowUsed()?.RowNumber() ?? 1, 60);
-            var lastCol = Math.Min(otherWs.LastColumnUsed()?.ColumnNumber() ?? 1, 20);
+            // 1. Check if the other sheet name matches person
+            var otherSheetPerson = ExtractPersonFromSheetName(otherWs.Name);
+            if (!string.IsNullOrWhiteSpace(otherSheetPerson))
+            {
+                var otherNorm = NormalizePersonName(otherSheetPerson);
+                var targetNorm = NormalizePersonName(personName);
+                if (otherNorm == targetNorm || tokens.All(t => otherNorm.Contains(t)))
+                {
+                    var anyEmailOnOther = FindAnyEmailInWorksheet(otherWs, personName);
+                    if (!string.IsNullOrWhiteSpace(anyEmailOnOther))
+                    {
+                        return anyEmailOnOther;
+                    }
+                }
+            }
+
+            var lastRow = Math.Min(otherWs.LastRowUsed()?.RowNumber() ?? 1, 150);
+            var lastCol = Math.Min(otherWs.LastColumnUsed()?.ColumnNumber() ?? 1, 30);
 
             for (int r = 1; r <= lastRow; r++)
             {
@@ -1397,12 +1436,20 @@ public class TaskExcelImportService : ITaskExcelImportService
                         rowHasPerson = true;
                     }
 
-                    if (rowEmail == null && cellStr.Contains('@'))
+                    if (cellStr.Contains('@'))
                     {
                         var match = Regex.Match(cellStr, @"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}");
                         if (match.Success)
                         {
-                            rowEmail = match.Value.ToLowerInvariant();
+                            var email = match.Value.ToLowerInvariant();
+                            rowEmail ??= email;
+
+                            // Direct match: if email's local part contains the person's name tokens
+                            var localPart = email.Split('@')[0];
+                            if (tokens.Any(t => localPart.Contains(t)))
+                            {
+                                return email;
+                            }
                         }
                     }
                 }
@@ -1410,6 +1457,23 @@ public class TaskExcelImportService : ITaskExcelImportService
                 if (rowHasPerson && rowEmail != null)
                 {
                     return rowEmail;
+                }
+
+                // If row r had the person name, also check adjacent row r+1 for email
+                if (rowHasPerson && r + 1 <= lastRow)
+                {
+                    for (int c = 1; c <= lastCol; c++)
+                    {
+                        var nextCellStr = otherWs.Cell(r + 1, c).GetString().Trim();
+                        if (nextCellStr.Contains('@'))
+                        {
+                            var m = Regex.Match(nextCellStr, @"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}");
+                            if (m.Success)
+                            {
+                                return m.Value.ToLowerInvariant();
+                            }
+                        }
+                    }
                 }
             }
         }
