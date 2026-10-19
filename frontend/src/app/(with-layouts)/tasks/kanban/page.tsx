@@ -170,6 +170,11 @@ export default function KanbanPage() {
   const [activeMonth, setActiveMonth] = useState<number>(() => new Date().getMonth() + 1); // 1-12
   const [activeYear, setActiveYear] = useState<number>(() => new Date().getFullYear());
 
+  // Done Column Scope: "month" (default: Bulan Aktif), "range" (Rentang Waktu kustom), "all" (Semua Waktu)
+  const [doneFilterMode, setDoneFilterMode] = useState<"month" | "range" | "all">("month");
+  const [doneStartDate, setDoneStartDate] = useState<string>("");
+  const [doneEndDate, setDoneEndDate] = useState<string>("");
+
   const MONTH_NAMES = [
     "Januari", "Februari", "Maret", "April", "Mei", "Juni",
     "Juli", "Agustus", "September", "Oktober", "November", "Desember"
@@ -274,20 +279,25 @@ export default function KanbanPage() {
     return () => clearInterval(interval);
   }, [activeTimers]);
 
-  // 4. Query Kanban Tasks with filters (including active month)
+  // 4. Query Kanban Tasks with filters (active tasks Todo & InProgress always show; Done respects mode)
+  const kanbanQueryKey = [
+    "kanbanTasks",
+    search,
+    selectedProjectId,
+    selectedPriority,
+    scope,
+    doneFilterMode,
+    activeMonth,
+    activeYear,
+    doneStartDate,
+    doneEndDate,
+  ];
+
   const {
     data: kanbanData = { Todo: [], InProgress: [], Done: [], Overdue: [] },
     isLoading,
   } = useQuery<any>({
-    queryKey: [
-      "kanbanTasks",
-      search,
-      selectedProjectId,
-      selectedPriority,
-      scope,
-      activeMonth,
-      activeYear,
-    ],
+    queryKey: kanbanQueryKey,
     queryFn: async () => {
       const params = new URLSearchParams();
       if (search.trim()) params.append("search", search.trim());
@@ -296,8 +306,22 @@ export default function KanbanPage() {
       if (selectedPriority !== "all")
         params.append("priority", selectedPriority);
       if (scope) params.append("filter", scope);
-      params.append("month", activeMonth.toString());
-      params.append("year", activeYear.toString());
+
+      if (doneFilterMode === "month") {
+        params.append("month", activeMonth.toString());
+        params.append("year", activeYear.toString());
+      } else if (doneFilterMode === "range") {
+        if (doneStartDate) {
+          const startIso = new Date(doneStartDate + "T00:00:00").toISOString();
+          params.append("doneStartDate", startIso);
+        }
+        if (doneEndDate) {
+          const endIso = new Date(doneEndDate + "T23:59:59.999").toISOString();
+          params.append("doneEndDate", endIso);
+        }
+      } else if (doneFilterMode === "all") {
+        params.append("month", "0");
+      }
 
       const res = await apiClient.get(`/tasks/kanban?${params.toString()}`);
       return res.data.data;
@@ -318,15 +342,7 @@ export default function KanbanPage() {
     },
     onMutate: async ({ taskId, status }) => {
       await queryClient.cancelQueries({ queryKey: ["kanbanTasks"] });
-      const previousData = queryClient.getQueryData<any>([
-        "kanbanTasks",
-        search,
-        selectedProjectId,
-        selectedPriority,
-        scope,
-        activeMonth,
-        activeYear,
-      ]);
+      const previousData = queryClient.getQueryData<any>(kanbanQueryKey);
 
       if (previousData) {
         const nextData = {
@@ -365,18 +381,7 @@ export default function KanbanPage() {
                   ? "Done"
                   : "Overdue";
           nextData[colName].unshift(targetTask);
-          queryClient.setQueryData(
-            [
-              "kanbanTasks",
-              search,
-              selectedProjectId,
-              selectedPriority,
-              scope,
-              activeMonth,
-              activeYear,
-            ],
-            nextData,
-          );
+          queryClient.setQueryData(kanbanQueryKey, nextData);
         }
       }
 
@@ -384,18 +389,7 @@ export default function KanbanPage() {
     },
     onError: (err: any, _vars, context) => {
       if (context?.previousData) {
-        queryClient.setQueryData(
-          [
-            "kanbanTasks",
-            search,
-            selectedProjectId,
-            selectedPriority,
-            scope,
-            activeMonth,
-            activeYear,
-          ],
-          context.previousData,
-        );
+        queryClient.setQueryData(kanbanQueryKey, context.previousData);
       }
       toast.error(err.response?.data?.message || "Gagal mengubah status tugas");
     },
@@ -489,12 +483,18 @@ export default function KanbanPage() {
     search.trim() !== "" ||
     selectedProjectId !== "all" ||
     selectedPriority !== "all" ||
-    !isCurrentMonth;
+    doneFilterMode !== "month" ||
+    !isCurrentMonth ||
+    doneStartDate !== "" ||
+    doneEndDate !== "";
 
   const resetFilters = () => {
     setSearch("");
     setSelectedProjectId("all");
     setSelectedPriority("all");
+    setDoneFilterMode("month");
+    setDoneStartDate("");
+    setDoneEndDate("");
     goToCurrentMonth();
   };
 
@@ -542,12 +542,15 @@ export default function KanbanPage() {
                 </span>
                 <span className="inline-flex items-center gap-1 rounded-full border border-indigo-200/60 bg-indigo-50/70 px-2.5 py-0.5 text-xs font-semibold text-indigo-700 dark:border-indigo-800/60 dark:bg-indigo-950/60 dark:text-indigo-300">
                   <Calendar className="h-3 w-3 text-indigo-500" />
-                  Bulan Aktif: {MONTH_NAMES[activeMonth - 1]} {activeYear}
+                  {doneFilterMode === "month"
+                    ? `Done: ${MONTH_NAMES[activeMonth - 1]} ${activeYear}`
+                    : doneFilterMode === "range"
+                      ? `Done: ${doneStartDate || "Awal"} s/d ${doneEndDate || "Akhir"}`
+                      : "Done: Semua Waktu"}
                 </span>
               </div>
               <p className="text-xs text-gray-500 dark:text-gray-400">
-                Visualisasikan alur kerja agile dengan tarik &amp; letakkan (*Drag &amp;
-                Drop*) kartu antar kolom status pada bulan aktif terpilih.
+                Data Todo &amp; InProgress ditampilkan lengkap sesuai data grid. Tugas Done difilter berdasarkan bulan aktif atau rentang waktu yang dipilih.
               </p>
             </div>
           </div>
@@ -596,41 +599,106 @@ export default function KanbanPage() {
 
           {/* Filters Group */}
           <div className="flex flex-wrap items-center gap-2.5">
-            {/* Active Month Navigator ("hanya menampilkan pada bulan yang aktif saja") */}
-            <div className="flex items-center gap-1 rounded-xl border border-gray-200 bg-gray-50/80 p-0.5 dark:border-gray-800 dark:bg-gray-800/80">
-              <button
-                type="button"
-                onClick={goToPrevMonth}
-                title="Bulan Sebelumnya"
-                className="flex h-7 w-7 items-center justify-center rounded-lg text-gray-500 hover:bg-white hover:text-gray-900 shadow-2xs transition-all dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white"
-              >
-                <ChevronLeft className="h-3.5 w-3.5" />
-              </button>
-
-              <div className="flex items-center gap-1.5 px-2 text-xs font-bold text-gray-800 dark:text-gray-100 min-w-[125px] justify-center select-none">
-                <Calendar className="h-3.5 w-3.5 text-indigo-500" />
-                <span>
-                  {MONTH_NAMES[activeMonth - 1]} {activeYear}
-                </span>
-              </div>
-
-              <button
-                type="button"
-                onClick={goToNextMonth}
-                title="Bulan Berikutnya"
-                className="flex h-7 w-7 items-center justify-center rounded-lg text-gray-500 hover:bg-white hover:text-gray-900 shadow-2xs transition-all dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white"
-              >
-                <ChevronRight className="h-3.5 w-3.5" />
-              </button>
-
-              {!isCurrentMonth && (
+            {/* Filter Selesai (Done) Scope: Bulan Aktif / Rentang Waktu / Semua */}
+            <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-gray-200 bg-gray-50/80 p-1 dark:border-gray-800 dark:bg-gray-800/80">
+              <span className="px-1.5 text-[11px] font-bold text-gray-500 dark:text-gray-400">
+                Filter Done:
+              </span>
+              <div className="flex items-center rounded-lg bg-gray-200/70 p-0.5 dark:bg-gray-700/70">
                 <button
                   type="button"
-                  onClick={goToCurrentMonth}
-                  className="rounded-lg bg-indigo-50 px-2 py-1 text-[11px] font-semibold text-indigo-600 hover:bg-indigo-100 transition-colors dark:bg-indigo-950/70 dark:text-indigo-300 dark:hover:bg-indigo-900"
+                  onClick={() => setDoneFilterMode("month")}
+                  className={`rounded-md px-2 py-1 text-[11px] font-bold transition-all ${
+                    doneFilterMode === "month"
+                      ? "bg-white text-indigo-600 shadow-xs dark:bg-gray-900 dark:text-indigo-400"
+                      : "text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
+                  }`}
                 >
-                  Bulan Ini
+                  Bulan Aktif
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setDoneFilterMode("range")}
+                  className={`rounded-md px-2 py-1 text-[11px] font-bold transition-all ${
+                    doneFilterMode === "range"
+                      ? "bg-white text-indigo-600 shadow-xs dark:bg-gray-900 dark:text-indigo-400"
+                      : "text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
+                  }`}
+                >
+                  Rentang Waktu
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDoneFilterMode("all")}
+                  className={`rounded-md px-2 py-1 text-[11px] font-bold transition-all ${
+                    doneFilterMode === "all"
+                      ? "bg-white text-indigo-600 shadow-xs dark:bg-gray-900 dark:text-indigo-400"
+                      : "text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
+                  }`}
+                >
+                  Semua
+                </button>
+              </div>
+
+              {/* Month Selector for month mode */}
+              {doneFilterMode === "month" && (
+                <div className="flex items-center gap-0.5 pl-1">
+                  <button
+                    type="button"
+                    onClick={goToPrevMonth}
+                    title="Bulan Sebelumnya"
+                    className="flex h-6 w-6 items-center justify-center rounded-md text-gray-500 hover:bg-white hover:text-gray-900 shadow-2xs transition-all dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white"
+                  >
+                    <ChevronLeft className="h-3 w-3" />
+                  </button>
+
+                  <div className="flex items-center gap-1 px-1.5 text-xs font-bold text-gray-800 dark:text-gray-100 min-w-[110px] justify-center select-none">
+                    <Calendar className="h-3 w-3 text-indigo-500" />
+                    <span>
+                      {MONTH_NAMES[activeMonth - 1]} {activeYear}
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={goToNextMonth}
+                    title="Bulan Berikutnya"
+                    className="flex h-6 w-6 items-center justify-center rounded-md text-gray-500 hover:bg-white hover:text-gray-900 shadow-2xs transition-all dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white"
+                  >
+                    <ChevronRight className="h-3 w-3" />
+                  </button>
+
+                  {!isCurrentMonth && (
+                    <button
+                      type="button"
+                      onClick={goToCurrentMonth}
+                      className="ml-1 rounded-md bg-indigo-50 px-1.5 py-0.5 text-[10px] font-bold text-indigo-600 hover:bg-indigo-100 transition-colors dark:bg-indigo-950/70 dark:text-indigo-300 dark:hover:bg-indigo-900"
+                    >
+                      Bulan Ini
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* Date Range Pickers for range mode */}
+              {doneFilterMode === "range" && (
+                <div className="flex items-center gap-1 pl-1">
+                  <input
+                    type="date"
+                    value={doneStartDate}
+                    onChange={(e) => setDoneStartDate(e.target.value)}
+                    title="Tanggal Mulai Selesai"
+                    className="rounded-lg border border-gray-200 bg-white px-2 py-0.5 text-xs font-medium text-gray-700 shadow-2xs dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
+                  />
+                  <span className="text-[11px] text-gray-400">s/d</span>
+                  <input
+                    type="date"
+                    value={doneEndDate}
+                    onChange={(e) => setDoneEndDate(e.target.value)}
+                    title="Tanggal Akhir Selesai"
+                    className="rounded-lg border border-gray-200 bg-white px-2 py-0.5 text-xs font-medium text-gray-700 shadow-2xs dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
+                  />
+                </div>
               )}
             </div>
 
@@ -814,6 +882,24 @@ export default function KanbanPage() {
                   <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-black text-gray-600 shadow-xs dark:bg-gray-800 dark:text-gray-300">
                     {tasksInCol.length}
                   </span>
+                  {col.id === "Done" && (
+                    <span
+                      className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:border-emerald-800/60 dark:bg-emerald-950/60 dark:text-emerald-300 truncate max-w-[140px]"
+                      title={
+                        doneFilterMode === "month"
+                          ? `${MONTH_NAMES[activeMonth - 1]} ${activeYear}`
+                          : doneFilterMode === "range"
+                            ? `${doneStartDate || "Awal"} ~ ${doneEndDate || "Akhir"}`
+                            : "Semua Waktu"
+                      }
+                    >
+                      {doneFilterMode === "month"
+                        ? `${MONTH_NAMES[activeMonth - 1]} ${activeYear}`
+                        : doneFilterMode === "range"
+                          ? `${doneStartDate || "Awal"} ~ ${doneEndDate || "Akhir"}`
+                          : "Semua"}
+                    </span>
+                  )}
                 </div>
 
                 {/* Quick Add Button to this Column */}

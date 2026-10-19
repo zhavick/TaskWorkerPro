@@ -354,41 +354,67 @@ public class TasksControllerTests
     [Fact]
     public async Task GetKanbanTasks_FiltersByActiveMonth_Correctly()
     {
-        // Arrange: create task in specific month (e.g., month = 5, year = 2026) and task in month = 8
-        var mayTask = new WorkTask
+        // Arrange: Done tasks in May 2026 vs August 2026, and an active Todo task in August
+        var mayDoneTask = new WorkTask
         {
             Id = 70,
-            Title = "Tugas Bulan Mei 2026",
+            Title = "Tugas Selesai Bulan Mei 2026",
             CompanyId = 10,
             ProjectId = 1,
-            Status = Domain.Enums.TaskStatus.Todo,
+            Status = Domain.Enums.TaskStatus.Done,
             DueDate = new DateTimeOffset(2026, 5, 15, 12, 0, 0, TimeSpan.Zero),
-            CreatedAt = new DateTimeOffset(2026, 5, 1, 0, 0, 0, TimeSpan.Zero)
+            CreatedAt = new DateTimeOffset(2026, 5, 1, 0, 0, 0, TimeSpan.Zero),
+            UpdatedAt = new DateTimeOffset(2026, 5, 20, 0, 0, 0, TimeSpan.Zero)
         };
-        var augustTask = new WorkTask
+        var augustDoneTask = new WorkTask
         {
             Id = 71,
-            Title = "Tugas Bulan Agustus 2026",
+            Title = "Tugas Selesai Bulan Agustus 2026",
+            CompanyId = 10,
+            ProjectId = 1,
+            Status = Domain.Enums.TaskStatus.Done,
+            DueDate = new DateTimeOffset(2026, 8, 20, 12, 0, 0, TimeSpan.Zero),
+            CreatedAt = new DateTimeOffset(2026, 8, 1, 0, 0, 0, TimeSpan.Zero),
+            UpdatedAt = new DateTimeOffset(2026, 8, 25, 0, 0, 0, TimeSpan.Zero)
+        };
+        var activeTodoTask = new WorkTask
+        {
+            Id = 72,
+            Title = "Tugas Aktif Todo Selalu Tampil",
             CompanyId = 10,
             ProjectId = 1,
             Status = Domain.Enums.TaskStatus.Todo,
             DueDate = new DateTimeOffset(2026, 8, 20, 12, 0, 0, TimeSpan.Zero),
             CreatedAt = new DateTimeOffset(2026, 8, 1, 0, 0, 0, TimeSpan.Zero)
         };
-        _context.Tasks.AddRange(mayTask, augustTask);
+        _context.Tasks.AddRange(mayDoneTask, augustDoneTask, activeTodoTask);
         await _context.SaveChangesAsync();
 
         var controller = new TasksController(_context, _tenantService);
 
-        // Act: request month 5 year 2026
+        // Act 1: request month 5 year 2026 (Default Active Month)
         var resultMay = await controller.GetKanbanTasks(month: 5, year: 2026) as OkObjectResult;
         var dataMay = resultMay!.Value?.GetType().GetProperty("data")?.GetValue(resultMay.Value);
+        var doneMay = dataMay!.GetType().GetProperty("Done")?.GetValue(dataMay) as List<TaskItemDto>;
         var todoMay = dataMay!.GetType().GetProperty("Todo")?.GetValue(dataMay) as List<TaskItemDto>;
 
-        // Assert
-        todoMay.Should().NotBeNull();
-        todoMay!.Any(t => t.Id == 70).Should().BeTrue();
-        todoMay!.Any(t => t.Id == 71).Should().BeFalse();
+        // Assert 1: May Done is present, August Done is filtered out, but active Todo task 72 is ALWAYS present
+        doneMay.Should().NotBeNull();
+        doneMay!.Any(t => t.Id == 70).Should().BeTrue();
+        doneMay!.Any(t => t.Id == 71).Should().BeFalse();
+        todoMay!.Any(t => t.Id == 72).Should().BeTrue();
+
+        // Act 2: request with custom date range (August 2026)
+        var startRange = new DateTimeOffset(2026, 8, 1, 0, 0, 0, TimeSpan.Zero);
+        var endRange = new DateTimeOffset(2026, 8, 31, 23, 59, 59, TimeSpan.Zero);
+        var resultRange = await controller.GetKanbanTasks(doneStartDate: startRange, doneEndDate: endRange) as OkObjectResult;
+        var dataRange = resultRange!.Value?.GetType().GetProperty("data")?.GetValue(resultRange.Value);
+        var doneRange = dataRange!.GetType().GetProperty("Done")?.GetValue(dataRange) as List<TaskItemDto>;
+
+        // Assert 2: August Done is included in the custom range
+        doneRange.Should().NotBeNull();
+        doneRange!.Any(t => t.Id == 71).Should().BeTrue();
+        doneRange!.Any(t => t.Id == 70).Should().BeFalse();
     }
 
     private class FakeTenantService : ICurrentTenantService

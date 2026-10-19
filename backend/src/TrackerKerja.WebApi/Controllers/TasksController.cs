@@ -162,6 +162,10 @@ public class TasksController : ControllerBase
         [FromQuery] string? assignedToUserId = null,
         [FromQuery] int? month = null,
         [FromQuery] int? year = null,
+        [FromQuery] DateTimeOffset? doneStartDate = null,
+        [FromQuery] DateTimeOffset? doneEndDate = null,
+        [FromQuery] DateTimeOffset? startDate = null,
+        [FromQuery] DateTimeOffset? endDate = null,
         [FromQuery] bool includeSubtasks = true)
     {
         var query = _context.Tasks
@@ -175,24 +179,6 @@ public class TasksController : ControllerBase
         if (!includeSubtasks)
         {
             query = query.Where(t => t.ParentTaskId == null);
-        }
-
-        // Active Month filter ("hanya menampilkan pada bulan yang aktif saja")
-        // If month is 0, caller explicitly bypassed month filtering
-        if (month != 0)
-        {
-            var targetMonth = (month.HasValue && month.Value >= 1 && month.Value <= 12) ? month.Value : DateTime.UtcNow.Month;
-            var targetYear = (year.HasValue && year.Value >= 2000 && year.Value <= 2100) ? year.Value : DateTime.UtcNow.Year;
-            var monthStart = new DateTimeOffset(targetYear, targetMonth, 1, 0, 0, 0, TimeSpan.Zero);
-            var monthEnd = monthStart.AddMonths(1).AddTicks(-1);
-
-            query = query.Where(t =>
-                (t.StartDate.HasValue && t.DueDate.HasValue && t.StartDate.Value <= monthEnd && t.DueDate.Value >= monthStart) ||
-                (!t.StartDate.HasValue && t.DueDate.HasValue && t.DueDate.Value >= monthStart && t.DueDate.Value <= monthEnd) ||
-                (t.StartDate.HasValue && !t.DueDate.HasValue && t.StartDate.Value >= monthStart && t.StartDate.Value <= monthEnd) ||
-                (!t.StartDate.HasValue && !t.DueDate.HasValue &&
-                    ((t.CreatedAt >= monthStart && t.CreatedAt <= monthEnd) || (t.UpdatedAt >= monthStart && t.UpdatedAt <= monthEnd)))
-            );
         }
 
         // RBAC Scoping (FSD 5.14): Non-admin is automatically scoped to their own tasks, or admin filtering "mine"
@@ -214,6 +200,34 @@ public class TasksController : ControllerBase
             var s = search.Trim().ToLower();
             query = query.Where(t => t.Title.ToLower().Contains(s) ||
                                      (t.Description != null && t.Description.ToLower().Contains(s)));
+        }
+
+        // Done status filter: "done dapat di tampilkan hanya pada pada bulan aktif secara default, dan dapat di select berdasarkan rentang waktu"
+        // Todo, InProgress, and Overdue tasks are active work items and must always match grid data without being hidden.
+        DateTimeOffset? rangeStart = doneStartDate ?? startDate;
+        DateTimeOffset? rangeEnd = doneEndDate ?? endDate;
+
+        if (!rangeStart.HasValue && !rangeEnd.HasValue && month != 0)
+        {
+            var targetMonth = (month.HasValue && month.Value >= 1 && month.Value <= 12) ? month.Value : DateTime.UtcNow.Month;
+            var targetYear = (year.HasValue && year.Value >= 2000 && year.Value <= 2100) ? year.Value : DateTime.UtcNow.Year;
+            rangeStart = new DateTimeOffset(targetYear, targetMonth, 1, 0, 0, 0, TimeSpan.Zero);
+            rangeEnd = rangeStart.Value.AddMonths(1).AddTicks(-1);
+        }
+
+        if (rangeStart.HasValue || rangeEnd.HasValue)
+        {
+            var rStart = rangeStart ?? DateTimeOffset.MinValue;
+            var rEnd = rangeEnd ?? DateTimeOffset.MaxValue;
+
+            // Filter Done tasks to the selected period/range, while keeping active tasks (Todo, InProgress, Overdue) visible
+            query = query.Where(t =>
+                t.Status != Domain.Enums.TaskStatus.Done ||
+                (t.DueDate.HasValue && t.DueDate.Value >= rStart && t.DueDate.Value <= rEnd) ||
+                (t.StartDate.HasValue && t.StartDate.Value >= rStart && t.StartDate.Value <= rEnd) ||
+                (t.UpdatedAt >= rStart && t.UpdatedAt <= rEnd) ||
+                (t.CreatedAt >= rStart && t.CreatedAt <= rEnd)
+            );
         }
 
         var tasks = await query.OrderByDescending(t => t.CreatedAt).ToListAsync();
