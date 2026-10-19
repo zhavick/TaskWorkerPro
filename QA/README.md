@@ -105,3 +105,31 @@ File pelacakan master tersedia di direktori ini:
   - **Sheet 2 (`E2E Test Cases Master`)**: 72 skenario pengujian rinci dengan alur positif, negatif, RBAC, dan validasi data.
   - **Sheet 3 (`Execution Cycles`)**: Rincian siklus eksekusi dan log tanggal eksekusi.
   - **Sheet 4 (`Defect Log`)**: Formulir pencatatan bug terhubung dengan ID test case dan status perbaikan.
+
+---
+
+## 6. Otomasi Pengujian E2E (Playwright Test Automation)
+
+Aplikasi **TaskWorker Pro** dilengkapi dengan rangkaian pengujian otomatis *End-to-End* (E2E) berbasis **Playwright (Chromium Headless)** yang mencakup 19 modul sistem.
+
+### 6.1 Struktur Test Suite
+| Test Suite | Berkas Spesifikasi | Modul yang Dicakup | Jumlah Test | Status |
+|:---|:---|:---|:---:|:---:|
+| **Suite 01** | [`frontend/e2e/01_auth_tenant_team.spec.ts`](../frontend/e2e/01_auth_tenant_team.spec.ts) | `AUTH`, `TENANT`, `TEAM` | 5 | **100% Pass** |
+| **Suite 02** | [`frontend/e2e/02_work_management.spec.ts`](../frontend/e2e/02_work_management.spec.ts) | `PROJ`, `TASK`, `KANBAN`, `TIME` | 5 | **100% Pass** |
+| **Suite 03** | [`frontend/e2e/03_attendance_notes_calendar_excel.spec.ts`](../frontend/e2e/03_attendance_notes_calendar_excel.spec.ts) | `ATTEND`, `NOTE`, `CAL`, `EXCEL` | 5 | **100% Pass** |
+| **Suite 04** | [`frontend/e2e/04_advanced_enterprise_modules.spec.ts`](../frontend/e2e/04_advanced_enterprise_modules.spec.ts) | `GAME`, `DEV`, `AUDIT`, `SYNC`, `THEME`, `MASTER`, `NOTIF`, `API` | 5 | **100% Pass** |
+
+### 6.2 Sertifikat Hasil Eksekusi Otomatis (Execution Certificate)
+- **Waktu Eksekusi**: 19 Oktober 2026
+- **Test Runner**: Playwright v1.50+ (Chromium Headless)
+- **Total Skenario E2E**: 20 Skenario
+- **Hasil E2E**: 20 Passed, 0 Failed, 0 Flaky (**100% Pass Rate** dalam 15.6s)
+- **Backend Unit Tests**: 136 Passed, 0 Failed (**100% Pass Rate** dalam 8s)
+- **Frontend Route Compilation**: 41/41 routes berhasil dikompilasi (Next.js 16)
+- **Cara Menjalankan Pengujian**:
+  ```bash
+  cd frontend
+  npm run test:e2e
+  ```
+

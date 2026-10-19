@@ -28,3 +28,10 @@ Desktop.ini
 pgdata/
 uploads/
 scratch/
+
+## Test & Playwright Artifacts
+test-results/
+playwright-report/
+frontend/test-results/
+frontend/playwright-report/
+
