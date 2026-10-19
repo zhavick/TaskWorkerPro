@@ -20,6 +20,7 @@ import {
   PieChart as PieChartIcon,
   Activity,
   UserCheck,
+  Users,
   ArrowRight,
   Check,
   Loader2,
@@ -40,6 +41,7 @@ import {
   YAxis,
   Tooltip,
   CartesianGrid,
+  Legend,
 } from "recharts";
 
 export default function DashboardPage() {
@@ -253,6 +255,34 @@ export default function DashboardPage() {
 
   const memberDistribution = distributionData?.byMember || [];
 
+  const memberChartData =
+    memberDistribution.length > 0
+      ? memberDistribution
+      : [
+          {
+            userId: "user-admin-1",
+            name: "Admin Modern",
+            jobTitle: "Engineering Director",
+            color: "var(--primary-500, #3758f9)",
+            value: 5,
+            doneCount: 3,
+            inProgressCount: 2,
+            percentage: 38.5,
+            projects: ["Migrasi Core Banking Cloud"],
+          },
+          {
+            userId: "user-member-1",
+            name: "Budi Santoso",
+            jobTitle: "Senior Fullstack Developer",
+            color: "var(--neutral-brand-color, #10B981)",
+            value: 8,
+            doneCount: 6,
+            inProgressCount: 2,
+            percentage: 61.5,
+            projects: ["Sistem Presensi Geofencing AI"],
+          },
+        ];
+
   const currentPieData =
     activeDistributionTab === "project"
       ? projectDistribution
@@ -392,32 +422,32 @@ export default function DashboardPage() {
       {/* 3. 5 Personal Metric Cards (FSD Bagian 5.20.7 & USER_GUIDE Bagian 2.1) */}
       <div id="tour-metrics" data-tour="tour-metrics" className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
         {/* Card 1: Total Tugas */}
-        <div className="rounded-2xl border border-gray-200/80 bg-white p-4.5 shadow-xs transition-shadow hover:shadow-sm dark:border-gray-800 dark:bg-gray-900">
+        <div className="rounded-2xl border border-card-border bg-card-background p-4.5 shadow-xs transition-shadow hover:shadow-sm text-text-primary">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">Total Tugas</span>
-            <div className="rounded-xl bg-indigo-50 p-2 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-400">
+            <span className="text-xs font-semibold text-text-secondary">Total Tugas</span>
+            <div className="rounded-xl bg-primary-500/10 p-2 text-primary-500">
               <Layers className="h-4.5 w-4.5" />
             </div>
           </div>
           <div className="mt-2.5">
-            <div className="text-2xl font-black text-gray-900 dark:text-white">{taskStats.total}</div>
-            <div className="mt-1 flex items-center text-[11px] text-indigo-600 dark:text-indigo-400">
+            <div className="text-2xl font-black text-text-primary">{taskStats.total}</div>
+            <div className="mt-1 flex items-center text-[11px] text-primary-500">
               <span>Ditugaskan kepada Anda</span>
             </div>
           </div>
         </div>
 
         {/* Card 2: Tugas In Progress */}
-        <div className="rounded-2xl border border-gray-200/80 bg-white p-4.5 shadow-xs transition-shadow hover:shadow-sm dark:border-gray-800 dark:bg-gray-900">
+        <div className="rounded-2xl border border-card-border bg-card-background p-4.5 shadow-xs transition-shadow hover:shadow-sm text-text-primary">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">Sedang Dikerjakan</span>
-            <div className="rounded-xl bg-blue-50 p-2 text-blue-600 dark:bg-blue-950/60 dark:text-blue-400">
+            <span className="text-xs font-semibold text-text-secondary">Sedang Dikerjakan</span>
+            <div className="rounded-xl bg-blue-500/10 p-2 text-blue-500">
               <Clock className="h-4.5 w-4.5" />
             </div>
           </div>
           <div className="mt-2.5">
-            <div className="text-2xl font-black text-blue-600 dark:text-blue-400">{taskStats.inProgress}</div>
-            <div className="mt-1 flex items-center text-[11px] text-gray-500 dark:text-gray-400">
+            <div className="text-2xl font-black text-blue-500">{taskStats.inProgress}</div>
+            <div className="mt-1 flex items-center text-[11px] text-text-secondary">
               <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-blue-500 animate-ping" />
               <span>Aktif dalam proses</span>
             </div>
@@ -425,61 +455,61 @@ export default function DashboardPage() {
         </div>
 
         {/* Card 3: Tugas Selesai (Done) */}
-        <div className="rounded-2xl border border-gray-200/80 bg-white p-4.5 shadow-xs transition-shadow hover:shadow-sm dark:border-gray-800 dark:bg-gray-900">
+        <div className="rounded-2xl border border-card-border bg-card-background p-4.5 shadow-xs transition-shadow hover:shadow-sm text-text-primary">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">Tugas Selesai</span>
-            <div className="rounded-xl bg-emerald-50 p-2 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400">
+            <span className="text-xs font-semibold text-text-secondary">Tugas Selesai</span>
+            <div className="rounded-xl bg-emerald-500/10 p-2 text-emerald-500">
               <CheckCircle2 className="h-4.5 w-4.5" />
             </div>
           </div>
           <div className="mt-2.5">
             <div className="flex items-baseline gap-1.5">
-              <span className="text-2xl font-black text-emerald-600 dark:text-emerald-400">{taskStats.done}</span>
-              <span className="text-xs font-medium text-gray-400">/ {taskStats.total}</span>
+              <span className="text-2xl font-black text-emerald-500">{taskStats.done}</span>
+              <span className="text-xs font-medium text-text-secondary">/ {taskStats.total}</span>
             </div>
-            <div className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+            <div className="mt-1 text-[11px] text-text-secondary">
               {taskStats.completionRate}% Tingkat Selesai
             </div>
           </div>
         </div>
 
         {/* Card 4: Jam Kerja Hari Ini */}
-        <div className="rounded-2xl border border-gray-200/80 bg-white p-4.5 shadow-xs transition-shadow hover:shadow-sm dark:border-gray-800 dark:bg-gray-900">
+        <div className="rounded-2xl border border-card-border bg-card-background p-4.5 shadow-xs transition-shadow hover:shadow-sm text-text-primary">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">Jam Kerja Hari Ini</span>
-            <div className="rounded-xl bg-purple-50 p-2 text-purple-600 dark:bg-purple-950/60 dark:text-purple-400">
+            <span className="text-xs font-semibold text-text-secondary">Jam Kerja Hari Ini</span>
+            <div className="rounded-xl bg-purple-500/10 p-2 text-purple-500">
               <Hourglass className="h-4.5 w-4.5" />
             </div>
           </div>
           <div className="mt-2.5">
             <div className="flex items-baseline gap-1">
-              <span className="text-2xl font-black text-purple-600 dark:text-purple-400">{workHours.todayHours}</span>
-              <span className="text-xs font-semibold text-gray-400">Jam</span>
+              <span className="text-2xl font-black text-purple-500">{workHours.todayHours}</span>
+              <span className="text-xs font-semibold text-text-secondary">Jam</span>
             </div>
-            <div className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+            <div className="mt-1 text-[11px] text-text-secondary">
               Durasi sesi timesheet hari ini
             </div>
           </div>
         </div>
 
         {/* Card 5: Daily Check-In & Streak */}
-        <div className="rounded-2xl border border-gray-200/80 bg-white p-4.5 shadow-xs transition-shadow hover:shadow-sm dark:border-gray-800 dark:bg-gray-900">
+        <div className="rounded-2xl border border-card-border bg-card-background p-4.5 shadow-xs transition-shadow hover:shadow-sm text-text-primary">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">Daily Check-In</span>
-            <div className="rounded-xl bg-amber-50 p-2 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400">
+            <span className="text-xs font-semibold text-text-secondary">Daily Check-In</span>
+            <div className="rounded-xl bg-amber-500/10 p-2 text-amber-500">
               <Flame className="h-4.5 w-4.5" />
             </div>
           </div>
           <div className="mt-2.5">
-            <div className="text-2xl font-black text-amber-600 dark:text-amber-400">
-              {gamification?.totalCurrentPoints || 0} <span className="text-xs font-bold text-gray-400">PTS</span>
+            <div className="text-2xl font-black text-amber-500">
+              {gamification?.totalCurrentPoints || 0} <span className="text-xs font-bold text-text-secondary">PTS</span>
             </div>
             <div className="mt-1 flex items-center justify-between text-[11px]">
-              <span className="text-gray-500 dark:text-gray-400">🔥 {gamification?.currentStreakDays || 0} Hari Streak</span>
+              <span className="text-text-secondary">🔥 {gamification?.currentStreakDays || 0} Hari Streak</span>
               {gamification?.hasCheckedInToday ? (
-                <span className="font-semibold text-emerald-600 dark:text-emerald-400">Check-In OK</span>
+                <span className="font-semibold text-emerald-500">Check-In OK</span>
               ) : (
-                <span className="font-semibold text-amber-600 dark:text-amber-400">Belum Check-In</span>
+                <span className="font-semibold text-amber-500">Belum Check-In</span>
               )}
             </div>
           </div>
@@ -489,28 +519,28 @@ export default function DashboardPage() {
       {/* 4. Chart Visualization Grid (FSD & USER_GUIDE 2.3 & TSD 2.13) */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
         {/* Chart 1: Tren Jam Kerja & Produktivitas Mingguan (7 cols) */}
-        <div className="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-xs lg:col-span-7 dark:border-gray-800 dark:bg-gray-900">
+        <div className="rounded-2xl border border-card-border bg-card-background p-5 shadow-xs lg:col-span-7 text-text-primary">
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <div className="flex items-center gap-2">
-                <BarChart3 className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
-                <h3 className="text-base font-bold text-gray-900 dark:text-white">
+                <BarChart3 className="h-4 w-4 text-primary-500" />
+                <h3 className="text-base font-bold text-text-primary">
                   Tren Jam Kerja & Produktivitas Mingguan
                 </h3>
               </div>
-              <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+              <p className="mt-0.5 text-xs text-text-secondary">
                 Statistik riil durasi sesi timesheet dan tugas selesai 7 hari terakhir
               </p>
             </div>
 
             {/* Tab Switcher: Jam Kerja vs Tugas */}
-            <div className="flex items-center rounded-xl bg-gray-100 p-1 dark:bg-gray-800">
+            <div className="flex items-center rounded-xl border border-card-border bg-card-surface-area p-1">
               <button
                 onClick={() => setActiveChartTab("hours")}
                 className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-all ${
                   activeChartTab === "hours"
-                    ? "bg-white text-indigo-600 shadow-xs dark:bg-gray-900 dark:text-indigo-400"
-                    : "text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
+                    ? "bg-card-background text-primary-500 shadow-xs"
+                    : "text-text-secondary hover:text-text-primary"
                 }`}
               >
                 Jam Kerja (Jam)
@@ -519,8 +549,8 @@ export default function DashboardPage() {
                 onClick={() => setActiveChartTab("tasks")}
                 className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-all ${
                   activeChartTab === "tasks"
-                    ? "bg-white text-emerald-600 shadow-xs dark:bg-gray-900 dark:text-emerald-400"
-                    : "text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
+                    ? "bg-card-background text-primary-500 shadow-xs"
+                    : "text-text-secondary hover:text-text-primary"
                 }`}
               >
                 Tugas Selesai
@@ -534,22 +564,26 @@ export default function DashboardPage() {
                 <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                   <defs>
                     <linearGradient id="hoursGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#6366F1" stopOpacity={0.35} />
-                      <stop offset="95%" stopColor="#6366F1" stopOpacity={0.0} />
+                      <stop offset="5%" stopColor="var(--primary-500, #3758f9)" stopOpacity={0.4} />
+                      <stop offset="95%" stopColor="var(--primary-500, #3758f9)" stopOpacity={0.0} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.12} />
-                  <XAxis dataKey="day" tickLine={false} axisLine={false} fontSize={12} stroke="#9CA3AF" />
-                  <YAxis tickLine={false} axisLine={false} fontSize={12} stroke="#9CA3AF" />
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--card-border, #E5E7EB)" opacity={0.6} />
+                  <XAxis dataKey="day" tickLine={false} axisLine={false} fontSize={12} stroke="var(--text-secondary, #9CA3AF)" />
+                  <YAxis tickLine={false} axisLine={false} fontSize={12} stroke="var(--text-secondary, #9CA3AF)" />
                   <Tooltip
                     contentStyle={{
-                      backgroundColor: "#1F2937",
+                      backgroundColor: "var(--card-background, #ffffff)",
+                      borderColor: "var(--card-border, #e5e7eb)",
+                      borderWidth: "1px",
+                      borderStyle: "solid",
                       borderRadius: "0.75rem",
-                      border: "none",
-                      color: "#fff",
+                      color: "var(--text-primary, #111827)",
                       fontSize: "12px",
-                      boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.2)",
+                      boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1)",
                     }}
+                    itemStyle={{ color: "var(--text-primary, #111827)" }}
+                    labelStyle={{ color: "var(--text-secondary, #6b7280)", fontWeight: 600 }}
                     formatter={(val: any) => [`${val} Jam`, "Durasi Kerja"]}
                     labelFormatter={(label, payload) => {
                       const item = payload?.[0]?.payload;
@@ -559,7 +593,7 @@ export default function DashboardPage() {
                   <Area
                     type="monotone"
                     dataKey="hours"
-                    stroke="#6366F1"
+                    stroke="var(--primary-500, #3758f9)"
                     strokeWidth={2.5}
                     fillOpacity={1}
                     fill="url(#hoursGrad)"
@@ -567,21 +601,25 @@ export default function DashboardPage() {
                 </AreaChart>
               ) : (
                 <BarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.12} />
-                  <XAxis dataKey="day" tickLine={false} axisLine={false} fontSize={12} stroke="#9CA3AF" />
-                  <YAxis tickLine={false} axisLine={false} fontSize={12} stroke="#9CA3AF" allowDecimals={false} />
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--card-border, #E5E7EB)" opacity={0.6} />
+                  <XAxis dataKey="day" tickLine={false} axisLine={false} fontSize={12} stroke="var(--text-secondary, #9CA3AF)" />
+                  <YAxis tickLine={false} axisLine={false} fontSize={12} stroke="var(--text-secondary, #9CA3AF)" allowDecimals={false} />
                   <Tooltip
                     contentStyle={{
-                      backgroundColor: "#1F2937",
+                      backgroundColor: "var(--card-background, #ffffff)",
+                      borderColor: "var(--card-border, #e5e7eb)",
+                      borderWidth: "1px",
+                      borderStyle: "solid",
                       borderRadius: "0.75rem",
-                      border: "none",
-                      color: "#fff",
+                      color: "var(--text-primary, #111827)",
                       fontSize: "12px",
-                      boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.2)",
+                      boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1)",
                     }}
+                    itemStyle={{ color: "var(--text-primary, #111827)" }}
+                    labelStyle={{ color: "var(--text-secondary, #6b7280)", fontWeight: 600 }}
                     formatter={(val: any) => [`${val} Tugas`, "Tugas Selesai"]}
                   />
-                  <Bar dataKey="tasks" fill="#10B981" radius={[6, 6, 0, 0]} maxBarSize={32} />
+                  <Bar dataKey="tasks" fill="var(--primary-500, #3758f9)" radius={[6, 6, 0, 0]} maxBarSize={32} />
                 </BarChart>
               )}
             </ResponsiveContainer>
@@ -589,28 +627,28 @@ export default function DashboardPage() {
         </div>
 
         {/* Chart 2: Distribusi Tugas & Beban Kerja (Doughnut Chart - 5 cols) */}
-        <div className="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-xs lg:col-span-5 dark:border-gray-800 dark:bg-gray-900">
+        <div className="rounded-2xl border border-card-border bg-card-background p-5 shadow-xs lg:col-span-5 text-text-primary">
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <div className="flex items-center gap-2">
-                <PieChartIcon className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                <h3 className="text-base font-bold text-gray-900 dark:text-white">
+                <PieChartIcon className="h-4 w-4 text-primary-500" />
+                <h3 className="text-base font-bold text-text-primary">
                   Distribusi Tugas & Proyek
                 </h3>
               </div>
-              <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+              <p className="mt-0.5 text-xs text-text-secondary">
                 Sebaran beban kerja menurut kategori
               </p>
             </div>
 
             {/* Switcher: Proyek vs Status vs Anggota Tim */}
-            <div className="flex items-center rounded-xl bg-gray-100 p-1 dark:bg-gray-800">
+            <div className="flex items-center rounded-xl border border-card-border bg-card-surface-area p-1">
               <button
                 onClick={() => setActiveDistributionTab("project")}
                 className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-all ${
                   activeDistributionTab === "project"
-                    ? "bg-white text-indigo-600 shadow-xs dark:bg-gray-900 dark:text-indigo-400"
-                    : "text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
+                    ? "bg-card-background text-primary-500 shadow-xs"
+                    : "text-text-secondary hover:text-text-primary"
                 }`}
               >
                 Proyek
@@ -619,8 +657,8 @@ export default function DashboardPage() {
                 onClick={() => setActiveDistributionTab("status")}
                 className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-all ${
                   activeDistributionTab === "status"
-                    ? "bg-white text-emerald-600 shadow-xs dark:bg-gray-900 dark:text-emerald-400"
-                    : "text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
+                    ? "bg-card-background text-primary-500 shadow-xs"
+                    : "text-text-secondary hover:text-text-primary"
                 }`}
               >
                 Status
@@ -629,8 +667,8 @@ export default function DashboardPage() {
                 onClick={() => setActiveDistributionTab("member")}
                 className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-all ${
                   activeDistributionTab === "member"
-                    ? "bg-white text-purple-600 shadow-xs dark:bg-gray-900 dark:text-purple-400"
-                    : "text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
+                    ? "bg-card-background text-primary-500 shadow-xs"
+                    : "text-text-secondary hover:text-text-primary"
                 }`}
               >
                 Anggota Tim
@@ -645,13 +683,17 @@ export default function DashboardPage() {
                 <PieChart>
                   <Tooltip
                     contentStyle={{
-                      backgroundColor: "#1F2937",
+                      backgroundColor: "var(--card-background, #ffffff)",
+                      borderColor: "var(--card-border, #e5e7eb)",
+                      borderWidth: "1px",
+                      borderStyle: "solid",
                       borderRadius: "0.75rem",
-                      border: "none",
-                      color: "#fff",
+                      color: "var(--text-primary, #111827)",
                       fontSize: "12px",
-                      boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.2)",
+                      boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1)",
                     }}
+                    itemStyle={{ color: "var(--text-primary, #111827)" }}
+                    labelStyle={{ color: "var(--text-secondary, #6b7280)", fontWeight: 600 }}
                     formatter={(val: any, name: any) => [`${val} Tugas`, name]}
                   />
                   <Pie
@@ -665,7 +707,7 @@ export default function DashboardPage() {
                     stroke="none"
                   >
                     {safePieData.map((entry: any, index: number) => (
-                      <Cell key={`cell-${index}`} fill={entry.color || "#6366F1"} />
+                      <Cell key={`cell-${index}`} fill={entry.color || "var(--primary-500, #6366F1)"} />
                     ))}
                   </Pie>
                 </PieChart>
@@ -673,10 +715,10 @@ export default function DashboardPage() {
 
               {/* Center Text in Doughnut */}
               <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
-                <span className="text-2xl font-black text-gray-900 dark:text-white">
+                <span className="text-2xl font-black text-text-primary">
                   {taskStats.total}
                 </span>
-                <span className="text-[11px] font-semibold text-gray-400">Total Tugas</span>
+                <span className="text-[11px] font-semibold text-text-secondary">Total Tugas</span>
               </div>
             </div>
 
@@ -687,7 +729,7 @@ export default function DashboardPage() {
                   {currentPieData.map((item: any) => (
                     <div
                       key={item.userId || item.name}
-                      className="rounded-xl border border-gray-100 bg-gray-50/70 p-2.5 transition-all hover:bg-gray-100/90 dark:border-gray-800 dark:bg-gray-800/40 dark:hover:bg-gray-800/80"
+                      className="rounded-xl border border-card-border bg-card-surface-area p-2.5 transition-all hover:border-primary-500/40 text-text-primary"
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2 truncate pr-2">
@@ -696,19 +738,19 @@ export default function DashboardPage() {
                             style={{ backgroundColor: item.color }}
                           />
                           <div className="truncate">
-                            <span className="block truncate text-xs font-bold text-gray-900 dark:text-white">
+                            <span className="block truncate text-xs font-bold text-text-primary">
                               {item.name}
                             </span>
-                            <span className="block text-[10px] text-gray-500 dark:text-gray-400">
+                            <span className="block text-[10px] text-text-secondary">
                               {item.jobTitle || "Anggota Tim"}
                             </span>
                           </div>
                         </div>
                         <div className="shrink-0 text-right">
-                          <span className="font-bold text-xs text-gray-900 dark:text-white">
+                          <span className="font-bold text-xs text-text-primary">
                             {item.value} Tugas
                           </span>
-                          <span className="block text-[10px] font-medium text-gray-400">
+                          <span className="block text-[10px] font-medium text-text-secondary">
                             {item.percentage}%
                           </span>
                         </div>
@@ -720,14 +762,14 @@ export default function DashboardPage() {
                           {item.projects.map((proj: string) => (
                             <span
                               key={proj}
-                              className="rounded-md bg-white px-1.5 py-0.5 text-[9px] font-semibold text-gray-600 shadow-2xs dark:bg-gray-700 dark:text-gray-300"
+                              className="rounded-md border border-card-border bg-card-background px-1.5 py-0.5 text-[9px] font-semibold text-text-secondary shadow-2xs"
                             >
                               {proj}
                             </span>
                           ))}
                         </div>
                       ) : (
-                        <div className="mt-1 text-[9px] text-gray-400 italic">
+                        <div className="mt-1 text-[9px] text-text-secondary italic">
                           Belum ada alokasi proyek
                         </div>
                       )}
@@ -735,7 +777,7 @@ export default function DashboardPage() {
                   ))}
 
                   {currentPieData.length === 0 && (
-                    <div className="py-6 text-center text-xs text-gray-400">
+                    <div className="py-6 text-center text-xs text-text-secondary">
                       Belum ada anggota tim terdaftar
                     </div>
                   )}
@@ -749,11 +791,11 @@ export default function DashboardPage() {
                           className="h-2.5 w-2.5 shrink-0 rounded-full"
                           style={{ backgroundColor: item.color }}
                         />
-                        <span className="truncate font-medium text-gray-700 dark:text-gray-300">
+                        <span className="truncate font-medium text-text-primary">
                           {item.name}
                         </span>
                       </div>
-                      <span className="shrink-0 font-bold text-gray-900 dark:text-white">
+                      <span className="shrink-0 font-bold text-text-primary">
                         {item.value} ({item.percentage || (taskStats.total > 0 ? Math.round((item.value / taskStats.total) * 100) : 0)}%)
                       </span>
                     </div>
@@ -765,20 +807,143 @@ export default function DashboardPage() {
         </div>
       </div>
 
+      {/* 4.5 Section Khusus: Beban Kerja & Produktivitas Anggota Tim */}
+      <div className="rounded-2xl border border-card-border bg-card-background p-5 shadow-xs text-text-primary">
+        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-500/10 text-primary-500">
+                <Users className="h-4.5 w-4.5" />
+              </div>
+              <h3 className="text-base font-bold text-text-primary">
+                Beban Kerja & Distribusi Tugas Anggota Tim
+              </h3>
+            </div>
+            <p className="mt-0.5 text-xs text-text-secondary">
+              Komparasi kapasitas riil, penyelesaian tugas (Selesai vs Dalam Proses), dan alokasi proyek tiap anggota
+            </p>
+          </div>
+
+          <Link
+            href="/members"
+            className="flex items-center gap-1 text-xs font-semibold text-primary-500 hover:underline"
+          >
+            Direktori Tim <ArrowUpRight className="h-3.5 w-3.5" />
+          </Link>
+        </div>
+
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+          {/* Bar Chart Komparasi Tugas Anggota Tim (7 cols) */}
+          <div className="h-68 w-full lg:col-span-7">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={memberChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--card-border, #E5E7EB)" opacity={0.6} />
+                <XAxis dataKey="name" tickLine={false} axisLine={false} fontSize={12} stroke="var(--text-secondary, #9CA3AF)" />
+                <YAxis tickLine={false} axisLine={false} fontSize={12} stroke="var(--text-secondary, #9CA3AF)" allowDecimals={false} />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: "var(--card-background, #ffffff)",
+                    borderColor: "var(--card-border, #e5e7eb)",
+                    borderWidth: "1px",
+                    borderStyle: "solid",
+                    borderRadius: "0.75rem",
+                    color: "var(--text-primary, #111827)",
+                    fontSize: "12px",
+                    boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1)",
+                  }}
+                  itemStyle={{ color: "var(--text-primary, #111827)" }}
+                  labelStyle={{ color: "var(--text-secondary, #6b7280)", fontWeight: 600 }}
+                  formatter={(val: any, name: any) => [`${val} Tugas`, name]}
+                />
+                <Legend
+                  wrapperStyle={{ paddingTop: "12px", fontSize: "12px" }}
+                  formatter={(value) => <span className="text-text-secondary font-medium">{value}</span>}
+                />
+                <Bar dataKey="doneCount" name="Tugas Selesai" fill="var(--primary-500, #3758f9)" radius={[4, 4, 0, 0]} maxBarSize={32} />
+                <Bar dataKey="inProgressCount" name="Dalam Proses" fill="var(--neutral-brand-color, #10B981)" radius={[4, 4, 0, 0]} maxBarSize={32} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Rincian Kartu Member (5 cols) */}
+          <div className="space-y-2.5 max-h-68 overflow-y-auto pr-1 lg:col-span-5">
+            {memberChartData.map((m: any) => {
+              const total = (m.doneCount || 0) + (m.inProgressCount || 0);
+              const completionRate = total > 0 ? Math.round(((m.doneCount || 0) / total) * 100) : 0;
+              return (
+                <div
+                  key={m.userId || m.name}
+                  className="rounded-xl border border-card-border bg-card-surface-area p-3 transition-colors hover:border-primary-500/40 text-text-primary"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5 truncate pr-2">
+                      <div
+                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-xs font-bold text-white shadow-xs"
+                        style={{ backgroundColor: m.color || "var(--primary-500, #3758f9)" }}
+                      >
+                        {m.name.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="truncate">
+                        <span className="block truncate text-xs font-bold text-text-primary">
+                          {m.name}
+                        </span>
+                        <span className="block text-[11px] text-text-secondary">
+                          {m.jobTitle || "Anggota Tim"}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <span className="text-xs font-black text-text-primary">
+                        {m.value || total} Tugas
+                      </span>
+                      <span className="block text-[10px] font-semibold text-primary-500">
+                        {completionRate}% Selesai
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Progress Bar Selesai vs Dalam Proses */}
+                  <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-background-gray-secondary">
+                    <div
+                      className="h-full bg-primary-500 transition-all duration-500"
+                      style={{ width: `${completionRate}%` }}
+                    />
+                  </div>
+
+                  {/* Assigned Projects Tags */}
+                  {m.projects && m.projects.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {m.projects.map((proj: string) => (
+                        <span
+                          key={proj}
+                          className="rounded-md border border-card-border bg-card-background px-1.5 py-0.5 text-[9px] font-medium text-text-secondary"
+                        >
+                          {proj}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
       {/* 5. Bottom Section: Financial Burn Rate & Recent Activities */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
         {/* Left Column: Status Burn Rate Proyek (6 cols) */}
-        <div className="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-xs lg:col-span-6 dark:border-gray-800 dark:bg-gray-900">
+        <div className="rounded-2xl border border-card-border bg-card-background p-5 shadow-xs lg:col-span-6 text-text-primary">
           <div className="mb-4 flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Briefcase className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
-              <h3 className="text-base font-bold text-gray-900 dark:text-white">
+              <Briefcase className="h-4 w-4 text-primary-500" />
+              <h3 className="text-base font-bold text-text-primary">
                 Status Burn Rate & Finansial Proyek
               </h3>
             </div>
             <Link
               href="/projects"
-              className="flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:underline dark:text-indigo-400"
+              className="flex items-center gap-1 text-xs font-semibold text-primary-500 hover:underline"
             >
               Semua Proyek <ArrowUpRight className="h-3.5 w-3.5" />
             </Link>
@@ -794,9 +959,9 @@ export default function DashboardPage() {
                   : "bg-emerald-500";
 
               return (
-                <div key={p.id} className="rounded-xl border border-gray-100 p-3.5 transition-colors hover:border-gray-200 dark:border-gray-800/80 dark:hover:border-gray-700">
+                <div key={p.id} className="rounded-xl border border-card-border bg-card-surface-area p-3.5 transition-colors hover:border-primary-500/40 text-text-primary">
                   <div className="flex items-center justify-between">
-                    <span className="truncate font-bold text-sm text-gray-900 dark:text-white">
+                    <span className="truncate font-bold text-sm text-text-primary">
                       {p.name}
                     </span>
                     <span
@@ -812,14 +977,14 @@ export default function DashboardPage() {
                     </span>
                   </div>
 
-                  <div className="mt-2.5 h-2 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
+                  <div className="mt-2.5 h-2 w-full overflow-hidden rounded-full bg-background-gray-secondary">
                     <div
                       className={`h-full transition-all duration-500 ${statusColor}`}
                       style={{ width: `${Math.min(100, p.burnRatePercent || 0)}%` }}
                     />
                   </div>
 
-                  <div className="mt-2 flex items-center justify-between text-[11px] text-gray-400">
+                  <div className="mt-2 flex items-center justify-between text-[11px] text-text-secondary">
                     <span>Biaya Aktual: Rp {Number(p.actualCost || 0).toLocaleString("id-ID")}</span>
                     <span>Anggaran: Rp {Number(p.budget || 0).toLocaleString("id-ID")}</span>
                   </div>
@@ -828,23 +993,23 @@ export default function DashboardPage() {
             })}
 
             {projects.length === 0 && (
-              <p className="py-8 text-center text-xs text-gray-400">Belum ada data proyek terdaftar.</p>
+              <p className="py-8 text-center text-xs text-text-secondary">Belum ada data proyek terdaftar.</p>
             )}
           </div>
         </div>
 
         {/* Right Column: Feed Aktivitas Terkini (6 cols) */}
-        <div className="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-xs lg:col-span-6 dark:border-gray-800 dark:bg-gray-900">
+        <div className="rounded-2xl border border-card-border bg-card-background p-5 shadow-xs lg:col-span-6 text-text-primary">
           <div className="mb-4 flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Activity className="h-4 w-4 text-purple-600 dark:text-purple-400" />
-              <h3 className="text-base font-bold text-gray-900 dark:text-white">
+              <Activity className="h-4 w-4 text-purple-500" />
+              <h3 className="text-base font-bold text-text-primary">
                 Feed Aktivitas Operasional Terkini
               </h3>
             </div>
             <Link
               href="/timesheets"
-              className="flex items-center gap-1 text-xs font-semibold text-purple-600 hover:underline dark:text-purple-400"
+              className="flex items-center gap-1 text-xs font-semibold text-primary-500 hover:underline"
             >
               Timesheet Log <ArrowUpRight className="h-3.5 w-3.5" />
             </Link>
@@ -854,13 +1019,13 @@ export default function DashboardPage() {
             {activitiesData.slice(0, 5).map((act: any) => (
               <div
                 key={act.id}
-                className="flex items-center justify-between rounded-xl border border-gray-100 p-3 transition-colors hover:border-gray-200 dark:border-gray-800/70 dark:hover:border-gray-700"
+                className="flex items-center justify-between rounded-xl border border-card-border bg-card-surface-area p-3 transition-colors hover:border-primary-500/40 text-text-primary"
               >
                 <div className="flex items-center gap-3 truncate pr-2">
                   <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-white ${
                     act.type === "timesheet"
                       ? "bg-purple-600 dark:bg-purple-500"
-                      : "bg-indigo-600 dark:bg-indigo-500"
+                      : "bg-primary-600 dark:bg-primary-500"
                   }`}>
                     {act.type === "timesheet" ? (
                       <Clock className="h-4 w-4" />
@@ -869,11 +1034,11 @@ export default function DashboardPage() {
                     )}
                   </div>
                   <div className="truncate">
-                    <div className="truncate font-semibold text-xs text-gray-900 dark:text-white">
+                    <div className="truncate font-semibold text-xs text-text-primary">
                       {act.title}
                     </div>
-                    <div className="flex items-center gap-1.5 text-[11px] text-gray-400">
-                      <span className="font-medium text-gray-600 dark:text-gray-300">
+                    <div className="flex items-center gap-1.5 text-[11px] text-text-secondary">
+                      <span className="font-medium text-text-primary">
                         {act.userName}
                       </span>
                       <span>•</span>
@@ -884,11 +1049,11 @@ export default function DashboardPage() {
 
                 <div className="shrink-0 text-right">
                   {act.type === "timesheet" ? (
-                    <span className="rounded-full bg-purple-50 px-2 py-0.5 text-[10px] font-bold text-purple-700 dark:bg-purple-950/60 dark:text-purple-300">
+                    <span className="rounded-full bg-purple-500/10 px-2 py-0.5 text-[10px] font-bold text-purple-600 dark:text-purple-300">
                       {act.duration ? `${Math.round(act.duration / 60)} Menit` : "Sedang Berjalan"}
                     </span>
                   ) : (
-                    <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300">
+                    <span className="rounded-full bg-primary-500/10 px-2 py-0.5 text-[10px] font-bold text-primary-600 dark:text-primary-300">
                       Status: {act.status}
                     </span>
                   )}
@@ -897,7 +1062,7 @@ export default function DashboardPage() {
             ))}
 
             {activitiesData.length === 0 && (
-              <p className="py-8 text-center text-xs text-gray-400">Belum ada log aktivitas kerja.</p>
+              <p className="py-8 text-center text-xs text-text-secondary">Belum ada log aktivitas kerja.</p>
             )}
           </div>
         </div>

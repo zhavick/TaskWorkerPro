@@ -38,8 +38,107 @@ export async function setupAuthSession(
   await page.route("**/api/auth/refresh-token", async (route) => {
     await route.fulfill({
       status: 200,
-      json: { accessToken: "mock-valid-access-token", user },
+      json: {
+        success: true,
+        data: { accessToken: "mock-valid-access-token", user },
+        accessToken: "mock-valid-access-token",
+        user,
+      },
     });
+  });
+
+  await page.route("**/api/dashboard/**", async (route) => {
+    const url = route.request().url();
+    if (url.includes("/stats")) {
+      await route.fulfill({
+        status: 200,
+        json: {
+          success: true,
+          data: {
+            totalProjects: 6,
+            activeProjects: 4,
+            completedProjects: 2,
+            totalTasks: 42,
+            inProgressTasks: 18,
+            completedTasks: 20,
+            pendingTasks: 4,
+            overdueTasks: 1,
+            totalMembers: 8,
+            totalWorkHours: 320,
+            weeklyLoggedHours: 38.5,
+            taskCompletionRate: 85,
+            highPriorityTasks: 5,
+            recentBurnRate: 14500000,
+          },
+        },
+      });
+    } else if (url.includes("/productivity")) {
+      await route.fulfill({
+        status: 200,
+        json: {
+          success: true,
+          data: [
+            { dayName: "Sen", date: "13/10", hours: 7.5, tasksCompleted: 4 },
+            { dayName: "Sel", date: "14/10", hours: 8.0, tasksCompleted: 5 },
+            { dayName: "Rab", date: "15/10", hours: 6.5, tasksCompleted: 3 },
+            { dayName: "Kam", date: "16/10", hours: 8.5, tasksCompleted: 6 },
+            { dayName: "Jum", date: "17/10", hours: 7.0, tasksCompleted: 4 },
+            { dayName: "Sab", date: "18/10", hours: 2.0, tasksCompleted: 1 },
+            { dayName: "Min", date: "19/10", hours: 0.0, tasksCompleted: 0 },
+          ],
+        },
+      });
+    } else if (url.includes("/distribution")) {
+      await route.fulfill({
+        status: 200,
+        json: {
+          success: true,
+          data: {
+            byProject: [
+              { name: "Sistem HR Core", count: 12, percentage: 35 },
+              { name: "Portal Karyawan", count: 8, percentage: 25 },
+              { name: "Timesheet Tracker", count: 7, percentage: 20 },
+              { name: "Lainnya", count: 6, percentage: 20 },
+            ],
+            byStatus: [
+              { name: "Done", count: 20, percentage: 50 },
+              { name: "In Progress", count: 14, percentage: 35 },
+              { name: "Pending", count: 6, percentage: 15 },
+            ],
+            byMember: [
+              { memberName: "Admin Modern", doneCount: 5, inProgressCount: 2, totalCount: 7 },
+              { memberName: "Budi Santoso", doneCount: 7, inProgressCount: 3, totalCount: 10 },
+              { memberName: "Siti Rahma", doneCount: 4, inProgressCount: 2, totalCount: 6 },
+            ],
+          },
+        },
+      });
+    } else if (url.includes("/activities")) {
+      await route.fulfill({
+        status: 200,
+        json: {
+          success: true,
+          data: [
+            {
+              id: 1,
+              title: "Menyelesaikan modul Timesheet",
+              userName: "Admin Modern",
+              timeAgo: "10 menit yang lalu",
+              type: "task_completed",
+            },
+            {
+              id: 2,
+              title: "Membuat PR integrasi Calendar",
+              userName: "Budi Santoso",
+              timeAgo: "1 jam yang lalu",
+              type: "pr_created",
+            },
+          ],
+        },
+      });
+    } else {
+      await route.fulfill({ status: 200, json: { success: true, data: null } });
+    }
   });
 
   await page.route("**/api/settings**", async (route) => {

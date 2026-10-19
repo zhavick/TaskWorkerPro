@@ -90,10 +90,7 @@ export default function RootLayout({
         />
       </head>
       <body className="h-full overflow-hidden bg-background-gray-secondary_alt_2">
-        <ThemeProvider defaultTheme="light" enableSystem>
-          <Providers>{children}</Providers>
-        </ThemeProvider>
-        <Toaster />
+        <Providers>{children}</Providers>
       </body>
     </html>
   );

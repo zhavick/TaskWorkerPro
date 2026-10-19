@@ -750,3 +750,30 @@
   --background-soft-50: #333338;
   --border-color-base-50: #44444b;
 }
+
+/* ==========================================================================
+   THEME SYNCHRONIZATION: CARDS, CHARTS, AND SURFACE SHADOWS
+   ========================================================================== */
+[data-theme-palette] {
+  --chart-primary: var(--primary-500);
+  --chart-primary-light: var(--primary-300);
+  --chart-brand: var(--neutral-brand-color);
+}
+
+/* Dark mode theme surface & border inheritance */
+html.dark[data-theme-palette],
+.dark [data-theme-palette],
+[data-theme-palette].dark {
+  --card-background: var(--background-100, #171718);
+  --card-surface-area: var(--background-50, #0f0f0f);
+  --card-border: var(--border-color-base-50, #27272a);
+}
+
+/* Light mode theme surface & border inheritance */
+html:not(.dark)[data-theme-palette],
+[data-theme-palette]:not(.dark) {
+  --card-background: #ffffff;
+  --card-surface-area: #fcfcfd;
+  --card-border: #e5e7eb;
+}
+

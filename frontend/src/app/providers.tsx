@@ -8,6 +8,28 @@ import { SessionInactivityGuard } from "@/components/guards/SessionInactivityGua
 
 import { ThemeFontProvider } from "@/context/ThemeFontContext";
 
+import { useTheme } from "next-themes";
+
+function ThemedToaster() {
+  const { theme = "system" } = useTheme();
+
+  return (
+    <Toaster
+      theme={theme as any}
+      richColors
+      position="top-right"
+      toastOptions={{
+        className: "!bg-card-background !text-text-primary !border-card-border !shadow-xl font-sans",
+        style: {
+          background: "var(--card-background)",
+          color: "var(--text-primary)",
+          borderColor: "var(--card-border)",
+        },
+      }}
+    />
+  );
+}
+
 export default function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
     () =>
@@ -29,7 +51,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
           <SessionInactivityGuard timeoutMinutes={60} warningMinutes={5}>
             {children}
           </SessionInactivityGuard>
-          <Toaster richColors position="top-right" />
+          <ThemedToaster />
         </QueryClientProvider>
       </ThemeFontProvider>
     </ThemeProvider>
