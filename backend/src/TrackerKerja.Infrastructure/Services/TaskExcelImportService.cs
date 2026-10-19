@@ -151,16 +151,16 @@ public class TaskExcelImportService : ITaskExcelImportService
         using var workbook = new XLWorkbook(fileStream);
 
         var existingProjects = await _context.Projects
-            .Where(p => p.CompanyId == companyId)
+            .Where(p => !companyId.HasValue || p.CompanyId == companyId || p.CompanyId == null)
             .ToListAsync(cancellationToken);
 
         var existingUsers = await _context.Users
-            .Where(u => u.CompanyId == companyId)
+            .Where(u => !companyId.HasValue || u.CompanyId == companyId || u.CompanyId == null)
             .ToListAsync(cancellationToken);
 
         var existingTasks = await _context.Tasks
             .Include(t => t.Project)
-            .Where(t => t.CompanyId == companyId)
+            .Where(t => !companyId.HasValue || t.CompanyId == companyId)
             .ToListAsync(cancellationToken);
 
         // Pre-build existing task lookup indexes
@@ -489,16 +489,16 @@ public class TaskExcelImportService : ITaskExcelImportService
             await using var transaction = isRelational ? await _context.Database.BeginTransactionAsync(cancellationToken) : null;
 
         var existingProjects = await _context.Projects
-            .Where(p => p.CompanyId == companyId)
+            .Where(p => !companyId.HasValue || p.CompanyId == companyId || p.CompanyId == null)
             .ToListAsync(cancellationToken);
 
         var existingUsers = await _context.Users
-            .Where(u => u.CompanyId == companyId)
+            .Where(u => !companyId.HasValue || u.CompanyId == companyId || u.CompanyId == null)
             .ToListAsync(cancellationToken);
 
         var existingTasks = await _context.Tasks
             .Include(t => t.Project)
-            .Where(t => t.CompanyId == companyId)
+            .Where(t => !companyId.HasValue || t.CompanyId == companyId)
             .ToListAsync(cancellationToken);
 
         // Pre-build existing task lookup indexes
@@ -673,13 +673,23 @@ public class TaskExcelImportService : ITaskExcelImportService
                         else if (request.AutoCreateMissingUsers && !string.IsNullOrWhiteSpace(resolvedEmail) && !IsInvalidPersonValue(resolvedEmail))
                         {
                             // Buat akun pengguna baru jika benar-benar belum terdaftar
-                            var dbUser = await _context.Users.FirstOrDefaultAsync(u => u.Email == resolvedEmail, cancellationToken);
+                            var normEmail = resolvedEmail.ToUpperInvariant();
+                            var localUser = _context.Users.Local.FirstOrDefault(u =>
+                                (u.NormalizedEmail != null && u.NormalizedEmail == normEmail) ||
+                                (u.Email != null && u.Email.Equals(resolvedEmail, StringComparison.OrdinalIgnoreCase)));
+
+                            var dbUser = localUser ?? await _context.Users.FirstOrDefaultAsync(u =>
+                                u.NormalizedEmail == normEmail ||
+                                (u.Email != null && u.Email.ToLower() == resolvedEmail.ToLower()),
+                                cancellationToken);
+
                             if (dbUser != null)
                             {
                                 assignedUserId = dbUser.Id;
                                 if (!string.IsNullOrEmpty(picKey)) userCache[picKey] = dbUser;
                                 userCache[resolvedEmail] = dbUser;
                                 if (!string.IsNullOrEmpty(resolvedName)) userCache[resolvedName] = dbUser;
+                                if (!existingUsers.Any(u => u.Id == dbUser.Id)) existingUsers.Add(dbUser);
                             }
                             else
                             {
@@ -689,14 +699,22 @@ public class TaskExcelImportService : ITaskExcelImportService
                                         ? row.MatchedUserName
                                         : FormatDisplayName(GetEmailLocalPart(resolvedEmail)));
 
+                                var normUserName = resolvedEmail.ToUpperInvariant();
+                                var usernameConflict = await _context.Users.AnyAsync(u => u.NormalizedUserName == normUserName, cancellationToken)
+                                    || _context.Users.Local.Any(u => u.NormalizedUserName == normUserName);
+
+                                var finalUserName = usernameConflict
+                                    ? $"{resolvedEmail.Split('@')[0]}_{Guid.NewGuid().ToString("N")[..4]}@{companyDomain}"
+                                    : resolvedEmail;
+
                                 var newUser = new AppUser
                                 {
                                     Id = "usr-" + Guid.NewGuid().ToString("N")[..8],
                                     FullName = finalDisplayName,
                                     Email = resolvedEmail,
-                                    NormalizedEmail = resolvedEmail.ToUpperInvariant(),
-                                    UserName = resolvedEmail,
-                                    NormalizedUserName = resolvedEmail.ToUpperInvariant(),
+                                    NormalizedEmail = normEmail,
+                                    UserName = finalUserName,
+                                    NormalizedUserName = finalUserName.ToUpperInvariant(),
                                     EmailConfirmed = true,
                                     JobTitle = defaultJobTitle,
                                     AvatarColor = PickAvatarColor(finalDisplayName),
@@ -1093,8 +1111,13 @@ public class TaskExcelImportService : ITaskExcelImportService
             }
         }
 
-        // Fallback ke baris pertama yang terisi
-        return ws.FirstRowUsed();
+        // Fallback jika ada baris pertama yang memiliki setidaknya 3 kolom terisi
+        var first = ws.FirstRowUsed();
+        if (first != null && (ws.LastColumnUsed()?.ColumnNumber() ?? 0) >= 3)
+        {
+            return first;
+        }
+        return null;
     }
 
     private sealed record SheetPersonnel(string Name, string? Email, string? MatchedUserId, string? DefaultProjectName = null);

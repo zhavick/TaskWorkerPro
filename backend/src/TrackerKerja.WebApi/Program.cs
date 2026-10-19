@@ -14,6 +14,10 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers(options =>
 {
     options.Filters.Add<TrackerKerja.Infrastructure.Filters.AuditLogActionFilter>();
+})
+.AddJsonOptions(options =>
+{
+    options.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
 });
 builder.Services.AddScoped<TrackerKerja.Infrastructure.Filters.AuditLogActionFilter>();
 builder.Services.AddHttpContextAccessor();

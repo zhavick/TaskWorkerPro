@@ -781,5 +781,143 @@ public class TaskExcelImportServiceTests
         Assert.Equal("Aplikasi Mobile Gudang", savedTask2.Project?.Name);
         Assert.Equal("Sistem CRM", savedTask3.Project?.Name);
     }
+
+    [Fact]
+    public async Task CommitImportAsync_WhenUserEmailExistsWithDifferentCasingOrGlobally_ReusesExistingUserWithoutViolation()
+    {
+        // Arrange: In-memory DbContext
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
+            .Options;
+
+        using var context = new AppDbContext(options);
+
+        // Seed an existing user with mixed-casing email and CompanyId = null (global)
+        var existingGlobalUser = new AppUser
+        {
+            Id = "usr-global-1",
+            FullName = "Dewi Lestari",
+            Email = "Dewi.Lestari@perusahaan.co.id",
+            NormalizedEmail = "DEWI.LESTARI@PERUSAHAAN.CO.ID",
+            UserName = "Dewi.Lestari@perusahaan.co.id",
+            NormalizedUserName = "DEWI.LESTARI@PERUSAHAAN.CO.ID",
+            CompanyId = null
+        };
+        context.Users.Add(existingGlobalUser);
+        await context.SaveChangesAsync();
+
+        var service = new TaskExcelImportService(context);
+
+        // Candidate rows referencing dewi.lestari@perusahaan.co.id (lowercase)
+        var rows = new List<TaskImportRowDto>
+        {
+            new(
+                RowIndex: 1,
+                TaskCode: "TK-001",
+                ParentTaskCode: null,
+                Title: "Penyusunan Arsitektur Microservices",
+                Description: "Dokumentasi rancangan arsitektur",
+                ProjectName: "Core Banking Modernization",
+                MatchedProjectId: null,
+                PicIdentifier: "Dewi Lestari",
+                MatchedUserId: null,
+                MatchedUserName: "Dewi Lestari",
+                Priority: TaskPriority.High,
+                Status: TrackerKerja.Domain.Enums.TaskStatus.InProgress,
+                Progress: 60,
+                StartDate: DateTimeOffset.UtcNow,
+                DueDate: DateTimeOffset.UtcNow.AddDays(7),
+                Milestone: "Arsitektur",
+                Obstacle: null,
+                Solution: null,
+                ValidationStatus: TaskImportValidationStatus.Valid,
+                ValidationMessages: new List<string>(),
+                PicEmail: "dewi.lestari@perusahaan.co.id"
+            ),
+            new(
+                RowIndex: 2,
+                TaskCode: "TK-002",
+                ParentTaskCode: null,
+                Title: "Implementasi OAuth2 Server",
+                Description: "Otorisasi token JWT",
+                ProjectName: "Identity Management Platform",
+                MatchedProjectId: null,
+                PicIdentifier: "Dewi Lestari",
+                MatchedUserId: null,
+                MatchedUserName: "Dewi Lestari",
+                Priority: TaskPriority.Critical,
+                Status: TrackerKerja.Domain.Enums.TaskStatus.Todo,
+                Progress: 0,
+                StartDate: DateTimeOffset.UtcNow,
+                DueDate: DateTimeOffset.UtcNow.AddDays(14),
+                Milestone: "Autentikasi",
+                Obstacle: null,
+                Solution: null,
+                ValidationStatus: TaskImportValidationStatus.Valid,
+                ValidationMessages: new List<string>(),
+                PicEmail: "dewi.lestari@perusahaan.co.id"
+            )
+        };
+
+        var commitReq = new TaskImportCommitRequest(null, null, null, rows, AutoCreateMissingUsers: true);
+        var result = await service.CommitImportAsync(commitReq, companyId: 2);
+
+        // Assert
+        Assert.Equal(2, result.TotalImported);
+        Assert.Equal(2, result.TotalProjectsCreated);
+        // User already existed globally, so NO new user created
+        Assert.Equal(0, result.TotalUsersCreated);
+
+        var task1 = await context.Tasks.Include(t => t.Project).FirstOrDefaultAsync(t => t.Title == "Penyusunan Arsitektur Microservices");
+        var task2 = await context.Tasks.Include(t => t.Project).FirstOrDefaultAsync(t => t.Title == "Implementasi OAuth2 Server");
+
+        Assert.NotNull(task1);
+        Assert.NotNull(task2);
+        Assert.Equal("usr-global-1", task1.AssignedToUserId);
+        Assert.Equal("usr-global-1", task2.AssignedToUserId);
+        Assert.Equal("Core Banking Modernization", task1.Project?.Name);
+        Assert.Equal("Identity Management Platform", task2.Project?.Name);
+    }
+
+    [Fact]
+    public void TaskImportCommitRequest_JsonWithEnumsAsString_DeserializesSuccessfully()
+    {
+        var jsonOptions = new System.Text.Json.JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true
+        };
+        jsonOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+
+        var jsonPayload = """
+        {
+            "defaultProjectId": null,
+            "bulkAssignUserId": null,
+            "selectedRowIndexes": [1],
+            "rows": [
+                {
+                    "rowIndex": 1,
+                    "title": "Migrasi Database Schema",
+                    "projectName": "Infra Upgrade",
+                    "priority": "High",
+                    "status": "InProgress",
+                    "progress": 50,
+                    "validationStatus": "Valid",
+                    "validationMessages": []
+                }
+            ],
+            "autoCreateMissingUsers": true
+        }
+        """;
+
+        var deserialized = System.Text.Json.JsonSerializer.Deserialize<TaskImportCommitRequest>(jsonPayload, jsonOptions);
+
+        Assert.NotNull(deserialized);
+        Assert.Single(deserialized.Rows);
+        var row = deserialized.Rows[0];
+        Assert.Equal("Migrasi Database Schema", row.Title);
+        Assert.Equal(TaskPriority.High, row.Priority);
+        Assert.Equal(TrackerKerja.Domain.Enums.TaskStatus.InProgress, row.Status);
+        Assert.Equal(TaskImportValidationStatus.Valid, row.ValidationStatus);
+    }
 }
 

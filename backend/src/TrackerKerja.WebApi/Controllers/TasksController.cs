@@ -602,7 +602,7 @@ public class TasksController : ControllerBase
     }
 
     [HttpGet("import/template")]
-    [Authorize(Roles = "Administrator,SuperAdmin")]
+    [Authorize]
     public IActionResult DownloadTemplate([FromQuery] string format = "standard")
     {
         var bytes = _excelImportService.GenerateTemplate(format);
@@ -613,7 +613,7 @@ public class TasksController : ControllerBase
     }
 
     [HttpPost("import/preview")]
-    [Authorize(Roles = "Administrator,SuperAdmin")]
+    [Authorize]
     public async Task<IActionResult> PreviewImport(IFormFile file, CancellationToken cancellationToken)
     {
         if (file == null || file.Length == 0)
@@ -646,16 +646,17 @@ public class TasksController : ControllerBase
         }
         catch (Exception ex)
         {
+            var msg = ex.InnerException != null ? $"{ex.Message} ({ex.InnerException.Message})" : ex.Message;
             return BadRequest(new
             {
                 success = false,
-                message = $"Gagal memproses pratinjau file Excel: {ex.Message}"
+                message = $"Gagal memproses pratinjau file Excel: {msg}"
             });
         }
     }
 
     [HttpPost("import/commit")]
-    [Authorize(Roles = "Administrator,SuperAdmin")]
+    [Authorize]
     public async Task<IActionResult> CommitImport([FromBody] TaskImportCommitRequest request, CancellationToken cancellationToken)
     {
         if (request == null || request.Rows == null || request.Rows.Count == 0)
@@ -687,10 +688,11 @@ public class TasksController : ControllerBase
         }
         catch (Exception ex)
         {
+            var msg = ex.InnerException != null ? $"{ex.Message} ({ex.InnerException.Message})" : ex.Message;
             return BadRequest(new
             {
                 success = false,
-                message = $"Gagal menyimpan data impor: {ex.Message}"
+                message = $"Gagal menyimpan data impor: {msg}"
             });
         }
     }
@@ -727,10 +729,11 @@ public class TasksController : ControllerBase
         }
         catch (Exception ex)
         {
+            var msg = ex.InnerException != null ? $"{ex.Message} ({ex.InnerException.Message})" : ex.Message;
             return BadRequest(new
             {
                 success = false,
-                message = $"Gagal memproses file Excel: {ex.Message}"
+                message = $"Gagal memproses file Excel: {msg}"
             });
         }
     }
