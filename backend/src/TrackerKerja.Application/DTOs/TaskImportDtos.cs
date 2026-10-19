@@ -31,7 +31,8 @@ public record TaskImportRowDto(
     TaskImportValidationStatus ValidationStatus,
     List<string> ValidationMessages,
     bool IsUpdate = false,
-    int? ExistingTaskId = null
+    int? ExistingTaskId = null,
+    string? PicEmail = null
 );
 
 public record TaskImportPreviewDto(

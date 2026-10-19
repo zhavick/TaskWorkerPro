@@ -65,6 +65,7 @@ export interface TaskImportRow {
   validationMessages: string[];
   isUpdate?: boolean;
   existingTaskId?: number | null;
+  picEmail?: string | null;
 }
 
 export interface TaskImportPreview {
@@ -928,24 +929,38 @@ export function ImportExcelDialog({ open, onOpenChange, onSuccess }: ImportExcel
                           </td>
                           <td className="py-2 px-3">
                             {row.matchedUserId ? (
-                              <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.5 rounded">
-                                <UserCheck className="h-3 w-3 shrink-0" />
-                                <span>{row.matchedUserName || row.picIdentifier}</span>
-                              </span>
+                              <div className="flex flex-col">
+                                <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.5 rounded w-fit">
+                                  <UserCheck className="h-3 w-3 shrink-0" />
+                                  <span>{row.matchedUserName || row.picIdentifier}</span>
+                                </span>
+                                {row.picEmail && (
+                                  <span className="text-[10px] text-gray-500 dark:text-gray-400 font-mono mt-0.5 truncate max-w-[150px]">
+                                    {row.picEmail}
+                                  </span>
+                                )}
+                              </div>
                             ) : bulkAssignUserId ? (
                               <span className="text-[11px] text-indigo-600 dark:text-indigo-400 italic">
                                 Sesuai Bulk PIC
                               </span>
                             ) : row.picIdentifier ? (
                               autoCreateMissingUsers ? (
-                                <span
-                                  className="inline-flex items-center gap-1 text-[11px] font-medium text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/40 px-1.5 py-0.5 rounded"
-                                  title="Akun baru akan dibuat otomatis berdasarkan nama ini"
-                                >
-                                  <UserPlus className="h-3 w-3 shrink-0 text-blue-600" />
-                                  <span>{row.picIdentifier}</span>
-                                  <span className="text-[9px] opacity-75 font-normal">(Akun Baru)</span>
-                                </span>
+                                <div className="flex flex-col">
+                                  <span
+                                    className="inline-flex items-center gap-1 text-[11px] font-medium text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/40 px-1.5 py-0.5 rounded w-fit"
+                                    title="Akun baru akan dibuat otomatis berdasarkan nama & email ini"
+                                  >
+                                    <UserPlus className="h-3 w-3 shrink-0 text-blue-600" />
+                                    <span>{row.picIdentifier}</span>
+                                    <span className="text-[9px] opacity-75 font-normal">(Akun Baru)</span>
+                                  </span>
+                                  {row.picEmail && (
+                                    <span className="text-[10px] text-blue-600/80 dark:text-blue-400/80 font-mono mt-0.5 truncate max-w-[150px]">
+                                      {row.picEmail}
+                                    </span>
+                                  )}
+                                </div>
                               ) : (
                                 <span
                                   className="inline-flex items-center gap-1 text-[11px] text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-1.5 py-0.5 rounded"

@@ -681,5 +681,105 @@ public class TaskExcelImportServiceTests
         Assert.Equal("user-budi", savedTask1.AssignedToUserId);
         Assert.Equal(ahmadUser.Id, savedTask3.AssignedToUserId);
     }
+
+    [Fact]
+    public async Task ImportExcel_SheetPersonnel_TwoCellMetadata_MultiProject_CreatesUserWithExactEmail()
+    {
+        using var context = CreateInMemoryContext();
+        var service = new TaskExcelImportService(context);
+
+        using var wb = new XLWorkbook();
+
+        // Sheet 1: Two-cell metadata with person name, email, and default project
+        var ws1 = wb.Worksheets.Add("Farhan - ERP");
+        ws1.Cell(1, 1).Value = "Nama Karyawan";
+        ws1.Cell(1, 2).Value = "Farhan Ramadhan";
+        ws1.Cell(2, 1).Value = "Alamat Email";
+        ws1.Cell(2, 2).Value = "farhan.ramadhan@wahanagroup.id";
+        ws1.Cell(3, 1).Value = "Proyek";
+        ws1.Cell(3, 2).Value = "Proyek ERP Logistik";
+
+        ws1.Cell(5, 1).Value = "No";
+        ws1.Cell(5, 2).Value = "Judul Tugas";
+        ws1.Cell(5, 3).Value = "Proyek";
+        ws1.Cell(5, 4).Value = "Status";
+
+        // Task 1: No project specified in row -> inherits "Proyek ERP Logistik" from metadata
+        ws1.Cell(6, 1).Value = 1;
+        ws1.Cell(6, 2).Value = "Integrasi API Saldo Gudang";
+        ws1.Cell(6, 3).Value = "";
+        ws1.Cell(6, 4).Value = "InProgress";
+
+        // Task 2: Explicitly specifies a different project -> "Aplikasi Mobile Gudang"
+        ws1.Cell(7, 1).Value = 2;
+        ws1.Cell(7, 2).Value = "Desain Tampilan Barcode Scanner";
+        ws1.Cell(7, 3).Value = "Aplikasi Mobile Gudang";
+        ws1.Cell(7, 4).Value = "Todo";
+
+        // Sheet 2: Person name in sheet name and sheet metadata, email omitted on this sheet (found cross-sheet from Sheet 1!)
+        var ws2 = wb.Worksheets.Add("Farhan Ramadhan - Sistem CRM");
+        ws2.Cell(1, 1).Value = "Nama";
+        ws2.Cell(1, 2).Value = "Farhan Ramadhan";
+        ws2.Cell(3, 1).Value = "Judul Tugas";
+        ws2.Cell(3, 2).Value = "Status";
+
+        // Task 3: Inherits project "Sistem CRM" from sheet name
+        ws2.Cell(4, 1).Value = "Implementasi Modul Lead Tracking";
+        ws2.Cell(4, 2).Value = "Todo";
+
+        using var ms = new MemoryStream();
+        wb.SaveAs(ms);
+        ms.Position = 0;
+
+        // 1. Preview
+        var preview = await service.PreviewImportAsync(ms, "farhan-multi-project.xlsx", 1);
+
+        Assert.Equal(3, preview.TotalRows);
+
+        var task1 = preview.Rows.First(r => r.Title == "Integrasi API Saldo Gudang");
+        Assert.Equal("Farhan Ramadhan", task1.MatchedUserName);
+        Assert.Equal("farhan.ramadhan@wahanagroup.id", task1.PicEmail);
+        Assert.Equal("Proyek ERP Logistik", task1.ProjectName);
+
+        var task2 = preview.Rows.First(r => r.Title == "Desain Tampilan Barcode Scanner");
+        Assert.Equal("Farhan Ramadhan", task2.MatchedUserName);
+        Assert.Equal("farhan.ramadhan@wahanagroup.id", task2.PicEmail);
+        Assert.Equal("Aplikasi Mobile Gudang", task2.ProjectName);
+
+        var task3 = preview.Rows.First(r => r.Title == "Implementasi Modul Lead Tracking");
+        Assert.Equal("Farhan Ramadhan", task3.MatchedUserName);
+        // Cross-sheet resolution: Sheet 2 found Farhan's email from Sheet 1!
+        Assert.Equal("farhan.ramadhan@wahanagroup.id", task3.PicEmail);
+        Assert.Equal("Sistem CRM", task3.ProjectName);
+
+        // 2. Commit
+        var commitReq = new TaskImportCommitRequest(null, null, null, preview.Rows);
+        var commitRes = await service.CommitImportAsync(commitReq, 1);
+
+        Assert.Equal(3, commitRes.TotalImported);
+
+        // Assert user was created with the EXACT email found on the sheet
+        var createdUser = await context.Users.FirstOrDefaultAsync(u => u.Email == "farhan.ramadhan@wahanagroup.id");
+        Assert.NotNull(createdUser);
+        Assert.Equal("Farhan Ramadhan", createdUser.FullName);
+        Assert.Equal("farhan.ramadhan@wahanagroup.id", createdUser.UserName);
+
+        // Assert all 3 tasks in 3 different projects are assigned to Farhan Ramadhan
+        var savedTask1 = await context.Tasks.Include(t => t.Project).FirstOrDefaultAsync(t => t.Title == "Integrasi API Saldo Gudang");
+        var savedTask2 = await context.Tasks.Include(t => t.Project).FirstOrDefaultAsync(t => t.Title == "Desain Tampilan Barcode Scanner");
+        var savedTask3 = await context.Tasks.Include(t => t.Project).FirstOrDefaultAsync(t => t.Title == "Implementasi Modul Lead Tracking");
+
+        Assert.NotNull(savedTask1);
+        Assert.NotNull(savedTask2);
+        Assert.NotNull(savedTask3);
+
+        Assert.Equal(createdUser.Id, savedTask1.AssignedToUserId);
+        Assert.Equal(createdUser.Id, savedTask2.AssignedToUserId);
+        Assert.Equal(createdUser.Id, savedTask3.AssignedToUserId);
+
+        Assert.Equal("Proyek ERP Logistik", savedTask1.Project?.Name);
+        Assert.Equal("Aplikasi Mobile Gudang", savedTask2.Project?.Name);
+        Assert.Equal("Sistem CRM", savedTask3.Project?.Name);
+    }
 }
 
