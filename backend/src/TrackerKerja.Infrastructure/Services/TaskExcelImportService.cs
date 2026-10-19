@@ -691,39 +691,59 @@ public class TaskExcelImportService : ITaskExcelImportService
                         }
                         else if (request.AutoCreateMissingUsers && !string.IsNullOrWhiteSpace(resolvedEmail) && !IsInvalidPersonValue(resolvedEmail))
                         {
-                            // Buat akun pengguna baru jika benar-benar belum terdaftar
+                            var finalDisplayName = !string.IsNullOrWhiteSpace(resolvedName) && !IsInvalidPersonValue(resolvedName)
+                                ? resolvedName
+                                : (!string.IsNullOrWhiteSpace(row.MatchedUserName)
+                                    ? row.MatchedUserName
+                                    : FormatDisplayName(GetEmailLocalPart(resolvedEmail)));
+                            var normTargetName = NormalizePersonName(finalDisplayName);
                             var normEmail = resolvedEmail.ToUpperInvariant();
-                            var localUser = _context.Users.Local.FirstOrDefault(u =>
-                                (u.NormalizedEmail != null && u.NormalizedEmail == normEmail) ||
-                                (u.Email != null && u.Email.Equals(resolvedEmail, StringComparison.OrdinalIgnoreCase)));
 
-                            var dbUser = localUser ?? await _context.Users.FirstOrDefaultAsync(u =>
-                                u.NormalizedEmail == normEmail ||
-                                (u.Email != null && u.Email.ToLower() == resolvedEmail.ToLower()),
-                                cancellationToken);
+                            // Rule: "untuk nama pengguna tidak boleh duplikasi, kecuali berbeda perusahaan"
+                            // 1. Cek pada existingUsers (sudah ter-filter per companyId)
+                            var existingInCompany = existingUsers.FirstOrDefault(u =>
+                                (!string.IsNullOrEmpty(u.Email) && u.Email.Equals(resolvedEmail, StringComparison.OrdinalIgnoreCase)) ||
+                                (!string.IsNullOrEmpty(u.FullName) && (u.FullName.Equals(finalDisplayName, StringComparison.OrdinalIgnoreCase) || NormalizePersonName(u.FullName) == normTargetName)));
 
-                            if (dbUser != null)
+                            // 2. Cek pada Local ChangeTracker EF Core (untuk user baru yang dibuat dalam batch saat ini)
+                            if (existingInCompany == null)
                             {
-                                assignedUserId = dbUser.Id;
-                                if (!string.IsNullOrEmpty(picKey)) userCache[picKey] = dbUser;
-                                userCache[resolvedEmail] = dbUser;
-                                if (!string.IsNullOrEmpty(resolvedName)) userCache[resolvedName] = dbUser;
-                                if (!existingUsers.Any(u => u.Id == dbUser.Id)) existingUsers.Add(dbUser);
+                                existingInCompany = _context.Users.Local.FirstOrDefault(u =>
+                                    (!companyId.HasValue || u.CompanyId == companyId || u.CompanyId == null) &&
+                                    ((!string.IsNullOrEmpty(u.Email) && u.Email.Equals(resolvedEmail, StringComparison.OrdinalIgnoreCase)) ||
+                                     (!string.IsNullOrEmpty(u.FullName) && (u.FullName.Equals(finalDisplayName, StringComparison.OrdinalIgnoreCase) || NormalizePersonName(u.FullName) == normTargetName))));
+                            }
+
+                            // 3. Cek pada Database untuk perusahaan ini
+                            if (existingInCompany == null)
+                            {
+                                existingInCompany = await _context.Users.FirstOrDefaultAsync(u =>
+                                    (!companyId.HasValue || u.CompanyId == companyId || u.CompanyId == null) &&
+                                    (u.NormalizedEmail == normEmail ||
+                                     (u.Email != null && u.Email.ToLower() == resolvedEmail.ToLower()) ||
+                                     (u.FullName != null && u.FullName.ToLower() == finalDisplayName.ToLower())),
+                                    cancellationToken);
+                            }
+
+                            if (existingInCompany != null)
+                            {
+                                // REUSE pengguna yang sudah ada di perusahaan ini (mencegah duplikasi nama di perusahaan yang sama)
+                                assignedUserId = existingInCompany.Id;
+                                if (!string.IsNullOrEmpty(picKey)) userCache[picKey] = existingInCompany;
+                                userCache[finalDisplayName] = existingInCompany;
+                                if (!string.IsNullOrEmpty(normTargetName)) userCache[normTargetName] = existingInCompany;
+                                userCache[resolvedEmail] = existingInCompany;
+                                if (!existingUsers.Any(u => u.Id == existingInCompany.Id)) existingUsers.Add(existingInCompany);
                             }
                             else
                             {
-                                var finalDisplayName = !string.IsNullOrWhiteSpace(resolvedName) && !IsInvalidPersonValue(resolvedName)
-                                    ? resolvedName
-                                    : (!string.IsNullOrWhiteSpace(row.MatchedUserName)
-                                        ? row.MatchedUserName
-                                        : FormatDisplayName(GetEmailLocalPart(resolvedEmail)));
-
+                                // Buat pengguna baru untuk perusahaan ini
                                 var normUserName = resolvedEmail.ToUpperInvariant();
                                 var usernameConflict = await _context.Users.AnyAsync(u => u.NormalizedUserName == normUserName, cancellationToken)
                                     || _context.Users.Local.Any(u => u.NormalizedUserName == normUserName);
 
                                 var finalUserName = usernameConflict
-                                    ? $"{resolvedEmail.Split('@')[0]}_{Guid.NewGuid().ToString("N")[..4]}@{companyDomain}"
+                                    ? $"{resolvedEmail.Split('@')[0]}_c{companyId ?? 0}_{Guid.NewGuid().ToString("N")[..4]}@{companyDomain}"
                                     : resolvedEmail;
 
                                 var newUser = new AppUser
@@ -750,6 +770,7 @@ public class TaskExcelImportService : ITaskExcelImportService
                                 existingUsers.Add(newUser);
                                 if (!string.IsNullOrEmpty(picKey)) userCache[picKey] = newUser;
                                 userCache[finalDisplayName] = newUser;
+                                if (!string.IsNullOrEmpty(normTargetName)) userCache[normTargetName] = newUser;
                                 userCache[resolvedEmail] = newUser;
                                 userCache[newUser.Id] = newUser;
 
@@ -1168,109 +1189,33 @@ public class TaskExcelImportService : ITaskExcelImportService
         var nameClean = ws.Name.Trim();
         var nameLower = nameClean.ToLowerInvariant();
 
-        // 1. Explicit generic utility sheet names (only ignore if standalone utility sheet without person/task context)
-        var standaloneUtilityNames = new[]
+        // 1. Explicit check for Master Data, Dashboard, Lookups, Reports, and Utility sheets by name
+        if (totalSheets > 1)
         {
-            "dashboard", "summary", "master", "master data", "masterdata", "data master",
-            "lookup", "look up", "reference", "referensi", "ref", "parameter", "dropdown",
-            "dropdowns", "kamus", "template", "panduan", "guide", "readme", "petunjuk",
-            "instruksi", "keterangan", "cover", "sampul", "intro"
-        };
-
-        if (standaloneUtilityNames.Any(k => nameLower == k || nameLower == k + " data" || nameLower == "data " + k))
-        {
-            // Exception: If this is the ONLY sheet in the workbook and has "template" with task data, allow it
-            if (totalSheets == 1 && nameLower.Contains("template"))
-            {
-                var header = DetectHeaderRow(ws);
-                if (header != null) return false;
-            }
-            return true;
-        }
-
-        // 2. Specific check for Sheet 1 (Index 1)
-        // "sheet 1 jika berisikan informasi dashboard tidak perlu di ambil"
-        if (sheetIndex == 1 && totalSheets > 1)
-        {
-            int maxRow = Math.Min(ws.LastRowUsed()?.RowNumber() ?? 1, 15);
-            int maxCol = Math.Min(ws.LastColumnUsed()?.ColumnNumber() ?? 1, 20);
-            bool hasDashboardClues = false;
-
-            for (int r = 1; r <= maxRow; r++)
-            {
-                var row = ws.Row(r);
-                for (int c = 1; c <= maxCol; c++)
-                {
-                    var val = row.Cell(c).GetString().Trim().ToLowerInvariant();
-                    if (val.Contains("dashboard") || val.Contains("ringkasan") || val.Contains("executive summary") ||
-                        val.Contains("rekapitulasi") || val.Contains("total proyek") || val.Contains("total tugas") ||
-                        val.Contains("kpi") || val.Contains("monitoring project") || val.Contains("overall progress"))
-                    {
-                        hasDashboardClues = true;
-                        break;
-                    }
-                }
-                if (hasDashboardClues) break;
-            }
-
-            var header = DetectHeaderRow(ws);
-            if (hasDashboardClues || header == null)
-            {
-                return true;
-            }
-
-            var headers = Enumerable.Range(1, Math.Min(maxCol, 40))
-                .Select(c => ws.Cell(header.RowNumber(), c).GetString().Trim().ToLowerInvariant())
-                .ToList();
-            int titleCol = FindCol(headers, "judul tugas", "task title", "title", "judul", "aktivitas", "activity", "pekerjaan", "uraian pekerjaan", "deskripsi pekerjaan", "uraian tugas", "nama tugas", "nama task", "task name", "uraian", "kegiatan", "work item", "tugas", "task", "tasks", "action item", "fitur");
-            if (titleCol == 0 && (nameLower.StartsWith("sheet") || hasDashboardClues))
+            if (nameLower.Contains("master data") || nameLower.Contains("data master") ||
+                nameLower.Contains("masterdata") || nameLower.Contains("datamaster") ||
+                nameLower.Contains("master-data") || nameLower.Contains("master_data") ||
+                nameLower.StartsWith("master ") || nameLower.StartsWith("master-") || nameLower.StartsWith("master_") || nameLower == "master" ||
+                nameLower.Contains("lookup") || nameLower.Contains("dropdown") ||
+                nameLower.Contains("referensi") || nameLower.Contains("reference") ||
+                nameLower.Contains("kamus") || nameLower.Contains("parameter") ||
+                nameLower.Contains("dashboard") || nameLower.Contains("summary") ||
+                nameLower.Contains("ringkasan") || nameLower.Contains("rekapitulasi") ||
+                nameLower.Contains("panduan") || nameLower.Contains("guide") ||
+                nameLower.Contains("petunjuk") || nameLower.Contains("keterangan") ||
+                nameLower.Contains("direktori") || nameLower.Contains("directory") ||
+                nameLower == "cover" || nameLower == "sampul")
             {
                 return true;
             }
         }
-
-        // 3. Specific check for Sheet 2 (Index 2)
-        // "jika sheet 2 berisikan master data, juga tidak perlu di ambil"
-        if (sheetIndex == 2 && totalSheets >= 2)
+        else if (nameLower.Contains("template"))
         {
-            int maxRow = Math.Min(ws.LastRowUsed()?.RowNumber() ?? 1, 15);
-            int maxCol = Math.Min(ws.LastColumnUsed()?.ColumnNumber() ?? 1, 20);
-            bool hasMasterClues = false;
-
-            for (int r = 1; r <= maxRow; r++)
-            {
-                var row = ws.Row(r);
-                for (int c = 1; c <= maxCol; c++)
-                {
-                    var val = row.Cell(c).GetString().Trim().ToLowerInvariant();
-                    if (val.Contains("master data") || val.Contains("data master") || val.Contains("lookup") ||
-                        val.Contains("daftar pilihan") || val.Contains("dropdown") || val.Contains("referensi") ||
-                        val.Contains("daftar status") || val.Contains("daftar prioritas") || val.Contains("daftar kategori"))
-                    {
-                        hasMasterClues = true;
-                        break;
-                    }
-                }
-                if (hasMasterClues) break;
-            }
-
-            var header = DetectHeaderRow(ws);
-            if (hasMasterClues || header == null)
-            {
-                return true;
-            }
-
-            var headers = Enumerable.Range(1, Math.Min(maxCol, 40))
-                .Select(c => ws.Cell(header.RowNumber(), c).GetString().Trim().ToLowerInvariant())
-                .ToList();
-            int titleCol = FindCol(headers, "judul tugas", "task title", "title", "judul", "aktivitas", "activity", "pekerjaan", "uraian pekerjaan", "deskripsi pekerjaan", "uraian tugas", "nama tugas", "nama task", "task name", "uraian", "kegiatan", "work item", "tugas", "task", "tasks", "action item", "fitur");
-            if (titleCol == 0 && (nameLower.StartsWith("sheet") || hasMasterClues))
-            {
-                return true;
-            }
+            var h = DetectHeaderRow(ws);
+            if (h != null) return false;
         }
 
-        // 4. Any sheet without a valid task header or title column should be ignored
+        // 2. Any sheet without a valid task header or title column should be ignored
         var sheetHeader = DetectHeaderRow(ws);
         if (sheetHeader == null) return true;
 
@@ -1288,7 +1233,74 @@ public class TaskExcelImportService : ITaskExcelImportService
             }
         }
 
-        return tCol == 0;
+        if (tCol == 0) return true;
+
+        // 3. Content scan strictly in banner rows ABOVE header row (do NOT scan task rows below header)
+        if (totalSheets > 1 && sheetHeader.RowNumber() > 1)
+        {
+            for (int r = 1; r < sheetHeader.RowNumber(); r++)
+            {
+                var row = ws.Row(r);
+                for (int c = 1; c <= Math.Min(ws.LastColumnUsed()?.ColumnNumber() ?? 1, 20); c++)
+                {
+                    var val = row.Cell(c).GetString().Trim().ToLowerInvariant();
+                    if (val.Contains("master data") || val.Contains("data master") || val.Contains("lookup") ||
+                        val.Contains("daftar pilihan status") || val.Contains("kamus data") || val.Contains("rekapitulasi proyek") ||
+                        val.Contains("total proyek:") || val.Contains("total tugas:") || val.Contains("progres keseluruhan:") ||
+                        val.Contains("dashboard monitoring") || val.Contains("ringkasan eksekutif"))
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        // 4. "cukup dari sheet nama pengguna saja":
+        // When workbook has multiple sheets, strictly require that the sheet belongs to a user/personnel
+        if (totalSheets > 1)
+        {
+            var sheetPerson = ExtractPersonFromSheetName(ws.Name);
+            bool isUserSheet = !string.IsNullOrWhiteSpace(sheetPerson);
+
+            if (!isUserSheet)
+            {
+                // Check metadata rows (rows 1 to headerRow - 1) for "Nama:", "PIC:", "Nama Pegawai:", etc.
+                int maxMeta = Math.Min(sheetHeader.RowNumber() - 1, 12);
+                int maxMetaC = Math.Min(ws.LastColumnUsed()?.ColumnNumber() ?? 1, 15);
+                for (int r = 1; r <= maxMeta; r++)
+                {
+                    var row = ws.Row(r);
+                    for (int c = 1; c <= maxMetaC; c++)
+                    {
+                        var val = row.Cell(c).GetString().Trim();
+                        if (string.IsNullOrWhiteSpace(val)) continue;
+                        var m = Regex.Match(val, @"^(?:nama(?:\s*personil|\s*karyawan|\s*pengguna|\s*user|\s*pegawai)?|pic|personil|petugas)\s*[:=]\s*(.+)$", RegexOptions.IgnoreCase);
+                        if (m.Success && !IsInvalidPersonValue(m.Groups[1].Value.Trim()))
+                        {
+                            isUserSheet = true;
+                            break;
+                        }
+                    }
+                    if (isUserSheet) break;
+                }
+            }
+
+            if (!isUserSheet)
+            {
+                int picCol = FindCol(hList, "pic", "nama pic", "email / nama pic", "penanggung jawab", "petugas", "pelaksana", "developer", "assigned to", "assignee", "nama staf", "nama personil", "person", "nama pengguna", "nama user");
+                if (picCol > 0)
+                {
+                    isUserSheet = true;
+                }
+            }
+
+            if (!isUserSheet)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static string? FindEmailInWorksheet(IXLWorksheet ws, int headerRowNum, int emailCol)
@@ -2004,6 +2016,15 @@ public class TaskExcelImportService : ITaskExcelImportService
         if (userWithSameEmail != null)
         {
             return (userWithSameEmail.Id, userWithSameEmail.FullName, userWithSameEmail.Email, false);
+        }
+
+        // Rule: "untuk nama pengguna tidak boleh duplikasi, kecuali berbeda perusahaan"
+        var userWithSameName = existingUsers.FirstOrDefault(u =>
+            (!string.IsNullOrEmpty(u.FullName) && u.FullName.Equals(formattedName, StringComparison.OrdinalIgnoreCase)) ||
+            (!string.IsNullOrEmpty(u.FullName) && NormalizePersonName(u.FullName) == NormalizePersonName(formattedName)));
+        if (userWithSameName != null)
+        {
+            return (userWithSameName.Id, userWithSameName.FullName, userWithSameName.Email, false);
         }
 
         return (null, formattedName, emailSlug, true);

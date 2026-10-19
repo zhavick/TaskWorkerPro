@@ -1036,6 +1036,162 @@ public class TaskExcelImportServiceTests
         Assert.Null(row.StartDate);
         Assert.Null(row.DueDate);
     }
+
+    [Fact]
+    public async Task PreviewImportAsync_MasterDataSheetsIgnored_OnlyPersonnelSheetsImported()
+    {
+        using var context = CreateInMemoryContext();
+        var service = new TaskExcelImportService(context);
+
+        using var wb = new XLWorkbook();
+
+        // 1. Sheet Master Data (must NOT be imported)
+        var wsMaster1 = wb.Worksheets.Add("Master Data");
+        wsMaster1.Cell(1, 1).Value = "Daftar Pilihan Status";
+        wsMaster1.Cell(2, 1).Value = "Todo";
+        wsMaster1.Cell(3, 1).Value = "InProgress";
+        wsMaster1.Cell(4, 1).Value = "Done";
+
+        // 2. Sheet Data Master Status (must NOT be imported)
+        var wsMaster2 = wb.Worksheets.Add("Data Master Status");
+        wsMaster2.Cell(1, 1).Value = "Parameter";
+        wsMaster2.Cell(2, 1).Value = "Prioritas";
+
+        // 3. Sheet Dashboard (must NOT be imported)
+        var wsDash = wb.Worksheets.Add("Dashboard Summary");
+        wsDash.Cell(1, 1).Value = "Ringkasan KPI";
+        wsDash.Cell(2, 1).Value = "Total Proyek: 10";
+
+        // 4. Sheet Budi Santoso (Personnel sheet - MUST be imported)
+        var wsBudi = wb.Worksheets.Add("Budi Santoso");
+        wsBudi.Cell(1, 1).Value = "No";
+        wsBudi.Cell(1, 2).Value = "Tugas";
+        wsBudi.Cell(1, 3).Value = "Proyek";
+        wsBudi.Cell(1, 4).Value = "Status";
+        wsBudi.Cell(2, 1).Value = 1;
+        wsBudi.Cell(2, 2).Value = "Refactoring Auth Module";
+        wsBudi.Cell(2, 3).Value = "Security Revamp";
+        wsBudi.Cell(2, 4).Value = "InProgress";
+        wsBudi.Cell(3, 1).Value = 2;
+        wsBudi.Cell(3, 2).Value = "Penulisan Unit Test Auth";
+        wsBudi.Cell(3, 3).Value = "Security Revamp";
+        wsBudi.Cell(3, 4).Value = "Todo";
+
+        // 5. Sheet Dewi Lestari (Personnel sheet - MUST be imported)
+        var wsDewi = wb.Worksheets.Add("Dewi Lestari");
+        wsDewi.Cell(1, 1).Value = "No";
+        wsDewi.Cell(1, 2).Value = "Tugas";
+        wsDewi.Cell(1, 3).Value = "Proyek";
+        wsDewi.Cell(1, 4).Value = "Status";
+        wsDewi.Cell(2, 1).Value = 1;
+        wsDewi.Cell(2, 2).Value = "Desain Tampilan UI Dashboard";
+        wsDewi.Cell(2, 3).Value = "UI Modernization";
+        wsDewi.Cell(2, 4).Value = "InProgress";
+
+        using var ms = new MemoryStream();
+        wb.SaveAs(ms);
+        ms.Position = 0;
+
+        var preview = await service.PreviewImportAsync(ms, "TeamWork.xlsx", companyId: 1);
+
+        Assert.NotNull(preview);
+        // Only 3 rows total from Budi Santoso (2) and Dewi Lestari (1)
+        Assert.Equal(3, preview.TotalRows);
+        Assert.Contains(preview.Rows, r => r.Title == "Refactoring Auth Module");
+        Assert.Contains(preview.Rows, r => r.Title == "Penulisan Unit Test Auth");
+        Assert.Contains(preview.Rows, r => r.Title == "Desain Tampilan UI Dashboard");
+        Assert.DoesNotContain(preview.Rows, r => r.Title.Contains("Daftar Pilihan Status") || r.Title.Contains("Parameter") || r.Title.Contains("Ringkasan"));
+    }
+
+    [Fact]
+    public async Task CommitImportAsync_UserDeduplicationPerCompany_SameCompanyReusesUser_DifferentCompanyAllowsSameName()
+    {
+        using var context = CreateInMemoryContext();
+        var service = new TaskExcelImportService(context);
+
+        // Add Company 2
+        var company2 = new Company { Id = 2, Name = "Perusahaan Kedua", Code = "CORP2" };
+        context.Companies.Add(company2);
+        await context.SaveChangesAsync();
+
+        // Case A: Import task for Company 1 with PIC "Budi Santoso"
+        // Company 1 ALREADY has "user-budi" (Budi Santoso). It must NOT create a duplicate user!
+        var rowCompany1 = new TaskImportRowDto(
+            RowIndex: 1,
+            TaskCode: null,
+            ParentTaskCode: null,
+            Title: "Tugas Untuk Budi Perusahaan 1",
+            Description: null,
+            ProjectName: "Website Redesign",
+            MatchedProjectId: 10,
+            PicIdentifier: "Budi Santoso",
+            MatchedUserId: null,
+            MatchedUserName: "Budi Santoso",
+            Priority: TaskPriority.High,
+            Status: TrackerKerja.Domain.Enums.TaskStatus.InProgress,
+            Progress: 30,
+            StartDate: null,
+            DueDate: null,
+            Milestone: null,
+            Obstacle: null,
+            Solution: null,
+            ValidationStatus: TaskImportValidationStatus.Valid,
+            ValidationMessages: new List<string>(),
+            PicEmail: "budi.santoso@custom-mail.com" // even with custom email, same name in company 1 reuses existing
+        );
+
+        var commitReq1 = new TaskImportCommitRequest(null, null, null, [rowCompany1], AutoCreateMissingUsers: true);
+        var result1 = await service.CommitImportAsync(commitReq1, companyId: 1);
+
+        Assert.Equal(1, result1.TotalImported);
+        Assert.Equal(0, result1.TotalUsersCreated); // Reused existing user!
+
+        var taskInCompany1 = await context.Tasks.FirstOrDefaultAsync(t => t.Title == "Tugas Untuk Budi Perusahaan 1");
+        Assert.NotNull(taskInCompany1);
+        Assert.Equal("user-budi", taskInCompany1.AssignedToUserId);
+
+        // Case B: Import task for Company 2 with PIC "Budi Santoso"
+        // "kecuali berbeda perusahaan": In Company 2, Budi Santoso does NOT exist yet.
+        // It MUST create a new user for Company 2!
+        var rowCompany2 = new TaskImportRowDto(
+            RowIndex: 1,
+            TaskCode: null,
+            ParentTaskCode: null,
+            Title: "Tugas Untuk Budi Perusahaan 2",
+            Description: null,
+            ProjectName: "Project Corp 2",
+            MatchedProjectId: null,
+            PicIdentifier: "Budi Santoso",
+            MatchedUserId: null,
+            MatchedUserName: "Budi Santoso",
+            Priority: TaskPriority.Medium,
+            Status: TrackerKerja.Domain.Enums.TaskStatus.Todo,
+            Progress: 0,
+            StartDate: null,
+            DueDate: null,
+            Milestone: null,
+            Obstacle: null,
+            Solution: null,
+            ValidationStatus: TaskImportValidationStatus.Valid,
+            ValidationMessages: new List<string>(),
+            PicEmail: "budi@corp2.com"
+        );
+
+        var commitReq2 = new TaskImportCommitRequest(null, null, null, [rowCompany2], AutoCreateMissingUsers: true);
+        var result2 = await service.CommitImportAsync(commitReq2, companyId: 2);
+
+        Assert.Equal(1, result2.TotalImported);
+        Assert.Equal(1, result2.TotalUsersCreated); // Created new user in Company 2!
+
+        var userInCompany2 = await context.Users.FirstOrDefaultAsync(u => u.CompanyId == 2 && u.FullName == "Budi Santoso");
+        Assert.NotNull(userInCompany2);
+        Assert.NotEqual("user-budi", userInCompany2.Id); // Distinct user entity!
+
+        var taskInCompany2 = await context.Tasks.FirstOrDefaultAsync(t => t.Title == "Tugas Untuk Budi Perusahaan 2");
+        Assert.NotNull(taskInCompany2);
+        Assert.Equal(userInCompany2.Id, taskInCompany2.AssignedToUserId);
+    }
 }
+
 
 
