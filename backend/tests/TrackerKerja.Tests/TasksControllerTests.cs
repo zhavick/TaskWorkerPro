@@ -76,7 +76,7 @@ public class TasksControllerTests
                 Title = "Tugas 40 Expired",
                 CompanyId = 10,
                 ProjectId = 1,
-                Status = Domain.Enums.TaskStatus.Todo,
+                Status = Domain.Enums.TaskStatus.Overdue,
                 DueDate = DateTimeOffset.UtcNow.AddDays(-2), // Overdue!
                 Progress = 10
             }
@@ -111,9 +111,13 @@ public class TasksControllerTests
         done.Should().NotBeNull();
         overdue.Should().NotBeNull();
 
+        todo!.Any(t => t.Id == 10).Should().BeTrue();
         done!.Any(t => t.Id == 30).Should().BeTrue();
         inProg!.Any(t => t.Id == 20).Should().BeTrue();
         overdue!.Any(t => t.Id == 40).Should().BeTrue();
+
+        // Ensure task 40 is not duplicated into Todo
+        todo!.Any(t => t.Id == 40).Should().BeFalse();
     }
 
     [Fact]
@@ -315,6 +319,76 @@ public class TasksControllerTests
         var task20 = await _context.Tasks.FindAsync(20);
         task10.Should().BeNull();
         task20.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task GetKanbanTasks_IncludesImportedChildTasksWithParentId()
+    {
+        // Arrange: seed child task with ParentTaskId
+        var childTask = new WorkTask
+        {
+            Id = 60,
+            Title = "Subtask dari Excel Import",
+            CompanyId = 10,
+            ProjectId = 1,
+            ParentTaskId = 10,
+            Status = Domain.Enums.TaskStatus.InProgress,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        _context.Tasks.Add(childTask);
+        await _context.SaveChangesAsync();
+
+        var controller = new TasksController(_context, _tenantService);
+
+        // Act
+        var result = await controller.GetKanbanTasks(includeSubtasks: true) as OkObjectResult;
+
+        // Assert
+        result.Should().NotBeNull();
+        var data = result!.Value?.GetType().GetProperty("data")?.GetValue(result.Value);
+        var inProg = data!.GetType().GetProperty("InProgress")?.GetValue(data) as List<TaskItemDto>;
+        inProg.Should().NotBeNull();
+        inProg!.Any(t => t.Id == 60).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task GetKanbanTasks_FiltersByActiveMonth_Correctly()
+    {
+        // Arrange: create task in specific month (e.g., month = 5, year = 2026) and task in month = 8
+        var mayTask = new WorkTask
+        {
+            Id = 70,
+            Title = "Tugas Bulan Mei 2026",
+            CompanyId = 10,
+            ProjectId = 1,
+            Status = Domain.Enums.TaskStatus.Todo,
+            DueDate = new DateTimeOffset(2026, 5, 15, 12, 0, 0, TimeSpan.Zero),
+            CreatedAt = new DateTimeOffset(2026, 5, 1, 0, 0, 0, TimeSpan.Zero)
+        };
+        var augustTask = new WorkTask
+        {
+            Id = 71,
+            Title = "Tugas Bulan Agustus 2026",
+            CompanyId = 10,
+            ProjectId = 1,
+            Status = Domain.Enums.TaskStatus.Todo,
+            DueDate = new DateTimeOffset(2026, 8, 20, 12, 0, 0, TimeSpan.Zero),
+            CreatedAt = new DateTimeOffset(2026, 8, 1, 0, 0, 0, TimeSpan.Zero)
+        };
+        _context.Tasks.AddRange(mayTask, augustTask);
+        await _context.SaveChangesAsync();
+
+        var controller = new TasksController(_context, _tenantService);
+
+        // Act: request month 5 year 2026
+        var resultMay = await controller.GetKanbanTasks(month: 5, year: 2026) as OkObjectResult;
+        var dataMay = resultMay!.Value?.GetType().GetProperty("data")?.GetValue(resultMay.Value);
+        var todoMay = dataMay!.GetType().GetProperty("Todo")?.GetValue(dataMay) as List<TaskItemDto>;
+
+        // Assert
+        todoMay.Should().NotBeNull();
+        todoMay!.Any(t => t.Id == 70).Should().BeTrue();
+        todoMay!.Any(t => t.Id == 71).Should().BeFalse();
     }
 
     private class FakeTenantService : ICurrentTenantService

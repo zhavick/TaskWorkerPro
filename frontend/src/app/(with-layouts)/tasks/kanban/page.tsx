@@ -166,6 +166,43 @@ export default function KanbanPage() {
   const [selectedMobileColumn, setSelectedMobileColumn] =
     useState<"Todo" | "InProgress" | "Done" | "Overdue">("InProgress");
 
+  // Active Month Filter State ("hanya menampilkan pada bulan yang aktif saja")
+  const [activeMonth, setActiveMonth] = useState<number>(() => new Date().getMonth() + 1); // 1-12
+  const [activeYear, setActiveYear] = useState<number>(() => new Date().getFullYear());
+
+  const MONTH_NAMES = [
+    "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+    "Juli", "Agustus", "September", "Oktober", "November", "Desember"
+  ];
+
+  const isCurrentMonth =
+    activeMonth === new Date().getMonth() + 1 &&
+    activeYear === new Date().getFullYear();
+
+  const goToPrevMonth = () => {
+    if (activeMonth === 1) {
+      setActiveMonth(12);
+      setActiveYear((y) => y - 1);
+    } else {
+      setActiveMonth((m) => m - 1);
+    }
+  };
+
+  const goToNextMonth = () => {
+    if (activeMonth === 12) {
+      setActiveMonth(1);
+      setActiveYear((y) => y + 1);
+    } else {
+      setActiveMonth((m) => m + 1);
+    }
+  };
+
+  const goToCurrentMonth = () => {
+    const now = new Date();
+    setActiveMonth(now.getMonth() + 1);
+    setActiveYear(now.getFullYear());
+  };
+
   // Dialog States
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [createModalOpen, setCreateModalOpen] = useState(false);
@@ -237,7 +274,7 @@ export default function KanbanPage() {
     return () => clearInterval(interval);
   }, [activeTimers]);
 
-  // 4. Query Kanban Tasks with filters
+  // 4. Query Kanban Tasks with filters (including active month)
   const {
     data: kanbanData = { Todo: [], InProgress: [], Done: [], Overdue: [] },
     isLoading,
@@ -248,6 +285,8 @@ export default function KanbanPage() {
       selectedProjectId,
       selectedPriority,
       scope,
+      activeMonth,
+      activeYear,
     ],
     queryFn: async () => {
       const params = new URLSearchParams();
@@ -257,6 +296,8 @@ export default function KanbanPage() {
       if (selectedPriority !== "all")
         params.append("priority", selectedPriority);
       if (scope) params.append("filter", scope);
+      params.append("month", activeMonth.toString());
+      params.append("year", activeYear.toString());
 
       const res = await apiClient.get(`/tasks/kanban?${params.toString()}`);
       return res.data.data;
@@ -283,6 +324,8 @@ export default function KanbanPage() {
         selectedProjectId,
         selectedPriority,
         scope,
+        activeMonth,
+        activeYear,
       ]);
 
       if (previousData) {
@@ -329,6 +372,8 @@ export default function KanbanPage() {
               selectedProjectId,
               selectedPriority,
               scope,
+              activeMonth,
+              activeYear,
             ],
             nextData,
           );
@@ -346,6 +391,8 @@ export default function KanbanPage() {
             selectedProjectId,
             selectedPriority,
             scope,
+            activeMonth,
+            activeYear,
           ],
           context.previousData,
         );
@@ -441,12 +488,14 @@ export default function KanbanPage() {
   const hasActiveFilters =
     search.trim() !== "" ||
     selectedProjectId !== "all" ||
-    selectedPriority !== "all";
+    selectedPriority !== "all" ||
+    !isCurrentMonth;
 
   const resetFilters = () => {
     setSearch("");
     setSelectedProjectId("all");
     setSelectedPriority("all");
+    goToCurrentMonth();
   };
 
   const openCreateDialogForStatus = (statusVal: number) => {
@@ -484,17 +533,21 @@ export default function KanbanPage() {
               <KanbanIcon className="h-5 w-5" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight text-gray-900 dark:text-white">
                   Papan Kanban Interaktif
                 </h1>
-                <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-bold text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-400">
+                <span className="rounded-full bg-indigo-50 px-2.5 py-0.5 text-xs font-bold text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-400">
                   {totalTasksCount} Tugas
+                </span>
+                <span className="inline-flex items-center gap-1 rounded-full border border-indigo-200/60 bg-indigo-50/70 px-2.5 py-0.5 text-xs font-semibold text-indigo-700 dark:border-indigo-800/60 dark:bg-indigo-950/60 dark:text-indigo-300">
+                  <Calendar className="h-3 w-3 text-indigo-500" />
+                  Bulan Aktif: {MONTH_NAMES[activeMonth - 1]} {activeYear}
                 </span>
               </div>
               <p className="text-xs text-gray-500 dark:text-gray-400">
-                Visualisasikan alur kerja agile dengan tarik & letakkan (*Drag &
-                Drop*) kartu antar kolom status.
+                Visualisasikan alur kerja agile dengan tarik &amp; letakkan (*Drag &amp;
+                Drop*) kartu antar kolom status pada bulan aktif terpilih.
               </p>
             </div>
           </div>
@@ -543,6 +596,44 @@ export default function KanbanPage() {
 
           {/* Filters Group */}
           <div className="flex flex-wrap items-center gap-2.5">
+            {/* Active Month Navigator ("hanya menampilkan pada bulan yang aktif saja") */}
+            <div className="flex items-center gap-1 rounded-xl border border-gray-200 bg-gray-50/80 p-0.5 dark:border-gray-800 dark:bg-gray-800/80">
+              <button
+                type="button"
+                onClick={goToPrevMonth}
+                title="Bulan Sebelumnya"
+                className="flex h-7 w-7 items-center justify-center rounded-lg text-gray-500 hover:bg-white hover:text-gray-900 shadow-2xs transition-all dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white"
+              >
+                <ChevronLeft className="h-3.5 w-3.5" />
+              </button>
+
+              <div className="flex items-center gap-1.5 px-2 text-xs font-bold text-gray-800 dark:text-gray-100 min-w-[125px] justify-center select-none">
+                <Calendar className="h-3.5 w-3.5 text-indigo-500" />
+                <span>
+                  {MONTH_NAMES[activeMonth - 1]} {activeYear}
+                </span>
+              </div>
+
+              <button
+                type="button"
+                onClick={goToNextMonth}
+                title="Bulan Berikutnya"
+                className="flex h-7 w-7 items-center justify-center rounded-lg text-gray-500 hover:bg-white hover:text-gray-900 shadow-2xs transition-all dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white"
+              >
+                <ChevronRight className="h-3.5 w-3.5" />
+              </button>
+
+              {!isCurrentMonth && (
+                <button
+                  type="button"
+                  onClick={goToCurrentMonth}
+                  className="rounded-lg bg-indigo-50 px-2 py-1 text-[11px] font-semibold text-indigo-600 hover:bg-indigo-100 transition-colors dark:bg-indigo-950/70 dark:text-indigo-300 dark:hover:bg-indigo-900"
+                >
+                  Bulan Ini
+                </button>
+              )}
+            </div>
+
             {/* Filter Proyek */}
             <div className="flex items-center gap-1.5">
               <FolderKanban className="h-3.5 w-3.5 text-gray-400" />
@@ -1145,6 +1236,11 @@ export default function KanbanPage() {
       <ImportExcelDialog
         open={importModalOpen}
         onOpenChange={setImportModalOpen}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ["kanbanTasks"] });
+          queryClient.invalidateQueries({ queryKey: ["tasksList"] });
+          queryClient.invalidateQueries({ queryKey: ["dashboardStats"] });
+        }}
       />
 
       {/* Modal Buat Tugas Baru */}

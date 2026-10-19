@@ -159,7 +159,10 @@ public class TasksController : ControllerBase
         [FromQuery] TaskPriority? priority = null,
         [FromQuery] string? search = null,
         [FromQuery] string? filter = null,
-        [FromQuery] string? assignedToUserId = null)
+        [FromQuery] string? assignedToUserId = null,
+        [FromQuery] int? month = null,
+        [FromQuery] int? year = null,
+        [FromQuery] bool includeSubtasks = true)
     {
         var query = _context.Tasks
             .Include(t => t.Project)
@@ -167,8 +170,30 @@ public class TasksController : ControllerBase
             .Include(t => t.AssignedToUser)
             .Include(t => t.Subtasks)
             .Include(t => t.Sessions)
-            .AsNoTracking()
-            .Where(t => t.ParentTaskId == null);
+            .AsNoTracking();
+
+        if (!includeSubtasks)
+        {
+            query = query.Where(t => t.ParentTaskId == null);
+        }
+
+        // Active Month filter ("hanya menampilkan pada bulan yang aktif saja")
+        // If month is 0, caller explicitly bypassed month filtering
+        if (month != 0)
+        {
+            var targetMonth = (month.HasValue && month.Value >= 1 && month.Value <= 12) ? month.Value : DateTime.UtcNow.Month;
+            var targetYear = (year.HasValue && year.Value >= 2000 && year.Value <= 2100) ? year.Value : DateTime.UtcNow.Year;
+            var monthStart = new DateTimeOffset(targetYear, targetMonth, 1, 0, 0, 0, TimeSpan.Zero);
+            var monthEnd = monthStart.AddMonths(1).AddTicks(-1);
+
+            query = query.Where(t =>
+                (t.StartDate.HasValue && t.DueDate.HasValue && t.StartDate.Value <= monthEnd && t.DueDate.Value >= monthStart) ||
+                (!t.StartDate.HasValue && t.DueDate.HasValue && t.DueDate.Value >= monthStart && t.DueDate.Value <= monthEnd) ||
+                (t.StartDate.HasValue && !t.DueDate.HasValue && t.StartDate.Value >= monthStart && t.StartDate.Value <= monthEnd) ||
+                (!t.StartDate.HasValue && !t.DueDate.HasValue &&
+                    ((t.CreatedAt >= monthStart && t.CreatedAt <= monthEnd) || (t.UpdatedAt >= monthStart && t.UpdatedAt <= monthEnd)))
+            );
+        }
 
         // RBAC Scoping (FSD 5.14): Non-admin is automatically scoped to their own tasks, or admin filtering "mine"
         if ((!_tenantService.IsAdmin && !string.IsNullOrEmpty(_tenantService.UserId)) ||
@@ -195,13 +220,13 @@ public class TasksController : ControllerBase
 
         var dtoList = tasks.Select(MapToItemDto).ToList();
 
+        // Strict status grouping ("munculkan data di kanban berdasarkan status")
         var kanban = new
         {
             Todo = dtoList.Where(t => t.Status == Domain.Enums.TaskStatus.Todo).ToList(),
             InProgress = dtoList.Where(t => t.Status == Domain.Enums.TaskStatus.InProgress).ToList(),
             Done = dtoList.Where(t => t.Status == Domain.Enums.TaskStatus.Done).ToList(),
-            Overdue = dtoList.Where(t => t.Status == Domain.Enums.TaskStatus.Overdue ||
-                                         (t.DueDate.HasValue && t.DueDate.Value < DateTimeOffset.UtcNow && t.Status != Domain.Enums.TaskStatus.Done)).ToList()
+            Overdue = dtoList.Where(t => t.Status == Domain.Enums.TaskStatus.Overdue).ToList()
         };
 
         return Ok(new { success = true, data = kanban });
