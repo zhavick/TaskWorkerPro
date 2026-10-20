@@ -135,8 +135,8 @@ export default function CalendarSchedulePage() {
     userProfile?.jobTitle?.toLowerCase().includes("admin") ||
     false;
 
-  // Active filter based on RBAC: Non-admin is strictly scoped to "mine"
-  const activeScopeFilter = isAdmin ? scopeFilter : "mine";
+  // Active filter: default to scopeFilter ("all" or "mine") so team can coordinate deadlines
+  const activeScopeFilter = scopeFilter;
 
   // 2. Fetch Project List for Filter Toolbar
   const { data: projects = [] } = useQuery<any[]>({
@@ -475,6 +475,20 @@ export default function CalendarSchedulePage() {
 
         {/* Toolbar Action Switchers */}
         <div className="flex flex-wrap items-center gap-2">
+          {/* Quick links to Task Table & Kanban */}
+          <Link href="/tasks">
+            <Button variant="outline" className="gap-1.5 text-xs h-9">
+              <List className="h-4 w-4" />
+              Daftar Tugas
+            </Button>
+          </Link>
+          <Link href="/tasks/kanban">
+            <Button variant="outline" className="gap-1.5 text-xs h-9">
+              <FolderKanban className="h-4 w-4" />
+              Papan Kanban
+            </Button>
+          </Link>
+
           {/* New Task Button */}
           <Button
             onClick={() => setCreateModalOpen(true)}
@@ -484,40 +498,33 @@ export default function CalendarSchedulePage() {
             Tugas Baru
           </Button>
 
-          {/* RBAC Scope Switcher (FSD 5.14) */}
-          {isAdmin ? (
-            <div className="flex items-center rounded-xl border border-gray-200 bg-white p-1 shadow-2xs dark:border-gray-800 dark:bg-gray-900">
-              <button
-                type="button"
-                onClick={() => setScopeFilter("all")}
-                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
-                  scopeFilter === "all"
-                    ? "bg-indigo-600 text-white shadow-xs"
-                    : "text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
-                }`}
-              >
-                <Users className="h-3.5 w-3.5" />
-                Semua Tim
-              </button>
-              <button
-                type="button"
-                onClick={() => setScopeFilter("mine")}
-                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
-                  scopeFilter === "mine"
-                    ? "bg-indigo-600 text-white shadow-xs"
-                    : "text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
-                }`}
-              >
-                <User className="h-3.5 w-3.5" />
-                Tugas Saya
-              </button>
-            </div>
-          ) : (
-            <div className="flex items-center gap-1.5 rounded-xl border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-semibold text-gray-600 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-400">
-              <User className="h-3.5 w-3.5 text-indigo-500" />
-              <span>Tugas Saya Sendiri</span>
-            </div>
-          )}
+          {/* Scope Switcher */}
+          <div className="flex items-center rounded-xl border border-gray-200 bg-white p-1 shadow-2xs dark:border-gray-800 dark:bg-gray-900">
+            <button
+              type="button"
+              onClick={() => setScopeFilter("all")}
+              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                scopeFilter === "all"
+                  ? "bg-indigo-600 text-white shadow-xs"
+                  : "text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
+              }`}
+            >
+              <Users className="h-3.5 w-3.5" />
+              Semua Tim
+            </button>
+            <button
+              type="button"
+              onClick={() => setScopeFilter("mine")}
+              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                scopeFilter === "mine"
+                  ? "bg-indigo-600 text-white shadow-xs"
+                  : "text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
+              }`}
+            >
+              <User className="h-3.5 w-3.5" />
+              Tugas Saya
+            </button>
+          </div>
 
           {/* 4 View Modes Switcher: Bulan, Minggu, Hari, Agenda */}
           <div className="flex items-center rounded-xl border border-gray-200 bg-white p-1 shadow-2xs dark:border-gray-800 dark:bg-gray-900">

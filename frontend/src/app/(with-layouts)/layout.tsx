@@ -71,7 +71,7 @@ export default function WithLayout({ children }: { children: ReactNode }) {
           <Header onMenuClick={() => setIsMobileSheetOpen(true)} />
 
           <main className="scrollbar-thin flex-1 min-h-0 overflow-y-auto">
-            <div className="mx-auto w-full max-w-384 pb-16">{children}</div>
+            <div className="mx-auto w-full max-w-none pb-16">{children}</div>
           </main>
         </div>
       </div>

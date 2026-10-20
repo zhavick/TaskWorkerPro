@@ -327,33 +327,10 @@ public class TaskExcelImportService : ITaskExcelImportService
                     projectName = sheetPersonnel.DefaultProjectName;
                 }
                 var desc = descCol > 0 ? ws.Cell(r, descCol).GetString().Trim() : null;
+                // User Requirement 1: untuk deskripsi tugas, gunakan judul tugas, sehingga isi deskripsi sama dengan judul tugas
                 if (string.IsNullOrWhiteSpace(desc))
                 {
-                    var descParts = new List<string>();
-                    if (moduleCol > 0)
-                    {
-                        var mVal = ws.Cell(r, moduleCol).GetString().Trim();
-                        if (!string.IsNullOrWhiteSpace(mVal)) descParts.Add($"Modul: {mVal}");
-                    }
-                    if (jenisTaskCol > 0)
-                    {
-                        var jtVal = ws.Cell(r, jenisTaskCol).GetString().Trim();
-                        if (!string.IsNullOrWhiteSpace(jtVal)) descParts.Add($"Jenis: {jtVal}");
-                    }
-                    if (bugTypeCol > 0)
-                    {
-                        var btVal = ws.Cell(r, bugTypeCol).GetString().Trim();
-                        if (!string.IsNullOrWhiteSpace(btVal)) descParts.Add($"Bug: {btVal}");
-                    }
-                    if (evidenceCol > 0)
-                    {
-                        var evVal = ws.Cell(r, evidenceCol).GetString().Trim();
-                        if (!string.IsNullOrWhiteSpace(evVal)) descParts.Add($"Evidence: {evVal}");
-                    }
-                    if (descParts.Count > 0)
-                    {
-                        desc = string.Join(" | ", descParts);
-                    }
+                    desc = title;
                 }
                 var priorityText = priorityCol > 0 ? ws.Cell(r, priorityCol).GetString().Trim() : null;
                 var statusText = statusCol > 0 ? ws.Cell(r, statusCol).GetString().Trim() : null;
@@ -1001,6 +978,8 @@ public class TaskExcelImportService : ITaskExcelImportService
                 targetTask.Priority = row.Priority;
                 targetTask.Status = row.Status;
                 targetTask.Progress = row.Progress;
+                if (!string.IsNullOrWhiteSpace(row.Description)) targetTask.Description = row.Description;
+                else if (string.IsNullOrWhiteSpace(targetTask.Description)) targetTask.Description = row.Title;
                 if (!string.IsNullOrWhiteSpace(row.Milestone)) targetTask.Milestone = row.Milestone;
                 if (!string.IsNullOrWhiteSpace(row.Obstacle)) targetTask.Obstacle = row.Obstacle;
                 if (!string.IsNullOrWhiteSpace(row.Solution)) targetTask.Solution = row.Solution;
@@ -1034,7 +1013,7 @@ public class TaskExcelImportService : ITaskExcelImportService
                 var workTask = new WorkTask
                 {
                     Title = row.Title,
-                    Description = row.Description,
+                    Description = !string.IsNullOrWhiteSpace(row.Description) ? row.Description : row.Title,
                     Priority = row.Priority,
                     Status = row.Status,
                     Progress = row.Progress,

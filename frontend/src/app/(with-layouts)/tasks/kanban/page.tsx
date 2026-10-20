@@ -573,6 +573,13 @@ export default function KanbanPage() {
             </Button>
           </Link>
 
+          <Link href="/calendar">
+            <Button variant="outline" className="gap-2 text-xs h-9 border-indigo-200 text-indigo-700 hover:bg-indigo-50 dark:border-indigo-800 dark:text-indigo-400">
+              <Calendar className="h-4 w-4 text-indigo-500" />
+              Kalender
+            </Button>
+          </Link>
+
           <Button
             onClick={() => openCreateDialogForStatus(0)}
             className="gap-2 bg-indigo-600 font-semibold text-white shadow-md shadow-indigo-500/20 hover:bg-indigo-700 text-xs h-9"

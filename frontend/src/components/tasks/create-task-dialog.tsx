@@ -163,9 +163,10 @@ export function CreateTaskDialog({
   // Create Task Mutation
   const createTaskMutation = useMutation({
     mutationFn: async () => {
+      const finalDesc = description.trim() || title.trim();
       const payload: any = {
         title: title.trim(),
-        description: description.trim() || null,
+        description: finalDesc,
         priority: Number(priority),
         status: Number(status),
         progress: Number(status) === 2 ? 100 : 0,
@@ -245,7 +246,13 @@ export function CreateTaskDialog({
             </label>
             <Input
               value={title}
-              onChange={(e) => setTitle(e.target.value)}
+              onChange={(e) => {
+                const newTitle = e.target.value;
+                if (!description.trim() || description.trim() === title.trim()) {
+                  setDescription(newTitle);
+                }
+                setTitle(newTitle);
+              }}
               placeholder="Contoh: Implementasi modul autentikasi ganda JWT..."
               className="mt-1 text-sm font-semibold"
               required

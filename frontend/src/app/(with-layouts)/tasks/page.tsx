@@ -9,6 +9,7 @@ import {
   Filter,
   Play,
   Kanban,
+  Calendar,
   FileSpreadsheet,
   Download,
   Trash2,
@@ -348,6 +349,12 @@ export default function TasksListPage() {
             <Button variant="outline" className="gap-2 text-xs">
               <Kanban className="h-4 w-4" />
               Papan Kanban
+            </Button>
+          </Link>
+          <Link href="/calendar">
+            <Button variant="outline" className="gap-2 text-xs border-indigo-200 text-indigo-700 hover:bg-indigo-50 dark:border-indigo-800 dark:text-indigo-400">
+              <Calendar className="h-4 w-4 text-indigo-500" />
+              Kalender
             </Button>
           </Link>
           <Button

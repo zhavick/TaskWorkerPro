@@ -298,7 +298,7 @@ public class TasksController : ControllerBase
         var task = new WorkTask
         {
             Title = request.Title.Trim(),
-            Description = request.Description,
+            Description = !string.IsNullOrWhiteSpace(request.Description) ? request.Description.Trim() : request.Title.Trim(),
             Priority = request.Priority,
             Status = request.Status,
             Progress = Math.Clamp(request.Progress, 0, 100),
@@ -329,7 +329,7 @@ public class TasksController : ControllerBase
         if (task == null) return NotFound(new { success = false, message = "Tugas tidak ditemukan." });
 
         task.Title = request.Title.Trim();
-        task.Description = request.Description;
+        task.Description = !string.IsNullOrWhiteSpace(request.Description) ? request.Description.Trim() : request.Title.Trim();
         task.Priority = request.Priority;
         task.Status = request.Status;
         task.Progress = Math.Clamp(request.Progress, 0, 100);
@@ -364,7 +364,7 @@ public class TasksController : ControllerBase
 
                 // 1. Update task properties
                 task.Title = request.Title.Trim();
-                task.Description = request.Description;
+                task.Description = !string.IsNullOrWhiteSpace(request.Description) ? request.Description.Trim() : request.Title.Trim();
                 task.Priority = request.Priority;
                 task.Status = request.Status;
                 task.Progress = Math.Clamp(request.Progress, 0, 100);

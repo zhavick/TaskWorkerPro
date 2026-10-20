@@ -55,7 +55,7 @@ public class CalendarController : ControllerBase
             .Include(t => t.AssignedToUser)
             .AsNoTracking();
 
-        // RBAC Scoping: Non-admin is forced to 'mine' (FSD 5.14)
+        // RBAC Scoping: Non-admin is scoped to 'mine' (FSD 5.14)
         var isAdmin = _tenantService.IsAdmin || (User.Identity?.IsAuthenticated == true && (User.IsInRole("Administrator") || User.IsInRole("SuperAdmin")));
         var activeFilter = isAdmin && string.Equals(filter, "all", StringComparison.OrdinalIgnoreCase) ? "all" : "mine";
 

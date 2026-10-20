@@ -239,7 +239,7 @@ export default function TaskStudioPage() {
     mutationFn: async () => {
       const payload: any = {
         title: title.trim(),
-        description: description.trim() || null,
+        description: description.trim() || title.trim(),
         priority: Number(priority),
         status: Number(status),
         progress: Number(progress),
@@ -345,16 +345,22 @@ export default function TaskStudioPage() {
   return (
     <div className="relative pb-28">
       {/* 1. Executive Topbar Banner (Full-Width Studio Layout - FSD 5.21) */}
-      <div className="border-b border-gray-200/80 bg-white px-4 py-3.5 shadow-2xs dark:border-gray-800 dark:bg-gray-900 lg:px-8">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-3">
+      <div className="border-b border-gray-200/80 bg-white px-3 py-3 shadow-2xs dark:border-gray-800 dark:bg-gray-900 sm:px-6 lg:px-8 xl:px-10">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-wrap items-center gap-3">
             <Link href="/tasks">
               <Button size="sm" variant="ghost" className="h-8 gap-1.5 px-2 text-xs">
                 <ArrowLeft className="h-4 w-4" />
                 Daftar Tugas
               </Button>
             </Link>
-            <div className="h-4 w-px bg-gray-200 dark:bg-gray-800" />
+            <Link href="/calendar">
+              <Button size="sm" variant="ghost" className="h-8 gap-1.5 px-2 text-xs text-indigo-600 hover:bg-indigo-50 dark:text-indigo-400 dark:hover:bg-indigo-950/40">
+                <Calendar className="h-4 w-4" />
+                Kalender
+              </Button>
+            </Link>
+            <div className="h-4 w-px bg-gray-200 dark:bg-gray-800 hidden sm:block" />
             <div className="flex items-center gap-2 flex-wrap">
               <span className="font-mono text-xs font-black tracking-wider text-indigo-600 dark:text-indigo-400">
                 TASK #TK-{taskId}
@@ -381,7 +387,7 @@ export default function TaskStudioPage() {
             </div>
           </div>
 
-          <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
+          <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
             <span className="flex items-center gap-1 font-semibold text-gray-700 dark:text-gray-300">
               <Clock className="h-3.5 w-3.5 text-indigo-500" />
               Total Durasi: <span className="font-mono text-indigo-600 dark:text-indigo-400 font-bold">{totalHours} Jam</span>
@@ -394,11 +400,11 @@ export default function TaskStudioPage() {
         </div>
       </div>
 
-      {/* 2. Asymmetric 12-Column Responsive Grid (FSD 5.21: 8 cols Canvas, 4 cols Sticky Inspector) */}
-      <div className="mx-auto max-w-7xl px-4 py-6 lg:px-8">
+      {/* 2. Full-Width Responsive Studio Grid (FSD 5.21) */}
+      <div className="w-full px-3 py-4 sm:px-6 lg:px-8 xl:px-10">
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-12 lg:gap-8">
-          {/* Main Form Canvas (8 Columns) */}
-          <div className="space-y-6 lg:col-span-8">
+          {/* Main Form Canvas (8 Columns on lg/xl, 9 on 2xl) */}
+          <div className="space-y-6 lg:col-span-8 xl:col-span-8 2xl:col-span-9">
             {/* Judul Tugas */}
             <div className="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-xs dark:border-gray-800 dark:bg-gray-900">
               <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider dark:text-gray-400">
@@ -406,7 +412,13 @@ export default function TaskStudioPage() {
               </label>
               <Input
                 value={title}
-                onChange={(e) => setTitle(e.target.value)}
+                onChange={(e) => {
+                  const newTitle = e.target.value;
+                  if (!description.trim() || description.trim() === title.trim()) {
+                    setDescription(newTitle);
+                  }
+                  setTitle(newTitle);
+                }}
                 placeholder="Masukkan judul tugas..."
                 className="mt-2 text-base font-bold text-gray-900 dark:text-white"
                 required
@@ -617,7 +629,7 @@ export default function TaskStudioPage() {
           </div>
 
           {/* Sticky Metadata Inspector Sidebar (4 Columns) - FSD 5.21 */}
-          <div className="space-y-6 lg:col-span-4">
+          <div className="space-y-6 lg:col-span-4 xl:col-span-4 2xl:col-span-3">
             <div className="sticky top-20 space-y-6">
               {/* Properties Card */}
               <div className="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-xs dark:border-gray-800 dark:bg-gray-900 space-y-4">
@@ -956,16 +968,24 @@ export default function TaskStudioPage() {
         </div>
       </div>
 
-      {/* 3. Sticky Bottom Action Bar (FSD 5.21) */}
-      <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-gray-200/80 bg-white/95 p-4 backdrop-blur-md dark:border-gray-800 dark:bg-gray-900/95 shadow-lg">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 lg:px-8">
-          <Link href="/tasks">
-            <Button variant="outline" size="sm">
-              Kembali ke Daftar
-            </Button>
-          </Link>
+      {/* 3. Sticky Bottom Action Bar (Full Width & Responsive - FSD 5.21) */}
+      <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-gray-200/80 bg-white/95 p-3 sm:p-4 backdrop-blur-md dark:border-gray-800 dark:bg-gray-900/95 shadow-lg">
+        <div className="w-full flex flex-wrap items-center justify-between gap-3 px-3 sm:px-6 lg:px-8 xl:px-10">
+          <div className="flex flex-wrap items-center gap-2">
+            <Link href="/tasks">
+              <Button variant="outline" size="sm">
+                Kembali ke Daftar
+              </Button>
+            </Link>
+            <Link href="/calendar">
+              <Button variant="outline" size="sm" className="gap-1.5 border-indigo-200 text-indigo-700 hover:bg-indigo-50 dark:border-indigo-800 dark:text-indigo-400">
+                <Calendar className="h-3.5 w-3.5 text-indigo-500" />
+                Kalender
+              </Button>
+            </Link>
+          </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
             <Button
               variant="destructive"
               size="sm"
@@ -991,7 +1011,7 @@ export default function TaskStudioPage() {
               ) : (
                 <Save className="h-4 w-4" />
               )}
-              Simpan Seluruh Perubahan (Unified Save)
+              Simpan Seluruh Perubahan
             </Button>
           </div>
         </div>
