@@ -14,10 +14,13 @@ public class Attendance
     public double TotalHours { get; set; } = 0.0;
     public string? LeaveReason { get; set; }
     public string? Notes { get; set; }
+    public int Status { get; set; } = 1;
+    public string? ApprovedByUserId { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 
     public AppUser User { get; set; } = null!;
+    public AppUser? ApprovedByUser { get; set; }
 }
 
 public class WorkNote

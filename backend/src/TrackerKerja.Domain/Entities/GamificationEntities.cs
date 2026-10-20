@@ -55,6 +55,7 @@ public class RewardItem
     public int PointCost { get; set; }
     public int Stock { get; set; } = 10;
     public string Category { get; set; } = "Voucher";
+    public string? ImageUrl { get; set; }
     public string Icon { get; set; } = "gift";
     public string Color { get; set; } = "indigo";
     public bool IsActive { get; set; } = true;
@@ -81,4 +82,23 @@ public class RewardClaim
     public AppUser User { get; set; } = null!;
     public RewardItem RewardItem { get; set; } = null!;
     public AppUser? ProcessedByUser { get; set; }
+}
+
+public class UserBadgeSnapshot
+{
+    public int Id { get; set; }
+    public string SnapshotBatchId { get; set; } = string.Empty;
+    public string ResetMode { get; set; } = "transactional";
+    public string UserId { get; set; } = string.Empty;
+    public int BadgeId { get; set; }
+    public DateTimeOffset OriginalUnlockedAt { get; set; }
+    public bool IsFeatured { get; set; }
+    public string? AwardedBy { get; set; }
+    public DateTimeOffset SnapshotCreatedAt { get; set; } = DateTimeOffset.UtcNow;
+    public bool IsRestored { get; set; }
+    public DateTimeOffset? RestoredAt { get; set; }
+    public string? RestoredBy { get; set; }
+
+    public AppUser User { get; set; } = null!;
+    public MasterBadge Badge { get; set; } = null!;
 }

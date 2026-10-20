@@ -15,6 +15,7 @@ public class Project
     public decimal Budget { get; set; } = 0.00m;
     public decimal ActualCost { get; set; } = 0.00m;
     public string? Tags { get; set; }
+    public bool UseBudget { get; set; } = false;
     public DateTimeOffset? Deadline { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 
@@ -35,6 +36,7 @@ public class WorkTask
     public string? Milestone { get; set; }
     public string? Obstacle { get; set; }
     public string? Solution { get; set; }
+    public string? Tags { get; set; }
     public int? ProjectId { get; set; }
     public int? CategoryId { get; set; }
     public string? AssignedToUserId { get; set; }

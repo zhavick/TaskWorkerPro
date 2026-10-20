@@ -504,6 +504,7 @@ public class SyncService : ISyncService
                 ProjectManagerId = p.ProjectManagerId,
                 Budget = p.Budget,
                 ActualCost = p.ActualCost,
+                UseBudget = p.UseBudget,
                 Tags = p.Tags,
                 Deadline = p.Deadline,
                 CreatedAt = p.CreatedAt
@@ -521,6 +522,7 @@ public class SyncService : ISyncService
                 Milestone = t.Milestone,
                 Obstacle = t.Obstacle,
                 Solution = t.Solution,
+                Tags = t.Tags,
                 ProjectId = t.ProjectId,
                 CategoryId = t.CategoryId,
                 AssignedToUserId = t.AssignedToUserId,
@@ -553,6 +555,8 @@ public class SyncService : ISyncService
                 Date = a.Date,
                 Type = a.Type,
                 WorkLocation = a.WorkLocation,
+                Status = a.Status,
+                ApprovedByUserId = a.ApprovedByUserId,
                 ClockIn = a.ClockIn,
                 ClockOut = a.ClockOut,
                 TotalHours = a.TotalHours,
@@ -1052,6 +1056,7 @@ public class SyncService : ISyncService
                 existing.ProjectManagerId = pr.ProjectManagerId;
                 existing.Budget = pr.Budget;
                 existing.ActualCost = pr.ActualCost;
+                existing.UseBudget = pr.UseBudget;
                 existing.Tags = pr.Tags;
                 existing.Deadline = pr.Deadline;
             }
@@ -1069,6 +1074,7 @@ public class SyncService : ISyncService
                     ProjectManagerId = pr.ProjectManagerId,
                     Budget = pr.Budget,
                     ActualCost = pr.ActualCost,
+                    UseBudget = pr.UseBudget,
                     Tags = pr.Tags,
                     Deadline = pr.Deadline,
                     CreatedAt = pr.CreatedAt
@@ -1092,6 +1098,7 @@ public class SyncService : ISyncService
                 existing.Milestone = t.Milestone;
                 existing.Obstacle = t.Obstacle;
                 existing.Solution = t.Solution;
+                existing.Tags = t.Tags;
                 existing.ProjectId = t.ProjectId;
                 existing.CategoryId = t.CategoryId;
                 existing.AssignedToUserId = t.AssignedToUserId;
@@ -1114,6 +1121,7 @@ public class SyncService : ISyncService
                     Milestone = t.Milestone,
                     Obstacle = t.Obstacle,
                     Solution = t.Solution,
+                    Tags = t.Tags,
                     ProjectId = t.ProjectId,
                     CategoryId = t.CategoryId,
                     AssignedToUserId = t.AssignedToUserId,
@@ -1169,6 +1177,8 @@ public class SyncService : ISyncService
                 existing.Date = a.Date;
                 existing.Type = a.Type;
                 existing.WorkLocation = a.WorkLocation;
+                existing.Status = a.Status;
+                existing.ApprovedByUserId = a.ApprovedByUserId;
                 existing.ClockIn = a.ClockIn;
                 existing.ClockOut = a.ClockOut;
                 existing.TotalHours = a.TotalHours;
@@ -1185,6 +1195,8 @@ public class SyncService : ISyncService
                     Date = a.Date,
                     Type = a.Type,
                     WorkLocation = a.WorkLocation,
+                    Status = a.Status,
+                    ApprovedByUserId = a.ApprovedByUserId,
                     ClockIn = a.ClockIn,
                     ClockOut = a.ClockOut,
                     TotalHours = a.TotalHours,
@@ -1377,7 +1389,7 @@ public class SyncService : ISyncService
             sb.AppendLine("-- 7. Projects");
             foreach (var prj in data.Projects)
             {
-                sb.AppendLine($"INSERT OR REPLACE INTO projects (id, name, description, color, status, company_id, client_name, project_manager_id, budget, actual_cost, tags, deadline, created_at) VALUES ({prj.Id}, {SqlEscape(prj.Name)}, {SqlEscape(prj.Description)}, {SqlEscape(prj.Color)}, {(int)prj.Status}, {SqlNullableInt(prj.CompanyId)}, {SqlEscape(prj.ClientName)}, {SqlEscape(prj.ProjectManagerId)}, {prj.Budget.ToString(System.Globalization.CultureInfo.InvariantCulture)}, {prj.ActualCost.ToString(System.Globalization.CultureInfo.InvariantCulture)}, {SqlEscape(prj.Tags)}, {SqlDate(prj.Deadline)}, {SqlDate(prj.CreatedAt)});");
+                sb.AppendLine($"INSERT OR REPLACE INTO projects (id, name, description, color, status, company_id, client_name, project_manager_id, budget, actual_cost, use_budget, tags, deadline, created_at) VALUES ({prj.Id}, {SqlEscape(prj.Name)}, {SqlEscape(prj.Description)}, {SqlEscape(prj.Color)}, {(int)prj.Status}, {SqlNullableInt(prj.CompanyId)}, {SqlEscape(prj.ClientName)}, {SqlEscape(prj.ProjectManagerId)}, {prj.Budget.ToString(System.Globalization.CultureInfo.InvariantCulture)}, {prj.ActualCost.ToString(System.Globalization.CultureInfo.InvariantCulture)}, {SqlBool(prj.UseBudget)}, {SqlEscape(prj.Tags)}, {SqlDate(prj.Deadline)}, {SqlDate(prj.CreatedAt)});");
             }
             sb.AppendLine();
         }
@@ -1388,7 +1400,7 @@ public class SyncService : ISyncService
             sb.AppendLine("-- 8. Tasks");
             foreach (var t in data.Tasks)
             {
-                sb.AppendLine($"INSERT OR REPLACE INTO tasks (id, title, description, priority, status, progress, milestone, obstacle, solution, project_id, category_id, assigned_to_user_id, parent_task_id, company_id, start_date, due_date, created_at, updated_at) VALUES ({t.Id}, {SqlEscape(t.Title)}, {SqlEscape(t.Description)}, {(int)t.Priority}, {(int)t.Status}, {t.Progress}, {SqlEscape(t.Milestone)}, {SqlEscape(t.Obstacle)}, {SqlEscape(t.Solution)}, {SqlNullableInt(t.ProjectId)}, {SqlNullableInt(t.CategoryId)}, {SqlEscape(t.AssignedToUserId)}, {SqlNullableInt(t.ParentTaskId)}, {SqlNullableInt(t.CompanyId)}, {SqlDate(t.StartDate)}, {SqlDate(t.DueDate)}, {SqlDate(t.CreatedAt)}, {SqlDate(t.UpdatedAt)});");
+                sb.AppendLine($"INSERT OR REPLACE INTO tasks (id, title, description, priority, status, progress, milestone, obstacle, solution, tags, project_id, category_id, assigned_to_user_id, parent_task_id, company_id, start_date, due_date, created_at, updated_at) VALUES ({t.Id}, {SqlEscape(t.Title)}, {SqlEscape(t.Description)}, {(int)t.Priority}, {(int)t.Status}, {t.Progress}, {SqlEscape(t.Milestone)}, {SqlEscape(t.Obstacle)}, {SqlEscape(t.Solution)}, {SqlEscape(t.Tags)}, {SqlNullableInt(t.ProjectId)}, {SqlNullableInt(t.CategoryId)}, {SqlEscape(t.AssignedToUserId)}, {SqlNullableInt(t.ParentTaskId)}, {SqlNullableInt(t.CompanyId)}, {SqlDate(t.StartDate)}, {SqlDate(t.DueDate)}, {SqlDate(t.CreatedAt)}, {SqlDate(t.UpdatedAt)});");
             }
             sb.AppendLine();
         }
@@ -1410,7 +1422,7 @@ public class SyncService : ISyncService
             sb.AppendLine("-- 10. Attendance Records");
             foreach (var a in data.Attendances)
             {
-                sb.AppendLine($"INSERT OR REPLACE INTO attendances (id, user_id, date, type, work_location, clock_in, clock_out, total_hours, leave_reason, notes, created_at, updated_at) VALUES ({a.Id}, {SqlEscape(a.UserId)}, '{a.Date:yyyy-MM-dd}', {(int)a.Type}, {(int)a.WorkLocation}, {SqlDate(a.ClockIn)}, {SqlDate(a.ClockOut)}, {a.TotalHours.ToString(System.Globalization.CultureInfo.InvariantCulture)}, {SqlEscape(a.LeaveReason)}, {SqlEscape(a.Notes)}, {SqlDate(a.CreatedAt)}, {SqlDate(a.UpdatedAt)});");
+                sb.AppendLine($"INSERT OR REPLACE INTO attendances (id, user_id, date, type, work_location, status, approved_by_user_id, clock_in, clock_out, total_hours, leave_reason, notes, created_at, updated_at) VALUES ({a.Id}, {SqlEscape(a.UserId)}, '{a.Date:yyyy-MM-dd}', {(int)a.Type}, {(int)a.WorkLocation}, {a.Status}, {SqlEscape(a.ApprovedByUserId)}, {SqlDate(a.ClockIn)}, {SqlDate(a.ClockOut)}, {a.TotalHours.ToString(System.Globalization.CultureInfo.InvariantCulture)}, {SqlEscape(a.LeaveReason)}, {SqlEscape(a.Notes)}, {SqlDate(a.CreatedAt)}, {SqlDate(a.UpdatedAt)});");
             }
             sb.AppendLine();
         }

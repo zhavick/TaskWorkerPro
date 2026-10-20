@@ -12,6 +12,7 @@ public class Announcement
     public int? CompanyId { get; set; } // Null = Global
     public string? CreatedByUserId { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 
     public Company? Company { get; set; }
     public AppUser? CreatedByUser { get; set; }
@@ -54,9 +55,11 @@ public class JsonHistory
     public string Name { get; set; } = string.Empty;
     public string Content { get; set; } = string.Empty;
     public int? TaskId { get; set; }
+    public string? UserId { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 
     public WorkTask? Task { get; set; }
+    public AppUser? User { get; set; }
 }
 
 public class SqlHistory
@@ -66,7 +69,21 @@ public class SqlHistory
     public string Content { get; set; } = string.Empty;
     public string Dialect { get; set; } = "PostgreSQL";
     public int? TaskId { get; set; }
+    public string? UserId { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 
     public WorkTask? Task { get; set; }
+    public AppUser? User { get; set; }
+}
+
+public class ImportLog
+{
+    public int Id { get; set; }
+    public string FileName { get; set; } = string.Empty;
+    public int TotalRows { get; set; }
+    public int SuccessRows { get; set; }
+    public int FailedRows { get; set; }
+    public string? Errors { get; set; }
+    public DateTimeOffset ImportedAt { get; set; } = DateTimeOffset.UtcNow;
+    public string? ImportedBy { get; set; }
 }

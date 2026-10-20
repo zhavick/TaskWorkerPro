@@ -68,6 +68,36 @@ CREATE TABLE IF NOT EXISTS asp_net_user_roles (
     PRIMARY KEY (user_id, role_id)
 );
 
+CREATE TABLE IF NOT EXISTS asp_net_role_claims (
+    id SERIAL PRIMARY KEY,
+    role_id VARCHAR(450) NOT NULL REFERENCES asp_net_roles(id) ON DELETE CASCADE,
+    claim_type TEXT,
+    claim_value TEXT
+);
+
+CREATE TABLE IF NOT EXISTS asp_net_user_claims (
+    id SERIAL PRIMARY KEY,
+    user_id VARCHAR(450) NOT NULL REFERENCES asp_net_users(id) ON DELETE CASCADE,
+    claim_type TEXT,
+    claim_value TEXT
+);
+
+CREATE TABLE IF NOT EXISTS asp_net_user_logins (
+    login_provider VARCHAR(128) NOT NULL,
+    provider_key VARCHAR(128) NOT NULL,
+    provider_display_name TEXT,
+    user_id VARCHAR(450) NOT NULL REFERENCES asp_net_users(id) ON DELETE CASCADE,
+    PRIMARY KEY (login_provider, provider_key)
+);
+
+CREATE TABLE IF NOT EXISTS asp_net_user_tokens (
+    user_id VARCHAR(450) NOT NULL REFERENCES asp_net_users(id) ON DELETE CASCADE,
+    login_provider VARCHAR(128) NOT NULL,
+    name VARCHAR(128) NOT NULL,
+    value TEXT,
+    PRIMARY KEY (user_id, login_provider, name)
+);
+
 CREATE TABLE IF NOT EXISTS user_refresh_tokens (
     id SERIAL PRIMARY KEY,
     user_id VARCHAR(450) NOT NULL REFERENCES asp_net_users(id) ON DELETE CASCADE,
@@ -137,6 +167,7 @@ CREATE TABLE IF NOT EXISTS email_templates (
     body_html TEXT NOT NULL,
     available_variables VARCHAR(1000),
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    updated_by_user_id VARCHAR(450) REFERENCES asp_net_users(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -156,6 +187,7 @@ CREATE TABLE IF NOT EXISTS projects (
     budget NUMERIC(18,2) NOT NULL DEFAULT 0.00,
     actual_cost NUMERIC(18,2) NOT NULL DEFAULT 0.00,
     tags VARCHAR(200),
+    use_budget BOOLEAN NOT NULL DEFAULT FALSE,
     deadline TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -173,6 +205,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     milestone VARCHAR(100),
     obstacle TEXT,
     solution TEXT,
+    tags VARCHAR(200),
     project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
     category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
     assigned_to_user_id VARCHAR(450) REFERENCES asp_net_users(id) ON DELETE SET NULL,
@@ -212,6 +245,8 @@ CREATE TABLE IF NOT EXISTS attendances (
     total_hours DOUBLE PRECISION NOT NULL DEFAULT 0.0,
     leave_reason VARCHAR(200),
     notes VARCHAR(500),
+    status INTEGER NOT NULL DEFAULT 1,
+    approved_by_user_id VARCHAR(450) REFERENCES asp_net_users(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT uq_attendance_user_date UNIQUE (user_id, date)
@@ -276,6 +311,21 @@ CREATE TABLE IF NOT EXISTS user_badges (
     CONSTRAINT uq_user_badge UNIQUE (user_id, badge_id)
 );
 
+CREATE TABLE IF NOT EXISTS user_badge_snapshots (
+    id SERIAL PRIMARY KEY,
+    snapshot_batch_id VARCHAR(100) NOT NULL,
+    reset_mode VARCHAR(50) NOT NULL DEFAULT 'transactional',
+    user_id VARCHAR(450) NOT NULL REFERENCES asp_net_users(id) ON DELETE CASCADE,
+    badge_id INTEGER NOT NULL REFERENCES master_badges(id) ON DELETE CASCADE,
+    original_unlocked_at TIMESTAMPTZ NOT NULL,
+    is_featured BOOLEAN NOT NULL DEFAULT FALSE,
+    awarded_by VARCHAR(450),
+    snapshot_created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    is_restored BOOLEAN NOT NULL DEFAULT FALSE,
+    restored_at TIMESTAMPTZ,
+    restored_by VARCHAR(450)
+);
+
 CREATE TABLE IF NOT EXISTS daily_check_ins (
     id SERIAL PRIMARY KEY,
     user_id VARCHAR(450) NOT NULL REFERENCES asp_net_users(id) ON DELETE CASCADE,
@@ -295,6 +345,7 @@ CREATE TABLE IF NOT EXISTS reward_items (
     point_cost INTEGER NOT NULL,
     stock INTEGER NOT NULL DEFAULT 10,
     category VARCHAR(50) NOT NULL DEFAULT 'Voucher',
+    image_url VARCHAR(300),
     icon VARCHAR(100) NOT NULL DEFAULT 'gift',
     color VARCHAR(50) NOT NULL DEFAULT 'indigo',
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
@@ -331,7 +382,8 @@ CREATE TABLE IF NOT EXISTS announcements (
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE, -- NULL = Global untuk semua
     created_by_user_id VARCHAR(450) REFERENCES asp_net_users(id) ON DELETE SET NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS user_announcement_reads (
@@ -368,6 +420,7 @@ CREATE TABLE IF NOT EXISTS json_histories (
     name VARCHAR(150) NOT NULL,
     content JSONB NOT NULL,
     task_id INTEGER REFERENCES tasks(id) ON DELETE SET NULL,
+    user_id VARCHAR(450) REFERENCES asp_net_users(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -377,6 +430,31 @@ CREATE TABLE IF NOT EXISTS sql_histories (
     content TEXT NOT NULL,
     dialect VARCHAR(50) DEFAULT 'PostgreSQL',
     task_id INTEGER REFERENCES tasks(id) ON DELETE SET NULL,
+    user_id VARCHAR(450) REFERENCES asp_net_users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS import_logs (
+    id SERIAL PRIMARY KEY,
+    file_name VARCHAR(255) NOT NULL,
+    total_rows INTEGER NOT NULL,
+    success_rows INTEGER NOT NULL,
+    failed_rows INTEGER NOT NULL,
+    errors TEXT,
+    imported_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    imported_by VARCHAR(150)
+);
+
+CREATE TABLE IF NOT EXISTS sync_histories (
+    id SERIAL PRIMARY KEY,
+    direction INTEGER NOT NULL,
+    status INTEGER NOT NULL,
+    target_host VARCHAR(255),
+    total_records_synced INTEGER NOT NULL DEFAULT 0,
+    file_size_bytes BIGINT NOT NULL DEFAULT 0,
+    error_message TEXT,
+    summary_json TEXT,
+    triggered_by_user_id VARCHAR(450) REFERENCES asp_net_users(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 

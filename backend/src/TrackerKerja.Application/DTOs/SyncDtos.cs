@@ -136,6 +136,7 @@ public record ProjectSyncDto
     public string? ProjectManagerId { get; init; }
     public decimal Budget { get; init; }
     public decimal ActualCost { get; init; }
+    public bool UseBudget { get; init; }
     public string? Tags { get; init; }
     public DateTimeOffset? Deadline { get; init; }
     public DateTimeOffset CreatedAt { get; init; }
@@ -152,6 +153,7 @@ public record TaskSyncDto
     public string? Milestone { get; init; }
     public string? Obstacle { get; init; }
     public string? Solution { get; init; }
+    public string? Tags { get; init; }
     public int? ProjectId { get; init; }
     public int? CategoryId { get; init; }
     public string? AssignedToUserId { get; init; }
@@ -182,6 +184,8 @@ public record AttendanceSyncDto
     public DateOnly Date { get; init; }
     public AttendanceType Type { get; init; } = AttendanceType.Present;
     public WorkLocation WorkLocation { get; init; } = WorkLocation.WFO;
+    public int Status { get; init; } = 1;
+    public string? ApprovedByUserId { get; init; }
     public DateTimeOffset? ClockIn { get; init; }
     public DateTimeOffset? ClockOut { get; init; }
     public double TotalHours { get; init; }

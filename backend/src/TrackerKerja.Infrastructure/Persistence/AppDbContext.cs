@@ -40,6 +40,8 @@ public class AppDbContext : DbContext
     public DbSet<JsonHistory> JsonHistories => Set<JsonHistory>();
     public DbSet<SqlHistory> SqlHistories => Set<SqlHistory>();
     public DbSet<SyncHistory> SyncHistories => Set<SyncHistory>();
+    public DbSet<UserBadgeSnapshot> UserBadgeSnapshots => Set<UserBadgeSnapshot>();
+    public DbSet<ImportLog> ImportLogs => Set<ImportLog>();
 
     public int? CurrentCompanyId => _tenantService?.CompanyId;
     public bool IsCurrentUserAdmin => _tenantService?.IsAdmin ?? false;
@@ -66,6 +68,7 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<NoteAttachment>().ToTable("note_attachments");
         modelBuilder.Entity<MasterBadge>().ToTable("master_badges");
         modelBuilder.Entity<UserBadge>().ToTable("user_badges");
+        modelBuilder.Entity<UserBadgeSnapshot>().ToTable("user_badge_snapshots");
         modelBuilder.Entity<DailyCheckIn>().ToTable("daily_check_ins");
         modelBuilder.Entity<RewardItem>().ToTable("reward_items");
         modelBuilder.Entity<RewardClaim>().ToTable("reward_claims");
@@ -75,6 +78,7 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<JsonHistory>().ToTable("json_histories");
         modelBuilder.Entity<SqlHistory>().ToTable("sql_histories");
         modelBuilder.Entity<SyncHistory>().ToTable("sync_histories");
+        modelBuilder.Entity<ImportLog>().ToTable("import_logs");
 
         // 2. Primary Keys & Unique Constraints
         modelBuilder.Entity<SystemSetting>().HasKey(s => s.Key);
@@ -142,6 +146,18 @@ public class AppDbContext : DbContext
             .HasOne(rc => rc.ProcessedByUser)
             .WithMany()
             .HasForeignKey(rc => rc.ProcessedByUserId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<Attendance>()
+            .HasOne(a => a.User)
+            .WithMany(u => u.Attendances)
+            .HasForeignKey(a => a.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<Attendance>()
+            .HasOne(a => a.ApprovedByUser)
+            .WithMany()
+            .HasForeignKey(a => a.ApprovedByUserId)
             .OnDelete(DeleteBehavior.SetNull);
 
         // 4. Multi-Tenancy Global Query Filter

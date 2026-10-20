@@ -63,6 +63,7 @@ public class EmailTemplate
     public string BodyHtml { get; set; } = string.Empty;
     public string? AvailableVariables { get; set; }
     public bool IsActive { get; set; } = true;
+    public string? UpdatedByUserId { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 }
