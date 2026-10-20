@@ -101,9 +101,9 @@ export default function TaskStudioPage() {
     },
   });
 
-  // 4. Query Categories list
+  // 4. Query Master Data (Categories, Priorities, Statuses, Milestones)
   const { data: categories = [] } = useQuery<any[]>({
-    queryKey: ["categoriesDropdown"],
+    queryKey: ["masterCategories"],
     queryFn: async () => {
       try {
         const res = await apiClient.get("/master/categories");
@@ -113,6 +113,60 @@ export default function TaskStudioPage() {
       }
     },
   });
+
+  const { data: masterPriorities = [] } = useQuery<any[]>({
+    queryKey: ["masterPriorities"],
+    queryFn: async () => {
+      try {
+        const res = await apiClient.get("/master/priorities");
+        return res.data.data || [];
+      } catch {
+        return [];
+      }
+    },
+  });
+
+  const { data: masterStatuses = [] } = useQuery<any[]>({
+    queryKey: ["masterStatuses"],
+    queryFn: async () => {
+      try {
+        const res = await apiClient.get("/master/statuses");
+        return res.data.data || [];
+      } catch {
+        return [];
+      }
+    },
+  });
+
+  const { data: masterMilestones = [] } = useQuery<any[]>({
+    queryKey: ["masterMilestones"],
+    queryFn: async () => {
+      try {
+        const res = await apiClient.get("/master/milestones");
+        return res.data.data || [];
+      } catch {
+        return [];
+      }
+    },
+  });
+
+  const resolvePriorityValue = (p: any, idx: number) => {
+    const n = (p.name || "").toLowerCase();
+    if (n.includes("rendah") || n.includes("low")) return 0;
+    if (n.includes("sedang") || n.includes("med")) return 1;
+    if (n.includes("tinggi") || n.includes("high")) return 2;
+    if (n.includes("kritis") || n.includes("crit") || n.includes("urgent")) return 3;
+    return (p.orderIndex ?? (idx + 1)) - 1;
+  };
+
+  const resolveStatusValue = (s: any, idx: number) => {
+    const n = (s.name || "").toLowerCase();
+    if (n.includes("to do") || n.includes("todo") || n.includes("siap")) return 0;
+    if (n.includes("progress") || n.includes("kerja") || n.includes("jalan")) return 1;
+    if (s.isDoneState || n.includes("done") || n.includes("selesai")) return 2;
+    if (n.includes("overdue") || n.includes("lewat") || n.includes("terlambat")) return 3;
+    return (s.orderIndex ?? (idx + 1)) - 1;
+  };
 
   // 5. Query Task Audit Timeline (FSD 5.17)
   const { data: taskTimeline = [], isLoading: loadingTimeline } = useQuery<any[]>({
@@ -582,10 +636,20 @@ export default function TaskStudioPage() {
                     }}
                     className="mt-1.5 w-full rounded-xl border border-gray-200 bg-transparent p-2 text-xs font-semibold text-gray-900 dark:border-gray-800 dark:text-white"
                   >
-                    <option value={0}>Todo</option>
-                    <option value={1}>InProgress</option>
-                    <option value={2}>Done</option>
-                    <option value={3}>Overdue</option>
+                    {masterStatuses.length > 0 ? (
+                      masterStatuses.map((s: any, idx: number) => (
+                        <option key={s.id} value={resolveStatusValue(s, idx)}>
+                          {s.name}
+                        </option>
+                      ))
+                    ) : (
+                      <>
+                        <option value={0}>Todo</option>
+                        <option value={1}>InProgress</option>
+                        <option value={2}>Done</option>
+                        <option value={3}>Overdue</option>
+                      </>
+                    )}
                   </select>
                 </div>
 
@@ -633,10 +697,20 @@ export default function TaskStudioPage() {
                     onChange={(e) => setPriority(Number(e.target.value))}
                     className="mt-1.5 w-full rounded-xl border border-gray-200 bg-transparent p-2 text-xs font-semibold text-gray-900 dark:border-gray-800 dark:text-white"
                   >
-                    <option value={0}>Rendah (Low)</option>
-                    <option value={1}>Sedang (Medium)</option>
-                    <option value={2}>Tinggi (High)</option>
-                    <option value={3}>Kritis (Critical)</option>
+                    {masterPriorities.length > 0 ? (
+                      masterPriorities.map((p: any, idx: number) => (
+                        <option key={p.id} value={resolvePriorityValue(p, idx)}>
+                          {p.name}
+                        </option>
+                      ))
+                    ) : (
+                      <>
+                        <option value={0}>Rendah (Low)</option>
+                        <option value={1}>Sedang (Medium)</option>
+                        <option value={2}>Tinggi (High)</option>
+                        <option value={3}>Kritis (Critical)</option>
+                      </>
+                    )}
                   </select>
                 </div>
 
@@ -736,11 +810,17 @@ export default function TaskStudioPage() {
                     className="mt-1.5 w-full rounded-xl border border-gray-200 bg-transparent p-2 text-xs font-semibold text-gray-900 dark:border-gray-800 dark:text-white"
                   >
                     <option value="">-- Pilih Milestone --</option>
-                    {MILESTONE_OPTIONS.map((m) => (
-                      <option key={m} value={m}>
-                        {m}
-                      </option>
-                    ))}
+                    {masterMilestones.length > 0
+                      ? masterMilestones.map((m: any) => (
+                          <option key={m.id} value={m.name}>
+                            {m.name}
+                          </option>
+                        ))
+                      : MILESTONE_OPTIONS.map((m) => (
+                          <option key={m} value={m}>
+                            {m}
+                          </option>
+                        ))}
                   </select>
                 </div>
 

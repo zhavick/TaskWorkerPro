@@ -15,6 +15,7 @@ import {
   User,
   Loader2,
   CheckCircle2,
+  Tag,
 } from "lucide-react";
 import { Button } from "@/components/tailgrids/core/button";
 import { Input } from "@/components/tailgrids/core/input";
@@ -33,13 +34,27 @@ interface CreateTaskDialogProps {
   defaultStatus?: number;
 }
 
-const MILESTONE_OPTIONS = [
-  "Requirement Analysis",
-  "System Design",
-  "Implementation",
-  "Testing & QA",
-  "Deployment",
-  "Maintenance",
+const DEFAULT_MILESTONES = [
+  "Perencanaan",
+  "Analisis & Desain",
+  "Pengembangan",
+  "Pengujian QA",
+  "Rilis Produksi",
+  "Pemeliharaan",
+];
+
+const DEFAULT_PRIORITIES = [
+  { id: 0, value: 0, name: "Rendah (Low)", color: "#10B981" },
+  { id: 1, value: 1, name: "Sedang (Medium)", color: "#3B82F6" },
+  { id: 2, value: 2, name: "Tinggi (High)", color: "#F59E0B" },
+  { id: 3, value: 3, name: "Kritis (Critical)", color: "#EF4444" },
+];
+
+const DEFAULT_STATUSES = [
+  { id: 0, value: 0, name: "To Do", color: "#64748B" },
+  { id: 1, value: 1, name: "In Progress", color: "#6366F1" },
+  { id: 2, value: 2, name: "Done", color: "#10B981" },
+  { id: 3, value: 3, name: "Overdue", color: "#EF4444" },
 ];
 
 export function CreateTaskDialog({
@@ -52,9 +67,10 @@ export function CreateTaskDialog({
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [projectId, setProjectId] = useState<string>("");
+  const [categoryId, setCategoryId] = useState<string>("");
   const [priority, setPriority] = useState<number>(1); // 1 = Medium
   const [status, setStatus] = useState<number>(defaultStatus);
-  const [milestone, setMilestone] = useState<string>("Implementation");
+  const [milestone, setMilestone] = useState<string>("Pengembangan");
   const [assignedToUserId, setAssignedToUserId] = useState<string>("");
   const [dueDate, setDueDate] = useState<string>("");
   const [obstacle, setObstacle] = useState<string>("");
@@ -87,6 +103,63 @@ export function CreateTaskDialog({
     enabled: open,
   });
 
+  // 3. Master Data Queries (Priorities, Statuses, Milestones, Categories)
+  const { data: masterPriorities = [] } = useQuery<any[]>({
+    queryKey: ["masterPriorities"],
+    queryFn: async () => {
+      const res = await apiClient.get("/master/priorities");
+      return res.data.data || [];
+    },
+    enabled: open,
+  });
+
+  const { data: masterStatuses = [] } = useQuery<any[]>({
+    queryKey: ["masterStatuses"],
+    queryFn: async () => {
+      const res = await apiClient.get("/master/statuses");
+      return res.data.data || [];
+    },
+    enabled: open,
+  });
+
+  const { data: masterMilestones = [] } = useQuery<any[]>({
+    queryKey: ["masterMilestones"],
+    queryFn: async () => {
+      const res = await apiClient.get("/master/milestones");
+      return res.data.data || [];
+    },
+    enabled: open,
+  });
+
+  const { data: masterCategories = [] } = useQuery<any[]>({
+    queryKey: ["masterCategories"],
+    queryFn: async () => {
+      const res = await apiClient.get("/master/categories");
+      return res.data.data || [];
+    },
+    enabled: open,
+  });
+
+  // Helper to map MasterPriority to enum value (0..3)
+  const resolvePriorityValue = (p: any, idx: number) => {
+    const n = (p.name || "").toLowerCase();
+    if (n.includes("rendah") || n.includes("low")) return 0;
+    if (n.includes("sedang") || n.includes("med")) return 1;
+    if (n.includes("tinggi") || n.includes("high")) return 2;
+    if (n.includes("kritis") || n.includes("crit") || n.includes("urgent")) return 3;
+    return (p.orderIndex ?? (idx + 1)) - 1;
+  };
+
+  // Helper to map MasterStatus to enum value (0..3)
+  const resolveStatusValue = (s: any, idx: number) => {
+    const n = (s.name || "").toLowerCase();
+    if (n.includes("to do") || n.includes("todo") || n.includes("siap")) return 0;
+    if (n.includes("progress") || n.includes("kerja") || n.includes("jalan")) return 1;
+    if (s.isDoneState || n.includes("done") || n.includes("selesai")) return 2;
+    if (n.includes("overdue") || n.includes("lewat") || n.includes("terlambat")) return 3;
+    return (s.orderIndex ?? (idx + 1)) - 1;
+  };
+
   // Create Task Mutation
   const createTaskMutation = useMutation({
     mutationFn: async () => {
@@ -98,6 +171,7 @@ export function CreateTaskDialog({
         progress: Number(status) === 2 ? 100 : 0,
         milestone: milestone || null,
         projectId: projectId ? Number(projectId) : null,
+        categoryId: categoryId ? Number(categoryId) : null,
         assignedToUserId: assignedToUserId || null,
         dueDate: dueDate ? new Date(dueDate).toISOString() : null,
         obstacle: obstacle.trim() || null,
@@ -114,6 +188,7 @@ export function CreateTaskDialog({
       queryClient.invalidateQueries({ queryKey: ["tasksList"] });
       queryClient.invalidateQueries({ queryKey: ["kanbanTasks"] });
       queryClient.invalidateQueries({ queryKey: ["dashboardStats"] });
+      queryClient.invalidateQueries({ queryKey: ["calendarTasks"] });
     },
     onError: (err: any) => {
       toast.error(err.response?.data?.message || "Gagal membuat tugas baru");
@@ -124,9 +199,10 @@ export function CreateTaskDialog({
     setTitle("");
     setDescription("");
     setProjectId("");
+    setCategoryId("");
     setPriority(1);
     setStatus(defaultStatus);
-    setMilestone("Implementation");
+    setMilestone("Pengembangan");
     setAssignedToUserId("");
     setDueDate("");
     setObstacle("");
@@ -190,13 +266,13 @@ export function CreateTaskDialog({
             />
           </div>
 
-          {/* Grid Proyek, Prioritas, Status */}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          {/* Grid Proyek & Kategori */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {/* Proyek */}
             <div>
               <label className="flex items-center gap-1.5 text-xs font-bold text-gray-700 dark:text-gray-300">
                 <FolderKanban className="h-3.5 w-3.5 text-indigo-500" />
-                Proyek
+                Proyek Terkait
               </label>
               <select
                 value={projectId}
@@ -212,6 +288,29 @@ export function CreateTaskDialog({
               </select>
             </div>
 
+            {/* Kategori Tugas */}
+            <div>
+              <label className="flex items-center gap-1.5 text-xs font-bold text-gray-700 dark:text-gray-300">
+                <Tag className="h-3.5 w-3.5 text-emerald-500" />
+                Kategori Pekerjaan
+              </label>
+              <select
+                value={categoryId}
+                onChange={(e) => setCategoryId(e.target.value)}
+                className="mt-1 w-full rounded-xl border border-gray-200 bg-white p-2 text-xs font-medium text-gray-900 dark:border-gray-800 dark:bg-gray-900 dark:text-white"
+              >
+                <option value="">-- Tanpa Kategori --</option>
+                {masterCategories.map((c: any) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Grid Prioritas, Status, Milestone */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             {/* Prioritas */}
             <div>
               <label className="flex items-center gap-1.5 text-xs font-bold text-gray-700 dark:text-gray-300">
@@ -223,10 +322,17 @@ export function CreateTaskDialog({
                 onChange={(e) => setPriority(Number(e.target.value))}
                 className="mt-1 w-full rounded-xl border border-gray-200 bg-white p-2 text-xs font-medium text-gray-900 dark:border-gray-800 dark:bg-gray-900 dark:text-white"
               >
-                <option value={0}>Rendah (Low)</option>
-                <option value={1}>Sedang (Medium)</option>
-                <option value={2}>Tinggi (High)</option>
-                <option value={3}>Kritis (Critical)</option>
+                {masterPriorities.length > 0
+                  ? masterPriorities.map((p: any, idx: number) => (
+                      <option key={p.id} value={resolvePriorityValue(p, idx)}>
+                        {p.name}
+                      </option>
+                    ))
+                  : DEFAULT_PRIORITIES.map((p) => (
+                      <option key={p.id} value={p.value}>
+                        {p.name}
+                      </option>
+                    ))}
               </select>
             </div>
 
@@ -241,20 +347,24 @@ export function CreateTaskDialog({
                 onChange={(e) => setStatus(Number(e.target.value))}
                 className="mt-1 w-full rounded-xl border border-gray-200 bg-white p-2 text-xs font-medium text-gray-900 dark:border-gray-800 dark:bg-gray-900 dark:text-white"
               >
-                <option value={0}>Todo</option>
-                <option value={1}>InProgress</option>
-                <option value={2}>Done</option>
-                <option value={3}>Overdue</option>
+                {masterStatuses.length > 0
+                  ? masterStatuses.map((s: any, idx: number) => (
+                      <option key={s.id} value={resolveStatusValue(s, idx)}>
+                        {s.name}
+                      </option>
+                    ))
+                  : DEFAULT_STATUSES.map((s) => (
+                      <option key={s.id} value={s.value}>
+                        {s.name}
+                      </option>
+                    ))}
               </select>
             </div>
-          </div>
 
-          {/* Grid Milestone, PIC, Due Date */}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            {/* Milestone */}
+            {/* Milestone SDLC */}
             <div>
               <label className="flex items-center gap-1.5 text-xs font-bold text-gray-700 dark:text-gray-300">
-                <MilestoneIcon className="h-3.5 w-3.5 text-indigo-500" />
+                <MilestoneIcon className="h-3.5 w-3.5 text-purple-500" />
                 Milestone SDLC
               </label>
               <select
@@ -262,19 +372,28 @@ export function CreateTaskDialog({
                 onChange={(e) => setMilestone(e.target.value)}
                 className="mt-1 w-full rounded-xl border border-gray-200 bg-white p-2 text-xs font-medium text-gray-900 dark:border-gray-800 dark:bg-gray-900 dark:text-white"
               >
-                {MILESTONE_OPTIONS.map((m) => (
-                  <option key={m} value={m}>
-                    {m}
-                  </option>
-                ))}
+                {masterMilestones.length > 0
+                  ? masterMilestones.map((m: any) => (
+                      <option key={m.id} value={m.name}>
+                        {m.name}
+                      </option>
+                    ))
+                  : DEFAULT_MILESTONES.map((m) => (
+                      <option key={m} value={m}>
+                        {m}
+                      </option>
+                    ))}
               </select>
             </div>
+          </div>
 
+          {/* Grid PIC & Due Date */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {/* PIC Penanggung Jawab */}
             <div>
               <label className="flex items-center gap-1.5 text-xs font-bold text-gray-700 dark:text-gray-300">
                 <User className="h-3.5 w-3.5 text-blue-500" />
-                PIC (Assignee)
+                PIC Penanggung Jawab
               </label>
               <select
                 value={assignedToUserId}
@@ -294,7 +413,7 @@ export function CreateTaskDialog({
             <div>
               <label className="flex items-center gap-1.5 text-xs font-bold text-gray-700 dark:text-gray-300">
                 <Calendar className="h-3.5 w-3.5 text-rose-500" />
-                Tenggat Waktu
+                Tenggat Waktu (Due Date)
               </label>
               <Input
                 type="date"

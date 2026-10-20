@@ -31,6 +31,16 @@ public class MasterDataController : ControllerBase
             .Select(p => new MasterPriorityDto(p.Id, p.Name, p.Color, p.Icon, p.OrderIndex, p.Description, p.IsDefault))
             .ToListAsync();
 
+        if (priorities.Count == 0)
+        {
+            await DbInitializer.SeedAsync(_context);
+            priorities = await _context.MasterPriorities
+                .AsNoTracking()
+                .OrderBy(p => p.OrderIndex)
+                .Select(p => new MasterPriorityDto(p.Id, p.Name, p.Color, p.Icon, p.OrderIndex, p.Description, p.IsDefault))
+                .ToListAsync();
+        }
+
         return Ok(new { success = true, data = priorities });
     }
 
@@ -102,6 +112,16 @@ public class MasterDataController : ControllerBase
             .Select(s => new MasterStatusDto(s.Id, s.Name, s.Color, s.IsDoneState, s.OrderIndex, s.Description, s.IsDefault))
             .ToListAsync();
 
+        if (statuses.Count == 0)
+        {
+            await DbInitializer.SeedAsync(_context);
+            statuses = await _context.MasterStatuses
+                .AsNoTracking()
+                .OrderBy(s => s.OrderIndex)
+                .Select(s => new MasterStatusDto(s.Id, s.Name, s.Color, s.IsDoneState, s.OrderIndex, s.Description, s.IsDefault))
+                .ToListAsync();
+        }
+
         return Ok(new { success = true, data = statuses });
     }
 
@@ -172,6 +192,16 @@ public class MasterDataController : ControllerBase
             .OrderBy(m => m.OrderIndex)
             .Select(m => new MasterMilestoneDto(m.Id, m.Name, m.Phase, m.Color, m.Icon, m.OrderIndex, m.Description, m.IsDefault))
             .ToListAsync();
+
+        if (milestones.Count == 0)
+        {
+            await DbInitializer.SeedAsync(_context);
+            milestones = await _context.MasterMilestones
+                .AsNoTracking()
+                .OrderBy(m => m.OrderIndex)
+                .Select(m => new MasterMilestoneDto(m.Id, m.Name, m.Phase, m.Color, m.Icon, m.OrderIndex, m.Description, m.IsDefault))
+                .ToListAsync();
+        }
 
         return Ok(new { success = true, data = milestones });
     }
@@ -245,6 +275,16 @@ public class MasterDataController : ControllerBase
             .OrderBy(c => c.Name)
             .Select(c => new CategoryDto(c.Id, c.Name, c.Color, c.Description))
             .ToListAsync();
+
+        if (categories.Count == 0)
+        {
+            await DbInitializer.SeedAsync(_context);
+            categories = await _context.Categories
+                .AsNoTracking()
+                .OrderBy(c => c.Name)
+                .Select(c => new CategoryDto(c.Id, c.Name, c.Color, c.Description))
+                .ToListAsync();
+        }
 
         return Ok(new { success = true, data = categories });
     }

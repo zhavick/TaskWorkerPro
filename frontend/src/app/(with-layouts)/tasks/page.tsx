@@ -34,6 +34,7 @@ import { Input } from "@/components/tailgrids/core/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/tailgrids/core/dialog";
 import { ImportExcelDialog } from "@/components/tasks/import-excel-dialog";
 import { ExportTasksDialog } from "@/components/tasks/export-excel-dialog";
+import { CreateTaskDialog } from "@/components/tasks/create-task-dialog";
 import { toast } from "sonner";
 import Link from "next/link";
 
@@ -81,13 +82,6 @@ export default function TasksListPage() {
   const [bulkStatusModalOpen, setBulkStatusModalOpen] = useState(false);
   const [bulkPriorityModalOpen, setBulkPriorityModalOpen] = useState(false);
   const [bulkDeleteModalOpen, setBulkDeleteModalOpen] = useState(false);
-
-  // New task form state
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [priority, setPriority] = useState<number>(1);
-  const [milestone, setMilestone] = useState("Development");
-  const [projectId, setProjectId] = useState<number | undefined>(undefined);
 
   // 1. Tasks Query with Paging, Sorting, and Filters
   const { data: tasksResponse, isLoading, isPlaceholderData } = useQuery<{
@@ -137,6 +131,41 @@ export default function TasksListPage() {
       return res.data.data;
     },
   });
+
+  // 3. Master Data Queries (Priorities & Statuses)
+  const { data: masterPriorities = [] } = useQuery<any[]>({
+    queryKey: ["masterPriorities"],
+    queryFn: async () => {
+      const res = await apiClient.get("/master/priorities");
+      return res.data.data || [];
+    },
+  });
+
+  const { data: masterStatuses = [] } = useQuery<any[]>({
+    queryKey: ["masterStatuses"],
+    queryFn: async () => {
+      const res = await apiClient.get("/master/statuses");
+      return res.data.data || [];
+    },
+  });
+
+  const resolvePriorityValue = (p: any, idx: number) => {
+    const n = (p.name || "").toLowerCase();
+    if (n.includes("rendah") || n.includes("low")) return 0;
+    if (n.includes("sedang") || n.includes("med")) return 1;
+    if (n.includes("tinggi") || n.includes("high")) return 2;
+    if (n.includes("kritis") || n.includes("crit") || n.includes("urgent")) return 3;
+    return (p.orderIndex ?? (idx + 1)) - 1;
+  };
+
+  const resolveStatusValue = (s: any, idx: number) => {
+    const n = (s.name || "").toLowerCase();
+    if (n.includes("to do") || n.includes("todo") || n.includes("siap")) return 0;
+    if (n.includes("progress") || n.includes("kerja") || n.includes("jalan")) return 1;
+    if (s.isDoneState || n.includes("done") || n.includes("selesai")) return 2;
+    if (n.includes("overdue") || n.includes("lewat") || n.includes("terlambat")) return 3;
+    return (s.orderIndex ?? (idx + 1)) - 1;
+  };
 
   // Handle Header Master Checkbox indeterminate state
   useEffect(() => {
@@ -193,30 +222,6 @@ export default function TasksListPage() {
       <ArrowDown className="ml-1.5 h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
     );
   };
-
-  // 3. Create Task Mutation
-  const createTaskMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiClient.post("/tasks", {
-        title: title.trim(),
-        description: description.trim(),
-        priority,
-        status: 0,
-        progress: 0,
-        milestone,
-        projectId: projectId || null,
-      });
-      return res.data;
-    },
-    onSuccess: () => {
-      toast.success("Tugas berhasil dibuat!");
-      setCreateModalOpen(false);
-      setTitle("");
-      setDescription("");
-      queryClient.invalidateQueries({ queryKey: ["tasksList"] });
-    },
-    onError: (err: any) => toast.error(err.response?.data?.message || "Gagal membuat tugas"),
-  });
 
   // 4. Start Live Timer Mutation
   const startTimerMutation = useMutation({
@@ -398,10 +403,20 @@ export default function TasksListPage() {
                 className="rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs text-gray-800 shadow-xs focus:border-indigo-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
               >
                 <option value="all">Semua Prioritas</option>
-                <option value="0">🟢 Rendah (Low)</option>
-                <option value="1">🔵 Sedang (Medium)</option>
-                <option value="2">🟡 Tinggi (High)</option>
-                <option value="3">🔴 Kritis (Critical)</option>
+                {masterPriorities.length > 0 ? (
+                  masterPriorities.map((p: any, idx: number) => (
+                    <option key={p.id} value={String(resolvePriorityValue(p, idx))}>
+                      {p.name}
+                    </option>
+                  ))
+                ) : (
+                  <>
+                    <option value="0">🟢 Rendah (Low)</option>
+                    <option value="1">🔵 Sedang (Medium)</option>
+                    <option value="2">🟡 Tinggi (High)</option>
+                    <option value="3">🔴 Kritis (Critical)</option>
+                  </>
+                )}
               </select>
             </div>
 
@@ -417,10 +432,20 @@ export default function TasksListPage() {
                 className="rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs text-gray-800 shadow-xs focus:border-indigo-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
               >
                 <option value="all">Semua Status</option>
-                <option value="0">To Do</option>
-                <option value="1">In Progress</option>
-                <option value="2">Done</option>
-                <option value="3">Overdue</option>
+                {masterStatuses.length > 0 ? (
+                  masterStatuses.map((s: any, idx: number) => (
+                    <option key={s.id} value={String(resolveStatusValue(s, idx))}>
+                      {s.name}
+                    </option>
+                  ))
+                ) : (
+                  <>
+                    <option value="0">To Do</option>
+                    <option value="1">In Progress</option>
+                    <option value="2">Done</option>
+                    <option value="3">Overdue</option>
+                  </>
+                )}
               </select>
             </div>
 
@@ -981,110 +1006,11 @@ export default function TasksListPage() {
         </div>
       </div>
 
-      {/* Modal Buat Tugas */}
-      <Dialog open={createModalOpen} onOpenChange={setCreateModalOpen}>
-        <DialogContent className="max-w-md bg-white p-6 shadow-2xl dark:bg-gray-900">
-          <DialogHeader>
-            <DialogTitle className="text-lg font-bold text-gray-900 dark:text-white">
-              Buat Tugas Baru
-            </DialogTitle>
-          </DialogHeader>
-
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              createTaskMutation.mutate();
-            }}
-            className="mt-4 space-y-3.5"
-          >
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
-                Judul Tugas *
-              </label>
-              <Input
-                required
-                placeholder="Contoh: Implementasi Index Database"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                className="mt-1 text-xs"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
-                Pilih Proyek
-              </label>
-              <select
-                value={projectId || ""}
-                onChange={(e) => setProjectId(e.target.value ? Number(e.target.value) : undefined)}
-                className="mt-1 w-full rounded-lg border border-gray-200 bg-transparent p-2 text-xs text-gray-900 dark:border-gray-800 dark:text-white"
-              >
-                <option value="">-- Tanpa Proyek --</option>
-                {projects.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
-                  Prioritas
-                </label>
-                <select
-                  value={priority}
-                  onChange={(e) => setPriority(Number(e.target.value))}
-                  className="mt-1 w-full rounded-lg border border-gray-200 bg-transparent p-2 text-xs text-gray-900 dark:border-gray-800 dark:text-white"
-                >
-                  <option value={0}>🟢 Rendah (Low)</option>
-                  <option value={1}>🔵 Sedang (Medium)</option>
-                  <option value={2}>🟡 Tinggi (High)</option>
-                  <option value={3}>🔴 Kritis (Critical)</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
-                  Milestone
-                </label>
-                <Input
-                  value={milestone}
-                  onChange={(e) => setMilestone(e.target.value)}
-                  className="mt-1 text-xs"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
-                Deskripsi
-              </label>
-              <textarea
-                rows={2}
-                placeholder="Rincian teknis tugas..."
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-gray-200 bg-transparent p-2 text-xs text-gray-900 dark:border-gray-800 dark:text-white"
-              />
-            </div>
-
-            <div className="mt-4 flex justify-end gap-2">
-              <Button type="button" variant="outline" onClick={() => setCreateModalOpen(false)}>
-                Batal
-              </Button>
-              <Button
-                type="submit"
-                disabled={createTaskMutation.isPending}
-                className="bg-indigo-600 text-white hover:bg-indigo-700"
-              >
-                Buat Tugas
-              </Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
+      {/* Dialog Buat Tugas Terpadu */}
+      <CreateTaskDialog
+        open={createModalOpen}
+        onOpenChange={setCreateModalOpen}
+      />
 
       {/* Modal Aksi Massal: Ubah Status */}
       <Dialog open={bulkStatusModalOpen} onOpenChange={setBulkStatusModalOpen}>
@@ -1100,45 +1026,68 @@ export default function TasksListPage() {
           </p>
 
           <div className="mt-4 grid grid-cols-2 gap-2.5">
-            <Button
-              variant="outline"
-              onClick={() => bulkStatusMutation.mutate(0)}
-              disabled={bulkStatusMutation.isPending}
-              className="justify-start gap-2 text-xs hover:border-slate-400"
-            >
-              <span className="size-2 rounded-full bg-slate-400" />
-              Set to: To Do
-            </Button>
+            {masterStatuses.length > 0 ? (
+              masterStatuses.map((s: any, idx: number) => {
+                const sVal = resolveStatusValue(s, idx);
+                return (
+                  <Button
+                    key={s.id}
+                    variant="outline"
+                    onClick={() => bulkStatusMutation.mutate(sVal)}
+                    disabled={bulkStatusMutation.isPending}
+                    className="justify-start gap-2 text-xs"
+                  >
+                    <span
+                      className="size-2 rounded-full"
+                      style={{ backgroundColor: s.color || "#6366F1" }}
+                    />
+                    {s.name}
+                  </Button>
+                );
+              })
+            ) : (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() => bulkStatusMutation.mutate(0)}
+                  disabled={bulkStatusMutation.isPending}
+                  className="justify-start gap-2 text-xs hover:border-slate-400"
+                >
+                  <span className="size-2 rounded-full bg-slate-400" />
+                  Set to: To Do
+                </Button>
 
-            <Button
-              variant="outline"
-              onClick={() => bulkStatusMutation.mutate(1)}
-              disabled={bulkStatusMutation.isPending}
-              className="justify-start gap-2 text-xs hover:border-indigo-400"
-            >
-              <span className="size-2 rounded-full bg-indigo-500" />
-              Set to: In Progress
-            </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => bulkStatusMutation.mutate(1)}
+                  disabled={bulkStatusMutation.isPending}
+                  className="justify-start gap-2 text-xs hover:border-indigo-400"
+                >
+                  <span className="size-2 rounded-full bg-indigo-500" />
+                  Set to: In Progress
+                </Button>
 
-            <Button
-              variant="outline"
-              onClick={() => bulkStatusMutation.mutate(2)}
-              disabled={bulkStatusMutation.isPending}
-              className="justify-start gap-2 text-xs hover:border-emerald-400 text-emerald-700 dark:text-emerald-400"
-            >
-              <Check className="size-3 text-emerald-600" />
-              Set to: Selesai (Done)
-            </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => bulkStatusMutation.mutate(2)}
+                  disabled={bulkStatusMutation.isPending}
+                  className="justify-start gap-2 text-xs hover:border-emerald-400 text-emerald-700 dark:text-emerald-400"
+                >
+                  <Check className="size-3 text-emerald-600" />
+                  Set to: Selesai (Done)
+                </Button>
 
-            <Button
-              variant="outline"
-              onClick={() => bulkStatusMutation.mutate(3)}
-              disabled={bulkStatusMutation.isPending}
-              className="justify-start gap-2 text-xs hover:border-rose-400 text-rose-700 dark:text-rose-400"
-            >
-              <AlertTriangle className="size-3 text-rose-600" />
-              Set to: Overdue
-            </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => bulkStatusMutation.mutate(3)}
+                  disabled={bulkStatusMutation.isPending}
+                  className="justify-start gap-2 text-xs hover:border-rose-400 text-rose-700 dark:text-rose-400"
+                >
+                  <AlertTriangle className="size-3 text-rose-600" />
+                  Set to: Overdue
+                </Button>
+              </>
+            )}
           </div>
         </DialogContent>
       </Dialog>
@@ -1157,45 +1106,68 @@ export default function TasksListPage() {
           </p>
 
           <div className="mt-4 grid grid-cols-2 gap-2.5">
-            <Button
-              variant="outline"
-              onClick={() => bulkPriorityMutation.mutate(0)}
-              disabled={bulkPriorityMutation.isPending}
-              className="justify-start gap-2 text-xs text-emerald-700 dark:text-emerald-400"
-            >
-              <span className="size-2 rounded-full bg-emerald-500" />
-              Rendah (Low)
-            </Button>
+            {masterPriorities.length > 0 ? (
+              masterPriorities.map((p: any, idx: number) => {
+                const pVal = resolvePriorityValue(p, idx);
+                return (
+                  <Button
+                    key={p.id}
+                    variant="outline"
+                    onClick={() => bulkPriorityMutation.mutate(pVal)}
+                    disabled={bulkPriorityMutation.isPending}
+                    className="justify-start gap-2 text-xs"
+                  >
+                    <span
+                      className="size-2 rounded-full"
+                      style={{ backgroundColor: p.color || "#3B82F6" }}
+                    />
+                    {p.name}
+                  </Button>
+                );
+              })
+            ) : (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() => bulkPriorityMutation.mutate(0)}
+                  disabled={bulkPriorityMutation.isPending}
+                  className="justify-start gap-2 text-xs text-emerald-700 dark:text-emerald-400"
+                >
+                  <span className="size-2 rounded-full bg-emerald-500" />
+                  Rendah (Low)
+                </Button>
 
-            <Button
-              variant="outline"
-              onClick={() => bulkPriorityMutation.mutate(1)}
-              disabled={bulkPriorityMutation.isPending}
-              className="justify-start gap-2 text-xs text-blue-700 dark:text-blue-400"
-            >
-              <span className="size-2 rounded-full bg-blue-500" />
-              Sedang (Medium)
-            </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => bulkPriorityMutation.mutate(1)}
+                  disabled={bulkPriorityMutation.isPending}
+                  className="justify-start gap-2 text-xs text-blue-700 dark:text-blue-400"
+                >
+                  <span className="size-2 rounded-full bg-blue-500" />
+                  Sedang (Medium)
+                </Button>
 
-            <Button
-              variant="outline"
-              onClick={() => bulkPriorityMutation.mutate(2)}
-              disabled={bulkPriorityMutation.isPending}
-              className="justify-start gap-2 text-xs text-amber-700 dark:text-amber-400"
-            >
-              <span className="size-2 rounded-full bg-amber-500" />
-              Tinggi (High)
-            </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => bulkPriorityMutation.mutate(2)}
+                  disabled={bulkPriorityMutation.isPending}
+                  className="justify-start gap-2 text-xs text-amber-700 dark:text-amber-400"
+                >
+                  <span className="size-2 rounded-full bg-amber-500" />
+                  Tinggi (High)
+                </Button>
 
-            <Button
-              variant="outline"
-              onClick={() => bulkPriorityMutation.mutate(3)}
-              disabled={bulkPriorityMutation.isPending}
-              className="justify-start gap-2 text-xs text-rose-700 dark:text-rose-400"
-            >
-              <span className="size-2 rounded-full bg-rose-500" />
-              Kritis (Critical)
-            </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => bulkPriorityMutation.mutate(3)}
+                  disabled={bulkPriorityMutation.isPending}
+                  className="justify-start gap-2 text-xs text-rose-700 dark:text-rose-400"
+                >
+                  <span className="size-2 rounded-full bg-rose-500" />
+                  Kritis (Critical)
+                </Button>
+              </>
+            )}
           </div>
         </DialogContent>
       </Dialog>

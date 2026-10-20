@@ -196,5 +196,68 @@ public static class DbInitializer
             context.RewardItems.AddRange(rewards);
             await context.SaveChangesAsync();
         }
+
+        // 5. Pastikan Master Prioritas Default (FSD Master Data)
+        if (!await context.MasterPriorities.AnyAsync())
+        {
+            var priorities = new List<MasterPriority>
+            {
+                new MasterPriority { Name = "Rendah", Color = "#10B981", Icon = "flag", OrderIndex = 1, Description = "Tugas dengan urgensi rendah dan waktu penyelesaian fleksibel.", IsDefault = false },
+                new MasterPriority { Name = "Sedang", Color = "#3B82F6", Icon = "flag", OrderIndex = 2, Description = "Tugas standar operasional sehari-hari.", IsDefault = true },
+                new MasterPriority { Name = "Tinggi", Color = "#F59E0B", Icon = "flag", OrderIndex = 3, Description = "Tugas dengan prioritas dan dampak penting bagi sistem.", IsDefault = false },
+                new MasterPriority { Name = "Kritis", Color = "#EF4444", Icon = "alert-triangle", OrderIndex = 4, Description = "Tugas darurat/blocking yang membutuhkan penanganan segera.", IsDefault = false }
+            };
+
+            context.MasterPriorities.AddRange(priorities);
+            await context.SaveChangesAsync();
+        }
+
+        // 6. Pastikan Master Status Default (FSD Master Data)
+        if (!await context.MasterStatuses.AnyAsync())
+        {
+            var statuses = new List<MasterStatus>
+            {
+                new MasterStatus { Name = "To Do", Color = "#64748B", IsDoneState = false, OrderIndex = 1, Description = "Tugas baru siap dikerjakan.", IsDefault = true },
+                new MasterStatus { Name = "In Progress", Color = "#6366F1", IsDoneState = false, OrderIndex = 2, Description = "Tugas sedang dalam pengerjaan aktif.", IsDefault = false },
+                new MasterStatus { Name = "Done", Color = "#10B981", IsDoneState = true, OrderIndex = 3, Description = "Tugas telah selesai dikerjakan dan diverifikasi.", IsDefault = false },
+                new MasterStatus { Name = "Overdue", Color = "#EF4444", IsDoneState = false, OrderIndex = 4, Description = "Tugas telah melampaui tenggat waktu.", IsDefault = false }
+            };
+
+            context.MasterStatuses.AddRange(statuses);
+            await context.SaveChangesAsync();
+        }
+
+        // 7. Pastikan Master Milestone Default SDLC (FSD Master Data)
+        if (!await context.MasterMilestones.AnyAsync())
+        {
+            var milestones = new List<MasterMilestone>
+            {
+                new MasterMilestone { Name = "Perencanaan", Phase = "Planning", Color = "#6366F1", Icon = "calendar", OrderIndex = 1, Description = "Tahap inisiasi, analisis kebutuhan dan spesifikasi.", IsDefault = false },
+                new MasterMilestone { Name = "Analisis & Desain", Phase = "Design", Color = "#8B5CF6", Icon = "layout", OrderIndex = 2, Description = "Perancangan arsitektur, UI/UX, dan flow sistem.", IsDefault = false },
+                new MasterMilestone { Name = "Pengembangan", Phase = "Implementation", Color = "#3B82F6", Icon = "code", OrderIndex = 3, Description = "Eksekusi penulisan kode program dan modul fitur.", IsDefault = true },
+                new MasterMilestone { Name = "Pengujian QA", Phase = "Testing", Color = "#F59E0B", Icon = "check-circle", OrderIndex = 4, Description = "Uji coba fungsionalitas, bug fixing, dan verifikasi kualitas.", IsDefault = false },
+                new MasterMilestone { Name = "Rilis Produksi", Phase = "Deployment", Color = "#10B981", Icon = "rocket", OrderIndex = 5, Description = "Deployment ke server staging/production dan serah terima.", IsDefault = false },
+                new MasterMilestone { Name = "Pemeliharaan", Phase = "Maintenance", Color = "#06B6D4", Icon = "settings", OrderIndex = 6, Description = "Monitoring pasca-rilis, optimasi berkala, dan dukungan operasional.", IsDefault = false }
+            };
+
+            context.MasterMilestones.AddRange(milestones);
+            await context.SaveChangesAsync();
+        }
+
+        // 8. Pastikan Kategori Tugas Standar (FSD Master Data)
+        if (!await context.Categories.AnyAsync())
+        {
+            var defaultCategories = new List<Category>
+            {
+                new Category { Name = "Pengembangan Fitur", Color = "#3B82F6", Description = "Pembuatan atau penambahan fitur baru aplikasi.", CreatedAt = DateTimeOffset.UtcNow },
+                new Category { Name = "Perbaikan Bug", Color = "#EF4444", Description = "Investigasi dan perbaikan kesalahan teknis atau bug.", CreatedAt = DateTimeOffset.UtcNow },
+                new Category { Name = "Infrastruktur & DevOps", Color = "#8B5CF6", Description = "Pengaturan server, database, security, dan pipeline CI/CD.", CreatedAt = DateTimeOffset.UtcNow },
+                new Category { Name = "Dokumentasi & Riset", Color = "#10B981", Description = "Penyusunan SOP, dokumen teknis, riset tools atau benchmarking.", CreatedAt = DateTimeOffset.UtcNow },
+                new Category { Name = "Desain & UI/UX", Color = "#EC4899", Description = "Eksplorasi wireframe, prototipe, dan aset visual antarmuka.", CreatedAt = DateTimeOffset.UtcNow }
+            };
+
+            context.Categories.AddRange(defaultCategories);
+            await context.SaveChangesAsync();
+        }
     }
 }
