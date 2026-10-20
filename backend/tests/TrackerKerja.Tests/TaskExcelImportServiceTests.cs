@@ -48,7 +48,10 @@ public class TaskExcelImportServiceTests
 
         Assert.NotNull(ws);
         Assert.Equal("Template Standar", ws.Name);
-        Assert.Equal("Judul Tugas (*)", ws.Cell(1, 2).GetString());
+        Assert.Equal("No.", ws.Cell(1, 1).GetString());
+        Assert.Equal("project_name", ws.Cell(1, 2).GetString());
+        Assert.Equal("title", ws.Cell(1, 4).GetString());
+        Assert.Equal("Milestone", ws.Cell(1, 26).GetString());
         Assert.True(ws.LastRowUsed()?.RowNumber() >= 3);
     }
 

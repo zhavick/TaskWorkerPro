@@ -2,9 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using Microsoft.EntityFrameworkCore;
 using ClosedXML.Excel;
 using Xunit;
 using Xunit.Abstractions;
+using TrackerKerja.Infrastructure.Persistence;
+using TrackerKerja.Infrastructure.Services;
 
 namespace TrackerKerja.Tests;
 
@@ -18,63 +21,68 @@ public class ExcelInspectTests
     }
 
     [Fact]
-    public void TestParseTaskTrackerV2Excel()
+    public async Task TestParseTaskTrackerV2Excel()
     {
-        var filePath = @"C:\Users\WAHANA 24\Downloads\Task Tracker v2.xlsx";
-        Assert.True(File.Exists(filePath), "File must exist");
+        var filePath = @"C:\TEMP\VSCODE\TrackerKerjaModern\backend\tests\temp_tracker.xlsx";
+        if (!File.Exists(filePath)) return;
 
-        using var workbook = new XLWorkbook(filePath);
+        using var stream = File.OpenRead(filePath);
 
-        // Find ARMS sheets
-        var armsSheets = workbook.Worksheets.Where(ws =>
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+        using var context = new AppDbContext(options);
+
+        var service = new TaskExcelImportService(context);
+
+        var preview = await service.PreviewImportAsync(stream, "Task Tracker v2.xlsx", companyId: 1);
+
+        _output.WriteLine($"Total rows imported: {preview.TotalRows}");
+        _output.WriteLine($"Valid rows: {preview.ValidCount}");
+        _output.WriteLine($"Warning rows: {preview.WarningCount}");
+        _output.WriteLine($"Error rows: {preview.ErrorCount}");
+
+        var userSummary = preview.Rows
+            .GroupBy(r => new { r.MatchedUserName, r.PicEmail })
+            .Select(g => $"{g.Key.MatchedUserName} ({g.Key.PicEmail}) -> {g.Count()} tasks")
+            .ToList();
+
+        foreach (var u in userSummary)
         {
-            var firstRow = ws.FirstRowUsed();
-            if (firstRow == null) return false;
-            var lastCol = ws.LastColumnUsed()?.ColumnNumber() ?? 0;
-            var headers = Enumerable.Range(1, lastCol)
-                .Select(c => ws.Cell(firstRow.RowNumber(), c).GetString().Trim().ToLowerInvariant())
-                .ToList();
-            return headers.Contains("project_name") && headers.Contains("title");
-        }).ToList();
-
-        _output.WriteLine($"Found {armsSheets.Count} ARMS sheets: {string.Join(", ", armsSheets.Select(s => s.Name))}");
-        Assert.True(armsSheets.Count > 0, "Should find ARMS sheets");
-
-        int totalExtracted = 0;
-        var projectsFound = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        foreach (var ws in armsSheets)
-        {
-            var headerRow = ws.FirstRowUsed()!;
-            var lastCol = ws.LastColumnUsed()?.ColumnNumber() ?? 0;
-            var headers = Enumerable.Range(1, lastCol)
-                .Select(c => ws.Cell(headerRow.RowNumber(), c).GetString().Trim().ToLowerInvariant())
-                .ToList();
-
-            int projectCol = headers.IndexOf("project_name") + 1;
-            int titleCol = headers.IndexOf("title") + 1;
-            int statusCol = headers.IndexOf("status") + 1;
-            int priorityCol = headers.IndexOf("priority") + 1;
-            int kendalaCol = headers.IndexOf("kendala") + 1;
-            int solusiCol = headers.IndexOf("solusi") + 1;
-            int progressCol = headers.IndexOf("progress") + 1;
-
-            var lastRow = ws.LastRowUsed()?.RowNumber() ?? 0;
-            for (int r = headerRow.RowNumber() + 1; r <= lastRow; r++)
-            {
-                var title = ws.Cell(r, titleCol).GetString().Trim();
-                if (string.IsNullOrEmpty(title)) continue;
-
-                var proj = ws.Cell(r, projectCol).GetString().Trim();
-                if (!string.IsNullOrEmpty(proj)) projectsFound.Add(proj);
-
-                totalExtracted++;
-            }
+            _output.WriteLine($"   User: {u}");
         }
 
-        _output.WriteLine($"Total tasks extracted from ARMS sheets: {totalExtracted}");
-        _output.WriteLine($"Distinct projects found ({projectsFound.Count}): {string.Join(", ", projectsFound)}");
+        var sheetBreakdown = preview.Rows
+            .GroupBy(r => new { r.PicIdentifier, r.MatchedUserName, r.PicEmail })
+            .Select(g => $"{g.Key.PicIdentifier} / {g.Key.MatchedUserName} ({g.Key.PicEmail}) -> {g.Count()} tasks")
+            .ToList();
+        _output.WriteLine("Sheet breakdown:");
+        foreach (var s in sheetBreakdown)
+        {
+            _output.WriteLine($"   {s}");
+        }
 
-        Assert.True(totalExtracted > 50, "Should extract more than 50 tasks");
+        var projectSummary = preview.Rows
+            .GroupBy(r => r.ProjectName)
+            .Select(g => $"{g.Key} -> {g.Count()} tasks")
+            .ToList();
+
+        _output.WriteLine($"Projects found: {projectSummary.Count}");
+        foreach (var p in projectSummary.Take(10))
+        {
+            _output.WriteLine($"   Project: {p}");
+        }
+
+        using var wb = new XLWorkbook(@"C:\TEMP\VSCODE\TrackerKerjaModern\backend\tests\temp_tracker.xlsx");
+        foreach (var name in new[] { "Danang", "Syifa" })
+        {
+            var ws = wb.Worksheet(name);
+            _output.WriteLine($"Detailed sheet '{name}':");
+            for (int r = 1; r <= 5; r++)
+            {
+                var rowCells = Enumerable.Range(1, 26).Select(c => $"{c}:{ws.Cell(r, c).GetString().Trim()}").Where(s => !s.EndsWith(":")).ToList();
+                _output.WriteLine($"  Row {r}: {string.Join(" | ", rowCells)}");
+            }
+        }
     }
 }

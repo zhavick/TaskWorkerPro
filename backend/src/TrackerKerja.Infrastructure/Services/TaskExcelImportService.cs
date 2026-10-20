@@ -98,8 +98,11 @@ public class TaskExcelImportService : ITaskExcelImportService
             var ws = workbook.Worksheets.Add("Template Standar");
             string[] headers =
             [
-                "Kode Tugas", "Judul Tugas (*)", "Deskripsi", "Proyek",
-                "Prioritas", "Status", "Progres (%)", "Email / Nama PIC", "Target Selesai"
+                "No.", "project_name", "requirement_code", "title", "status",
+                "priority", "jenis_task", "module_name", "bug_type", "progress",
+                "start_date", "due_date", "completed_date", "developer_emails", "ba_emails",
+                "infra_emails", "master_data_emails", "tester_emails", "technical_writer_emails", "quality_assurance_emails",
+                "system_analyst_emails", "kendala", "solusi", "evidence", "kode_task", "Milestone"
             ];
 
             for (int i = 0; i < headers.Length; i++)
@@ -113,26 +116,60 @@ public class TaskExcelImportService : ITaskExcelImportService
             }
 
             // Sample row 1
-            ws.Cell(2, 1).Value = "TASK-001";
-            ws.Cell(2, 2).Value = "Implementasi Integrasi Kalender Kerja";
-            ws.Cell(2, 3).Value = "Menghubungkan kalender dengan deadline tugas";
-            ws.Cell(2, 4).Value = "TrackerKerja Modern";
-            ws.Cell(2, 5).Value = "Tinggi";
-            ws.Cell(2, 6).Value = "Todo";
-            ws.Cell(2, 7).Value = 0;
-            ws.Cell(2, 8).Value = "developer@perusahaan.com";
-            ws.Cell(2, 9).Value = DateTime.UtcNow.AddDays(5).ToString("yyyy-MM-dd");
+            ws.Cell(2, 1).Value = 1;
+            ws.Cell(2, 2).Value = "Integrasi TCES TICS";
+            ws.Cell(2, 3).Value = "REQ-001";
+            ws.Cell(2, 4).Value = "Sharing knowledge mengenai sistem business flow TCIS dan TCES";
+            ws.Cell(2, 5).Value = "DONE";
+            ws.Cell(2, 6).Value = "HIGH";
+            ws.Cell(2, 7).Value = "NEW_APPLICATION";
+            ws.Cell(2, 8).Value = "TCES";
+            ws.Cell(2, 9).Value = "";
+            ws.Cell(2, 10).Value = 100;
+            ws.Cell(2, 11).Value = DateTime.UtcNow.AddDays(-7).ToString("yyyy-MM-dd");
+            ws.Cell(2, 12).Value = DateTime.UtcNow.AddDays(-2).ToString("yyyy-MM-dd");
+            ws.Cell(2, 13).Value = DateTime.UtcNow.AddDays(-2).ToString("yyyy-MM-dd");
+            ws.Cell(2, 14).Value = "haviz.indra@elistec.com";
+            ws.Cell(2, 15).Value = "syafix.said@elistec.com";
+            ws.Cell(2, 16).Value = "";
+            ws.Cell(2, 17).Value = "";
+            ws.Cell(2, 18).Value = "";
+            ws.Cell(2, 19).Value = "athallah.bariq@elistec.com";
+            ws.Cell(2, 20).Value = "mohammad.danang@elistec.com";
+            ws.Cell(2, 21).Value = "";
+            ws.Cell(2, 22).Value = "";
+            ws.Cell(2, 23).Value = "Mempelajari business flow dari TCIS dan TCES";
+            ws.Cell(2, 24).Value = "";
+            ws.Cell(2, 25).Value = "TASK-001";
+            ws.Cell(2, 26).Value = "Sprint 1";
 
             // Sample row 2
-            ws.Cell(3, 1).Value = "TASK-002";
-            ws.Cell(3, 2).Value = "Uji Coba Ekspor Impor Excel";
-            ws.Cell(3, 3).Value = "Verifikasi dukungan template ClosedXML dan validasi baris";
-            ws.Cell(3, 4).Value = "TrackerKerja Modern";
-            ws.Cell(3, 5).Value = "Sedang";
-            ws.Cell(3, 6).Value = "InProgress";
-            ws.Cell(3, 7).Value = 50;
-            ws.Cell(3, 8).Value = "qa@perusahaan.com";
-            ws.Cell(3, 9).Value = DateTime.UtcNow.AddDays(3).ToString("yyyy-MM-dd");
+            ws.Cell(3, 1).Value = 2;
+            ws.Cell(3, 2).Value = "API Settlement Payment";
+            ws.Cell(3, 3).Value = "REQ-002";
+            ws.Cell(3, 4).Value = "Implementasi endpoint callback pembayaran virtual account";
+            ws.Cell(3, 5).Value = "IN_PROGRESS";
+            ws.Cell(3, 6).Value = "HIGH";
+            ws.Cell(3, 7).Value = "ENHANCEMENT";
+            ws.Cell(3, 8).Value = "Transaksi dan Settlement";
+            ws.Cell(3, 9).Value = "";
+            ws.Cell(3, 10).Value = 60;
+            ws.Cell(3, 11).Value = DateTime.UtcNow.AddDays(-2).ToString("yyyy-MM-dd");
+            ws.Cell(3, 12).Value = DateTime.UtcNow.AddDays(5).ToString("yyyy-MM-dd");
+            ws.Cell(3, 13).Value = "";
+            ws.Cell(3, 14).Value = "haviz.indra@elistec.com";
+            ws.Cell(3, 15).Value = "syafix.said@elistec.com";
+            ws.Cell(3, 16).Value = "";
+            ws.Cell(3, 17).Value = "";
+            ws.Cell(3, 18).Value = "";
+            ws.Cell(3, 19).Value = "";
+            ws.Cell(3, 20).Value = "mohammad.danang@elistec.com";
+            ws.Cell(3, 21).Value = "";
+            ws.Cell(3, 22).Value = "Menunggu integrasi payment gateway";
+            ws.Cell(3, 23).Value = "Koordinasi dengan penyedia gateway";
+            ws.Cell(3, 24).Value = "";
+            ws.Cell(3, 25).Value = "TASK-002";
+            ws.Cell(3, 26).Value = "Sprint 1";
 
             ws.Columns().AdjustToContents();
         }
@@ -231,21 +268,36 @@ public class TaskExcelImportService : ITaskExcelImportService
                 .Select(c => ws.Cell(headerRow.RowNumber(), c).GetString().Trim().ToLowerInvariant())
                 .ToList();
 
-            int codeCol = FindCol(headers, "kode tugas", "task code", "task_code", "code", "kode", "no tugas", "task id", "id");
-            int parentCodeCol = FindCol(headers, "kode induk tugas", "parent task code", "parent_code", "parent code", "induk tugas", "parent");
-            int projectCol = FindCol(headers, "nama proyek", "project_name", "project", "proyek", "nama project", "aplikasi", "nama aplikasi", "sistem");
-            int milestoneCol = FindCol(headers, "modul", "milestone", "jenis_task", "jenis task", "kategori", "fitur", "tahapan");
+            var emailCols = new List<int>();
+            for (int c = 1; c <= headers.Count; c++)
+            {
+                var h = headers[c - 1];
+                if (h.Contains("email") || h.EndsWith("_emails") || h.Contains("e-mail"))
+                {
+                    emailCols.Add(c);
+                }
+            }
+
+            int codeCol = FindCol(headers, "kode_task", "kode task", "kode tugas", "task code", "task_code", "code", "kode", "no tugas", "task id", "id");
+            int parentCodeCol = FindCol(headers, "requirement_code", "requirement code", "kode induk tugas", "parent task code", "parent_code", "parent code", "induk tugas", "parent");
+            int projectCol = FindCol(headers, "project_name", "nama proyek", "project", "proyek", "nama project", "aplikasi", "nama aplikasi", "sistem");
+            int milestoneCol = FindCol(headers, "milestone", "modul", "module_name", "jenis_task", "jenis task", "kategori", "fitur", "tahapan");
             int titleCol = FindCol(headers, "judul tugas", "judul", "task title", "title", "tugas", "task", "tasks", "nama tugas", "nama task", "task name", "aktivitas", "activity", "pekerjaan", "uraian pekerjaan", "deskripsi pekerjaan", "uraian tugas", "uraian", "kegiatan", "work item", "work items", "action item", "fitur", "rincian tugas", "daftar tugas", "item");
             int descCol = FindCol(headers, "deskripsi", "description", "keterangan", "detail", "catatan");
             int priorityCol = FindCol(headers, "prioritas", "priority", "urgensi", "level");
             int statusCol = FindCol(headers, "status", "keadaan", "progress status", "kondisi");
             int progressCol = FindCol(headers, "progres", "progress", "%", "persentase", "bobot", "persen");
             int startDateCol = FindCol(headers, "tanggal mulai", "start_date", "start date", "mulai", "tgl mulai", "start");
-            int dueDateCol = FindCol(headers, "target selesai", "due_date", "due date", "completed_date", "selesai", "target", "deadline", "tgl selesai", "due");
+            int dueDateCol = FindCol(headers, "due_date", "target selesai", "due date", "selesai", "target", "deadline", "tgl selesai", "due");
+            int completedDateCol = FindCol(headers, "completed_date", "completed date", "tanggal selesai", "tgl selesai");
             int picEmailCol = FindCol(headers, "email pic", "developer_emails", "pic email", "email user", "user email", "email");
             int picNameCol = FindCol(headers, "email / nama pic", "nama pic", "pic", "penanggung jawab", "petugas", "pelaksana", "developer", "assigned to", "assignee", "nama staf", "nama personil", "person", "nama pengguna", "nama user");
             int obstacleCol = FindCol(headers, "kendala", "obstacle", "masalah", "hambatan", "issue");
             int solutionCol = FindCol(headers, "solusi", "solution", "tindakan", "penyelesaian");
+            int moduleCol = FindCol(headers, "module_name", "modul", "module");
+            int jenisTaskCol = FindCol(headers, "jenis_task", "jenis task");
+            int bugTypeCol = FindCol(headers, "bug_type", "bug type");
+            int evidenceCol = FindCol(headers, "evidence", "bukti");
 
             // Jika titleCol tidak terdeteksi via nama umum, gunakan fallback kolom teks pertama yang relevan
             if (titleCol == 0)
@@ -260,7 +312,7 @@ public class TaskExcelImportService : ITaskExcelImportService
             if (titleCol == 0) continue;
 
             // Ekstrak nama personil, email, & proyek dari sheet (atau header metadata)
-            var sheetPersonnel = ResolveSheetPersonnel(ws, workbook, headerRow.RowNumber(), picEmailCol, existingUsers, companyDomain);
+            var sheetPersonnel = ResolveSheetPersonnel(ws, workbook, headerRow.RowNumber(), emailCols, existingUsers, companyDomain);
 
             var lastRow = ws.LastRowUsed()?.RowNumber() ?? 0;
 
@@ -275,18 +327,51 @@ public class TaskExcelImportService : ITaskExcelImportService
                     projectName = sheetPersonnel.DefaultProjectName;
                 }
                 var desc = descCol > 0 ? ws.Cell(r, descCol).GetString().Trim() : null;
+                if (string.IsNullOrWhiteSpace(desc))
+                {
+                    var descParts = new List<string>();
+                    if (moduleCol > 0)
+                    {
+                        var mVal = ws.Cell(r, moduleCol).GetString().Trim();
+                        if (!string.IsNullOrWhiteSpace(mVal)) descParts.Add($"Modul: {mVal}");
+                    }
+                    if (jenisTaskCol > 0)
+                    {
+                        var jtVal = ws.Cell(r, jenisTaskCol).GetString().Trim();
+                        if (!string.IsNullOrWhiteSpace(jtVal)) descParts.Add($"Jenis: {jtVal}");
+                    }
+                    if (bugTypeCol > 0)
+                    {
+                        var btVal = ws.Cell(r, bugTypeCol).GetString().Trim();
+                        if (!string.IsNullOrWhiteSpace(btVal)) descParts.Add($"Bug: {btVal}");
+                    }
+                    if (evidenceCol > 0)
+                    {
+                        var evVal = ws.Cell(r, evidenceCol).GetString().Trim();
+                        if (!string.IsNullOrWhiteSpace(evVal)) descParts.Add($"Evidence: {evVal}");
+                    }
+                    if (descParts.Count > 0)
+                    {
+                        desc = string.Join(" | ", descParts);
+                    }
+                }
                 var priorityText = priorityCol > 0 ? ws.Cell(r, priorityCol).GetString().Trim() : null;
                 var statusText = statusCol > 0 ? ws.Cell(r, statusCol).GetString().Trim() : null;
                 var progress = progressCol > 0 ? ParseProgress(ws.Cell(r, progressCol)) : 0;
                 var startDate = startDateCol > 0 ? ParseDate(ws.Cell(r, startDateCol)) : null;
                 var dueDate = dueDateCol > 0 ? ParseDate(ws.Cell(r, dueDateCol)) : null;
+                if (!dueDate.HasValue && completedDateCol > 0)
+                {
+                    dueDate = ParseDate(ws.Cell(r, completedDateCol));
+                }
                 var milestone = milestoneCol > 0 ? ws.Cell(r, milestoneCol).GetString().Trim() : null;
                 var obstacle = obstacleCol > 0 ? ws.Cell(r, obstacleCol).GetString().Trim() : null;
                 var solution = solutionCol > 0 ? ws.Cell(r, solutionCol).GetString().Trim() : null;
 
-                // Tentukan nama/email PIC dari baris, atau fallback ke SheetPersonnel
+                // Tentukan nama/email PIC:
                 string? picText = null;
                 string? rowEmail = null;
+
                 if (picEmailCol > 0)
                 {
                     var rawEmail = ws.Cell(r, picEmailCol).GetString().Trim();
@@ -301,24 +386,29 @@ public class TaskExcelImportService : ITaskExcelImportService
                     var rawName = ws.Cell(r, picNameCol).GetString().Trim();
                     if (!IsInvalidPersonValue(rawName)) picText = rawName;
                 }
-                if (string.IsNullOrWhiteSpace(picText) && sheetPersonnel != null)
+
+                if (sheetPersonnel != null)
                 {
-                    picText = !string.IsNullOrWhiteSpace(sheetPersonnel.Name)
-                        ? sheetPersonnel.Name
-                        : sheetPersonnel.Email;
+                    // Multi-role personnel tracking sheet (such as Task Tracker v2.xlsx with developer_emails, ba_emails, etc.)
+                    // or where row has no explicit valid PIC or row PIC matches sheet person:
+                    if (emailCols.Count > 1 ||
+                        string.IsNullOrWhiteSpace(picText) ||
+                        IsInvalidPersonValue(picText) ||
+                        sheetPersonnel.Name.Equals(picText, StringComparison.OrdinalIgnoreCase) ||
+                        NormalizePersonName(sheetPersonnel.Name) == NormalizePersonName(picText) ||
+                        (!string.IsNullOrEmpty(rowEmail) && IsEmailMatchingPerson(rowEmail, sheetPersonnel.Name)))
+                    {
+                        picText = !string.IsNullOrWhiteSpace(rowEmail) && IsEmailMatchingPerson(rowEmail, sheetPersonnel.Name)
+                            ? rowEmail
+                            : sheetPersonnel.Name;
+                        rowEmail = sheetPersonnel.Email;
+                    }
                 }
 
                 var effectiveEmail = rowEmail;
                 if (string.IsNullOrWhiteSpace(effectiveEmail) && sheetPersonnel != null)
                 {
-                    if (string.IsNullOrWhiteSpace(picText) ||
-                        IsInvalidPersonValue(picText) ||
-                        sheetPersonnel.Name.Equals(picText, StringComparison.OrdinalIgnoreCase) ||
-                        NormalizePersonName(sheetPersonnel.Name) == NormalizePersonName(picText) ||
-                        IsEmailMatchingPerson(sheetPersonnel.Email, picText))
-                    {
-                        effectiveEmail = sheetPersonnel.Email;
-                    }
+                    effectiveEmail = sheetPersonnel.Email;
                 }
 
                 // Abaikan baris kosong total
@@ -1581,7 +1671,7 @@ public class TaskExcelImportService : ITaskExcelImportService
         IXLWorksheet ws,
         IXLWorkbook workbook,
         int headerRowNum,
-        int emailCol,
+        List<int> emailCols,
         List<AppUser> existingUsers,
         string companyDomain)
     {
@@ -1747,43 +1837,36 @@ public class TaskExcelImportService : ITaskExcelImportService
             sheetPersonName = DeriveNameFromEmail(emailInSheet);
         }
 
-        // If email was found in sheet metadata, sync sheetPersonName with email if empty or not matching
-        if (!string.IsNullOrWhiteSpace(emailInSheet))
-        {
-            var emailName = DeriveNameFromEmail(emailInSheet);
-            if (string.IsNullOrWhiteSpace(sheetPersonName) || !IsEmailMatchingPerson(emailInSheet, sheetPersonName))
-            {
-                // User requirement: "3. buatkan user dengan nama email tersebut"
-                // "nama pengguna dengan nama email tidak sinkron"
-                sheetPersonName = emailName;
-            }
-        }
-
-        // Only treat as personnel sheet if a person's name or email was detected
+        // A sheet is ONLY a personnel sheet if a person's name or metadata email was detected!
+        // Generic sheets (e.g. "Tasks", "Sheet1") have null sheetPersonName and must NOT be treated as personnel sheets.
         if (string.IsNullOrWhiteSpace(sheetPersonName) && string.IsNullOrWhiteSpace(emailInSheet))
         {
             return null;
         }
 
-        // 1. Search email column in task rows if not already found in metadata
-        if (string.IsNullOrWhiteSpace(emailInSheet) && emailCol > 0)
+        // 1. Search ALL email columns in task rows if not already found in metadata
+        if (string.IsNullOrWhiteSpace(emailInSheet) && emailCols.Count > 0 && !string.IsNullOrWhiteSpace(sheetPersonName))
         {
             int lastRow = ws.LastRowUsed()?.RowNumber() ?? headerRowNum;
             for (int r = headerRowNum + 1; r <= lastRow; r++)
             {
-                var cellStr = ws.Cell(r, emailCol).GetString().Trim();
-                if (string.IsNullOrWhiteSpace(cellStr) || !cellStr.Contains('@') || IsInvalidPersonValue(cellStr)) continue;
-
-                var match = Regex.Match(cellStr, @"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}");
-                if (match.Success)
+                foreach (var c in emailCols)
                 {
-                    var candEmail = match.Value.ToLowerInvariant();
-                    if (string.IsNullOrWhiteSpace(sheetPersonName) || IsEmailMatchingPerson(candEmail, sheetPersonName))
+                    var cellStr = ws.Cell(r, c).GetString().Trim();
+                    if (string.IsNullOrWhiteSpace(cellStr) || !cellStr.Contains('@') || IsInvalidPersonValue(cellStr)) continue;
+
+                    var match = Regex.Match(cellStr, @"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}");
+                    if (match.Success)
                     {
-                        emailInSheet = candEmail;
-                        break;
+                        var candEmail = match.Value.ToLowerInvariant();
+                        if (IsEmailMatchingPerson(candEmail, sheetPersonName))
+                        {
+                            emailInSheet = candEmail;
+                            break;
+                        }
                     }
                 }
+                if (!string.IsNullOrWhiteSpace(emailInSheet)) break;
             }
         }
 
@@ -1809,6 +1892,26 @@ public class TaskExcelImportService : ITaskExcelImportService
             {
                 emailInSheet = dbUser.Email;
             }
+        }
+
+        // If email was found, sync sheetPersonName with email if empty, not matching, or upgrade to full derived name
+        if (!string.IsNullOrWhiteSpace(emailInSheet))
+        {
+            var emailName = DeriveNameFromEmail(emailInSheet);
+            if (string.IsNullOrWhiteSpace(sheetPersonName) || !IsEmailMatchingPerson(emailInSheet, sheetPersonName))
+            {
+                sheetPersonName = emailName;
+            }
+            else if (!string.IsNullOrWhiteSpace(emailName) && emailName.Length > sheetPersonName.Length)
+            {
+                sheetPersonName = emailName;
+            }
+        }
+
+        // Only treat as personnel sheet if a person's name or email was detected
+        if (string.IsNullOrWhiteSpace(sheetPersonName) && string.IsNullOrWhiteSpace(emailInSheet))
+        {
+            return null;
         }
 
         var (matchedId, resolvedName, resolvedEmail, _) = MatchUser(
