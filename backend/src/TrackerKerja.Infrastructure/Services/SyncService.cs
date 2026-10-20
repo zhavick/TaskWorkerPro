@@ -86,10 +86,24 @@ public class SyncService : ISyncService
     public async Task<SyncPingResponse> PingRemoteHostAsync(string hostUrl, string apiKey, bool allowUntrustedSsl = false)
     {
         var cleanUrl = hostUrl.TrimEnd('/');
-        var client = CreateHttpClient(apiKey, allowUntrustedSsl);
+        var effectiveApiKey = apiKey?.Trim();
+        if (string.IsNullOrWhiteSpace(effectiveApiKey))
+        {
+            var dbSetting = await _context.SystemSettings
+                .Where(s => s.Key == "Sync_ApiKey" || s.Key == "Sync_HostSecret" || s.Key == "SyncApiKey" || s.Key == "SyncSettings:ApiKey")
+                .Select(s => s.Value)
+                .FirstOrDefaultAsync();
+            if (!string.IsNullOrWhiteSpace(dbSetting))
+            {
+                effectiveApiKey = dbSetting.Trim();
+            }
+        }
+
+        var client = CreateHttpClient(effectiveApiKey, allowUntrustedSsl);
 
         var stopwatch = Stopwatch.StartNew();
-        var response = await client.GetAsync($"{cleanUrl}/api/sync/ping");
+        var queryParams = !string.IsNullOrWhiteSpace(effectiveApiKey) ? $"?apiKey={Uri.EscapeDataString(effectiveApiKey)}&key={Uri.EscapeDataString(effectiveApiKey)}" : "";
+        var response = await client.GetAsync($"{cleanUrl}/api/sync/ping{queryParams}");
         stopwatch.Stop();
 
         if (!response.IsSuccessStatusCode)
@@ -756,10 +770,24 @@ public class SyncService : ISyncService
     public async Task<SyncOperationResult> PushToHostAsync(SyncPushRequest request, string? triggeredByUserId)
     {
         var cleanUrl = request.HostUrl.TrimEnd('/');
-        var client = CreateHttpClient(request.ApiKey, request.AllowUntrustedSsl);
+        var effectiveApiKey = request.ApiKey?.Trim();
+        if (string.IsNullOrWhiteSpace(effectiveApiKey))
+        {
+            var dbSetting = await _context.SystemSettings
+                .Where(s => s.Key == "Sync_ApiKey" || s.Key == "Sync_HostSecret" || s.Key == "SyncApiKey" || s.Key == "SyncSettings:ApiKey")
+                .Select(s => s.Value)
+                .FirstOrDefaultAsync();
+            if (!string.IsNullOrWhiteSpace(dbSetting))
+            {
+                effectiveApiKey = dbSetting.Trim();
+            }
+        }
+
+        var client = CreateHttpClient(effectiveApiKey, request.AllowUntrustedSsl);
 
         var payload = await PrepareSyncPayloadAsync(request.IncludeFiles);
-        var response = await client.PostAsJsonAsync($"{cleanUrl}/api/sync/receive", payload, JsonOptions);
+        var queryParams = !string.IsNullOrWhiteSpace(effectiveApiKey) ? $"?apiKey={Uri.EscapeDataString(effectiveApiKey)}&key={Uri.EscapeDataString(effectiveApiKey)}&syncKey={Uri.EscapeDataString(effectiveApiKey)}" : "";
+        var response = await client.PostAsJsonAsync($"{cleanUrl}/api/sync/receive{queryParams}", payload, JsonOptions);
 
         if (!response.IsSuccessStatusCode)
         {
@@ -805,9 +833,37 @@ public class SyncService : ISyncService
     public async Task<SyncOperationResult> PullFromHostAsync(SyncPullRequest request, string? triggeredByUserId)
     {
         var cleanUrl = request.HostUrl.TrimEnd('/');
-        var client = CreateHttpClient(request.ApiKey, request.AllowUntrustedSsl);
+        var effectiveApiKey = request.ApiKey?.Trim();
+        if (string.IsNullOrWhiteSpace(effectiveApiKey))
+        {
+            var dbSetting = await _context.SystemSettings
+                .Where(s => s.Key == "Sync_ApiKey" || s.Key == "Sync_HostSecret" || s.Key == "SyncApiKey" || s.Key == "SyncSettings:ApiKey")
+                .Select(s => s.Value)
+                .FirstOrDefaultAsync();
+            if (!string.IsNullOrWhiteSpace(dbSetting))
+            {
+                effectiveApiKey = dbSetting.Trim();
+            }
+        }
 
-        var response = await client.GetAsync($"{cleanUrl}/api/sync/export-package?includeFiles={request.IncludeFiles}");
+        var client = CreateHttpClient(effectiveApiKey, request.AllowUntrustedSsl);
+
+        var queryParams = $"includeFiles={request.IncludeFiles}";
+        if (!string.IsNullOrWhiteSpace(effectiveApiKey))
+        {
+            var encKey = Uri.EscapeDataString(effectiveApiKey);
+            queryParams += $"&apiKey={encKey}&key={encKey}&syncKey={encKey}";
+        }
+
+        var primaryEndpoint = $"{cleanUrl}/api/sync/export-package?{queryParams}";
+        var response = await client.GetAsync(primaryEndpoint);
+
+        // Fallback jika endpoint export-package menghasilkan 404 (misal host versi TSD murni menggunakan /api/sync/package)
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            var fallbackEndpoint = $"{cleanUrl}/api/sync/package?{queryParams}";
+            response = await client.GetAsync(fallbackEndpoint);
+        }
 
         if (!response.IsSuccessStatusCode)
         {
@@ -1302,7 +1358,7 @@ public class SyncService : ISyncService
         return totalMerged;
     }
 
-    private HttpClient CreateHttpClient(string apiKey, bool allowUntrustedSsl = false)
+    private HttpClient CreateHttpClient(string? apiKey, bool allowUntrustedSsl = false)
     {
         HttpClient client;
         if (allowUntrustedSsl)
@@ -1321,8 +1377,31 @@ public class SyncService : ISyncService
         client.Timeout = TimeSpan.FromMinutes(10);
         if (!string.IsNullOrWhiteSpace(apiKey))
         {
+            var trimmedKey = apiKey.Trim();
+
+            // 1. Primary Header yang dibutuhkan Host (X-Sync-ApiKey)
+            client.DefaultRequestHeaders.Remove("X-Sync-ApiKey");
+            client.DefaultRequestHeaders.Add("X-Sync-ApiKey", trimmedKey);
+
+            // 2. Secondary Standard Header (X-Sync-Key)
             client.DefaultRequestHeaders.Remove("X-Sync-Key");
-            client.DefaultRequestHeaders.Add("X-Sync-Key", apiKey);
+            client.DefaultRequestHeaders.Add("X-Sync-Key", trimmedKey);
+
+            // 3. Alternative Headers
+            client.DefaultRequestHeaders.Remove("X-Api-Key");
+            client.DefaultRequestHeaders.Add("X-Api-Key", trimmedKey);
+
+            client.DefaultRequestHeaders.Remove("ApiKey");
+            client.DefaultRequestHeaders.Add("ApiKey", trimmedKey);
+
+            client.DefaultRequestHeaders.Remove("ApiSecretKey");
+            client.DefaultRequestHeaders.Add("ApiSecretKey", trimmedKey);
+
+            // 4. Bearer Token jika format JWT
+            if (trimmedKey.StartsWith("ey", StringComparison.OrdinalIgnoreCase))
+            {
+                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", trimmedKey);
+            }
         }
         return client;
     }

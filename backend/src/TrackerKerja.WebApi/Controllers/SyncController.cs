@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using TrackerKerja.Application.Common.Interfaces;
 using TrackerKerja.Application.DTOs;
+using TrackerKerja.Infrastructure.Persistence;
 
 namespace TrackerKerja.WebApi.Controllers;
 
@@ -12,15 +14,18 @@ public class SyncController : ControllerBase
     private readonly ISyncService _syncService;
     private readonly ICurrentTenantService _tenantService;
     private readonly IConfiguration _configuration;
+    private readonly AppDbContext? _context;
 
     public SyncController(
         ISyncService syncService,
         ICurrentTenantService tenantService,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        AppDbContext? context = null)
     {
         _syncService = syncService;
         _tenantService = tenantService;
         _configuration = configuration;
+        _context = context;
     }
 
     [HttpGet("ping")]
@@ -80,7 +85,7 @@ public class SyncController : ControllerBase
     {
         if (!IsSyncAuthorized())
         {
-            return Unauthorized(new { success = false, message = "Kunci otorisasi sinkronisasi X-Sync-Key tidak valid." });
+            return Unauthorized(new { success = false, message = "Akses Ditolak: Diperlukan API Key sinkronisasi (X-Sync-ApiKey) yang valid atau otorisasi Administrator." });
         }
 
         var sqlContent = await _syncService.ExportSqlDumpAsync();
@@ -116,7 +121,7 @@ public class SyncController : ControllerBase
     {
         if (!IsSyncAuthorized())
         {
-            return Unauthorized(new { success = false, message = "Kunci otorisasi sinkronisasi X-Sync-Key tidak valid." });
+            return Unauthorized(new { success = false, message = "Akses Ditolak: Diperlukan API Key sinkronisasi (X-Sync-ApiKey) yang valid atau otorisasi Administrator." });
         }
 
         var result = await _syncService.ProcessReceivedPayloadAsync(payload, _tenantService.UserId ?? "sync-agent");
@@ -130,7 +135,7 @@ public class SyncController : ControllerBase
     {
         if (!IsSyncAuthorized())
         {
-            return Unauthorized(new { success = false, message = "Kunci otorisasi sinkronisasi X-Sync-Key tidak valid." });
+            return Unauthorized(new { success = false, message = "Akses Ditolak: Diperlukan API Key sinkronisasi (X-Sync-ApiKey) yang valid atau otorisasi Administrator." });
         }
 
         var zipBytes = await _syncService.ExportPackageZipAsync(includeFiles);
@@ -144,7 +149,7 @@ public class SyncController : ControllerBase
     {
         if (!IsSyncAuthorized())
         {
-            return Unauthorized(new { success = false, message = "Kunci otorisasi sinkronisasi X-Sync-Key tidak valid." });
+            return Unauthorized(new { success = false, message = "Akses Ditolak: Diperlukan API Key sinkronisasi (X-Sync-ApiKey) yang valid atau otorisasi Administrator." });
         }
 
         var sqlContent = await _syncService.ExportSqlDumpAsync();
@@ -213,15 +218,44 @@ public class SyncController : ControllerBase
             return true;
         }
 
-        var syncKeyHeader = Request.Headers["X-Sync-Key"].FirstOrDefault()
+        var syncKeyHeader = Request.Headers["X-Sync-ApiKey"].FirstOrDefault()
+            ?? Request.Headers["X-Sync-Key"].FirstOrDefault()
+            ?? Request.Headers["X-Api-Key"].FirstOrDefault()
+            ?? Request.Headers["ApiKey"].FirstOrDefault()
             ?? Request.Headers["ApiSecretKey"].FirstOrDefault()
+            ?? Request.Query["apiKey"].FirstOrDefault()
             ?? Request.Query["key"].FirstOrDefault()
-            ?? Request.Query["apiKey"].FirstOrDefault();
+            ?? Request.Query["syncKey"].FirstOrDefault();
 
-        var configuredKey = _configuration["SyncSettings:ApiKey"] ?? "TRACKERKERJA_SYNC_SECRET_DEFAULT_2026";
+        if (string.IsNullOrWhiteSpace(syncKeyHeader))
+        {
+            return false;
+        }
 
-        return !string.IsNullOrWhiteSpace(syncKeyHeader) &&
-               string.Equals(syncKeyHeader, configuredKey, StringComparison.Ordinal);
+        var configuredKey = _configuration["SyncSettings:ApiKey"] 
+            ?? _configuration["Sync_ApiKey"] 
+            ?? "TRACKERKERJA_SYNC_SECRET_DEFAULT_2026";
+
+        if (string.Equals(syncKeyHeader.Trim(), configuredKey.Trim(), StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        if (_context != null)
+        {
+            var dbKey = _context.SystemSettings
+                .Where(s => s.Key == "Sync_ApiKey" || s.Key == "Sync_HostSecret" || s.Key == "SyncApiKey" || s.Key == "SyncSettings:ApiKey")
+                .Select(s => s.Value)
+                .FirstOrDefault();
+
+            if (!string.IsNullOrWhiteSpace(dbKey) &&
+                string.Equals(syncKeyHeader.Trim(), dbKey.Trim(), StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 }
 

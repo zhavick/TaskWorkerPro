@@ -287,12 +287,46 @@ export default function ConfigurationPage() {
   });
 
   useEffect(() => {
+    if (typeof window !== "undefined") {
+      const savedHost = localStorage.getItem("wtp_sync_host_url");
+      const savedKey = localStorage.getItem("wtp_sync_api_key");
+      if (savedHost) setHostUrl(savedHost);
+      if (savedKey) setSyncApiKey(savedKey);
+    }
+  }, []);
+
+  const handleHostUrlChange = (val: string) => {
+    setHostUrl(val);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("wtp_sync_host_url", val);
+    }
+  };
+
+  const handleSyncApiKeyChange = (val: string) => {
+    setSyncApiKey(val);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("wtp_sync_api_key", val);
+    }
+  };
+
+  useEffect(() => {
     if (serverSettings && Array.isArray(serverSettings)) {
       const map: Record<string, string> = { ...settings };
       serverSettings.forEach((item) => {
         map[item.key] = item.value;
       });
       setSettings(map);
+
+      // Auto-populate sync credentials from server settings if local state is still empty
+      if (!syncApiKey) {
+        const foundKey = map["Sync_ApiKey"] || map["Sync_HostSecret"] || map["SyncApiKey"] || map["SyncSettings:ApiKey"];
+        if (foundKey && foundKey !== "••••••••") {
+          setSyncApiKey(foundKey);
+        }
+      }
+      if (hostUrl === "http://localhost:5000" && map["Sync_HostUrl"]) {
+        setHostUrl(map["Sync_HostUrl"]);
+      }
     }
   }, [serverSettings]);
 
@@ -1790,7 +1824,7 @@ export default function ConfigurationPage() {
                     </label>
                     <Input
                       value={hostUrl}
-                      onChange={(e) => setHostUrl(e.target.value)}
+                      onChange={(e) => handleHostUrlChange(e.target.value)}
                       placeholder="https://tracker-induk.perusahaan.co.id"
                       className="font-mono text-xs"
                     />
@@ -1798,18 +1832,21 @@ export default function ConfigurationPage() {
 
                   <div>
                     <label className="mb-1 block text-xs font-semibold text-gray-700 dark:text-gray-300">
-                      Kunci Rahasia Sinkronisasi (X-Sync-Key)
+                      Kunci Rahasia Sinkronisasi (X-Sync-ApiKey / X-Sync-Key) *
                     </label>
                     <div className="relative">
                       <Input
                         type="password"
                         value={syncApiKey}
-                        onChange={(e) => setSyncApiKey(e.target.value)}
-                        placeholder="Masukkan token otorisasi host induk"
+                        onChange={(e) => handleSyncApiKeyChange(e.target.value)}
+                        placeholder="Masukkan token otorisasi host induk (misal: TRACKERKERJA_SYNC_SECRET_DEFAULT_2026)"
                         className="font-mono text-xs pr-8"
                       />
                       <Key className="absolute right-2.5 top-2.5 h-4 w-4 text-gray-400" />
                     </div>
+                    <p className="mt-1 text-[11px] text-gray-500">
+                      Header otorisasi <code>X-Sync-ApiKey</code> dan <code>X-Sync-Key</code> otomatis disertakan pada setiap permintaan push/pull.
+                    </p>
                   </div>
 
                   <div className="flex flex-col gap-2 pt-1">
