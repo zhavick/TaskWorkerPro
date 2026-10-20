@@ -430,7 +430,7 @@ interface ThemeFontContextType {
 const ThemeFontContext = createContext<ThemeFontContextType | undefined>(undefined);
 
 export function ThemeFontProvider({ children }: { children: React.ReactNode }) {
-  const { setTheme } = useTheme();
+  const { theme, resolvedTheme, setTheme } = useTheme();
   const [currentPalette, setCurrentPalette] = useState<string>("indigo-nebula");
   const [currentFont, setCurrentFont] = useState<string>("inter");
 
@@ -450,6 +450,21 @@ export function ThemeFontProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  // Bi-directional synchronization for dark and light themes
+  useEffect(() => {
+    const activeMode = resolvedTheme || (theme === "dark" ? "dark" : "light");
+    if (typeof document !== "undefined") {
+      document.documentElement.setAttribute("data-theme", activeMode);
+      if (activeMode === "dark") {
+        document.documentElement.classList.add("dark");
+        document.documentElement.classList.remove("light");
+      } else {
+        document.documentElement.classList.remove("dark");
+        document.documentElement.classList.add("light");
+      }
+    }
+  }, [resolvedTheme, theme]);
+
   const setPalette = (paletteId: string) => {
     const found = THEME_PALETTES.find((t) => t.id === paletteId);
     if (!found) return;
@@ -461,6 +476,14 @@ export function ThemeFontProvider({ children }: { children: React.ReactNode }) {
 
       // Auto sync mode (light or dark)
       setTheme(found.mode);
+      document.documentElement.setAttribute("data-theme", found.mode);
+      if (found.mode === "dark") {
+        document.documentElement.classList.add("dark");
+        document.documentElement.classList.remove("light");
+      } else {
+        document.documentElement.classList.remove("dark");
+        document.documentElement.classList.add("light");
+      }
     } catch (e) {
       console.error("Failed to persist theme palette:", e);
     }
@@ -483,6 +506,9 @@ export function ThemeFontProvider({ children }: { children: React.ReactNode }) {
     setPalette("indigo-nebula");
     setFont("inter");
     setTheme("light");
+    document.documentElement.setAttribute("data-theme", "light");
+    document.documentElement.classList.remove("dark");
+    document.documentElement.classList.add("light");
   };
 
   return (

@@ -85,15 +85,15 @@ export default function ThemeCustomizerDialog() {
 
       {/* Theme Studio Modal */}
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
-        <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto bg-white p-6 shadow-2xl dark:bg-gray-900 rounded-3xl">
-          <DialogHeader>
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between border-b border-gray-100 pb-4 dark:border-gray-800">
+        <DialogContent className="sm:max-w-4xl sm:max-h-[90vh] p-3 sm:p-6 bg-white dark:bg-gray-900 shadow-2xl rounded-none sm:rounded-3xl">
+          <DialogHeader className="pr-12 sm:pr-14">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-gray-100 pb-4 dark:border-gray-800">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-md shadow-indigo-500/25">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-md shadow-indigo-500/25">
                   <Sparkles className="h-5 w-5" />
                 </div>
                 <div>
-                  <DialogTitle className="text-lg font-black tracking-tight text-gray-900 dark:text-white">
+                  <DialogTitle className="text-base sm:text-lg font-black tracking-tight text-gray-900 dark:text-white">
                     Theme & Typography Studio
                   </DialogTitle>
                   <p className="text-xs text-gray-500 dark:text-gray-400">

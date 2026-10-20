@@ -1,4 +1,4 @@
-[data-theme="dark"] {
+:is([data-theme="dark"], html.dark, .dark) {
   /* Primary */
   --primary-50: #eff3ff;
   --primary-100: #dae2ff;

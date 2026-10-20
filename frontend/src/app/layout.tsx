@@ -81,8 +81,19 @@ export default function RootLayout({
                 try {
                   var savedPalette = localStorage.getItem('wtp_theme_palette') || 'indigo-nebula';
                   var savedFont = localStorage.getItem('wtp_font_family') || 'inter';
+                  var savedTheme = localStorage.getItem('theme') || 'system';
+                  var isDark = savedTheme === 'dark' || (savedTheme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+                  var activeMode = isDark ? 'dark' : 'light';
                   document.documentElement.setAttribute('data-theme-palette', savedPalette);
                   document.documentElement.setAttribute('data-font', savedFont);
+                  document.documentElement.setAttribute('data-theme', activeMode);
+                  if (isDark) {
+                    document.documentElement.classList.add('dark');
+                    document.documentElement.classList.remove('light');
+                  } else {
+                    document.documentElement.classList.remove('dark');
+                    document.documentElement.classList.add('light');
+                  }
                 } catch(e) {}
               })();
             `,
