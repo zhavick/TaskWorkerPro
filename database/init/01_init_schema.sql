@@ -197,7 +197,7 @@ CREATE TABLE IF NOT EXISTS projects (
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS tasks (
     id SERIAL PRIMARY KEY,
-    title VARCHAR(300) NOT NULL,
+    title VARCHAR(500) NOT NULL,
     description TEXT,
     priority INTEGER NOT NULL DEFAULT 1, -- 0=Low, 1=Medium, 2=High, 3=Critical
     status INTEGER NOT NULL DEFAULT 0,   -- 0=Todo, 1=InProgress, 2=Done, 3=Overdue

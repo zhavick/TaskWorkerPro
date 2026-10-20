@@ -23,7 +23,7 @@ public class ExcelInspectTests
     [Fact]
     public async Task TestParseTaskTrackerV2Excel()
     {
-        var filePath = @"C:\TEMP\VSCODE\TrackerKerjaModern\backend\tests\temp_tracker.xlsx";
+        var filePath = @"C:\Users\WAHANA 24\Downloads\Task Tracker v2.xlsx";
         if (!File.Exists(filePath)) return;
 
         using var stream = File.OpenRead(filePath);
@@ -41,6 +41,24 @@ public class ExcelInspectTests
         _output.WriteLine($"Valid rows: {preview.ValidCount}");
         _output.WriteLine($"Warning rows: {preview.WarningCount}");
         _output.WriteLine($"Error rows: {preview.ErrorCount}");
+
+        var maxTitle = preview.Rows.Max(r => r.Title?.Length ?? 0);
+        var maxDesc = preview.Rows.Max(r => r.Description?.Length ?? 0);
+        var maxProj = preview.Rows.Max(r => r.ProjectName?.Length ?? 0);
+        var maxMilestone = preview.Rows.Max(r => r.Milestone?.Length ?? 0);
+        var maxObstacle = preview.Rows.Max(r => r.Obstacle?.Length ?? 0);
+        var maxSolution = preview.Rows.Max(r => r.Solution?.Length ?? 0);
+        var maxPic = preview.Rows.Max(r => r.PicIdentifier?.Length ?? 0);
+        var maxEmail = preview.Rows.Max(r => r.PicEmail?.Length ?? 0);
+
+        _output.WriteLine($"MAX LENGTHS -> Title: {maxTitle}, Desc: {maxDesc}, Proj: {maxProj}, Milestone: {maxMilestone}, Obstacle: {maxObstacle}, Solution: {maxSolution}, Pic: {maxPic}, Email: {maxEmail}");
+
+        var longTitles = preview.Rows.Where(r => (r.Title?.Length ?? 0) > 200).ToList();
+        _output.WriteLine($"Long titles count (>200 chars): {longTitles.Count}");
+        foreach (var lt in longTitles.Take(5))
+        {
+            _output.WriteLine($"Long title ({lt.Title.Length} chars): {lt.Title}");
+        }
 
         var userSummary = preview.Rows
             .GroupBy(r => new { r.MatchedUserName, r.PicEmail })
@@ -73,7 +91,7 @@ public class ExcelInspectTests
             _output.WriteLine($"   Project: {p}");
         }
 
-        using var wb = new XLWorkbook(@"C:\TEMP\VSCODE\TrackerKerjaModern\backend\tests\temp_tracker.xlsx");
+        using var wb = new XLWorkbook(filePath);
         foreach (var name in new[] { "Danang", "Syifa" })
         {
             var ws = wb.Worksheet(name);
@@ -84,5 +102,68 @@ public class ExcelInspectTests
                 _output.WriteLine($"  Row {r}: {string.Join(" | ", rowCells)}");
             }
         }
+    }
+
+    [Fact]
+    public async Task TestCommitTaskTrackerV2Excel()
+    {
+        var filePath = @"C:\Users\WAHANA 24\Downloads\Task Tracker v2.xlsx";
+        if (!File.Exists(filePath))
+        {
+            filePath = @"C:\TEMP\VSCODE\TrackerKerjaModern\backend\tests\temp_tracker.xlsx";
+        }
+        if (!File.Exists(filePath)) return;
+
+        using var stream = File.OpenRead(filePath);
+
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+        using var context = new AppDbContext(options);
+
+        // Seed a company
+        context.Companies.Add(new Domain.Entities.Company
+        {
+            Id = 1,
+            Name = "PT Elistec Test",
+            Code = "ELISTEC"
+        });
+        await context.SaveChangesAsync();
+
+        var service = new TaskExcelImportService(context);
+
+        var preview = await service.PreviewImportAsync(stream, Path.GetFileName(filePath), companyId: 1);
+        _output.WriteLine($"Preview rows: {preview.TotalRows}, Valid: {preview.ValidCount}, Errors: {preview.ErrorCount}");
+
+        var commitReq = new Application.DTOs.TaskImportCommitRequest(
+            DefaultProjectId: null,
+            BulkAssignUserId: null,
+            SelectedRowIndexes: null,
+            Rows: preview.Rows,
+            AutoCreateMissingUsers: true,
+            DefaultJobTitle: "Staff Pelaksana",
+            DefaultPassword: "TrackerKerja2026!",
+            EmailDomain: "elistec.com",
+            AutoApproveNewUsers: true
+        );
+
+        var result = await service.CommitImportAsync(commitReq, companyId: 1);
+        _output.WriteLine($"Commit Result: Processed={result.TotalProcessed}, Imported={result.TotalImported}, Users={result.TotalUsersCreated}, Projects={result.TotalProjectsCreated}, Updated={result.TotalUpdated}");
+        foreach (var msg in result.Messages)
+        {
+            _output.WriteLine($"Msg: {msg}");
+        }
+
+        // Verify users created
+        var users = await context.Users.ToListAsync();
+        _output.WriteLine($"Total Users in DB: {users.Count}");
+        foreach (var u in users)
+        {
+            _output.WriteLine($"User: Id={u.Id}, Name={u.FullName}, Email={u.Email}, UserName={u.UserName}");
+        }
+
+        // Verify tasks created
+        var tasks = await context.Tasks.Include(t => t.Project).ToListAsync();
+        _output.WriteLine($"Total Tasks in DB: {tasks.Count}");
     }
 }

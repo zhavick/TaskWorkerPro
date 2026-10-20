@@ -13,10 +13,99 @@ namespace TrackerKerja.Infrastructure.Services;
 public class TaskExcelImportService : ITaskExcelImportService
 {
     private readonly AppDbContext _context;
+    private static bool _schemaEnsured = false;
+    private static readonly SemaphoreSlim _schemaLock = new(1, 1);
 
     public TaskExcelImportService(AppDbContext context)
     {
         _context = context;
+    }
+
+    private async Task EnsureSchemaSynchronizedAsync(CancellationToken cancellationToken)
+    {
+        if (_schemaEnsured || !_context.Database.IsRelational()) return;
+
+        await _schemaLock.WaitAsync(cancellationToken);
+        try
+        {
+            if (_schemaEnsured) return;
+
+            await _context.Database.ExecuteSqlRawAsync(@"
+                DO $$ 
+                BEGIN 
+                    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'tasks') THEN 
+                        ALTER TABLE tasks ALTER COLUMN title TYPE VARCHAR(500);
+                        ALTER TABLE tasks ADD COLUMN IF NOT EXISTS tags VARCHAR(200);
+                    END IF;
+
+                    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'projects') THEN 
+                        ALTER TABLE projects ADD COLUMN IF NOT EXISTS use_budget BOOLEAN NOT NULL DEFAULT FALSE;
+                        ALTER TABLE projects ADD COLUMN IF NOT EXISTS tags VARCHAR(200);
+                    END IF;
+
+                    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'attendances') THEN 
+                        ALTER TABLE attendances ADD COLUMN IF NOT EXISTS status INTEGER NOT NULL DEFAULT 1;
+                        ALTER TABLE attendances ADD COLUMN IF NOT EXISTS approved_by_user_id VARCHAR(450);
+                    END IF;
+
+                    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'email_templates') THEN 
+                        ALTER TABLE email_templates ADD COLUMN IF NOT EXISTS updated_by_user_id VARCHAR(450);
+                    END IF;
+
+                    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'reward_items') THEN 
+                        ALTER TABLE reward_items ADD COLUMN IF NOT EXISTS image_url VARCHAR(300);
+                    END IF;
+
+                    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'announcements') THEN 
+                        ALTER TABLE announcements ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP;
+                    END IF;
+
+                    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'json_histories') THEN 
+                        ALTER TABLE json_histories ADD COLUMN IF NOT EXISTS user_id VARCHAR(450);
+                    END IF;
+
+                    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'sql_histories') THEN 
+                        ALTER TABLE sql_histories ADD COLUMN IF NOT EXISTS user_id VARCHAR(450);
+                    END IF;
+                END $$;
+
+                CREATE TABLE IF NOT EXISTS user_badge_snapshots (
+                    id SERIAL PRIMARY KEY,
+                    snapshot_batch_id VARCHAR(100) NOT NULL,
+                    reset_mode VARCHAR(50) NOT NULL,
+                    user_id VARCHAR(450) NOT NULL,
+                    badge_id INTEGER NOT NULL,
+                    original_unlocked_at TIMESTAMPTZ NOT NULL,
+                    is_featured BOOLEAN NOT NULL DEFAULT FALSE,
+                    awarded_by VARCHAR(450),
+                    snapshot_created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    is_restored BOOLEAN NOT NULL DEFAULT FALSE,
+                    restored_at TIMESTAMPTZ,
+                    restored_by VARCHAR(450)
+                );
+
+                CREATE TABLE IF NOT EXISTS import_logs (
+                    id SERIAL PRIMARY KEY,
+                    file_name VARCHAR(255) NOT NULL,
+                    total_rows INTEGER NOT NULL,
+                    success_rows INTEGER NOT NULL,
+                    failed_rows INTEGER NOT NULL,
+                    errors TEXT,
+                    imported_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    imported_by VARCHAR(450)
+                );
+            ", cancellationToken);
+
+            _schemaEnsured = true;
+        }
+        catch
+        {
+            // Ignore if already managed or non-postgres relational DB
+        }
+        finally
+        {
+            _schemaLock.Release();
+        }
     }
 
     public byte[] GenerateTemplate(string format)
@@ -185,12 +274,23 @@ public class TaskExcelImportService : ITaskExcelImportService
         int? companyId,
         CancellationToken cancellationToken = default)
     {
+        await EnsureSchemaSynchronizedAsync(cancellationToken);
+
         using var memoryStream = new MemoryStream();
         await fileStream.CopyToAsync(memoryStream, cancellationToken);
         memoryStream.Position = 0;
         using var workbook = new XLWorkbook(memoryStream);
 
-        if (!companyId.HasValue)
+        if (companyId.HasValue)
+        {
+            var companyExists = await _context.Companies.AnyAsync(c => c.Id == companyId.Value, cancellationToken);
+            if (!companyExists)
+            {
+                var firstCompany = await _context.Companies.FirstOrDefaultAsync(cancellationToken);
+                companyId = firstCompany?.Id;
+            }
+        }
+        else
         {
             var firstCompany = await _context.Companies.FirstOrDefaultAsync(cancellationToken);
             if (firstCompany != null) companyId = firstCompany.Id;
@@ -584,7 +684,18 @@ public class TaskExcelImportService : ITaskExcelImportService
             return new TaskImportResultDto(0, 0, 0, ["Tidak ada baris valid yang dipilih untuk diimpor."]);
         }
 
-        if (!companyId.HasValue)
+        await EnsureSchemaSynchronizedAsync(cancellationToken);
+
+        if (companyId.HasValue)
+        {
+            var companyExists = await _context.Companies.AnyAsync(c => c.Id == companyId.Value, cancellationToken);
+            if (!companyExists)
+            {
+                var firstCompany = await _context.Companies.FirstOrDefaultAsync(cancellationToken);
+                companyId = firstCompany?.Id;
+            }
+        }
+        else
         {
             var firstCompany = await _context.Companies.FirstOrDefaultAsync(cancellationToken);
             if (firstCompany != null) companyId = firstCompany.Id;
@@ -595,7 +706,9 @@ public class TaskExcelImportService : ITaskExcelImportService
 
         return await strategy.ExecuteAsync(async () =>
         {
-            await using var transaction = isRelational ? await _context.Database.BeginTransactionAsync(cancellationToken) : null;
+            await using var transaction = (isRelational && _context.Database.CurrentTransaction == null)
+                ? await _context.Database.BeginTransactionAsync(cancellationToken)
+                : null;
 
         var existingProjects = await _context.Projects
             .Where(p => !companyId.HasValue || p.CompanyId == companyId || p.CompanyId == null)
@@ -732,6 +845,7 @@ public class TaskExcelImportService : ITaskExcelImportService
             else if (!string.IsNullOrWhiteSpace(row.ProjectName))
             {
                 var cleanProjName = row.ProjectName.Trim();
+                if (cleanProjName.Length > 200) cleanProjName = cleanProjName[..200];
                 project = existingProjects.FirstOrDefault(p =>
                     p.Name.Equals(cleanProjName, StringComparison.OrdinalIgnoreCase));
 
@@ -907,13 +1021,13 @@ public class TaskExcelImportService : ITaskExcelImportService
                                 var newUser = new AppUser
                                 {
                                     Id = "usr-" + Guid.NewGuid().ToString("N")[..8],
-                                    FullName = finalDisplayName,
+                                    FullName = finalDisplayName.Length > 200 ? finalDisplayName[..200] : finalDisplayName,
                                     Email = resolvedEmail,
                                     NormalizedEmail = normEmail,
                                     UserName = finalUserName,
                                     NormalizedUserName = finalUserName.ToUpperInvariant(),
                                     EmailConfirmed = true,
-                                    JobTitle = defaultJobTitle,
+                                    JobTitle = defaultJobTitle.Length > 100 ? defaultJobTitle[..100] : defaultJobTitle,
                                     AvatarColor = PickAvatarColor(finalDisplayName),
                                     PasswordHash = PasswordHasher.HashPassword(defaultPassword),
                                     CompanyId = companyId,
@@ -973,14 +1087,14 @@ public class TaskExcelImportService : ITaskExcelImportService
             if (targetTask != null)
             {
                 // UPDATE: Perbarui data yang ada dengan data ter-update
-                targetTask.Title = row.Title;
+                targetTask.Title = row.Title.Length > 500 ? row.Title[..500] : row.Title;
                 if (!string.IsNullOrWhiteSpace(row.Description)) targetTask.Description = row.Description;
                 targetTask.Priority = row.Priority;
                 targetTask.Status = row.Status;
                 targetTask.Progress = row.Progress;
                 if (!string.IsNullOrWhiteSpace(row.Description)) targetTask.Description = row.Description;
-                else if (string.IsNullOrWhiteSpace(targetTask.Description)) targetTask.Description = row.Title;
-                if (!string.IsNullOrWhiteSpace(row.Milestone)) targetTask.Milestone = row.Milestone;
+                else if (string.IsNullOrWhiteSpace(targetTask.Description)) targetTask.Description = targetTask.Title;
+                if (!string.IsNullOrWhiteSpace(row.Milestone)) targetTask.Milestone = row.Milestone.Length > 100 ? row.Milestone[..100] : row.Milestone;
                 if (!string.IsNullOrWhiteSpace(row.Obstacle)) targetTask.Obstacle = row.Obstacle;
                 if (!string.IsNullOrWhiteSpace(row.Solution)) targetTask.Solution = row.Solution;
                 if (row.StartDate.HasValue) targetTask.StartDate = row.StartDate.Value.ToUniversalTime();
@@ -1012,12 +1126,12 @@ public class TaskExcelImportService : ITaskExcelImportService
                 // INSERT: Tambahkan tugas baru
                 var workTask = new WorkTask
                 {
-                    Title = row.Title,
+                    Title = row.Title.Length > 500 ? row.Title[..500] : row.Title,
                     Description = !string.IsNullOrWhiteSpace(row.Description) ? row.Description : row.Title,
                     Priority = row.Priority,
                     Status = row.Status,
                     Progress = row.Progress,
-                    Milestone = row.Milestone,
+                    Milestone = !string.IsNullOrWhiteSpace(row.Milestone) && row.Milestone.Length > 100 ? row.Milestone[..100] : row.Milestone,
                     Obstacle = row.Obstacle,
                     Solution = row.Solution,
                     Project = project,

@@ -660,7 +660,7 @@ public class TasksController : ControllerBase
         }
         catch (Exception ex)
         {
-            var msg = ex.InnerException != null ? $"{ex.Message} ({ex.InnerException.Message})" : ex.Message;
+            var msg = ex.GetBaseException()?.Message ?? ex.Message;
             return BadRequest(new
             {
                 success = false,
@@ -702,7 +702,7 @@ public class TasksController : ControllerBase
         }
         catch (Exception ex)
         {
-            var msg = ex.InnerException != null ? $"{ex.Message} ({ex.InnerException.Message})" : ex.Message;
+            var msg = ex.GetBaseException()?.Message ?? ex.Message;
             return BadRequest(new
             {
                 success = false,
