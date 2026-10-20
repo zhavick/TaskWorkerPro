@@ -10,6 +10,7 @@ namespace TrackerKerja.WebApi.Controllers;
 
 [ApiController]
 [Route("api/dev-tools")]
+[Route("api/jsontools")]
 [Authorize]
 public class DevToolsController : ControllerBase
 {
@@ -21,6 +22,7 @@ public class DevToolsController : ControllerBase
     }
 
     [HttpPost("json/format")]
+    [HttpPost("format")]
     public async Task<IActionResult> FormatJson([FromBody] JsonFormatRequest request)
     {
         try
@@ -50,6 +52,7 @@ public class DevToolsController : ControllerBase
     }
 
     [HttpGet("json/history")]
+    [HttpGet("history")]
     public async Task<IActionResult> GetJsonHistory()
     {
         var history = await _context.JsonHistories

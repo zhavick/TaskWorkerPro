@@ -8,6 +8,8 @@ namespace TrackerKerja.WebApi.Controllers;
 
 [ApiController]
 [Route("api/audit-logs")]
+[Route("api/audittrail")]
+[Route("api/auditlogs")]
 [Authorize]
 public class AuditLogsController : ControllerBase
 {

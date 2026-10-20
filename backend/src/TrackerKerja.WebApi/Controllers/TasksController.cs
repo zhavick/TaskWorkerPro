@@ -247,7 +247,49 @@ public class TasksController : ControllerBase
         return Ok(new { success = true, data = kanban });
     }
 
-    [HttpGet("{id}")]
+    [HttpGet("summary")]
+    public async Task<IActionResult> GetSummary(
+        [FromQuery] int? projectId = null,
+        [FromQuery] string? assignedToUserId = null)
+    {
+        var query = _context.Tasks.AsNoTracking().AsQueryable();
+
+        // RBAC Scoping
+        if (!_tenantService.IsAdmin && !string.IsNullOrEmpty(_tenantService.UserId))
+        {
+            query = query.Where(t => t.AssignedToUserId == _tenantService.UserId);
+        }
+        else if (!string.IsNullOrEmpty(assignedToUserId))
+        {
+            query = query.Where(t => t.AssignedToUserId == assignedToUserId);
+        }
+
+        if (projectId.HasValue) query = query.Where(t => t.ProjectId == projectId.Value);
+
+        var now = DateTimeOffset.UtcNow;
+        var total = await query.CountAsync();
+        var todo = await query.CountAsync(t => t.Status == Domain.Enums.TaskStatus.Todo);
+        var inProgress = await query.CountAsync(t => t.Status == Domain.Enums.TaskStatus.InProgress);
+        var review = await query.CountAsync(t => t.Status == Domain.Enums.TaskStatus.Review);
+        var done = await query.CountAsync(t => t.Status == Domain.Enums.TaskStatus.Done);
+        var overdue = await query.CountAsync(t => t.Status == Domain.Enums.TaskStatus.Overdue || (t.DueDate.HasValue && t.DueDate.Value < now && t.Status != Domain.Enums.TaskStatus.Done));
+
+        return Ok(new
+        {
+            success = true,
+            data = new
+            {
+                total,
+                todo,
+                inProgress,
+                review,
+                done,
+                overdue
+            }
+        });
+    }
+
+    [HttpGet("{id:int}")]
     public async Task<IActionResult> GetTaskById(int id)
     {
         var task = await _context.Tasks
@@ -323,7 +365,7 @@ public class TasksController : ControllerBase
         return Ok(new { success = true, message = "Tugas berhasil dibuat.", data = task });
     }
 
-    [HttpPut("{id}")]
+    [HttpPut("{id:int}")]
     public async Task<IActionResult> UpdateTask(int id, [FromBody] UpdateTaskRequest request)
     {
         var task = await _context.Tasks.FirstOrDefaultAsync(t => t.Id == id);
@@ -349,7 +391,7 @@ public class TasksController : ControllerBase
         return Ok(new { success = true, message = "Tugas berhasil diperbarui.", data = task });
     }
 
-    [HttpPut("{id}/unified-save")]
+    [HttpPut("{id:int}/unified-save")]
     public async Task<IActionResult> UnifiedSave(int id, [FromBody] UnifiedSaveTaskRequest request)
     {
         var isRelational = _context.Database.IsRelational();
@@ -413,7 +455,8 @@ public class TasksController : ControllerBase
         });
     }
 
-    [HttpPatch("{id}/status")]
+    [HttpPut("{id:int}/status")]
+    [HttpPatch("{id:int}/status")]
     public async Task<IActionResult> UpdateStatus(int id, [FromBody] UpdateTaskStatusRequest request)
     {
         var task = await _context.Tasks.FirstOrDefaultAsync(t => t.Id == id);
@@ -431,7 +474,8 @@ public class TasksController : ControllerBase
         return Ok(new { success = true, message = "Status tugas berhasil diperbarui.", status = task.Status, progress = task.Progress });
     }
 
-    [HttpPatch("{id}/progress")]
+    [HttpPut("{id:int}/progress")]
+    [HttpPatch("{id:int}/progress")]
     public async Task<IActionResult> UpdateProgress(int id, [FromBody] UpdateTaskProgressRequest request)
     {
         var task = await _context.Tasks.FirstOrDefaultAsync(t => t.Id == id);
@@ -449,7 +493,7 @@ public class TasksController : ControllerBase
         return Ok(new { success = true, message = "Progres tugas berhasil diperbarui.", progress = task.Progress, status = task.Status });
     }
 
-    [HttpDelete("{id}")]
+    [HttpDelete("{id:int}")]
     public async Task<IActionResult> DeleteTask(int id)
     {
         var task = await _context.Tasks
@@ -565,7 +609,7 @@ public class TasksController : ControllerBase
         });
     }
 
-    [HttpGet("{id}/subtasks")]
+    [HttpGet("{id:int}/subtasks")]
     public async Task<IActionResult> GetSubtasks(int id)
     {
         var subtasks = await _context.Tasks
@@ -589,7 +633,7 @@ public class TasksController : ControllerBase
         return Ok(new { success = true, data = subtasks });
     }
 
-    [HttpPost("{id}/subtasks")]
+    [HttpPost("{id:int}/subtasks")]
     public async Task<IActionResult> CreateSubtask(int id, [FromBody] CreateSubtaskRequest request)
     {
         var parentTask = await _context.Tasks.FirstOrDefaultAsync(t => t.Id == id);

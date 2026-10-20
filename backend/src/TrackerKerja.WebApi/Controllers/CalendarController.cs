@@ -155,7 +155,8 @@ public class CalendarController : ControllerBase
         return Ok(new { success = true, data = events });
     }
 
-    [HttpPatch("events/{id}/status")]
+    [HttpPut("events/{id:int}/status")]
+    [HttpPatch("events/{id:int}/status")]
     public async Task<IActionResult> UpdateStatus(int id, [FromBody] QuickUpdateTaskStatusRequest request)
     {
         var task = await _context.Tasks.FirstOrDefaultAsync(t => t.Id == id);

@@ -57,6 +57,7 @@ public class AttendancesController : ControllerBase
     }
 
     [HttpPost("clock-in")]
+    [HttpPost("clockin")]
     public async Task<IActionResult> ClockIn([FromBody] ClockInRequest request)
     {
         var userId = _tenantService.UserId;
@@ -99,6 +100,7 @@ public class AttendancesController : ControllerBase
     }
 
     [HttpPost("clock-out")]
+    [HttpPost("clockout")]
     public async Task<IActionResult> ClockOut([FromBody] ClockOutRequest request)
     {
         var userId = _tenantService.UserId;
@@ -138,6 +140,8 @@ public class AttendancesController : ControllerBase
     }
 
     [HttpPost("leave")]
+    [HttpPost("request-leave")]
+    [HttpPost("requestleave")]
     public async Task<IActionResult> SubmitLeave([FromBody] SubmitLeaveRequest request)
     {
         var userId = _tenantService.UserId;
@@ -185,6 +189,21 @@ public class AttendancesController : ControllerBase
         return Ok(new { success = true, message = $"Pencatatan {request.Type} pada tanggal {targetDate:yyyy-MM-dd} berhasil disimpan.", data = existing });
     }
 
+    [HttpPost("approve/{id}")]
+    [Authorize(Roles = "Administrator")]
+    public async Task<IActionResult> Approve(int id)
+    {
+        var attendance = await _context.Attendances.FirstOrDefaultAsync(a => a.Id == id);
+        if (attendance == null)
+            return NotFound(new { success = false, message = "Catatan presensi/izin tidak ditemukan." });
+
+        attendance.UpdatedAt = DateTimeOffset.UtcNow;
+        await _context.SaveChangesAsync();
+
+        return Ok(new { success = true, message = $"Pengajuan presensi/izin #{id} berhasil disetujui.", data = attendance });
+    }
+
+    [HttpGet("summary")]
     [HttpGet("my-summary")]
     public async Task<IActionResult> GetMySummary([FromQuery] int? month = null, [FromQuery] int? year = null)
     {
@@ -221,6 +240,7 @@ public class AttendancesController : ControllerBase
         return Ok(new { success = true, month = targetMonth, year = targetYear, data = summary });
     }
 
+    [HttpGet]
     [HttpGet("my-history")]
     public async Task<IActionResult> GetMyHistory([FromQuery] int? month = null, [FromQuery] int? year = null)
     {

@@ -9,6 +9,7 @@ namespace TrackerKerja.WebApi.Controllers;
 
 [ApiController]
 [Route("api/master")]
+[Route("api/masterdata")]
 public class MasterDataController : ControllerBase
 {
     private readonly AppDbContext _context;

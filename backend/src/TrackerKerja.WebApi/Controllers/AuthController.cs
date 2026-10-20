@@ -1,3 +1,5 @@
+using System.Security.Claims;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using TrackerKerja.Application.Common.Interfaces;
@@ -14,11 +16,16 @@ public class AuthController : ControllerBase
 {
     private readonly AppDbContext _context;
     private readonly IJwtTokenService _jwtService;
+    private readonly ICurrentTenantService? _tenantService;
 
-    public AuthController(AppDbContext context, IJwtTokenService jwtService)
+    public AuthController(
+        AppDbContext context,
+        IJwtTokenService jwtService,
+        ICurrentTenantService? tenantService = null)
     {
         _context = context;
         _jwtService = jwtService;
+        _tenantService = tenantService;
     }
 
     [HttpPost("register")]
@@ -304,5 +311,54 @@ public class AuthController : ControllerBase
             .ToListAsync();
 
         return Ok(companies);
+    }
+
+    [HttpGet("me")]
+    [Authorize]
+    public async Task<IActionResult> GetMe()
+    {
+        var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+            ?? User.FindFirst("sub")?.Value
+            ?? _tenantService?.UserId;
+
+        if (string.IsNullOrEmpty(userId))
+        {
+            return Unauthorized(new { success = false, message = "Sesi autentikasi tidak valid atau telah kedaluwarsa." });
+        }
+
+        var user = await _context.Users
+            .Include(u => u.Company)
+            .AsNoTracking()
+            .FirstOrDefaultAsync(u => u.Id == userId);
+
+        if (user == null)
+        {
+            return NotFound(new { success = false, message = "Profil pengguna tidak ditemukan." });
+        }
+
+        var isAdmin = user.Id == "usr-superadmin" 
+            || user.Email?.Equals("admin@trackerkerja.local", StringComparison.OrdinalIgnoreCase) == true
+            || user.JobTitle.Contains("Admin", StringComparison.OrdinalIgnoreCase)
+            || user.JobTitle.Contains("Architect", StringComparison.OrdinalIgnoreCase);
+        var roles = new List<string> { isAdmin ? "Administrator" : "Member" };
+
+        var profile = new UserProfileDto(
+            user.Id,
+            user.FullName,
+            user.Email ?? string.Empty,
+            user.JobTitle,
+            user.AvatarColor,
+            user.ProfilePictureUrl,
+            user.CoverPictureUrl,
+            user.CompanyId,
+            user.Company?.Name,
+            user.Company?.Code,
+            user.IsApproved,
+            roles,
+            user.PhoneNumber,
+            user.CreatedAt
+        );
+
+        return Ok(new { success = true, data = profile });
     }
 }

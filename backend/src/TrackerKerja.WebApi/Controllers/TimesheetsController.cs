@@ -28,6 +28,7 @@ public class TimesheetsController : ControllerBase
     }
 
     [HttpGet("active-timers")]
+    [HttpGet("running")]
     public async Task<IActionResult> GetActiveTimers()
     {
         var currentUserId = _tenantService.UserId;
@@ -99,6 +100,7 @@ public class TimesheetsController : ControllerBase
     }
 
     [HttpPost("{sessionId}/stop")]
+    [HttpPost("stop/{sessionId}")]
     public async Task<IActionResult> StopTimer(int sessionId)
     {
         var session = await _context.Sessions
@@ -165,6 +167,33 @@ public class TimesheetsController : ControllerBase
         return Ok(new { success = true, message = "Sesi kerja manual berhasil dicatat.", data = session });
     }
 
+    [HttpGet("summary")]
+    public async Task<IActionResult> GetSummary([FromQuery] string? userId = null)
+    {
+        var targetUserId = !string.IsNullOrEmpty(userId) && _tenantService.IsAdmin ? userId : _tenantService.UserId;
+        if (string.IsNullOrEmpty(targetUserId)) return Unauthorized();
+
+        var now = DateTimeOffset.UtcNow;
+        var startOfToday = new DateTimeOffset(now.Year, now.Month, now.Day, 0, 0, 0, TimeSpan.Zero);
+        var startOfWeek = startOfToday.AddDays(-(int)startOfToday.DayOfWeek);
+        var startOfMonth = new DateTimeOffset(now.Year, now.Month, 1, 0, 0, 0, TimeSpan.Zero);
+
+        var sessions = await _context.Sessions
+            .AsNoTracking()
+            .Where(s => s.UserId == targetUserId && s.EndTime != null)
+            .Select(s => new { s.StartTime, s.Duration })
+            .ToListAsync();
+
+        long todaySecs = sessions.Where(s => s.StartTime >= startOfToday).Sum(s => s.Duration);
+        long weekSecs = sessions.Where(s => s.StartTime >= startOfWeek).Sum(s => s.Duration);
+        long monthSecs = sessions.Where(s => s.StartTime >= startOfMonth).Sum(s => s.Duration);
+        double totalManDays = Math.Round((monthSecs / 3600.0) / 8.0, 2);
+
+        var summary = new TimesheetSummaryDto(todaySecs, weekSecs, monthSecs, totalManDays, sessions.Count);
+        return Ok(new { success = true, data = summary });
+    }
+
+    [HttpGet]
     [HttpGet("sessions")]
     public async Task<IActionResult> GetSessions(
         [FromQuery] string? userId = null,

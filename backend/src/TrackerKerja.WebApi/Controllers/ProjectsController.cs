@@ -92,7 +92,107 @@ public class ProjectsController : ControllerBase
         return Ok(new { success = true, data = result });
     }
 
-    [HttpGet("{id}")]
+    [HttpGet("summary")]
+    public async Task<IActionResult> GetSummary([FromQuery] int? companyId = null)
+    {
+        var query = _context.Projects
+            .Include(p => p.Tasks)
+            .AsNoTracking()
+            .AsQueryable();
+
+        if (companyId.HasValue && _tenantService.IsAdmin)
+        {
+            query = query.Where(p => p.CompanyId == companyId.Value);
+        }
+        else if (!_tenantService.IsAdmin && _tenantService.CompanyId.HasValue)
+        {
+            query = query.Where(p => p.CompanyId == _tenantService.CompanyId.Value);
+        }
+
+        var projects = await query.ToListAsync();
+        var totalProjects = projects.Count;
+        var activeProjects = projects.Count(p => p.Status == ProjectStatus.Active);
+        var completedProjects = projects.Count(p => p.Status == ProjectStatus.Completed);
+        var totalBudget = projects.Sum(p => p.Budget);
+        var totalActualCost = projects.Sum(p => p.ActualCost);
+
+        var taskIds = projects.SelectMany(p => p.Tasks).Select(t => t.Id).ToList();
+        var totalTasks = taskIds.Count;
+        var completedTasks = projects.SelectMany(p => p.Tasks).Count(t => t.Status == Domain.Enums.TaskStatus.Done);
+        var averageProgress = totalTasks > 0 ? (int)Math.Round((double)completedTasks / totalTasks * 100) : 0;
+
+        var totalDurationSeconds = await _context.Sessions
+            .AsNoTracking()
+            .Where(s => taskIds.Contains(s.TaskId) && s.EndTime != null)
+            .SumAsync(s => s.Duration);
+
+        var totalHours = Math.Round(totalDurationSeconds / 3600.0, 1);
+
+        return Ok(new
+        {
+            success = true,
+            data = new
+            {
+                totalProjects,
+                activeProjects,
+                completedProjects,
+                totalBudget,
+                totalActualCost,
+                totalTasks,
+                completedTasks,
+                averageProgress,
+                totalDurationSeconds,
+                totalHours
+            }
+        });
+    }
+
+    [HttpGet("{id:int}/tasks")]
+    public async Task<IActionResult> GetProjectTasks(int id)
+    {
+        var project = await _context.Projects
+            .AsNoTracking()
+            .FirstOrDefaultAsync(p => p.Id == id);
+
+        if (project == null)
+        {
+            return NotFound(new { success = false, message = "Proyek tidak ditemukan." });
+        }
+
+        var tasks = await _context.Tasks
+            .Include(t => t.AssignedToUser)
+            .Include(t => t.Category)
+            .Include(t => t.Sessions)
+            .AsNoTracking()
+            .Where(t => t.ProjectId == id)
+            .OrderByDescending(t => t.CreatedAt)
+            .ToListAsync();
+
+        var dtos = tasks.Select(t =>
+        {
+            var taskDuration = t.Sessions.Where(s => s.EndTime != null).Sum(s => s.Duration);
+            return new ProjectTaskItemDto(
+                t.Id,
+                $"TK-{t.Id:D4}",
+                t.Title,
+                t.Description,
+                t.Status,
+                t.Priority,
+                t.Progress,
+                t.Milestone,
+                t.Category?.Name,
+                t.AssignedToUserId,
+                t.AssignedToUser?.FullName,
+                t.AssignedToUser?.AvatarColor,
+                t.DueDate,
+                taskDuration
+            );
+        }).ToList();
+
+        return Ok(new { success = true, data = dtos });
+    }
+
+    [HttpGet("{id:int}")]
     public async Task<IActionResult> GetProjectById(int id)
     {
         var project = await _context.Projects

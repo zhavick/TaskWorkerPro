@@ -81,7 +81,7 @@ public class NotesController : ControllerBase
         return Ok(new { success = true, data = result });
     }
 
-    [HttpGet("{id}")]
+    [HttpGet("{id:int}")]
     public async Task<IActionResult> GetNoteById(int id)
     {
         var note = await _context.Notes
@@ -145,7 +145,7 @@ public class NotesController : ControllerBase
         return Ok(new { success = true, message = "Catatan berhasil dibuat.", data = note });
     }
 
-    [HttpPut("{id}")]
+    [HttpPut("{id:int}")]
     public async Task<IActionResult> UpdateNote(int id, [FromBody] UpdateNoteRequest request)
     {
         var note = await _context.Notes.FirstOrDefaultAsync(n => n.Id == id);
@@ -164,7 +164,7 @@ public class NotesController : ControllerBase
         return Ok(new { success = true, message = "Catatan berhasil diperbarui.", data = note });
     }
 
-    [HttpPatch("{id}/pin")]
+    [HttpPatch("{id:int}/pin")]
     public async Task<IActionResult> TogglePin(int id)
     {
         var note = await _context.Notes.FirstOrDefaultAsync(n => n.Id == id);
@@ -177,7 +177,7 @@ public class NotesController : ControllerBase
         return Ok(new { success = true, message = note.IsPinned ? "Catatan disematkan." : "Semat catatan dilepas.", isPinned = note.IsPinned });
     }
 
-    [HttpDelete("{id}")]
+    [HttpDelete("{id:int}")]
     public async Task<IActionResult> DeleteNote(int id)
     {
         var note = await _context.Notes
@@ -201,7 +201,7 @@ public class NotesController : ControllerBase
         return Ok(new { success = true, message = "Catatan dan seluruh lampiran berhasil dihapus." });
     }
 
-    [HttpPost("{id}/attachments")]
+    [HttpPost("{id:int}/attachments")]
     public async Task<IActionResult> UploadAttachment(int id, IFormFile file)
     {
         var note = await _context.Notes.FirstOrDefaultAsync(n => n.Id == id);
@@ -261,8 +261,9 @@ public class NotesController : ControllerBase
         });
     }
 
-    [HttpGet("attachments/{attachmentId}/download")]
-    public async Task<IActionResult> DownloadAttachment(int attachmentId)
+    [HttpGet("attachments/{attachmentId:int}/download")]
+    [HttpGet("{id:int}/attachments/{attachmentId:int}/download")]
+    public async Task<IActionResult> DownloadAttachment(int attachmentId, int? id = null)
     {
         var attachment = await _context.NoteAttachments
             .Include(a => a.Note)
@@ -285,8 +286,9 @@ public class NotesController : ControllerBase
         return File(memory, attachment.ContentType ?? "application/octet-stream", attachment.FileName);
     }
 
-    [HttpDelete("attachments/{attachmentId}")]
-    public async Task<IActionResult> DeleteAttachment(int attachmentId)
+    [HttpDelete("attachments/{attachmentId:int}")]
+    [HttpDelete("{id:int}/attachments/{attachmentId:int}")]
+    public async Task<IActionResult> DeleteAttachment(int attachmentId, int? id = null)
     {
         var attachment = await _context.NoteAttachments.FirstOrDefaultAsync(a => a.Id == attachmentId);
         if (attachment == null) return NotFound(new { success = false, message = "Lampiran tidak ditemukan." });

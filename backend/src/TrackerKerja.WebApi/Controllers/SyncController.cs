@@ -74,6 +74,24 @@ public class SyncController : ControllerBase
         return Ok(result);
     }
 
+    [HttpGet("pull")]
+    [AllowAnonymous]
+    public async Task<IActionResult> PullDelta([FromQuery] DateTimeOffset? since = null)
+    {
+        if (!IsSyncAuthorized())
+        {
+            return Unauthorized(new { success = false, message = "Kunci otorisasi sinkronisasi X-Sync-Key tidak valid." });
+        }
+
+        var sqlContent = await _syncService.ExportSqlDumpAsync();
+        return Ok(new
+        {
+            success = true,
+            serverTimestamp = DateTimeOffset.UtcNow,
+            deltaSql = sqlContent
+        });
+    }
+
     [HttpPost("pull")]
     [Authorize]
     public async Task<IActionResult> Pull([FromBody] SyncPullRequest request)
@@ -106,6 +124,7 @@ public class SyncController : ControllerBase
     }
 
     [HttpGet("export-package")]
+    [HttpGet("package")]
     [AllowAnonymous]
     public async Task<IActionResult> ExportPackage([FromQuery] bool includeFiles = true)
     {
@@ -134,6 +153,7 @@ public class SyncController : ControllerBase
     }
 
     [HttpPost("import-package")]
+    [HttpPost("package/upload")]
     [Authorize]
     public async Task<IActionResult> ImportPackage(IFormFile file)
     {

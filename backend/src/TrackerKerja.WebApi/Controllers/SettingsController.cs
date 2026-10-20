@@ -10,6 +10,7 @@ namespace TrackerKerja.WebApi.Controllers;
 
 [ApiController]
 [Route("api/settings")]
+[Route("api/configuration")]
 [Authorize(Roles = "Administrator,SuperAdmin")]
 public class SettingsController : ControllerBase
 {
@@ -21,6 +22,7 @@ public class SettingsController : ControllerBase
     }
 
     [HttpGet]
+    [HttpGet("settings")]
     [AllowAnonymous]
     public async Task<IActionResult> GetAllSettings()
     {

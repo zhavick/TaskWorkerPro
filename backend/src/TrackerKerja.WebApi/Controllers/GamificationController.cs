@@ -105,6 +105,7 @@ public class GamificationController : ControllerBase
     }
 
     [HttpPost("check-in")]
+    [HttpPost("checkin")]
     public async Task<IActionResult> DailyCheckIn()
     {
         var userId = _tenantService.UserId;
@@ -287,6 +288,55 @@ public class GamificationController : ControllerBase
         )).ToList();
 
         return Ok(new { success = true, data = result });
+    }
+
+    [HttpGet("user/{userId}")]
+    public async Task<IActionResult> GetUserBadges(string userId)
+    {
+        var user = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId);
+        if (user == null)
+        {
+            return NotFound(new { success = false, message = "Pengguna tidak ditemukan." });
+        }
+
+        var masterBadges = await _context.MasterBadges
+            .Where(b => b.IsActive)
+            .OrderBy(b => b.OrderIndex)
+            .ToListAsync();
+
+        var userUnlocked = await _context.UserBadges
+            .Where(ub => ub.UserId == userId)
+            .ToDictionaryAsync(ub => ub.BadgeId, ub => ub.UnlockedAt);
+
+        var badges = masterBadges.Select(b => new BadgeItemDto(
+            b.Id,
+            b.Code,
+            b.Name,
+            b.Description,
+            b.Category,
+            b.Icon,
+            b.Color,
+            b.Points,
+            b.Rarity,
+            userUnlocked.ContainsKey(b.Id),
+            userUnlocked.TryGetValue(b.Id, out var dt) ? dt : null
+        )).ToList();
+
+        var totalBadgePoints = masterBadges.Where(b => userUnlocked.ContainsKey(b.Id)).Sum(b => b.Points);
+
+        return Ok(new
+        {
+            success = true,
+            data = new
+            {
+                userId = user.Id,
+                userName = user.FullName,
+                avatarUrl = user.ProfilePictureUrl,
+                totalBadgePoints,
+                unlockedCount = userUnlocked.Count,
+                badges
+            }
+        });
     }
 
     [HttpGet("rewards")]
@@ -623,6 +673,7 @@ public class GamificationController : ControllerBase
     }
 
     [HttpPost("admin/badges/award")]
+    [HttpPost("award")]
     [Authorize(Roles = "Administrator,SuperAdmin")]
     public async Task<IActionResult> AwardBadge([FromBody] AwardBadgeRequest request)
     {
