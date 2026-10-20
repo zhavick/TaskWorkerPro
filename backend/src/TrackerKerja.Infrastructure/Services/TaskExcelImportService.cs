@@ -167,6 +167,18 @@ public class TaskExcelImportService : ITaskExcelImportService
             .Where(u => !companyId.HasValue || u.CompanyId == companyId || u.CompanyId == null)
             .ToListAsync(cancellationToken);
 
+        foreach (var u in existingUsers)
+        {
+            if (!string.IsNullOrEmpty(u.Email) && !IsEmailMatchingPerson(u.Email, u.FullName))
+            {
+                var synced = DeriveNameFromEmail(u.Email);
+                if (!string.IsNullOrWhiteSpace(synced))
+                {
+                    u.FullName = synced;
+                }
+            }
+        }
+
         var existingTasks = await _context.Tasks
             .Include(t => t.Project)
             .Where(t => !companyId.HasValue || t.CompanyId == companyId)
@@ -296,7 +308,18 @@ public class TaskExcelImportService : ITaskExcelImportService
                         : sheetPersonnel.Email;
                 }
 
-                var effectiveEmail = rowEmail ?? sheetPersonnel?.Email;
+                var effectiveEmail = rowEmail;
+                if (string.IsNullOrWhiteSpace(effectiveEmail) && sheetPersonnel != null)
+                {
+                    if (string.IsNullOrWhiteSpace(picText) ||
+                        IsInvalidPersonValue(picText) ||
+                        sheetPersonnel.Name.Equals(picText, StringComparison.OrdinalIgnoreCase) ||
+                        NormalizePersonName(sheetPersonnel.Name) == NormalizePersonName(picText) ||
+                        IsEmailMatchingPerson(sheetPersonnel.Email, picText))
+                    {
+                        effectiveEmail = sheetPersonnel.Email;
+                    }
+                }
 
                 // Abaikan baris kosong total
                 if (string.IsNullOrWhiteSpace(title) && string.IsNullOrWhiteSpace(projectName) && string.IsNullOrWhiteSpace(taskCode))
@@ -554,8 +577,20 @@ public class TaskExcelImportService : ITaskExcelImportService
 
         // Cache lokal user untuk mencegah duplikasi pembuatan user di dalam batch
         var userCache = new Dictionary<string, AppUser>(StringComparer.OrdinalIgnoreCase);
+        bool dbHasMismatchedUsers = false;
         foreach (var u in existingUsers)
         {
+            if (!string.IsNullOrEmpty(u.Email) && !IsEmailMatchingPerson(u.Email, u.FullName))
+            {
+                var synced = DeriveNameFromEmail(u.Email);
+                if (!string.IsNullOrWhiteSpace(synced))
+                {
+                    u.FullName = synced;
+                    u.AvatarColor = PickAvatarColor(synced);
+                    dbHasMismatchedUsers = true;
+                }
+            }
+
             if (!string.IsNullOrEmpty(u.Email)) userCache[u.Email] = u;
             if (!string.IsNullOrEmpty(u.FullName)) userCache[u.FullName] = u;
             if (!string.IsNullOrEmpty(u.UserName)) userCache[u.UserName] = u;
@@ -565,6 +600,11 @@ public class TaskExcelImportService : ITaskExcelImportService
             if (!string.IsNullOrEmpty(local) && !userCache.ContainsKey(local)) userCache[local] = u;
             var normName = NormalizePersonName(u.FullName);
             if (!string.IsNullOrEmpty(normName) && !userCache.ContainsKey(normName)) userCache[normName] = u;
+        }
+
+        if (dbHasMismatchedUsers)
+        {
+            await _context.SaveChangesAsync(cancellationToken);
         }
 
         int totalUpdated = 0;
@@ -653,6 +693,25 @@ public class TaskExcelImportService : ITaskExcelImportService
             // B. Resolve PIC (Requirement 3: cari alamat email/nama serupa & buatkan user baru dengan nama & email tersebut)
             string? assignedUserId = row.MatchedUserId;
 
+            if (!string.IsNullOrEmpty(assignedUserId))
+            {
+                var existingFound = userCache.TryGetValue(assignedUserId, out var cached)
+                    ? cached
+                    : existingUsers.FirstOrDefault(u => u.Id == assignedUserId);
+                if (existingFound != null && !string.IsNullOrEmpty(existingFound.Email) && !IsEmailMatchingPerson(existingFound.Email, existingFound.FullName))
+                {
+                    var syncedName = !string.IsNullOrWhiteSpace(row.MatchedUserName) && IsEmailMatchingPerson(existingFound.Email, row.MatchedUserName)
+                        ? row.MatchedUserName
+                        : DeriveNameFromEmail(existingFound.Email);
+                    if (!string.IsNullOrWhiteSpace(syncedName))
+                    {
+                        existingFound.FullName = syncedName;
+                        existingFound.AvatarColor = PickAvatarColor(syncedName);
+                        await _context.SaveChangesAsync(cancellationToken);
+                    }
+                }
+            }
+
             if (string.IsNullOrEmpty(assignedUserId))
             {
                 var picKey = !string.IsNullOrWhiteSpace(row.PicIdentifier) ? row.PicIdentifier.Trim() : null;
@@ -678,8 +737,24 @@ public class TaskExcelImportService : ITaskExcelImportService
                         if (matchedId != null)
                         {
                             assignedUserId = matchedId;
-                            if (userCache.TryGetValue(matchedId, out var existingFound))
+                            var existingFound = userCache.TryGetValue(matchedId, out var cached)
+                                ? cached
+                                : existingUsers.FirstOrDefault(u => u.Id == matchedId);
+                            if (existingFound != null)
                             {
+                                if (!string.IsNullOrEmpty(existingFound.Email) && !IsEmailMatchingPerson(existingFound.Email, existingFound.FullName))
+                                {
+                                    var syncedName = !string.IsNullOrWhiteSpace(resolvedName) && IsEmailMatchingPerson(existingFound.Email, resolvedName)
+                                        ? resolvedName
+                                        : DeriveNameFromEmail(existingFound.Email);
+                                    if (!string.IsNullOrWhiteSpace(syncedName))
+                                    {
+                                        existingFound.FullName = syncedName;
+                                        existingFound.AvatarColor = PickAvatarColor(syncedName);
+                                        await _context.SaveChangesAsync(cancellationToken);
+                                    }
+                                }
+
                                 if (!string.IsNullOrEmpty(picKey)) userCache[picKey] = existingFound;
                                 if (!string.IsNullOrEmpty(picEmail)) userCache[picEmail] = existingFound;
                             }
@@ -728,11 +803,27 @@ public class TaskExcelImportService : ITaskExcelImportService
                             if (existingInCompany != null)
                             {
                                 // REUSE pengguna yang sudah ada di perusahaan ini (mencegah duplikasi nama di perusahaan yang sama)
+                                // Jika nama pengguna di database saat ini tidak sinkron dengan email, update FullName agar sinkron
+                                if (!string.IsNullOrEmpty(existingInCompany.Email) &&
+                                    !IsEmailMatchingPerson(existingInCompany.Email, existingInCompany.FullName))
+                                {
+                                    var syncedName = !string.IsNullOrWhiteSpace(finalDisplayName) && IsEmailMatchingPerson(existingInCompany.Email, finalDisplayName)
+                                        ? finalDisplayName
+                                        : DeriveNameFromEmail(existingInCompany.Email);
+                                    if (!string.IsNullOrWhiteSpace(syncedName))
+                                    {
+                                        existingInCompany.FullName = syncedName;
+                                        existingInCompany.AvatarColor = PickAvatarColor(syncedName);
+                                        await _context.SaveChangesAsync(cancellationToken);
+                                    }
+                                }
+
                                 assignedUserId = existingInCompany.Id;
                                 if (!string.IsNullOrEmpty(picKey)) userCache[picKey] = existingInCompany;
                                 userCache[finalDisplayName] = existingInCompany;
                                 if (!string.IsNullOrEmpty(normTargetName)) userCache[normTargetName] = existingInCompany;
                                 userCache[resolvedEmail] = existingInCompany;
+                                if (!string.IsNullOrWhiteSpace(searchKey)) userCache[searchKey] = existingInCompany;
                                 if (!existingUsers.Any(u => u.Id == existingInCompany.Id)) existingUsers.Add(existingInCompany);
                             }
                             else
@@ -773,6 +864,7 @@ public class TaskExcelImportService : ITaskExcelImportService
                                 if (!string.IsNullOrEmpty(normTargetName)) userCache[normTargetName] = newUser;
                                 userCache[resolvedEmail] = newUser;
                                 userCache[newUser.Id] = newUser;
+                                if (!string.IsNullOrWhiteSpace(searchKey)) userCache[searchKey] = newUser;
 
                                 assignedUserId = newUser.Id;
                                 totalUsersCreated++;
@@ -1372,24 +1464,17 @@ public class TaskExcelImportService : ITaskExcelImportService
         }
 
         if (emailsFound.Count == 0) return null;
-        if (emailsFound.Count == 1) return emailsFound[0];
 
-        // If multiple emails found, match against personName
+        // If personName is specified, strictly check if email matches person
         if (!string.IsNullOrWhiteSpace(personName))
         {
-            var tokens = personName.ToLowerInvariant()
-                .Split(new[] { ' ', '.', '_', '-' }, StringSplitOptions.RemoveEmptyEntries)
-                .Where(t => t.Length >= 3)
-                .ToList();
-
-            foreach (var email in emailsFound)
+            var matched = emailsFound.FirstOrDefault(e => IsEmailMatchingPerson(e, personName));
+            if (matched != null)
             {
-                var localPart = email.Split('@')[0];
-                if (tokens.Any(t => localPart.Contains(t)))
-                {
-                    return email;
-                }
+                return matched;
             }
+
+            return null;
         }
 
         return emailsFound[0];
@@ -1402,13 +1487,6 @@ public class TaskExcelImportService : ITaskExcelImportService
     {
         if (string.IsNullOrWhiteSpace(personName)) return null;
 
-        var tokens = personName.ToLowerInvariant()
-            .Split(new[] { ' ', '.', '_', '-' }, StringSplitOptions.RemoveEmptyEntries)
-            .Where(t => t.Length >= 2)
-            .ToList();
-
-        if (tokens.Count == 0) return null;
-
         foreach (var otherWs in workbook.Worksheets)
         {
             if (otherWs == currentWs) continue;
@@ -1419,10 +1497,10 @@ public class TaskExcelImportService : ITaskExcelImportService
             {
                 var otherNorm = NormalizePersonName(otherSheetPerson);
                 var targetNorm = NormalizePersonName(personName);
-                if (otherNorm == targetNorm || tokens.All(t => otherNorm.Contains(t)))
+                if (otherNorm == targetNorm || (otherNorm.Length >= 3 && targetNorm.Length >= 3 && (otherNorm.Contains(targetNorm) || targetNorm.Contains(otherNorm))))
                 {
                     var anyEmailOnOther = FindAnyEmailInWorksheet(otherWs, personName);
-                    if (!string.IsNullOrWhiteSpace(anyEmailOnOther))
+                    if (!string.IsNullOrWhiteSpace(anyEmailOnOther) && IsEmailMatchingPerson(anyEmailOnOther, personName))
                     {
                         return anyEmailOnOther;
                     }
@@ -1435,55 +1513,18 @@ public class TaskExcelImportService : ITaskExcelImportService
             for (int r = 1; r <= lastRow; r++)
             {
                 var row = otherWs.Row(r);
-                bool rowHasPerson = false;
-                string? rowEmail = null;
-
                 for (int c = 1; c <= lastCol; c++)
                 {
                     var cellStr = row.Cell(c).GetString().Trim();
-                    if (string.IsNullOrWhiteSpace(cellStr)) continue;
+                    if (!cellStr.Contains('@')) continue;
 
-                    if (!rowHasPerson && tokens.Any(t => cellStr.ToLowerInvariant().Contains(t)))
+                    var match = Regex.Match(cellStr, @"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}");
+                    if (match.Success)
                     {
-                        rowHasPerson = true;
-                    }
-
-                    if (cellStr.Contains('@'))
-                    {
-                        var match = Regex.Match(cellStr, @"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}");
-                        if (match.Success)
+                        var email = match.Value.ToLowerInvariant();
+                        if (IsEmailMatchingPerson(email, personName))
                         {
-                            var email = match.Value.ToLowerInvariant();
-                            rowEmail ??= email;
-
-                            // Direct match: if email's local part contains the person's name tokens
-                            var localPart = email.Split('@')[0];
-                            if (tokens.Any(t => localPart.Contains(t)))
-                            {
-                                return email;
-                            }
-                        }
-                    }
-                }
-
-                if (rowHasPerson && rowEmail != null)
-                {
-                    return rowEmail;
-                }
-
-                // If row r had the person name, also check adjacent row r+1 for email
-                if (rowHasPerson && r + 1 <= lastRow)
-                {
-                    for (int c = 1; c <= lastCol; c++)
-                    {
-                        var nextCellStr = otherWs.Cell(r + 1, c).GetString().Trim();
-                        if (nextCellStr.Contains('@'))
-                        {
-                            var m = Regex.Match(nextCellStr, @"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}");
-                            if (m.Success)
-                            {
-                                return m.Value.ToLowerInvariant();
-                            }
+                            return email;
                         }
                     }
                 }
@@ -1703,7 +1744,19 @@ public class TaskExcelImportService : ITaskExcelImportService
         if (string.IsNullOrWhiteSpace(emailInSheet) && sheetPersonName != null && sheetPersonName.Contains('@'))
         {
             emailInSheet = sheetPersonName.ToLowerInvariant();
-            sheetPersonName = FormatDisplayName(sheetPersonName.Split('@')[0]);
+            sheetPersonName = DeriveNameFromEmail(emailInSheet);
+        }
+
+        // If email was found in sheet metadata, sync sheetPersonName with email if empty or not matching
+        if (!string.IsNullOrWhiteSpace(emailInSheet))
+        {
+            var emailName = DeriveNameFromEmail(emailInSheet);
+            if (string.IsNullOrWhiteSpace(sheetPersonName) || !IsEmailMatchingPerson(emailInSheet, sheetPersonName))
+            {
+                // User requirement: "3. buatkan user dengan nama email tersebut"
+                // "nama pengguna dengan nama email tidak sinkron"
+                sheetPersonName = emailName;
+            }
         }
 
         // Only treat as personnel sheet if a person's name or email was detected
@@ -1724,8 +1777,12 @@ public class TaskExcelImportService : ITaskExcelImportService
                 var match = Regex.Match(cellStr, @"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}");
                 if (match.Success)
                 {
-                    emailInSheet = match.Value.ToLowerInvariant();
-                    break;
+                    var candEmail = match.Value.ToLowerInvariant();
+                    if (string.IsNullOrWhiteSpace(sheetPersonName) || IsEmailMatchingPerson(candEmail, sheetPersonName))
+                    {
+                        emailInSheet = candEmail;
+                        break;
+                    }
                 }
             }
         }
@@ -1901,7 +1958,12 @@ public class TaskExcelImportService : ITaskExcelImportService
                 !string.IsNullOrEmpty(u.Email) && u.Email.Equals(knownEmail.Trim(), StringComparison.OrdinalIgnoreCase));
             if (foundByKnownEmail != null)
             {
-                return (foundByKnownEmail.Id, foundByKnownEmail.FullName, foundByKnownEmail.Email, false);
+                var nameToReturn = foundByKnownEmail.FullName;
+                if (!string.IsNullOrEmpty(foundByKnownEmail.Email) && !IsEmailMatchingPerson(foundByKnownEmail.Email, foundByKnownEmail.FullName))
+                {
+                    nameToReturn = DeriveNameFromEmail(foundByKnownEmail.Email);
+                }
+                return (foundByKnownEmail.Id, nameToReturn, foundByKnownEmail.Email, false);
             }
         }
 
@@ -2004,12 +2066,39 @@ public class TaskExcelImportService : ITaskExcelImportService
         }
 
         // Tier 6: Generate or use known email
-        var formattedName = FormatDisplayName(trimmed.Contains('@') ? trimmed.Split('@')[0] : trimmed);
-        var emailSlug = !string.IsNullOrWhiteSpace(knownEmail) && knownEmail.Contains('@')
-            ? knownEmail.Trim().ToLowerInvariant()
-            : (trimmed.Contains('@')
+        string formattedName;
+        string emailSlug;
+
+        var cleanTrimmed = trimmed.Contains('@') ? trimmed.Split('@')[0] : trimmed;
+
+        if (!string.IsNullOrWhiteSpace(knownEmail) && knownEmail.Contains('@'))
+        {
+            emailSlug = knownEmail.Trim().ToLowerInvariant();
+            var nameFromEmail = DeriveNameFromEmail(emailSlug);
+
+            if (IsEmailMatchingPerson(emailSlug, cleanTrimmed))
+            {
+                formattedName = nameFromEmail.Length > cleanTrimmed.Length && nameFromEmail.Contains(' ')
+                    ? nameFromEmail
+                    : FormatDisplayName(cleanTrimmed);
+            }
+            else
+            {
+                // User requirement: "3. buatkan user dengan nama email tersebut"
+                // "nama pengguna dengan nama email tidak sinkron"
+                // When email and picIdentifier do not match, sync display name with email name!
+                formattedName = !string.IsNullOrWhiteSpace(nameFromEmail)
+                    ? nameFromEmail
+                    : FormatDisplayName(cleanTrimmed);
+            }
+        }
+        else
+        {
+            formattedName = FormatDisplayName(cleanTrimmed);
+            emailSlug = trimmed.Contains('@')
                 ? trimmed.ToLowerInvariant()
-                : GenerateEmailSlug(formattedName, domain));
+                : GenerateEmailSlug(formattedName, domain);
+        }
 
         var userWithSameEmail = existingUsers.FirstOrDefault(u =>
             u.Email != null && u.Email.Equals(emailSlug, StringComparison.OrdinalIgnoreCase));
@@ -2133,6 +2222,81 @@ public class TaskExcelImportService : ITaskExcelImportService
 
         // 5. Default to latter row index in the spreadsheet
         return candidate.RowIndex > current.RowIndex;
+    }
+
+    private static string DeriveNameFromEmail(string? email)
+    {
+        if (string.IsNullOrWhiteSpace(email)) return string.Empty;
+        var emailClean = email.Trim();
+        var atIdx = emailClean.IndexOf('@');
+        var local = atIdx >= 0 ? emailClean[..atIdx] : emailClean;
+
+        var withSpaces = local.Replace('.', ' ').Replace('_', ' ').Replace('-', ' ').Replace('+', ' ').Trim();
+        return FormatDisplayName(withSpaces);
+    }
+
+    private static bool IsEmailMatchingPerson(string? email, string? personName)
+    {
+        if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(personName))
+            return false;
+
+        if (IsInvalidPersonValue(personName) || IsInvalidPersonValue(email))
+            return false;
+
+        var emailClean = email.Trim().ToLowerInvariant();
+        var atIdx = emailClean.IndexOf('@');
+        var localPart = atIdx >= 0 ? emailClean[..atIdx] : emailClean;
+
+        var personNorm = NormalizePersonName(personName);
+        var localNorm = new string(localPart.Where(char.IsLetterOrDigit).ToArray()).ToLowerInvariant();
+
+        if (string.IsNullOrWhiteSpace(personNorm) || string.IsNullOrWhiteSpace(localNorm))
+            return false;
+
+        // 1. Direct equality of normalized alphanumeric string
+        if (personNorm == localNorm)
+            return true;
+
+        // 2. Token overlap: e.g. "glenn.hakim" vs "Glenn Hakim", "glenn" vs "Glenn Hakim"
+        var localTokens = localPart
+            .Split(new[] { '.', '_', '-', '+', ' ' }, StringSplitOptions.RemoveEmptyEntries)
+            .Where(t => t.Length >= 2)
+            .Select(t => t.ToLowerInvariant())
+            .ToList();
+
+        var personTokens = personName
+            .Split(new[] { ' ', '.', '_', '-', ',', '(', ')', '[', ']' }, StringSplitOptions.RemoveEmptyEntries)
+            .Where(t => t.Length >= 2 && !t.Any(char.IsDigit))
+            .Select(t => t.ToLowerInvariant())
+            .ToList();
+
+        if (localTokens.Any(lt => personTokens.Contains(lt)))
+            return true;
+
+        // 3. Substring match if long enough (>= 3 chars)
+        if (personNorm.Length >= 3 && localNorm.Length >= 3)
+        {
+            if (personNorm.Contains(localNorm) || localNorm.Contains(personNorm))
+                return true;
+        }
+
+        // 4. Initial + last name matching: e.g. "ghakim" vs "Glenn Hakim", "g.hakim"
+        if (personTokens.Count >= 2)
+        {
+            var initialAndLast = (personTokens[0][0] + personTokens[^1]).ToLowerInvariant();
+            if (localNorm == initialAndLast)
+                return true;
+
+            if (localTokens.Count >= 2 &&
+                localTokens[0].Length == 1 &&
+                localTokens[0][0] == personTokens[0][0] &&
+                localTokens[^1] == personTokens[^1])
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static string FormatDisplayName(string raw)

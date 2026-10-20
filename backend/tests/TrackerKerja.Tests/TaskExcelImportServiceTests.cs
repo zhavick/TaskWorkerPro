@@ -1191,6 +1191,170 @@ public class TaskExcelImportServiceTests
         Assert.NotNull(taskInCompany2);
         Assert.Equal(userInCompany2.Id, taskInCompany2.AssignedToUserId);
     }
+
+    [Fact]
+    public async Task PreviewAndCommit_UserNameAndEmailAreStrictlySynchronized_WhenEmailGiven()
+    {
+        using var context = CreateInMemoryContext();
+        var service = new TaskExcelImportService(context);
+
+        // Row with picIdentifier "Syafix" but email "haviz.indra@elistec.com"
+        var row = new TaskImportRowDto(
+            RowIndex: 1,
+            TaskCode: null,
+            ParentTaskCode: null,
+            Title: "Desain Sistem Manajemen",
+            Description: null,
+            ProjectName: "Proyek Modern",
+            MatchedProjectId: null,
+            PicIdentifier: "Syafix",
+            MatchedUserId: null,
+            MatchedUserName: "Syafix",
+            Priority: TaskPriority.High,
+            Status: TrackerKerja.Domain.Enums.TaskStatus.InProgress,
+            Progress: 50,
+            StartDate: null,
+            DueDate: null,
+            Milestone: null,
+            Obstacle: null,
+            Solution: null,
+            ValidationStatus: TaskImportValidationStatus.Valid,
+            ValidationMessages: new List<string>(),
+            PicEmail: "haviz.indra@elistec.com"
+        );
+
+        var commitReq = new TaskImportCommitRequest(null, null, null, [row], AutoCreateMissingUsers: true);
+        var result = await service.CommitImportAsync(commitReq, companyId: 1);
+
+        Assert.Equal(1, result.TotalImported);
+        Assert.Equal(1, result.TotalUsersCreated);
+
+        // Name and Email must be synchronized!
+        var user = await context.Users.FirstOrDefaultAsync(u => u.Email == "haviz.indra@elistec.com");
+        Assert.NotNull(user);
+        Assert.Equal("Haviz Indra", user.FullName); // NOT "Syafix", display name is synchronized with email!
+        Assert.Equal("haviz.indra@elistec.com", user.Email);
+
+        var task = await context.Tasks.FirstOrDefaultAsync(t => t.Title == "Desain Sistem Manajemen");
+        Assert.NotNull(task);
+        Assert.Equal(user.Id, task.AssignedToUserId);
+    }
+
+    [Fact]
+    public async Task PreviewAndCommit_CrossSheetEmailDoesNotMisattributeUnrelatedEmailToDifferentPerson()
+    {
+        using var context = CreateInMemoryContext();
+        var service = new TaskExcelImportService(context);
+
+        using var wb = new XLWorkbook();
+
+        // Sheet 1: Haviz Indra with his email
+        var wsHaviz = wb.Worksheets.Add("Haviz Indra");
+        wsHaviz.Cell(1, 1).Value = "Judul Tugas";
+        wsHaviz.Cell(1, 2).Value = "Proyek";
+        wsHaviz.Cell(1, 3).Value = "Status";
+        wsHaviz.Cell(1, 4).Value = "Email PIC";
+        wsHaviz.Cell(2, 1).Value = "Tugas Haviz";
+        wsHaviz.Cell(2, 2).Value = "Fintech Modern";
+        wsHaviz.Cell(2, 3).Value = "Done";
+        wsHaviz.Cell(2, 4).Value = "haviz.indra@elistec.com";
+
+        // Sheet 2: Syafix with NO email
+        var wsSyafix = wb.Worksheets.Add("Syafix");
+        wsSyafix.Cell(1, 1).Value = "Judul Tugas";
+        wsSyafix.Cell(1, 2).Value = "Proyek";
+        wsSyafix.Cell(1, 3).Value = "Status";
+        wsSyafix.Cell(2, 1).Value = "Tugas Syafix";
+        wsSyafix.Cell(2, 2).Value = "Fintech Modern";
+        wsSyafix.Cell(2, 3).Value = "Todo";
+
+        using var ms = new MemoryStream();
+        wb.SaveAs(ms);
+        ms.Position = 0;
+
+        var preview = await service.PreviewImportAsync(ms, "tim-elistec.xlsx", companyId: 1);
+        Assert.Equal(2, preview.TotalRows);
+
+        var rowHaviz = preview.Rows.First(r => r.Title == "Tugas Haviz");
+        Assert.Equal("Haviz Indra", rowHaviz.MatchedUserName);
+        Assert.Equal("haviz.indra@elistec.com", rowHaviz.PicEmail);
+
+        var rowSyafix = preview.Rows.First(r => r.Title == "Tugas Syafix");
+        Assert.Equal("Syafix", rowSyafix.MatchedUserName);
+        // Syafix must NOT steal Haviz Indra's email
+        Assert.NotEqual("haviz.indra@elistec.com", rowSyafix.PicEmail);
+
+        var commitReq = new TaskImportCommitRequest(null, null, null, preview.Rows, AutoCreateMissingUsers: true);
+        var result = await service.CommitImportAsync(commitReq, companyId: 1);
+
+        Assert.Equal(2, result.TotalImported);
+
+        var userHaviz = await context.Users.FirstOrDefaultAsync(u => u.Email == "haviz.indra@elistec.com");
+        Assert.NotNull(userHaviz);
+        Assert.Equal("Haviz Indra", userHaviz.FullName);
+
+        var userSyafix = await context.Users.FirstOrDefaultAsync(u => u.FullName == "Syafix");
+        Assert.NotNull(userSyafix);
+        Assert.NotEqual("haviz.indra@elistec.com", userSyafix.Email);
+    }
+
+    [Fact]
+    public async Task CommitImport_RepairsExistingMismatchedUserInDatabase_WhenImportRuns()
+    {
+        using var context = CreateInMemoryContext();
+        // Simulate corrupted user in database where FullName is "Syafix" but Email is "haviz.indra@elistec.com"
+        var corruptedUser = new AppUser
+        {
+            Id = "usr-corrupted",
+            FullName = "Syafix",
+            Email = "haviz.indra@elistec.com",
+            NormalizedEmail = "HAVIZ.INDRA@ELISTEC.COM",
+            UserName = "haviz.indra@elistec.com",
+            CompanyId = 1,
+            JobTitle = "Staff Pelaksana",
+            AvatarColor = "#3B82F6",
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        context.Users.Add(corruptedUser);
+        await context.SaveChangesAsync();
+
+        var service = new TaskExcelImportService(context);
+
+        var row = new TaskImportRowDto(
+            RowIndex: 1,
+            TaskCode: null,
+            ParentTaskCode: null,
+            Title: "Tugas Lanjutan",
+            Description: null,
+            ProjectName: "Proyek Wahana",
+            MatchedProjectId: null,
+            PicIdentifier: "Haviz Indra",
+            MatchedUserId: null,
+            MatchedUserName: "Haviz Indra",
+            Priority: TaskPriority.Medium,
+            Status: TrackerKerja.Domain.Enums.TaskStatus.Todo,
+            Progress: 0,
+            StartDate: null,
+            DueDate: null,
+            Milestone: null,
+            Obstacle: null,
+            Solution: null,
+            ValidationStatus: TaskImportValidationStatus.Valid,
+            ValidationMessages: new List<string>(),
+            PicEmail: "haviz.indra@elistec.com"
+        );
+
+        var commitReq = new TaskImportCommitRequest(null, null, null, [row], AutoCreateMissingUsers: true);
+        var result = await service.CommitImportAsync(commitReq, companyId: 1);
+
+        Assert.Equal(1, result.TotalImported);
+
+        // Verify the existing user's FullName in DB was repaired to be synchronized with their email
+        var repairedUser = await context.Users.FirstOrDefaultAsync(u => u.Id == "usr-corrupted");
+        Assert.NotNull(repairedUser);
+        Assert.Equal("Haviz Indra", repairedUser.FullName); // Repaired!
+        Assert.Equal("haviz.indra@elistec.com", repairedUser.Email);
+    }
 }
 
 
