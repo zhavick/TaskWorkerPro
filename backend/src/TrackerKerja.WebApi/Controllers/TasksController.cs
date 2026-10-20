@@ -239,6 +239,7 @@ public class TasksController : ControllerBase
         {
             Todo = dtoList.Where(t => t.Status == Domain.Enums.TaskStatus.Todo).ToList(),
             InProgress = dtoList.Where(t => t.Status == Domain.Enums.TaskStatus.InProgress).ToList(),
+            Review = dtoList.Where(t => t.Status == Domain.Enums.TaskStatus.Review).ToList(),
             Done = dtoList.Where(t => t.Status == Domain.Enums.TaskStatus.Done).ToList(),
             Overdue = dtoList.Where(t => t.Status == Domain.Enums.TaskStatus.Overdue).ToList()
         };

@@ -334,7 +334,21 @@ public class SyncService : ISyncService
 
         try
         {
-            var statements = SplitSqlStatements(sqlContent);
+            var isPostgres = _context.Database.ProviderName?.Contains("Npgsql", StringComparison.OrdinalIgnoreCase) == true
+                          || _context.Database.ProviderName?.Contains("Postgre", StringComparison.OrdinalIgnoreCase) == true;
+
+            var rawStatements = SplitSqlStatements(sqlContent);
+            var sanitizedStatements = new List<string>();
+
+            foreach (var raw in rawStatements)
+            {
+                var translated = SanitizeAndTranslateSqlStatement(raw, isPostgres);
+                if (!string.IsNullOrWhiteSpace(translated))
+                {
+                    sanitizedStatements.Add(translated);
+                }
+            }
+
             var executedStatements = 0;
 
             if (_context.Database.IsRelational())
@@ -342,12 +356,17 @@ public class SyncService : ISyncService
                 using var transaction = await _context.Database.BeginTransactionAsync();
                 try
                 {
-                    foreach (var stmt in statements)
+                    foreach (var stmt in sanitizedStatements)
                     {
-                        if (string.IsNullOrWhiteSpace(stmt)) continue;
                         await _context.Database.ExecuteSqlRawAsync(stmt);
                         executedStatements++;
                     }
+
+                    if (isPostgres)
+                    {
+                        await UpdatePostgresSequencesAsync();
+                    }
+
                     await transaction.CommitAsync();
                 }
                 catch (Exception ex)
@@ -359,7 +378,7 @@ public class SyncService : ISyncService
             else
             {
                 // In-memory or non-relational test support
-                executedStatements = statements.Count(s => !string.IsNullOrWhiteSpace(s));
+                executedStatements = sanitizedStatements.Count;
             }
 
             _context.SyncHistories.Add(new SyncHistory
@@ -1310,9 +1329,12 @@ public class SyncService : ISyncService
 
     public string GenerateSqlScript(SyncDatabaseData data)
     {
+        var isPostgres = _context.Database.ProviderName?.Contains("Npgsql", StringComparison.OrdinalIgnoreCase) == true
+                      || _context.Database.ProviderName?.Contains("Postgre", StringComparison.OrdinalIgnoreCase) == true;
+
         var sb = new StringBuilder();
         sb.AppendLine("-- =============================================================================");
-        sb.AppendLine("-- TrackerKerja Modern Database Sync Script (DML Transactions)");
+        sb.AppendLine($"-- TrackerKerja Modern Database Sync Script ({(isPostgres ? "PostgreSQL Dialect" : "SQLite / Standard Dialect")})");
         sb.AppendLine($"-- Generated At: {DateTimeOffset.UtcNow:O}");
         sb.AppendLine("-- =============================================================================");
         sb.AppendLine();
@@ -1323,7 +1345,13 @@ public class SyncService : ISyncService
             sb.AppendLine("-- 1. Companies");
             foreach (var c in data.Companies)
             {
-                sb.AppendLine($"INSERT OR REPLACE INTO companies (id, name, code, description, address, contact_email, created_at) VALUES ({c.Id}, {SqlEscape(c.Name)}, {SqlEscape(c.Code)}, {SqlEscape(c.Description)}, {SqlEscape(c.Address)}, {SqlEscape(c.ContactEmail)}, {SqlDate(c.CreatedAt)});");
+                AppendUpsert(
+                    sb,
+                    "companies",
+                    "id, name, code, description, address, contact_email, created_at",
+                    $"{c.Id}, {SqlEscape(c.Name)}, {SqlEscape(c.Code)}, {SqlEscape(c.Description)}, {SqlEscape(c.Address)}, {SqlEscape(c.ContactEmail)}, {SqlDate(c.CreatedAt)}",
+                    new[] { "name", "code", "description", "address", "contact_email", "created_at" },
+                    isPostgres);
             }
             sb.AppendLine();
         }
@@ -1334,7 +1362,13 @@ public class SyncService : ISyncService
             sb.AppendLine("-- 2. Users");
             foreach (var u in data.Users)
             {
-                sb.AppendLine($"INSERT OR REPLACE INTO asp_net_users (id, user_name, normalized_user_name, email, normalized_email, email_confirmed, password_hash, security_stamp, concurrency_stamp, phone_number, full_name, job_title, avatar_color, profile_picture_url, cover_picture_url, company_id, is_approved, approved_at, approved_by_user_id, created_at) VALUES ({SqlEscape(u.Id)}, {SqlEscape(u.UserName)}, {SqlEscape(u.NormalizedUserName)}, {SqlEscape(u.Email)}, {SqlEscape(u.NormalizedEmail)}, {SqlBool(u.EmailConfirmed)}, {SqlEscape(u.PasswordHash)}, {SqlEscape(u.SecurityStamp)}, {SqlEscape(u.ConcurrencyStamp)}, {SqlEscape(u.PhoneNumber)}, {SqlEscape(u.FullName)}, {SqlEscape(u.JobTitle)}, {SqlEscape(u.AvatarColor)}, {SqlEscape(u.ProfilePictureUrl)}, {SqlEscape(u.CoverPictureUrl)}, {SqlNullableInt(u.CompanyId)}, {SqlBool(u.IsApproved)}, {SqlDate(u.ApprovedAt)}, {SqlEscape(u.ApprovedByUserId)}, {SqlDate(u.CreatedAt)});");
+                AppendUpsert(
+                    sb,
+                    "asp_net_users",
+                    "id, user_name, normalized_user_name, email, normalized_email, email_confirmed, password_hash, security_stamp, concurrency_stamp, phone_number, full_name, job_title, avatar_color, profile_picture_url, cover_picture_url, company_id, is_approved, approved_at, approved_by_user_id, created_at",
+                    $"{SqlEscape(u.Id)}, {SqlEscape(u.UserName)}, {SqlEscape(u.NormalizedUserName)}, {SqlEscape(u.Email)}, {SqlEscape(u.NormalizedEmail)}, {SqlBool(u.EmailConfirmed, isPostgres)}, {SqlEscape(u.PasswordHash)}, {SqlEscape(u.SecurityStamp)}, {SqlEscape(u.ConcurrencyStamp)}, {SqlEscape(u.PhoneNumber)}, {SqlEscape(u.FullName)}, {SqlEscape(u.JobTitle)}, {SqlEscape(u.AvatarColor)}, {SqlEscape(u.ProfilePictureUrl)}, {SqlEscape(u.CoverPictureUrl)}, {SqlNullableInt(u.CompanyId)}, {SqlBool(u.IsApproved, isPostgres)}, {SqlDate(u.ApprovedAt)}, {SqlEscape(u.ApprovedByUserId)}, {SqlDate(u.CreatedAt)}",
+                    new[] { "user_name", "normalized_user_name", "email", "normalized_email", "email_confirmed", "password_hash", "security_stamp", "concurrency_stamp", "phone_number", "full_name", "job_title", "avatar_color", "profile_picture_url", "cover_picture_url", "company_id", "is_approved", "approved_at", "approved_by_user_id", "created_at" },
+                    isPostgres);
             }
             sb.AppendLine();
         }
@@ -1345,7 +1379,13 @@ public class SyncService : ISyncService
             sb.AppendLine("-- 3. Categories");
             foreach (var cat in data.Categories)
             {
-                sb.AppendLine($"INSERT OR REPLACE INTO categories (id, name, color, description, created_at) VALUES ({cat.Id}, {SqlEscape(cat.Name)}, {SqlEscape(cat.Color)}, {SqlEscape(cat.Description)}, {SqlDate(cat.CreatedAt)});");
+                AppendUpsert(
+                    sb,
+                    "categories",
+                    "id, name, color, description, created_at",
+                    $"{cat.Id}, {SqlEscape(cat.Name)}, {SqlEscape(cat.Color)}, {SqlEscape(cat.Description)}, {SqlDate(cat.CreatedAt)}",
+                    new[] { "name", "color", "description", "created_at" },
+                    isPostgres);
             }
             sb.AppendLine();
         }
@@ -1356,7 +1396,13 @@ public class SyncService : ISyncService
             sb.AppendLine("-- 4. Master Priorities");
             foreach (var p in data.MasterPriorities)
             {
-                sb.AppendLine($"INSERT OR REPLACE INTO master_priorities (id, name, color, icon, order_index, description, is_default) VALUES ({p.Id}, {SqlEscape(p.Name)}, {SqlEscape(p.Color)}, {SqlEscape(p.Icon)}, {p.OrderIndex}, {SqlEscape(p.Description)}, {SqlBool(p.IsDefault)});");
+                AppendUpsert(
+                    sb,
+                    "master_priorities",
+                    "id, name, color, icon, order_index, description, is_default",
+                    $"{p.Id}, {SqlEscape(p.Name)}, {SqlEscape(p.Color)}, {SqlEscape(p.Icon)}, {p.OrderIndex}, {SqlEscape(p.Description)}, {SqlBool(p.IsDefault, isPostgres)}",
+                    new[] { "name", "color", "icon", "order_index", "description", "is_default" },
+                    isPostgres);
             }
             sb.AppendLine();
         }
@@ -1367,7 +1413,13 @@ public class SyncService : ISyncService
             sb.AppendLine("-- 5. Master Statuses");
             foreach (var s in data.MasterStatuses)
             {
-                sb.AppendLine($"INSERT OR REPLACE INTO master_statuses (id, name, color, is_done_state, order_index, description, is_default) VALUES ({s.Id}, {SqlEscape(s.Name)}, {SqlEscape(s.Color)}, {SqlBool(s.IsDoneState)}, {s.OrderIndex}, {SqlEscape(s.Description)}, {SqlBool(s.IsDefault)});");
+                AppendUpsert(
+                    sb,
+                    "master_statuses",
+                    "id, name, color, is_done_state, order_index, description, is_default",
+                    $"{s.Id}, {SqlEscape(s.Name)}, {SqlEscape(s.Color)}, {SqlBool(s.IsDoneState, isPostgres)}, {s.OrderIndex}, {SqlEscape(s.Description)}, {SqlBool(s.IsDefault, isPostgres)}",
+                    new[] { "name", "color", "is_done_state", "order_index", "description", "is_default" },
+                    isPostgres);
             }
             sb.AppendLine();
         }
@@ -1378,7 +1430,13 @@ public class SyncService : ISyncService
             sb.AppendLine("-- 6. Master Milestones");
             foreach (var m in data.MasterMilestones)
             {
-                sb.AppendLine($"INSERT OR REPLACE INTO master_milestones (id, name, phase, color, icon, order_index, description, is_default) VALUES ({m.Id}, {SqlEscape(m.Name)}, {SqlEscape(m.Phase)}, {SqlEscape(m.Color)}, {SqlEscape(m.Icon)}, {m.OrderIndex}, {SqlEscape(m.Description)}, {SqlBool(m.IsDefault)});");
+                AppendUpsert(
+                    sb,
+                    "master_milestones",
+                    "id, name, phase, color, icon, order_index, description, is_default",
+                    $"{m.Id}, {SqlEscape(m.Name)}, {SqlEscape(m.Phase)}, {SqlEscape(m.Color)}, {SqlEscape(m.Icon)}, {m.OrderIndex}, {SqlEscape(m.Description)}, {SqlBool(m.IsDefault, isPostgres)}",
+                    new[] { "name", "phase", "color", "icon", "order_index", "description", "is_default" },
+                    isPostgres);
             }
             sb.AppendLine();
         }
@@ -1389,7 +1447,13 @@ public class SyncService : ISyncService
             sb.AppendLine("-- 7. Projects");
             foreach (var prj in data.Projects)
             {
-                sb.AppendLine($"INSERT OR REPLACE INTO projects (id, name, description, color, status, company_id, client_name, project_manager_id, budget, actual_cost, use_budget, tags, deadline, created_at) VALUES ({prj.Id}, {SqlEscape(prj.Name)}, {SqlEscape(prj.Description)}, {SqlEscape(prj.Color)}, {(int)prj.Status}, {SqlNullableInt(prj.CompanyId)}, {SqlEscape(prj.ClientName)}, {SqlEscape(prj.ProjectManagerId)}, {prj.Budget.ToString(System.Globalization.CultureInfo.InvariantCulture)}, {prj.ActualCost.ToString(System.Globalization.CultureInfo.InvariantCulture)}, {SqlBool(prj.UseBudget)}, {SqlEscape(prj.Tags)}, {SqlDate(prj.Deadline)}, {SqlDate(prj.CreatedAt)});");
+                AppendUpsert(
+                    sb,
+                    "projects",
+                    "id, name, description, color, status, company_id, client_name, project_manager_id, budget, actual_cost, use_budget, tags, deadline, created_at",
+                    $"{prj.Id}, {SqlEscape(prj.Name)}, {SqlEscape(prj.Description)}, {SqlEscape(prj.Color)}, {(int)prj.Status}, {SqlNullableInt(prj.CompanyId)}, {SqlEscape(prj.ClientName)}, {SqlEscape(prj.ProjectManagerId)}, {prj.Budget.ToString(System.Globalization.CultureInfo.InvariantCulture)}, {prj.ActualCost.ToString(System.Globalization.CultureInfo.InvariantCulture)}, {SqlBool(prj.UseBudget, isPostgres)}, {SqlEscape(prj.Tags)}, {SqlDate(prj.Deadline)}, {SqlDate(prj.CreatedAt)}",
+                    new[] { "name", "description", "color", "status", "company_id", "client_name", "project_manager_id", "budget", "actual_cost", "use_budget", "tags", "deadline", "created_at" },
+                    isPostgres);
             }
             sb.AppendLine();
         }
@@ -1400,7 +1464,13 @@ public class SyncService : ISyncService
             sb.AppendLine("-- 8. Tasks");
             foreach (var t in data.Tasks)
             {
-                sb.AppendLine($"INSERT OR REPLACE INTO tasks (id, title, description, priority, status, progress, milestone, obstacle, solution, tags, project_id, category_id, assigned_to_user_id, parent_task_id, company_id, start_date, due_date, created_at, updated_at) VALUES ({t.Id}, {SqlEscape(t.Title)}, {SqlEscape(t.Description)}, {(int)t.Priority}, {(int)t.Status}, {t.Progress}, {SqlEscape(t.Milestone)}, {SqlEscape(t.Obstacle)}, {SqlEscape(t.Solution)}, {SqlEscape(t.Tags)}, {SqlNullableInt(t.ProjectId)}, {SqlNullableInt(t.CategoryId)}, {SqlEscape(t.AssignedToUserId)}, {SqlNullableInt(t.ParentTaskId)}, {SqlNullableInt(t.CompanyId)}, {SqlDate(t.StartDate)}, {SqlDate(t.DueDate)}, {SqlDate(t.CreatedAt)}, {SqlDate(t.UpdatedAt)});");
+                AppendUpsert(
+                    sb,
+                    "tasks",
+                    "id, title, description, priority, status, progress, milestone, obstacle, solution, tags, project_id, category_id, assigned_to_user_id, parent_task_id, company_id, start_date, due_date, created_at, updated_at",
+                    $"{t.Id}, {SqlEscape(t.Title)}, {SqlEscape(t.Description)}, {(int)t.Priority}, {(int)t.Status}, {t.Progress}, {SqlEscape(t.Milestone)}, {SqlEscape(t.Obstacle)}, {SqlEscape(t.Solution)}, {SqlEscape(t.Tags)}, {SqlNullableInt(t.ProjectId)}, {SqlNullableInt(t.CategoryId)}, {SqlEscape(t.AssignedToUserId)}, {SqlNullableInt(t.ParentTaskId)}, {SqlNullableInt(t.CompanyId)}, {SqlDate(t.StartDate)}, {SqlDate(t.DueDate)}, {SqlDate(t.CreatedAt)}, {SqlDate(t.UpdatedAt)}",
+                    new[] { "title", "description", "priority", "status", "progress", "milestone", "obstacle", "solution", "tags", "project_id", "category_id", "assigned_to_user_id", "parent_task_id", "company_id", "start_date", "due_date", "created_at", "updated_at" },
+                    isPostgres);
             }
             sb.AppendLine();
         }
@@ -1411,7 +1481,13 @@ public class SyncService : ISyncService
             sb.AppendLine("-- 9. Work Sessions");
             foreach (var s in data.Sessions)
             {
-                sb.AppendLine($"INSERT OR REPLACE INTO sessions (id, task_id, user_id, start_time, end_time, duration, notes, created_at) VALUES ({s.Id}, {s.TaskId}, {SqlEscape(s.UserId)}, {SqlDate(s.StartTime)}, {SqlDate(s.EndTime)}, {s.Duration}, {SqlEscape(s.Notes)}, {SqlDate(s.CreatedAt)});");
+                AppendUpsert(
+                    sb,
+                    "sessions",
+                    "id, task_id, user_id, start_time, end_time, duration, notes, created_at",
+                    $"{s.Id}, {s.TaskId}, {SqlEscape(s.UserId)}, {SqlDate(s.StartTime)}, {SqlDate(s.EndTime)}, {s.Duration}, {SqlEscape(s.Notes)}, {SqlDate(s.CreatedAt)}",
+                    new[] { "task_id", "user_id", "start_time", "end_time", "duration", "notes", "created_at" },
+                    isPostgres);
             }
             sb.AppendLine();
         }
@@ -1422,7 +1498,13 @@ public class SyncService : ISyncService
             sb.AppendLine("-- 10. Attendance Records");
             foreach (var a in data.Attendances)
             {
-                sb.AppendLine($"INSERT OR REPLACE INTO attendances (id, user_id, date, type, work_location, status, approved_by_user_id, clock_in, clock_out, total_hours, leave_reason, notes, created_at, updated_at) VALUES ({a.Id}, {SqlEscape(a.UserId)}, '{a.Date:yyyy-MM-dd}', {(int)a.Type}, {(int)a.WorkLocation}, {a.Status}, {SqlEscape(a.ApprovedByUserId)}, {SqlDate(a.ClockIn)}, {SqlDate(a.ClockOut)}, {a.TotalHours.ToString(System.Globalization.CultureInfo.InvariantCulture)}, {SqlEscape(a.LeaveReason)}, {SqlEscape(a.Notes)}, {SqlDate(a.CreatedAt)}, {SqlDate(a.UpdatedAt)});");
+                AppendUpsert(
+                    sb,
+                    "attendances",
+                    "id, user_id, date, type, work_location, status, approved_by_user_id, clock_in, clock_out, total_hours, leave_reason, notes, created_at, updated_at",
+                    $"{a.Id}, {SqlEscape(a.UserId)}, '{a.Date:yyyy-MM-dd}', {(int)a.Type}, {(int)a.WorkLocation}, {a.Status}, {SqlEscape(a.ApprovedByUserId)}, {SqlDate(a.ClockIn)}, {SqlDate(a.ClockOut)}, {a.TotalHours.ToString(System.Globalization.CultureInfo.InvariantCulture)}, {SqlEscape(a.LeaveReason)}, {SqlEscape(a.Notes)}, {SqlDate(a.CreatedAt)}, {SqlDate(a.UpdatedAt)}",
+                    new[] { "user_id", "date", "type", "work_location", "status", "approved_by_user_id", "clock_in", "clock_out", "total_hours", "leave_reason", "notes", "created_at", "updated_at" },
+                    isPostgres);
             }
             sb.AppendLine();
         }
@@ -1433,7 +1515,13 @@ public class SyncService : ISyncService
             sb.AppendLine("-- 11. Notes");
             foreach (var n in data.Notes)
             {
-                sb.AppendLine($"INSERT OR REPLACE INTO notes (id, title, content_html, category, color, is_pinned, author_user_id, task_id, company_id, created_at, updated_at) VALUES ({n.Id}, {SqlEscape(n.Title)}, {SqlEscape(n.ContentHtml)}, {SqlEscape(n.Category)}, {SqlEscape(n.Color)}, {SqlBool(n.IsPinned)}, {SqlEscape(n.AuthorUserId)}, {SqlNullableInt(n.TaskId)}, {SqlNullableInt(n.CompanyId)}, {SqlDate(n.CreatedAt)}, {SqlDate(n.UpdatedAt)});");
+                AppendUpsert(
+                    sb,
+                    "notes",
+                    "id, title, content_html, category, color, is_pinned, author_user_id, task_id, company_id, created_at, updated_at",
+                    $"{n.Id}, {SqlEscape(n.Title)}, {SqlEscape(n.ContentHtml)}, {SqlEscape(n.Category)}, {SqlEscape(n.Color)}, {SqlBool(n.IsPinned, isPostgres)}, {SqlEscape(n.AuthorUserId)}, {SqlNullableInt(n.TaskId)}, {SqlNullableInt(n.CompanyId)}, {SqlDate(n.CreatedAt)}, {SqlDate(n.UpdatedAt)}",
+                    new[] { "title", "content_html", "category", "color", "is_pinned", "author_user_id", "task_id", "company_id", "created_at", "updated_at" },
+                    isPostgres);
             }
             sb.AppendLine();
         }
@@ -1444,12 +1532,112 @@ public class SyncService : ISyncService
             sb.AppendLine("-- 12. Note Attachments");
             foreach (var att in data.NoteAttachments)
             {
-                sb.AppendLine($"INSERT OR REPLACE INTO note_attachments (id, note_id, file_name, file_path, file_size, content_type, file_extension, uploaded_by_user_id, uploaded_at) VALUES ({att.Id}, {att.NoteId}, {SqlEscape(att.FileName)}, {SqlEscape(att.FilePath)}, {att.FileSize}, {SqlEscape(att.ContentType)}, {SqlEscape(att.FileExtension)}, {SqlEscape(att.UploadedByUserId)}, {SqlDate(att.UploadedAt)});");
+                AppendUpsert(
+                    sb,
+                    "note_attachments",
+                    "id, note_id, file_name, file_path, file_size, content_type, file_extension, uploaded_by_user_id, uploaded_at",
+                    $"{att.Id}, {att.NoteId}, {SqlEscape(att.FileName)}, {SqlEscape(att.FilePath)}, {att.FileSize}, {SqlEscape(att.ContentType)}, {SqlEscape(att.FileExtension)}, {SqlEscape(att.UploadedByUserId)}, {SqlDate(att.UploadedAt)}",
+                    new[] { "note_id", "file_name", "file_path", "file_size", "content_type", "file_extension", "uploaded_by_user_id", "uploaded_at" },
+                    isPostgres);
             }
             sb.AppendLine();
         }
 
         return sb.ToString();
+    }
+
+    private static void AppendUpsert(
+        StringBuilder sb,
+        string table,
+        string columns,
+        string values,
+        string[] updateColumns,
+        bool isPostgres)
+    {
+        if (isPostgres)
+        {
+            var updateSet = string.Join(", ", updateColumns.Select(c => $"{c} = EXCLUDED.{c}"));
+            sb.AppendLine($"INSERT INTO {table} ({columns}) VALUES ({values}) ON CONFLICT (id) DO UPDATE SET {updateSet};");
+        }
+        else
+        {
+            sb.AppendLine($"INSERT OR REPLACE INTO {table} ({columns}) VALUES ({values});");
+        }
+    }
+
+    private static string? SanitizeAndTranslateSqlStatement(string rawStmt, bool isPostgres)
+    {
+        var stmt = rawStmt.Trim();
+        if (string.IsNullOrWhiteSpace(stmt)) return null;
+
+        // Skip comments
+        if (stmt.StartsWith("--")) return null;
+
+        // Skip PRAGMA (SQLite specific)
+        if (stmt.StartsWith("PRAGMA ", StringComparison.OrdinalIgnoreCase)) return null;
+
+        // Skip standalone transaction boundaries (handled by EF Core)
+        if (stmt.Equals("BEGIN TRANSACTION;", StringComparison.OrdinalIgnoreCase) ||
+            stmt.Equals("BEGIN;", StringComparison.OrdinalIgnoreCase) ||
+            stmt.Equals("COMMIT;", StringComparison.OrdinalIgnoreCase) ||
+            stmt.Equals("COMMIT TRANSACTION;", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        if (isPostgres)
+        {
+            // Convert SQLite 'INSERT OR REPLACE INTO <table> (<columns>) VALUES (<values>);' to PostgreSQL UPSERT
+            var match = System.Text.RegularExpressions.Regex.Match(
+                stmt,
+                @"^INSERT\s+OR\s+REPLACE\s+INTO\s+([a-zA-Z0-9_]+)\s*\((.*?)\)\s*VALUES\s*\((.*?)\)\s*;?$",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Singleline);
+
+            if (match.Success)
+            {
+                var table = match.Groups[1].Value.Trim();
+                var columnsRaw = match.Groups[2].Value.Trim();
+                var valuesRaw = match.Groups[3].Value.Trim();
+
+                var cols = columnsRaw.Split(',').Select(c => c.Trim()).ToList();
+                var nonPkCols = cols.Where(c => !c.Equals("id", StringComparison.OrdinalIgnoreCase)).ToList();
+
+                if (nonPkCols.Count > 0)
+                {
+                    var updateSet = string.Join(", ", nonPkCols.Select(c => $"{c} = EXCLUDED.{c}"));
+                    stmt = $"INSERT INTO {table} ({columnsRaw}) VALUES ({valuesRaw}) ON CONFLICT (id) DO UPDATE SET {updateSet};";
+                }
+                else
+                {
+                    stmt = $"INSERT INTO {table} ({columnsRaw}) VALUES ({valuesRaw}) ON CONFLICT (id) DO NOTHING;";
+                }
+            }
+        }
+
+        return stmt;
+    }
+
+    private async Task UpdatePostgresSequencesAsync()
+    {
+        var tables = new[]
+        {
+            "companies", "categories", "master_priorities", "master_statuses",
+            "master_milestones", "projects", "tasks", "sessions", "attendances",
+            "notes", "note_attachments", "sync_histories"
+        };
+
+        foreach (var tbl in tables)
+        {
+            try
+            {
+                var sql = $"SELECT setval(pg_get_serial_sequence('{tbl}', 'id'), COALESCE((SELECT MAX(id) FROM {tbl}), 1), true);";
+                await _context.Database.ExecuteSqlRawAsync(sql);
+            }
+            catch
+            {
+                // Sequence might not exist or be named differently, safely ignore
+            }
+        }
     }
 
     private static List<string> SplitSqlStatements(string sql)
@@ -1482,7 +1670,7 @@ public class SyncService : ISyncService
 
     private static string SqlEscape(string? val) => val == null ? "NULL" : $"'{val.Replace("'", "''")}'";
     private static string SqlDate(DateTimeOffset? dt) => dt == null ? "NULL" : $"'{dt.Value:O}'";
-    private static string SqlBool(bool val) => val ? "1" : "0";
+    private static string SqlBool(bool val, bool isPostgres = false) => isPostgres ? (val ? "TRUE" : "FALSE") : (val ? "1" : "0");
     private static string SqlNullableInt(int? val) => val.HasValue ? val.Value.ToString() : "NULL";
 
     private static long CalculateDirectorySize(string directoryPath)

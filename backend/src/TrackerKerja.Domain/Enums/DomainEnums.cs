@@ -5,7 +5,8 @@ public enum TaskStatus
     Todo = 0,
     InProgress = 1,
     Done = 2,
-    Overdue = 3
+    Overdue = 3,
+    Review = 4
 }
 
 public enum TaskPriority

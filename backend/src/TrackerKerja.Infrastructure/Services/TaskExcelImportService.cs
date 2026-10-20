@@ -1285,6 +1285,7 @@ public class TaskExcelImportService : ITaskExcelImportService
         if (string.IsNullOrWhiteSpace(text)) return Domain.Enums.TaskStatus.Todo;
         var upper = text.Trim().ToUpperInvariant();
         if (upper.Contains("DONE") || upper.Contains("SELESAI") || upper == "2") return Domain.Enums.TaskStatus.Done;
+        if (upper.Contains("REVIEW") || upper.Contains("TESTING") || upper.Contains("UJI") || upper == "4") return Domain.Enums.TaskStatus.Review;
         if (upper.Contains("PROGRESS") || upper.Contains("SEDANG") || upper == "1") return Domain.Enums.TaskStatus.InProgress;
         if (upper.Contains("OVERDUE") || upper.Contains("TERLAMBAT") || upper.Contains("KEDALUWARSA") || upper == "3") return Domain.Enums.TaskStatus.Overdue;
         return Domain.Enums.TaskStatus.Todo;

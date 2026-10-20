@@ -31,6 +31,7 @@ public class CalendarController : ControllerBase
     {
         { Domain.Enums.TaskStatus.Todo, new StyleInfo("Todo", "#6366F1") },
         { Domain.Enums.TaskStatus.InProgress, new StyleInfo("In Progress", "#3B82F6") },
+        { Domain.Enums.TaskStatus.Review, new StyleInfo("Review", "#8B5CF6") },
         { Domain.Enums.TaskStatus.Done, new StyleInfo("Done", "#10B981") },
         { Domain.Enums.TaskStatus.Overdue, new StyleInfo("Overdue", "#EF4444") }
     };

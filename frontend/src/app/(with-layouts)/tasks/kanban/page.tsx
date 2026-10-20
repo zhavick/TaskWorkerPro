@@ -47,7 +47,7 @@ import { toast } from "sonner";
 import Link from "next/link";
 
 interface KanbanColumn {
-  id: "Todo" | "InProgress" | "Done" | "Overdue";
+  id: "Todo" | "InProgress" | "Review" | "Done" | "Overdue";
   title: string;
   shortTitle: string;
   statusValue: number;
@@ -79,6 +79,17 @@ const columns: KanbanColumn[] = [
     headerBorder: "border-indigo-500/30 text-indigo-700 dark:text-indigo-300",
     dropZoneHighlight:
       "border-indigo-500 bg-indigo-50/90 dark:bg-indigo-950/70 ring-2 ring-indigo-500/50",
+  },
+  {
+    id: "Review",
+    title: "Dalam Peninjauan (Review)",
+    shortTitle: "Review",
+    statusValue: 4,
+    emoji: "🔍",
+    badgeColor: "bg-purple-500",
+    headerBorder: "border-purple-500/30 text-purple-700 dark:text-purple-300",
+    dropZoneHighlight:
+      "border-purple-500 bg-purple-50/90 dark:bg-purple-950/70 ring-2 ring-purple-500/50",
   },
   {
     id: "Done",
@@ -164,7 +175,8 @@ export default function KanbanPage() {
   const [selectedPriority, setSelectedPriority] = useState<string>("all");
   const [scope, setScope] = useState<"mine" | "all">("all");
   const [selectedMobileColumn, setSelectedMobileColumn] =
-    useState<"Todo" | "InProgress" | "Done" | "Overdue">("InProgress");
+    useState<"Todo" | "InProgress" | "Review" | "Done" | "Overdue">("InProgress");
+  const [touchStartX, setTouchStartX] = useState<number | null>(null);
 
   // Active Month Filter State ("hanya menampilkan pada bulan yang aktif saja")
   const [activeMonth, setActiveMonth] = useState<number>(() => new Date().getMonth() + 1); // 1-12
@@ -294,7 +306,7 @@ export default function KanbanPage() {
   ];
 
   const {
-    data: kanbanData = { Todo: [], InProgress: [], Done: [], Overdue: [] },
+    data: kanbanData = { Todo: [], InProgress: [], Review: [], Done: [], Overdue: [] },
     isLoading,
   } = useQuery<any>({
     queryKey: kanbanQueryKey,
@@ -348,6 +360,7 @@ export default function KanbanPage() {
         const nextData = {
           Todo: [...(previousData.Todo || [])],
           InProgress: [...(previousData.InProgress || [])],
+          Review: [...(previousData.Review || [])],
           Done: [...(previousData.Done || [])],
           Overdue: [...(previousData.Overdue || [])],
         };
@@ -356,10 +369,11 @@ export default function KanbanPage() {
         for (const colKey of [
           "Todo",
           "InProgress",
+          "Review",
           "Done",
           "Overdue",
         ] as const) {
-          const idx = nextData[colKey].findIndex((t: any) => t.id === taskId);
+          const idx = (nextData[colKey] || []).findIndex((t: any) => t.id === taskId);
           if (idx !== -1) {
             targetTask = {
               ...nextData[colKey][idx],
@@ -377,9 +391,12 @@ export default function KanbanPage() {
               ? "Todo"
               : status === 1
                 ? "InProgress"
-                : status === 2
-                  ? "Done"
-                  : "Overdue";
+                : status === 4
+                  ? "Review"
+                  : status === 2
+                    ? "Done"
+                    : "Overdue";
+          if (!nextData[colName]) nextData[colName] = [];
           nextData[colName].unshift(targetTask);
           queryClient.setQueryData(kanbanQueryKey, nextData);
         }
@@ -520,6 +537,7 @@ export default function KanbanPage() {
   const totalTasksCount =
     (kanbanData.Todo?.length || 0) +
     (kanbanData.InProgress?.length || 0) +
+    (kanbanData.Review?.length || 0) +
     (kanbanData.Done?.length || 0) +
     (kanbanData.Overdue?.length || 0);
 
@@ -790,17 +808,19 @@ export default function KanbanPage() {
 
       {/* 3. Mobile Column Segmented Switcher (< md) per FSD 5.6 */}
       <div className="space-y-2 md:hidden">
-        <div className="flex items-center justify-between gap-1">
+        <div className="flex items-center justify-between gap-1.5">
           <button
             type="button"
             onClick={handlePrevMobileColumn}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-600 shadow-xs active:bg-gray-100 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-300"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-600 shadow-xs active:scale-95 active:bg-gray-100 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-300 transition"
             aria-label="Kolom Sebelumnya"
+            title="Kolom Sebelumnya"
           >
             <ChevronLeft className="h-4 w-4" />
           </button>
 
-          <div className="grid flex-1 grid-cols-4 gap-1 rounded-2xl bg-gray-100 p-1 dark:bg-gray-800/90 shadow-inner">
+          {/* Segmented Pill Tabs with FSD 5.6 Alignment */}
+          <div className="grid flex-1 grid-cols-5 gap-1 rounded-2xl bg-gray-100 p-1 dark:bg-gray-800/90 shadow-inner">
             {columns.map((col) => {
               const count = (kanbanData[col.id] || []).length;
               const isActive = selectedMobileColumn === col.id;
@@ -808,20 +828,21 @@ export default function KanbanPage() {
                 <button
                   key={col.id}
                   onClick={() => setSelectedMobileColumn(col.id)}
-                  className={`relative flex items-center justify-center gap-1 rounded-xl py-2 px-1 text-xs font-extrabold transition-all duration-200 ${
+                  className={`relative flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1 rounded-xl py-2 px-1 text-xs font-extrabold transition-all duration-200 ${
                     isActive
-                      ? "bg-white text-gray-900 shadow-xs ring-1 ring-black/5 dark:bg-gray-900 dark:text-white dark:ring-white/10"
+                      ? "bg-white text-gray-900 shadow-xs ring-1 ring-black/5 dark:bg-gray-900 dark:text-white dark:ring-white/10 scale-[1.02]"
                       : "text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
                   }`}
+                  title={col.title}
                 >
-                  <span className="text-sm">{col.emoji}</span>
-                  <span className="hidden sm:inline text-[11px] truncate">
+                  <span className="text-sm leading-none">{col.emoji}</span>
+                  <span className="hidden sm:inline text-[10px] truncate max-w-[48px]">
                     {col.shortTitle}
                   </span>
                   <span
-                    className={`ml-0.5 rounded-full px-1.5 py-0.2 text-[10px] font-black ${
+                    className={`rounded-full px-1.5 py-0.2 text-[9px] font-black leading-none ${
                       isActive
-                        ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300"
+                        ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 ring-1 ring-indigo-200 dark:ring-indigo-800"
                         : "bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300"
                     }`}
                   >
@@ -835,31 +856,44 @@ export default function KanbanPage() {
           <button
             type="button"
             onClick={handleNextMobileColumn}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-600 shadow-xs active:bg-gray-100 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-300"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-600 shadow-xs active:scale-95 active:bg-gray-100 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-300 transition"
             aria-label="Kolom Berikutnya"
+            title="Kolom Berikutnya"
           >
             <ChevronRight className="h-4 w-4" />
           </button>
         </div>
 
-        {/* Mobile active column context indicator */}
-        <div className="flex items-center justify-between px-1 text-xs text-gray-500 dark:text-gray-400">
-          <span>
-            Menampilkan kolom:{" "}
+        {/* Mobile active column context indicator & Swipe Guide */}
+        <div className="flex items-center justify-between px-1 text-[11px] text-gray-500 dark:text-gray-400">
+          <span className="truncate">
+            Kolom Aktif:{" "}
             <strong className="text-gray-900 dark:text-white">
-              {
-                columns.find((c) => c.id === selectedMobileColumn)?.title
-              }
+              {columns.find((c) => c.id === selectedMobileColumn)?.title}
             </strong>
           </span>
-          <span>
-            {(kanbanData[selectedMobileColumn] || []).length} tugas
+          <span className="shrink-0 font-medium text-indigo-600 dark:text-indigo-400">
+            {(kanbanData[selectedMobileColumn] || []).length} tugas (Geser ⇆)
           </span>
         </div>
       </div>
 
-      {/* 4. 4-Column Board Grid */}
-      <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-4">
+      {/* 4. 5-Column Responsive Board Grid (with Touch Swipe for Mobile) */}
+      <div
+        onTouchStart={(e) => setTouchStartX(e.touches[0].clientX)}
+        onTouchEnd={(e) => {
+          if (touchStartX === null) return;
+          const touchEndX = e.changedTouches[0].clientX;
+          const diff = touchStartX - touchEndX;
+          if (diff > 45) {
+            handleNextMobileColumn();
+          } else if (diff < -45) {
+            handlePrevMobileColumn();
+          }
+          setTouchStartX(null);
+        }}
+        className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5"
+      >
         {columns.map((col) => {
           const tasksInCol = kanbanData[col.id] || [];
           const isMobileVisible = selectedMobileColumn === col.id;
@@ -1173,11 +1207,12 @@ export default function KanbanPage() {
                                 status: Number(e.target.value),
                               });
                             }}
-                            className="rounded-lg border border-gray-200 bg-transparent px-1.5 py-0.5 text-[10px] font-bold text-gray-700 dark:border-gray-700 dark:text-gray-300"
+                            className="rounded-lg border border-gray-200 bg-white dark:bg-gray-800 px-1.5 py-0.5 text-[10px] font-bold text-gray-700 dark:border-gray-700 dark:text-gray-300"
                             title="Pindah Status Tugas"
                           >
                             <option value={0}>📋 Todo</option>
-                            <option value={1}>🔄 InProgress</option>
+                            <option value={1}>🔄 In Progress</option>
+                            <option value={4}>🔍 Review</option>
                             <option value={2}>✅ Done</option>
                             <option value={3}>⚠️ Overdue</option>
                           </select>
