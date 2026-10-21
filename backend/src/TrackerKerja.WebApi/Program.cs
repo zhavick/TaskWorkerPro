@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using TrackerKerja.Application.Common.Interfaces;
+using TrackerKerja.Infrastructure.Hubs;
 using TrackerKerja.Infrastructure.Persistence;
 using TrackerKerja.Infrastructure.Services;
 using TrackerKerja.WebApi.Middlewares;
@@ -54,6 +55,8 @@ builder.Services.AddSingleton<ISqlFormatterService, SqlFormatterService>();
 builder.Services.AddHttpClient();
 builder.Services.AddScoped<ISyncService, SyncService>();
 builder.Services.AddScoped<IBadgeEvaluationService, BadgeEvaluationService>();
+builder.Services.AddScoped<INotificationService, NotificationService>();
+builder.Services.AddSignalR();
 
 // 4. JWT Authentication
 var jwtSettings = builder.Configuration.GetSection("JwtSettings");
@@ -78,6 +81,19 @@ builder.Services.AddAuthentication(options =>
         ValidAudience = jwtSettings["Audience"] ?? "https://app.trackerkerja.local",
         ValidateLifetime = true,
         ClockSkew = TimeSpan.FromMinutes(1)
+    };
+    options.Events = new JwtBearerEvents
+    {
+        OnMessageReceived = context =>
+        {
+            var accessToken = context.Request.Query["access_token"];
+            var path = context.HttpContext.Request.Path;
+            if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs"))
+            {
+                context.Token = accessToken;
+            }
+            return Task.CompletedTask;
+        }
     };
 });
 
@@ -154,6 +170,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapHub<NotificationHub>("/hubs/notifications");
 
 // 8. Inisialisasi & Seeding Akun Bawaan (Admin & Default Tenant)
 using (var scope = app.Services.CreateScope())
