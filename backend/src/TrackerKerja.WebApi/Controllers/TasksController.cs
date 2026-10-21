@@ -505,19 +505,21 @@ public class TasksController : ControllerBase
 
         await _context.SaveChangesAsync();
 
-        if (_notificationService != null && request.Status == Domain.Enums.TaskStatus.Done &&
-            !string.IsNullOrEmpty(task.CreatedByUserId) && task.CreatedByUserId != _tenantService.UserId)
+        if (_notificationService != null && request.Status == Domain.Enums.TaskStatus.Done)
         {
             var companyId = task.CompanyId ?? _tenantService.CompanyId ?? 1;
-            await _notificationService.SendNotificationAsync(
-                task.CreatedByUserId,
-                companyId,
-                "Tugas Selesai",
-                $"Tugas '{task.Title}' telah diselesaikan.",
-                "Task",
-                "/tasks",
-                _tenantService.UserId
-            );
+            if (!string.IsNullOrEmpty(task.AssignedToUserId) && task.AssignedToUserId != _tenantService.UserId)
+            {
+                await _notificationService.SendNotificationAsync(
+                    task.AssignedToUserId,
+                    companyId,
+                    "Tugas Selesai",
+                    $"Tugas '{task.Title}' telah diselesaikan.",
+                    "Task",
+                    "/tasks",
+                    _tenantService.UserId
+                );
+            }
         }
 
         return Ok(new { success = true, message = "Status tugas berhasil diperbarui.", status = task.Status, progress = task.Progress });
