@@ -31,7 +31,7 @@ export function DropdownMenuContent({ children, className, ...props }: DropdownC
     <Popover {...props}>
       <Menu
         className={cn(
-          "min-w-40 overflow-clip rounded-xl border border-card-border bg-background-white-secondary shadow-md outline-hidden",
+          "min-w-44 overflow-hidden rounded-xl border border-gray-200 bg-white p-1.5 text-gray-900 shadow-xl outline-hidden dark:border-gray-800 dark:bg-gray-900 dark:text-gray-100 z-50",
           className,
         )}
       >
@@ -48,7 +48,7 @@ export function DropdownMenuItem({ className, ...props }: DropdownMenuItemProps)
     <MenuItem
       {...props}
       className={cn(
-        "group flex w-full cursor-default items-center gap-3 rounded-md px-1.5 py-1 text-sm text-text-50 outline-hidden hover:bg-background-gray-secondary_alt focus:bg-background-gray-secondary_alt focus:text-title-50",
+        "group flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-gray-700 outline-hidden transition hover:bg-gray-100 hover:text-gray-900 focus:bg-gray-100 focus:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-white dark:focus:bg-gray-800 dark:focus:text-white",
         className,
       )}
     />
@@ -63,11 +63,11 @@ export function DropdownMenuSection<T extends object>({
 }
 
 export function DropdownMenuHeader({ className, ...props }: ComponentProps<typeof Header>) {
-  return <Header {...props} className={cn("px-3 py-2 text-sm text-text-100", className)} />;
+  return <Header {...props} className={cn("px-2.5 py-1.5 text-xs font-semibold text-gray-400 dark:text-gray-500", className)} />;
 }
 
 export function DropdownMenuSeparator({ className, ...props }: ComponentProps<"hr">) {
   return (
-    <Separator className={cn("h-px border-none bg-border-secondary-alt", className)} {...props} />
+    <Separator className={cn("my-1 h-px border-none bg-gray-100 dark:bg-gray-800", className)} {...props} />
   );
 }

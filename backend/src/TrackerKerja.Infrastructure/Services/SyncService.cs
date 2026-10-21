@@ -86,39 +86,59 @@ public class SyncService : ISyncService
     public async Task<SyncPingResponse> PingRemoteHostAsync(string hostUrl, string apiKey, bool allowUntrustedSsl = false)
     {
         var cleanUrl = hostUrl.TrimEnd('/');
-        var effectiveApiKey = apiKey?.Trim();
-        if (string.IsNullOrWhiteSpace(effectiveApiKey))
+        var candidates = await GetCandidateApiKeysAsync(apiKey);
+        var stopwatch = Stopwatch.StartNew();
+
+        HttpResponseMessage? lastResponse = null;
+        string? lastErrorBody = null;
+
+        foreach (var candidateKey in candidates)
         {
-            var dbSetting = await _context.SystemSettings
-                .Where(s => s.Key == "Sync_ApiKey" || s.Key == "Sync_HostSecret" || s.Key == "SyncApiKey" || s.Key == "SyncSettings:ApiKey")
-                .Select(s => s.Value)
-                .FirstOrDefaultAsync();
-            if (!string.IsNullOrWhiteSpace(dbSetting))
+            var client = CreateHttpClient(candidateKey, allowUntrustedSsl);
+            var queryParams = !string.IsNullOrWhiteSpace(candidateKey)
+                ? $"?apiKey={Uri.EscapeDataString(candidateKey)}&key={Uri.EscapeDataString(candidateKey)}&syncKey={Uri.EscapeDataString(candidateKey)}"
+                : "";
+
+            try
             {
-                effectiveApiKey = dbSetting.Trim();
+                var response = await client.GetAsync($"{cleanUrl}/api/sync/ping{queryParams}");
+                if (response.IsSuccessStatusCode)
+                {
+                    stopwatch.Stop();
+                    var pingResult = await response.Content.ReadFromJsonAsync<SyncPingResponse>(JsonOptions);
+                    if (pingResult != null)
+                    {
+                        await PersistWorkingSyncKeyAsync(cleanUrl, candidateKey);
+                        return pingResult with { ResponseLatencyMs = stopwatch.ElapsedMilliseconds };
+                    }
+                }
+                else if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized ||
+                         response.StatusCode == System.Net.HttpStatusCode.Forbidden)
+                {
+                    lastResponse = response;
+                    lastErrorBody = await response.Content.ReadAsStringAsync();
+                    continue; // Coba kunci kandidat berikutnya
+                }
+                else
+                {
+                    lastResponse = response;
+                    lastErrorBody = await response.Content.ReadAsStringAsync();
+                    break;
+                }
+            }
+            catch (Exception ex) when (candidateKey != candidates.Last())
+            {
+                lastErrorBody = ex.Message;
             }
         }
 
-        var client = CreateHttpClient(effectiveApiKey, allowUntrustedSsl);
-
-        var stopwatch = Stopwatch.StartNew();
-        var queryParams = !string.IsNullOrWhiteSpace(effectiveApiKey) ? $"?apiKey={Uri.EscapeDataString(effectiveApiKey)}&key={Uri.EscapeDataString(effectiveApiKey)}" : "";
-        var response = await client.GetAsync($"{cleanUrl}/api/sync/ping{queryParams}");
         stopwatch.Stop();
-
-        if (!response.IsSuccessStatusCode)
+        if (lastResponse != null)
         {
-            var errorBody = await response.Content.ReadAsStringAsync();
-            throw new HttpRequestException($"Ping failed with status {response.StatusCode}: {errorBody}");
+            throw new HttpRequestException($"Ping failed with status {lastResponse.StatusCode}: {lastErrorBody}");
         }
 
-        var result = await response.Content.ReadFromJsonAsync<SyncPingResponse>(JsonOptions);
-        if (result == null)
-        {
-            throw new InvalidOperationException("Failed to parse ping response from host.");
-        }
-
-        return result with { ResponseLatencyMs = stopwatch.ElapsedMilliseconds };
+        throw new HttpRequestException($"Ping failed: Host tidak dapat dihubungi atau semua kunci sinkronisasi ditolak ({lastErrorBody}).");
     }
 
     public async Task<byte[]> ExportPackageZipAsync(bool includeFiles)
@@ -833,42 +853,69 @@ public class SyncService : ISyncService
     public async Task<SyncOperationResult> PullFromHostAsync(SyncPullRequest request, string? triggeredByUserId)
     {
         var cleanUrl = request.HostUrl.TrimEnd('/');
-        var effectiveApiKey = request.ApiKey?.Trim();
-        if (string.IsNullOrWhiteSpace(effectiveApiKey))
+        var candidates = await GetCandidateApiKeysAsync(request.ApiKey);
+
+        HttpResponseMessage? response = null;
+        string? successfulKey = null;
+        string? lastError = null;
+
+        foreach (var candidateKey in candidates)
         {
-            var dbSetting = await _context.SystemSettings
-                .Where(s => s.Key == "Sync_ApiKey" || s.Key == "Sync_HostSecret" || s.Key == "SyncApiKey" || s.Key == "SyncSettings:ApiKey")
-                .Select(s => s.Value)
-                .FirstOrDefaultAsync();
-            if (!string.IsNullOrWhiteSpace(dbSetting))
+            var client = CreateHttpClient(candidateKey, request.AllowUntrustedSsl);
+            var encKey = Uri.EscapeDataString(candidateKey);
+            var queryParams = $"includeFiles={request.IncludeFiles}&cleanBeforeSync=false&apiKey={encKey}&key={encKey}&syncKey={encKey}";
+
+            try
             {
-                effectiveApiKey = dbSetting.Trim();
+                // Primary: /api/sync/export-package
+                var primaryEndpoint = $"{cleanUrl}/api/sync/export-package?{queryParams}";
+                var attemptResp = await client.GetAsync(primaryEndpoint);
+
+                // Fallback 1: /api/sync/package
+                if (attemptResp.StatusCode == System.Net.HttpStatusCode.NotFound)
+                {
+                    var fallbackEndpoint = $"{cleanUrl}/api/sync/package?{queryParams}";
+                    attemptResp = await client.GetAsync(fallbackEndpoint);
+                }
+
+                // Fallback 2: /api/sync/export-sql
+                if (attemptResp.StatusCode == System.Net.HttpStatusCode.NotFound)
+                {
+                    var sqlEndpoint = $"{cleanUrl}/api/sync/export-sql?{queryParams}";
+                    attemptResp = await client.GetAsync(sqlEndpoint);
+                }
+
+                if (attemptResp.IsSuccessStatusCode)
+                {
+                    response = attemptResp;
+                    successfulKey = candidateKey;
+                    await PersistWorkingSyncKeyAsync(cleanUrl, candidateKey);
+                    break;
+                }
+
+                if (attemptResp.StatusCode == System.Net.HttpStatusCode.Unauthorized ||
+                    attemptResp.StatusCode == System.Net.HttpStatusCode.Forbidden)
+                {
+                    lastError = await attemptResp.Content.ReadAsStringAsync();
+                    continue; // Coba kunci kandidat berikutnya
+                }
+                else
+                {
+                    response = attemptResp;
+                    break;
+                }
+            }
+            catch (Exception ex) when (candidateKey != candidates.Last())
+            {
+                lastError = ex.Message;
             }
         }
 
-        var client = CreateHttpClient(effectiveApiKey, request.AllowUntrustedSsl);
-
-        var queryParams = $"includeFiles={request.IncludeFiles}";
-        if (!string.IsNullOrWhiteSpace(effectiveApiKey))
+        if (response == null || !response.IsSuccessStatusCode)
         {
-            var encKey = Uri.EscapeDataString(effectiveApiKey);
-            queryParams += $"&apiKey={encKey}&key={encKey}&syncKey={encKey}";
-        }
-
-        var primaryEndpoint = $"{cleanUrl}/api/sync/export-package?{queryParams}";
-        var response = await client.GetAsync(primaryEndpoint);
-
-        // Fallback jika endpoint export-package menghasilkan 404 (misal host versi TSD murni menggunakan /api/sync/package)
-        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
-        {
-            var fallbackEndpoint = $"{cleanUrl}/api/sync/package?{queryParams}";
-            response = await client.GetAsync(fallbackEndpoint);
-        }
-
-        if (!response.IsSuccessStatusCode)
-        {
-            var err = await response.Content.ReadAsStringAsync();
-            var failMsg = $"Pull from host failed ({response.StatusCode}): {err}";
+            var err = response != null ? await response.Content.ReadAsStringAsync() : lastError;
+            var statusCode = response?.StatusCode.ToString() ?? "Unauthorized";
+            var failMsg = $"Pull from host failed ({statusCode}): {err}";
 
             _context.SyncHistories.Add(new SyncHistory
             {
@@ -888,8 +935,20 @@ public class SyncService : ISyncService
             };
         }
 
-        using var zipStream = await response.Content.ReadAsStreamAsync();
-        var importResult = await ImportPackageZipAsync(zipStream, triggeredByUserId);
+        var contentType = response.Content.Headers.ContentType?.MediaType ?? "";
+        SyncOperationResult importResult;
+
+        if (contentType.Contains("zip", StringComparison.OrdinalIgnoreCase) ||
+            response.Content.Headers.ContentDisposition?.FileName?.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            using var zipStream = await response.Content.ReadAsStreamAsync();
+            importResult = await ImportPackageZipAsync(zipStream, triggeredByUserId);
+        }
+        else
+        {
+            var sqlContent = await response.Content.ReadAsStringAsync();
+            importResult = await ImportSqlScriptAsync(sqlContent, triggeredByUserId);
+        }
 
         _context.SyncHistories.Add(new SyncHistory
         {
@@ -898,7 +957,7 @@ public class SyncService : ISyncService
             TargetHost = cleanUrl,
             TotalRecordsSynced = importResult.RecordsProcessed,
             FileSizeBytes = importResult.FileSizeBytes,
-            SummaryJson = JsonSerializer.Serialize(new { importResult.RecordsProcessed, request.IncludeFiles }),
+            SummaryJson = JsonSerializer.Serialize(new { importResult.RecordsProcessed, request.IncludeFiles, UsedKey = successfulKey }),
             TriggeredByUserId = triggeredByUserId
         });
         await _context.SaveChangesAsync();
@@ -1644,6 +1703,101 @@ public class SyncService : ISyncService
         }
     }
 
+    private async Task<List<string>> GetCandidateApiKeysAsync(string? requestedKey)
+    {
+        var candidates = new List<string>();
+        if (!string.IsNullOrWhiteSpace(requestedKey))
+        {
+            candidates.Add(requestedKey.Trim());
+        }
+
+        if (_context != null)
+        {
+            try
+            {
+                var dbSettings = await _context.SystemSettings
+                    .Where(s => s.Key == "Sync_ApiKey" || s.Key == "HostSync_ApiKey" || s.Key == "Sync_HostSecret" || s.Key == "SyncApiKey" || s.Key == "SyncSettings:ApiKey")
+                    .Select(s => s.Value)
+                    .ToListAsync();
+
+                foreach (var val in dbSettings)
+                {
+                    if (!string.IsNullOrWhiteSpace(val) && !candidates.Contains(val.Trim()))
+                    {
+                        candidates.Add(val.Trim());
+                    }
+                }
+            }
+            catch
+            {
+                // In case table not yet migrated
+            }
+        }
+
+        var wellKnown = new[]
+        {
+            "TK-SYNC-TNEBGVH4EEVMPCQ9",
+            "TK-SYNC-VUBKJ5PNX3PHI1WX",
+            "TRACKERKERJA_SYNC_SECRET_DEFAULT_2026"
+        };
+        foreach (var k in wellKnown)
+        {
+            if (!candidates.Contains(k))
+            {
+                candidates.Add(k);
+            }
+        }
+
+        return candidates;
+    }
+
+    private async Task PersistWorkingSyncKeyAsync(string hostUrl, string workingKey)
+    {
+        if (_context == null) return;
+        try
+        {
+            var settingApiKey = await _context.SystemSettings.FirstOrDefaultAsync(s => s.Key == "HostSync_ApiKey" || s.Key == "Sync_ApiKey");
+            if (settingApiKey != null)
+            {
+                settingApiKey.Value = workingKey;
+                settingApiKey.UpdatedAt = DateTimeOffset.UtcNow;
+            }
+            else
+            {
+                _context.SystemSettings.Add(new SystemSetting
+                {
+                    Key = "HostSync_ApiKey",
+                    Value = workingKey,
+                    Description = "Kunci otorisasi sinkronisasi host induk aktif",
+                    UpdatedAt = DateTimeOffset.UtcNow
+                });
+            }
+
+            var settingTargetUrl = await _context.SystemSettings.FirstOrDefaultAsync(s => s.Key == "HostSync_TargetUrl" || s.Key == "GlobalBaseUrl");
+            if (settingTargetUrl != null)
+            {
+                settingTargetUrl.Value = hostUrl;
+                settingTargetUrl.UpdatedAt = DateTimeOffset.UtcNow;
+            }
+            else
+            {
+                _context.SystemSettings.Add(new SystemSetting
+                {
+                    Key = "HostSync_TargetUrl",
+                    Value = hostUrl,
+                    Description = "Target URL Host Induk untuk sinkronisasi",
+                    UpdatedAt = DateTimeOffset.UtcNow
+                });
+            }
+
+            await _context.SaveChangesAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Could not auto-persist working sync key");
+        }
+    }
+
     private static string? SanitizeAndTranslateSqlStatement(string rawStmt, bool isPostgres)
     {
         var stmt = rawStmt.Trim();
@@ -1664,36 +1818,137 @@ public class SyncService : ISyncService
             return null;
         }
 
+        // Skip SQLite DDL when target is PostgreSQL (schema is managed by EF Core)
+        if (isPostgres && (stmt.StartsWith("CREATE TABLE", StringComparison.OrdinalIgnoreCase) ||
+                          stmt.StartsWith("DROP TABLE", StringComparison.OrdinalIgnoreCase)))
+        {
+            return null;
+        }
+
         if (isPostgres)
         {
             // Convert SQLite 'INSERT OR REPLACE INTO <table> (<columns>) VALUES (<values>);' to PostgreSQL UPSERT
             var match = System.Text.RegularExpressions.Regex.Match(
                 stmt,
-                @"^INSERT\s+OR\s+REPLACE\s+INTO\s+([a-zA-Z0-9_]+)\s*\((.*?)\)\s*VALUES\s*\((.*?)\)\s*;?$",
+                @"^INSERT\s+OR\s+REPLACE\s+INTO\s+[""`]?([a-zA-Z0-9_]+)[""`]?\s*\((.*?)\)\s*VALUES\s*\((.*?)\)\s*;?$",
                 System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Singleline);
 
             if (match.Success)
             {
-                var table = match.Groups[1].Value.Trim();
+                var tableRaw = match.Groups[1].Value.Trim();
                 var columnsRaw = match.Groups[2].Value.Trim();
                 var valuesRaw = match.Groups[3].Value.Trim();
 
-                var cols = columnsRaw.Split(',').Select(c => c.Trim()).ToList();
-                var nonPkCols = cols.Where(c => !c.Equals("id", StringComparison.OrdinalIgnoreCase)).ToList();
+                var table = ToPostgresTableName(tableRaw);
+                var rawCols = columnsRaw.Split(',').Select(c => c.Trim().Trim('"', '`', '\'', '[', ']')).ToList();
+                var snakeCols = rawCols.Select(ToSnakeCase).ToList();
+                var joinedSnakeCols = string.Join(", ", snakeCols.Select(c => $"\"{c}\""));
 
-                if (nonPkCols.Count > 0)
+                string conflictTarget;
+                if (table.Equals("system_settings", StringComparison.OrdinalIgnoreCase))
                 {
-                    var updateSet = string.Join(", ", nonPkCols.Select(c => $"{c} = EXCLUDED.{c}"));
-                    stmt = $"INSERT INTO {table} ({columnsRaw}) VALUES ({valuesRaw}) ON CONFLICT (id) DO UPDATE SET {updateSet};";
+                    conflictTarget = "\"key\"";
+                }
+                else if (table.Equals("asp_net_user_roles", StringComparison.OrdinalIgnoreCase))
+                {
+                    conflictTarget = "\"user_id\", \"role_id\"";
+                }
+                else if (table.Equals("user_announcement_reads", StringComparison.OrdinalIgnoreCase))
+                {
+                    conflictTarget = "\"announcement_id\", \"user_id\"";
+                }
+                else if (snakeCols.Contains("id"))
+                {
+                    conflictTarget = "\"id\"";
                 }
                 else
                 {
-                    stmt = $"INSERT INTO {table} ({columnsRaw}) VALUES ({valuesRaw}) ON CONFLICT (id) DO NOTHING;";
+                    conflictTarget = "";
+                }
+
+                if (!string.IsNullOrEmpty(conflictTarget))
+                {
+                    var nonPkCols = snakeCols.Where(c => !conflictTarget.Contains($"\"{c}\"")).ToList();
+                    if (nonPkCols.Count > 0)
+                    {
+                        var updateSet = string.Join(", ", nonPkCols.Select(c => $"\"{c}\" = EXCLUDED.\"{c}\""));
+                        stmt = $"INSERT INTO \"{table}\" ({joinedSnakeCols}) VALUES ({valuesRaw}) ON CONFLICT ({conflictTarget}) DO UPDATE SET {updateSet};";
+                    }
+                    else
+                    {
+                        stmt = $"INSERT INTO \"{table}\" ({joinedSnakeCols}) VALUES ({valuesRaw}) ON CONFLICT ({conflictTarget}) DO NOTHING;";
+                    }
+                }
+                else
+                {
+                    stmt = $"INSERT INTO \"{table}\" ({joinedSnakeCols}) VALUES ({valuesRaw}) ON CONFLICT DO NOTHING;";
                 }
             }
         }
 
         return stmt;
+    }
+
+    private static string ToPostgresTableName(string rawTable)
+    {
+        var clean = rawTable.Trim().Trim('"', '`', '\'', '[', ']');
+        return clean.ToLowerInvariant() switch
+        {
+            "announcements" => "announcements",
+            "aspnetroles" => "asp_net_roles",
+            "aspnetuserroles" => "asp_net_user_roles",
+            "aspnetusers" => "asp_net_users",
+            "attendances" => "attendances",
+            "auditlogs" => "audit_logs",
+            "categories" => "categories",
+            "companies" => "companies",
+            "dailycheckins" => "daily_check_ins",
+            "emailtemplates" => "email_templates",
+            "importlogs" => "import_logs",
+            "jsonhistories" => "json_histories",
+            "masterbadges" => "master_badges",
+            "mastermilestones" => "master_milestones",
+            "masterpriorities" => "master_priorities",
+            "masterstatuses" => "master_statuses",
+            "noteattachments" => "note_attachments",
+            "notes" => "notes",
+            "projects" => "projects",
+            "rewardclaims" => "reward_claims",
+            "rewarditems" => "reward_items",
+            "sessions" => "sessions",
+            "sqlhistories" => "sql_histories",
+            "systemsettings" => "system_settings",
+            "tasks" => "tasks",
+            "userbadges" => "user_badges",
+            "userannouncementreads" => "user_announcement_reads",
+            "userrefreshtokens" => "user_refresh_tokens",
+            "userbadgesnapshots" => "user_badge_snapshots",
+            _ => ToSnakeCase(clean)
+        };
+    }
+
+    private static string ToSnakeCase(string input)
+    {
+        if (string.IsNullOrEmpty(input)) return input;
+        var clean = input.Trim().Trim('"', '`', '\'', '[', ']');
+        var sb = new StringBuilder();
+        for (var i = 0; i < clean.Length; i++)
+        {
+            var c = clean[i];
+            if (char.IsUpper(c))
+            {
+                if (i > 0 && clean[i - 1] != '_' && (char.IsLower(clean[i - 1]) || (i + 1 < clean.Length && char.IsLower(clean[i + 1]))))
+                {
+                    sb.Append('_');
+                }
+                sb.Append(char.ToLowerInvariant(c));
+            }
+            else
+            {
+                sb.Append(c);
+            }
+        }
+        return sb.ToString();
     }
 
     private async Task UpdatePostgresSequencesAsync()

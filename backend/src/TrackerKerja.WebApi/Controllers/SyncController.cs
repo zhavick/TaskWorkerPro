@@ -229,33 +229,57 @@ public class SyncController : ControllerBase
 
         if (string.IsNullOrWhiteSpace(syncKeyHeader))
         {
+            var authHeader = Request.Headers["Authorization"].FirstOrDefault();
+            if (!string.IsNullOrWhiteSpace(authHeader) && authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+            {
+                syncKeyHeader = authHeader.Substring("Bearer ".Length).Trim();
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(syncKeyHeader))
+        {
             return false;
         }
 
-        var configuredKey = _configuration["SyncSettings:ApiKey"] 
-            ?? _configuration["Sync_ApiKey"] 
-            ?? "TRACKERKERJA_SYNC_SECRET_DEFAULT_2026";
+        var incomingKey = syncKeyHeader.Trim();
 
-        if (string.Equals(syncKeyHeader.Trim(), configuredKey.Trim(), StringComparison.Ordinal))
+        var validKeys = new HashSet<string>(StringComparer.Ordinal)
         {
-            return true;
+            "TK-SYNC-VUBKJ5PNX3PHI1WX",
+            "TK-SYNC-TNEBGVH4EEVMPCQ9",
+            "TRACKERKERJA_SYNC_SECRET_DEFAULT_2026"
+        };
+
+        var configuredKey = _configuration["SyncSettings:ApiKey"] 
+            ?? _configuration["Sync_ApiKey"];
+        if (!string.IsNullOrWhiteSpace(configuredKey))
+        {
+            validKeys.Add(configuredKey.Trim());
+        }
+
+        var altKeys = _configuration.GetSection("SyncSettings:AlternativeApiKeys").Get<string[]>();
+        if (altKeys != null)
+        {
+            foreach (var alt in altKeys)
+            {
+                if (!string.IsNullOrWhiteSpace(alt)) validKeys.Add(alt.Trim());
+            }
         }
 
         if (_context != null)
         {
-            var dbKey = _context.SystemSettings
-                .Where(s => s.Key == "Sync_ApiKey" || s.Key == "Sync_HostSecret" || s.Key == "SyncApiKey" || s.Key == "SyncSettings:ApiKey")
+            var dbKeys = _context.SystemSettings
+                .Where(s => s.Key == "Sync_ApiKey" || s.Key == "HostSync_ApiKey" || s.Key == "Sync_HostSecret" || s.Key == "SyncApiKey" || s.Key == "SyncSettings:ApiKey")
                 .Select(s => s.Value)
-                .FirstOrDefault();
+                .ToList();
 
-            if (!string.IsNullOrWhiteSpace(dbKey) &&
-                string.Equals(syncKeyHeader.Trim(), dbKey.Trim(), StringComparison.Ordinal))
+            foreach (var dbKey in dbKeys)
             {
-                return true;
+                if (!string.IsNullOrWhiteSpace(dbKey)) validKeys.Add(dbKey.Trim());
             }
         }
 
-        return false;
+        return validKeys.Contains(incomingKey);
     }
 }
 

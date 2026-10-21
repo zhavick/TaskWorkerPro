@@ -14,6 +14,13 @@ export const apiClient = axios.create({
 // Request Interceptor: Sisipkan Access Token JWT dari localStorage
 apiClient.interceptors.request.use(
   (config) => {
+    // Normalisasi url jika diawali dengan "/api" agar tidak terjadi double prefix /api/api
+    if (config.url && config.url.startsWith("/api/")) {
+      config.url = config.url.substring(4);
+    } else if (config.url === "/api") {
+      config.url = "";
+    }
+
     if (typeof window !== "undefined") {
       const token = localStorage.getItem("access_token");
       if (token) {

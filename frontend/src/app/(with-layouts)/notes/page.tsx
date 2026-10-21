@@ -32,6 +32,8 @@ import {
 import { Button } from "@/components/tailgrids/core/button";
 import { Input } from "@/components/tailgrids/core/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/tailgrids/core/dialog";
+import { RichTextEditor } from "@/components/common/rich-text-editor";
+import { SearchableSelect } from "@/components/tailgrids/core/searchable-select";
 import { toast } from "sonner";
 
 const categories = ["Semua", "General", "Backend", "Frontend", "Database", "DevOps", "SOP"];
@@ -108,6 +110,20 @@ export default function NotesPage() {
     },
     enabled: formModalOpen,
   });
+
+  const categoryOptions = categories
+    .filter((c) => c !== "Semua")
+    .map((c) => ({ value: c, label: c }));
+
+  const taskOptions = [
+    { value: "", label: "-- Tanpa Tautan Tugas --" },
+    ...tasks.map((t: any) => ({
+      value: t.id,
+      label: t.title,
+      badge: t.priority,
+      description: t.projectTitle ? `Proyek: ${t.projectTitle}` : undefined,
+    })),
+  ];
 
   // 3. Query Note Detail (when detail modal is open)
   const { data: noteDetail, isLoading: isDetailLoading } = useQuery<any>({
@@ -506,7 +522,7 @@ export default function NotesPage() {
 
       {/* Modal 1: Buat & Edit Catatan */}
       <Dialog open={formModalOpen} onOpenChange={setFormModalOpen}>
-        <DialogContent className="max-w-lg bg-white p-6 shadow-2xl dark:bg-gray-900 rounded-2xl">
+        <DialogContent className="max-w-2xl bg-white p-6 shadow-2xl dark:bg-gray-900 rounded-2xl max-h-[92vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
               <BookOpen className="h-5 w-5 text-indigo-600" />
@@ -538,40 +554,29 @@ export default function NotesPage() {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
+                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
                   Kategori
                 </label>
-                <select
+                <SearchableSelect
+                  options={categoryOptions}
                   value={category}
-                  onChange={(e) => setCategory(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-gray-200 bg-transparent p-2 text-xs text-gray-900 outline-none dark:border-gray-800 dark:bg-gray-900 dark:text-white"
-                >
-                  {categories.filter((c) => c !== "Semua").map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(val) => setCategory(val || "General")}
+                  searchPlaceholder="Cari kategori..."
+                />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
+                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
                   Tautkan ke Tugas (Opsional)
                 </label>
-                <select
+                <SearchableSelect
+                  options={taskOptions}
                   value={taskId || ""}
-                  onChange={(e) => setTaskId(e.target.value ? Number(e.target.value) : undefined)}
-                  className="mt-1 w-full rounded-xl border border-gray-200 bg-transparent p-2 text-xs text-gray-900 outline-none dark:border-gray-800 dark:bg-gray-900 dark:text-white"
-                >
-                  <option value="">-- Tanpa Tautan Tugas --</option>
-                  {tasks.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.title}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(val) => setTaskId(val ? Number(val) : undefined)}
+                  searchPlaceholder="Ketik untuk mencari tugas..."
+                />
               </div>
             </div>
 
@@ -607,16 +612,15 @@ export default function NotesPage() {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
-                Isi Dokumentasi Teknis (Mendukung HTML & Teks Bebas) *
+              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                Isi Dokumentasi Teknis (Editor Format Teks Kaya / Rich Text) *
               </label>
-              <textarea
-                rows={7}
-                required
-                placeholder="Tuliskan panduan teknis, langkah instruksi, atau spesifikasi dokumen..."
+              <RichTextEditor
                 value={contentHtml}
-                onChange={(e) => setContentHtml(e.target.value)}
-                className="mt-1 w-full rounded-xl border border-gray-200 bg-transparent p-3 text-xs text-gray-900 outline-none focus:border-indigo-600 dark:border-gray-800 dark:text-white"
+                onChange={setContentHtml}
+                placeholder="Tuliskan panduan teknis, langkah instruksi, atau spesifikasi dokumen..."
+                minHeight="220px"
+                required
               />
             </div>
 

@@ -197,6 +197,8 @@ public class AttendancesController : ControllerBase
         if (attendance == null)
             return NotFound(new { success = false, message = "Catatan presensi/izin tidak ditemukan." });
 
+        attendance.Status = 2; // Approved
+        attendance.ApprovedByUserId = _tenantService.UserId;
         attendance.UpdatedAt = DateTimeOffset.UtcNow;
         await _context.SaveChangesAsync();
 

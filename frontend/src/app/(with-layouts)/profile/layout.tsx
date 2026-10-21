@@ -66,7 +66,7 @@ export default function ProfileLayout({ children }: { children: React.ReactNode 
   const { data: profile, isLoading } = useQuery<UserProfileResponse>({
     queryKey: ["user-profile"],
     queryFn: async () => {
-      const response = await apiClient.get("/api/profile");
+      const response = await apiClient.get("/profile");
       return response.data.data;
     },
   });

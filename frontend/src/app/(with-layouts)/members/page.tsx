@@ -124,6 +124,10 @@ export default function MembersPage() {
   const [confirmFullName, setConfirmFullName] = useState("");
   const [auditTarget, setAuditTarget] = useState<MemberItem | null>(null);
 
+  // Admin Group Management States
+  const [isManageAdminGroupOpen, setIsManageAdminGroupOpen] = useState(false);
+  const [adminEmailInput, setAdminEmailInput] = useState("");
+
   // Member Audit Logs Query
   const { data: memberAuditLogs = [], isLoading: loadingMemberAudit } = useQuery<any[]>({
     queryKey: ["memberAuditLogs", auditTarget?.id],
@@ -132,6 +136,51 @@ export default function MembersPage() {
       return res.data?.data || [];
     },
     enabled: !!auditTarget?.id,
+  });
+
+  // Admin Group Members Query
+  const {
+    data: adminGroupMembers = [],
+    isLoading: loadingAdminGroup,
+    refetch: refetchAdminGroup,
+  } = useQuery<any[]>({
+    queryKey: ["adminGroupMembers"],
+    queryFn: async () => {
+      const res = await apiClient.get("/members/admin-group");
+      return res.data?.data || [];
+    },
+    enabled: isManageAdminGroupOpen,
+  });
+
+  const addAdminMutation = useMutation({
+    mutationFn: async (email: string) => {
+      const res = await apiClient.post("/members/admin-group/add", { email });
+      return res.data;
+    },
+    onSuccess: (data) => {
+      toast.success(data.message || "Hak akses Administrator berhasil diberikan!");
+      setAdminEmailInput("");
+      queryClient.invalidateQueries({ queryKey: ["adminGroupMembers"] });
+      queryClient.invalidateQueries({ queryKey: ["membersList"] });
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || "Gagal menambahkan pengguna ke group admin.");
+    },
+  });
+
+  const removeAdminMutation = useMutation({
+    mutationFn: async (email: string) => {
+      const res = await apiClient.post("/members/admin-group/remove", { email });
+      return res.data;
+    },
+    onSuccess: (data) => {
+      toast.success(data.message || "Hak akses Administrator berhasil dicabut.");
+      queryClient.invalidateQueries({ queryKey: ["adminGroupMembers"] });
+      queryClient.invalidateQueries({ queryKey: ["membersList"] });
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || "Gagal mencabut hak akses administrator.");
+    },
   });
 
   // 1. Fetch Current User Profile to inspect RBAC Role
@@ -352,33 +401,44 @@ export default function MembersPage() {
           </p>
         </div>
 
-        {/* View Mode Switcher (Admin Only) */}
+        {/* View Mode Switcher & Admin Group Management (Admin Only) */}
         {isAdmin && (
-          <div className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white p-1 shadow-2xs dark:border-gray-800 dark:bg-gray-900">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              onClick={() => setViewMode("grouped")}
-              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
-                viewMode === "grouped"
-                  ? "bg-indigo-600 text-white shadow-2xs"
-                  : "text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
-              }`}
+              onClick={() => setIsManageAdminGroupOpen(true)}
+              className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 px-3.5 py-2 text-xs font-bold text-white shadow-md hover:from-indigo-700 hover:to-purple-700 transition"
             >
-              <Layers className="h-3.5 w-3.5" />
-              Grup Perusahaan
+              <ShieldCheck className="h-4 w-4" />
+              Kelola Group Admin
             </button>
-            <button
-              type="button"
-              onClick={() => setViewMode("flat")}
-              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
-                viewMode === "flat"
-                  ? "bg-indigo-600 text-white shadow-2xs"
-                  : "text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
-              }`}
-            >
-              <List className="h-3.5 w-3.5" />
-              Daftar Linier
-            </button>
+
+            <div className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white p-1 shadow-2xs dark:border-gray-800 dark:bg-gray-900">
+              <button
+                type="button"
+                onClick={() => setViewMode("grouped")}
+                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                  viewMode === "grouped"
+                    ? "bg-indigo-600 text-white shadow-2xs"
+                    : "text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
+                }`}
+              >
+                <Layers className="h-3.5 w-3.5" />
+                Grup Perusahaan
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("flat")}
+                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                  viewMode === "flat"
+                    ? "bg-indigo-600 text-white shadow-2xs"
+                    : "text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
+                }`}
+              >
+                <List className="h-3.5 w-3.5" />
+                Daftar Linier
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -1370,6 +1430,175 @@ export default function MembersPage() {
               size="sm"
               variant="outline"
               onClick={() => setAuditTarget(null)}
+              className="text-xs"
+            >
+              Tutup
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ======================================================== */}
+      {/* MODAL 5: KELOLA GROUP ADMINISTRATOR                      */}
+      {/* ======================================================== */}
+      <Dialog isOpen={isManageAdminGroupOpen} onOpenChange={setIsManageAdminGroupOpen}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <div className="flex items-center gap-2.5 text-indigo-600 dark:text-indigo-400">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-50 dark:bg-indigo-950/60">
+                <ShieldCheck className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+              </div>
+              <div>
+                <DialogTitle className="text-base font-extrabold text-gray-900 dark:text-white">
+                  Kelola Group Administrator
+                </DialogTitle>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Tambahkan email pengguna untuk memberikan hak akses setara Administrator sistem.
+                </p>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <DialogBody className="space-y-4 py-2">
+            {/* Form Tambah Admin */}
+            <div className="rounded-xl border border-indigo-100 bg-indigo-50/50 p-3.5 dark:border-indigo-900/40 dark:bg-indigo-950/20">
+              <label className="block text-xs font-bold text-indigo-950 dark:text-indigo-200 mb-1.5">
+                Tambahkan Pengguna ke Group Admin
+              </label>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!adminEmailInput.trim()) {
+                    toast.error("Masukkan email pengguna.");
+                    return;
+                  }
+                  addAdminMutation.mutate(adminEmailInput.trim());
+                }}
+                className="flex gap-2"
+              >
+                <div className="relative flex-1">
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
+                  <Input
+                    type="email"
+                    placeholder="Contoh: staf@perusahaan.com..."
+                    value={adminEmailInput}
+                    onChange={(e) => setAdminEmailInput(e.target.value)}
+                    className="pl-9 text-xs"
+                    required
+                  />
+                </div>
+                <Button
+                  size="sm"
+                  type="submit"
+                  disabled={!adminEmailInput.trim() || addAdminMutation.isPending}
+                  className="gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shrink-0"
+                >
+                  {addAdminMutation.isPending ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <UserCheck className="h-3.5 w-3.5" />
+                  )}
+                  Jadikan Admin
+                </Button>
+              </form>
+              <p className="mt-1.5 text-[11px] text-gray-500 dark:text-gray-400">
+                Pengguna yang dimasukkan akan langsung memperoleh otoritas role Administrator penuh (FSD 5.11).
+              </p>
+            </div>
+
+            {/* Daftar Anggota Group Admin */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="text-xs font-bold text-gray-700 dark:text-gray-300">
+                  Daftar Anggota Group Administrator ({adminGroupMembers.length})
+                </h4>
+                <button
+                  type="button"
+                  onClick={() => refetchAdminGroup()}
+                  className="text-[11px] text-indigo-600 hover:underline inline-flex items-center gap-1"
+                >
+                  <RotateCcw className="h-3 w-3" /> Refresh
+                </button>
+              </div>
+
+              {loadingAdminGroup ? (
+                <div className="flex items-center justify-center py-6 text-xs text-gray-400">
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  Memuat daftar admin...
+                </div>
+              ) : adminGroupMembers.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-gray-200 p-6 text-center text-xs text-gray-500 dark:border-gray-800">
+                  Belum ada anggota tambahan dalam group admin.
+                </div>
+              ) : (
+                <div className="max-h-64 overflow-y-auto space-y-2 pr-1">
+                  {adminGroupMembers.map((admin) => {
+                    const isSuper = admin.email?.toLowerCase() === "admin@trackerkerja.local" || admin.id === "usr-superadmin";
+                    const isCurrent = admin.id === userProfile?.id || admin.email?.toLowerCase() === userProfile?.email?.toLowerCase();
+                    return (
+                      <div
+                        key={admin.id}
+                        className="flex items-center justify-between rounded-xl border border-gray-100 bg-gray-50/70 p-2.5 dark:border-gray-800 dark:bg-gray-800/40"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <div
+                            className="flex h-8 w-8 items-center justify-center rounded-lg text-xs font-bold text-white shadow-xs"
+                            style={{ backgroundColor: admin.avatarColor || "#6366F1" }}
+                          >
+                            {admin.fullName?.charAt(0)?.toUpperCase() || "A"}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-xs font-bold text-gray-900 dark:text-white">
+                                {admin.fullName}
+                              </span>
+                              {isSuper ? (
+                                <span className="rounded-md bg-purple-100 px-1.5 py-0.2 text-[9px] font-bold text-purple-700 dark:bg-purple-950 dark:text-purple-300">
+                                  Super Admin
+                                </span>
+                              ) : (
+                                <span className="rounded-md bg-indigo-100 px-1.5 py-0.2 text-[9px] font-bold text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
+                                  Admin
+                                </span>
+                              )}
+                              {isCurrent && (
+                                <span className="text-[10px] text-gray-400 font-normal">(Anda)</span>
+                              )}
+                            </div>
+                            <span className="text-[11px] text-gray-500 dark:text-gray-400 block">
+                              {admin.email}
+                            </span>
+                          </div>
+                        </div>
+
+                        {!isSuper && !isCurrent && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              if (confirm(`Yakin ingin mencabut hak akses Administrator untuk ${admin.fullName} (${admin.email})?`)) {
+                                removeAdminMutation.mutate(admin.email);
+                              }
+                            }}
+                            disabled={removeAdminMutation.isPending}
+                            className="h-7 px-2 text-[11px] font-semibold text-rose-600 hover:bg-rose-50 hover:text-rose-700 dark:hover:bg-rose-950/40"
+                          >
+                            Cabut Akses
+                          </Button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </DialogBody>
+
+          <DialogFooter>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setIsManageAdminGroupOpen(false)}
               className="text-xs"
             >
               Tutup

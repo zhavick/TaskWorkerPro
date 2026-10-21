@@ -87,3 +87,16 @@ public record ChangePasswordRequest(
     string CurrentPassword,
     string NewPassword
 );
+
+public record AdminGroupEmailRequest(
+    string Email
+);
+
+public record AdminGroupMemberDto(
+    string UserId,
+    string FullName,
+    string Email,
+    string JobTitle,
+    string AvatarColor,
+    DateTimeOffset AddedAt
+);

@@ -10,6 +10,7 @@ namespace TrackerKerja.WebApi.Controllers;
 
 [ApiController]
 [Route("api/profile")]
+[Route("api/api/profile")]
 [Authorize]
 public class ProfileController : ControllerBase
 {
@@ -72,18 +73,10 @@ public class ProfileController : ControllerBase
         {
             user.AvatarColor = request.AvatarColor;
         }
-        if (request.PhoneNumber != null)
-        {
-            user.PhoneNumber = request.PhoneNumber.Trim();
-        }
-        if (request.ProfilePictureUrl != null)
-        {
-            user.ProfilePictureUrl = request.ProfilePictureUrl;
-        }
-        if (request.CoverPictureUrl != null)
-        {
-            user.CoverPictureUrl = request.CoverPictureUrl;
-        }
+        user.PhoneNumber = string.IsNullOrWhiteSpace(request.PhoneNumber) ? null : request.PhoneNumber.Trim();
+        user.ProfilePictureUrl = string.IsNullOrWhiteSpace(request.ProfilePictureUrl) ? null : request.ProfilePictureUrl.Trim();
+        user.CoverPictureUrl = string.IsNullOrWhiteSpace(request.CoverPictureUrl) ? null : request.CoverPictureUrl.Trim();
+        user.ConcurrencyStamp = Guid.NewGuid().ToString();
 
         await _context.SaveChangesAsync();
 
@@ -105,6 +98,7 @@ public class ProfileController : ControllerBase
         }
 
         user.PasswordHash = PasswordHasher.HashPassword(request.NewPassword);
+        user.ConcurrencyStamp = Guid.NewGuid().ToString();
         await _context.SaveChangesAsync();
 
         return Ok(new { success = true, message = "Kata sandi berhasil diubah." });
@@ -138,14 +132,12 @@ public class ProfileController : ControllerBase
         var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == userId);
         if (user == null) return NotFound();
 
+        var fileName = $"{userId}_{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}{ext}";
+
+        // 1. Simpan di backend wwwroot/uploads/avatars
         var rootPath = _environment?.WebRootPath ?? Path.Combine(_environment?.ContentRootPath ?? Directory.GetCurrentDirectory(), "wwwroot");
         var avatarsDir = Path.Combine(rootPath, "uploads", "avatars");
-        if (!Directory.Exists(avatarsDir))
-        {
-            Directory.CreateDirectory(avatarsDir);
-        }
-
-        var fileName = $"{userId}_{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}{ext}";
+        Directory.CreateDirectory(avatarsDir);
         var filePath = Path.Combine(avatarsDir, fileName);
 
         using (var stream = new FileStream(filePath, FileMode.Create))
@@ -153,8 +145,34 @@ public class ProfileController : ControllerBase
             await file.CopyToAsync(stream);
         }
 
+        // 2. Simpan juga di folder frontend/public/uploads/avatars
+        var candidateFrontendDirs = new[]
+        {
+            Path.GetFullPath(Path.Combine(_environment?.ContentRootPath ?? Directory.GetCurrentDirectory(), "..", "..", "..", "frontend", "public", "uploads", "avatars")),
+            Path.GetFullPath(Path.Combine(_environment?.ContentRootPath ?? Directory.GetCurrentDirectory(), "..", "..", "frontend", "public", "uploads", "avatars")),
+            Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "frontend", "public", "uploads", "avatars")),
+            @"c:\TEMP\VSCODE\TrackerKerjaModern\frontend\public\uploads\avatars"
+        };
+
+        foreach (var dir in candidateFrontendDirs)
+        {
+            try
+            {
+                var parentDir = Directory.GetParent(dir)?.FullName;
+                if (parentDir != null && (Directory.Exists(parentDir) || parentDir.Contains("frontend")))
+                {
+                    Directory.CreateDirectory(dir);
+                    var fPath = Path.Combine(dir, fileName);
+                    System.IO.File.Copy(filePath, fPath, true);
+                    break;
+                }
+            }
+            catch { /* fallback */ }
+        }
+
         var relativeUrl = $"/uploads/avatars/{fileName}";
         user.ProfilePictureUrl = relativeUrl;
+        user.ConcurrencyStamp = Guid.NewGuid().ToString();
         await _context.SaveChangesAsync();
 
         return Ok(new
@@ -193,14 +211,12 @@ public class ProfileController : ControllerBase
         var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == userId);
         if (user == null) return NotFound();
 
+        var fileName = $"{userId}_{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}{ext}";
+
+        // 1. Simpan di backend wwwroot/uploads/covers
         var rootPath = _environment?.WebRootPath ?? Path.Combine(_environment?.ContentRootPath ?? Directory.GetCurrentDirectory(), "wwwroot");
         var coversDir = Path.Combine(rootPath, "uploads", "covers");
-        if (!Directory.Exists(coversDir))
-        {
-            Directory.CreateDirectory(coversDir);
-        }
-
-        var fileName = $"{userId}_{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}{ext}";
+        Directory.CreateDirectory(coversDir);
         var filePath = Path.Combine(coversDir, fileName);
 
         using (var stream = new FileStream(filePath, FileMode.Create))
@@ -208,8 +224,34 @@ public class ProfileController : ControllerBase
             await file.CopyToAsync(stream);
         }
 
+        // 2. Simpan juga di folder frontend/public/uploads/covers
+        var candidateFrontendDirs = new[]
+        {
+            Path.GetFullPath(Path.Combine(_environment?.ContentRootPath ?? Directory.GetCurrentDirectory(), "..", "..", "..", "frontend", "public", "uploads", "covers")),
+            Path.GetFullPath(Path.Combine(_environment?.ContentRootPath ?? Directory.GetCurrentDirectory(), "..", "..", "frontend", "public", "uploads", "covers")),
+            Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "frontend", "public", "uploads", "covers")),
+            @"c:\TEMP\VSCODE\TrackerKerjaModern\frontend\public\uploads\covers"
+        };
+
+        foreach (var dir in candidateFrontendDirs)
+        {
+            try
+            {
+                var parentDir = Directory.GetParent(dir)?.FullName;
+                if (parentDir != null && (Directory.Exists(parentDir) || parentDir.Contains("frontend")))
+                {
+                    Directory.CreateDirectory(dir);
+                    var fPath = Path.Combine(dir, fileName);
+                    System.IO.File.Copy(filePath, fPath, true);
+                    break;
+                }
+            }
+            catch { /* fallback */ }
+        }
+
         var relativeUrl = $"/uploads/covers/{fileName}";
         user.CoverPictureUrl = relativeUrl;
+        user.ConcurrencyStamp = Guid.NewGuid().ToString();
         await _context.SaveChangesAsync();
 
         return Ok(new

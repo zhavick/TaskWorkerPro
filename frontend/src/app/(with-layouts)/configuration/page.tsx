@@ -44,6 +44,8 @@ import {
   ListTodo,
   Flame,
   Megaphone,
+  ExternalLink,
+  Shuffle,
 } from "lucide-react";
 import { Button } from "@/components/tailgrids/core/button";
 import { Input } from "@/components/tailgrids/core/input";
@@ -290,8 +292,16 @@ export default function ConfigurationPage() {
     if (typeof window !== "undefined") {
       const savedHost = localStorage.getItem("wtp_sync_host_url");
       const savedKey = localStorage.getItem("wtp_sync_api_key");
-      if (savedHost) setHostUrl(savedHost);
-      if (savedKey) setSyncApiKey(savedKey);
+      if (savedHost) {
+        setHostUrl(savedHost);
+      } else {
+        setHostUrl("https://tracker.saidilmuna.space");
+      }
+      if (savedKey) {
+        setSyncApiKey(savedKey);
+      } else {
+        setSyncApiKey("TK-SYNC-VUBKJ5PNX3PHI1WX");
+      }
     }
   }, []);
 
@@ -309,6 +319,23 @@ export default function ConfigurationPage() {
     }
   };
 
+  const setLiveServerPreset = () => {
+    handleHostUrlChange("https://tracker.saidilmuna.space");
+    handleSyncApiKeyChange("TK-SYNC-VUBKJ5PNX3PHI1WX");
+    toast.success("Konfigurasi live tracker.saidilmuna.space diterapkan!");
+  };
+
+  const generateRandomSyncKey = () => {
+    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    let randomPart = "";
+    for (let i = 0; i < 16; i++) {
+      randomPart += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    const newKey = `TK-SYNC-${randomPart}`;
+    handleSyncApiKeyChange(newKey);
+    toast.info(`Kunci sinkronisasi baru dihasilkan: ${newKey}`);
+  };
+
   useEffect(() => {
     if (serverSettings && Array.isArray(serverSettings)) {
       const map: Record<string, string> = { ...settings };
@@ -319,13 +346,13 @@ export default function ConfigurationPage() {
 
       // Auto-populate sync credentials from server settings if local state is still empty
       if (!syncApiKey) {
-        const foundKey = map["Sync_ApiKey"] || map["Sync_HostSecret"] || map["SyncApiKey"] || map["SyncSettings:ApiKey"];
+        const foundKey = map["Sync_ApiKey"] || map["HostSync_ApiKey"] || map["Sync_HostSecret"] || map["SyncApiKey"] || map["SyncSettings:ApiKey"];
         if (foundKey && foundKey !== "••••••••") {
           setSyncApiKey(foundKey);
         }
       }
-      if (hostUrl === "http://localhost:5000" && map["Sync_HostUrl"]) {
-        setHostUrl(map["Sync_HostUrl"]);
+      if ((!hostUrl || hostUrl === "http://localhost:5000") && (map["Sync_HostUrl"] || map["HostSync_TargetUrl"] || map["GlobalBaseUrl"])) {
+        setHostUrl(map["HostSync_TargetUrl"] || map["GlobalBaseUrl"] || map["Sync_HostUrl"] || "https://tracker.saidilmuna.space");
       }
     }
   }, [serverSettings]);
@@ -1817,6 +1844,25 @@ export default function ConfigurationPage() {
                   </div>
                 </div>
 
+                <div className="flex flex-wrap items-center gap-2 pt-1 pb-1">
+                  <button
+                    type="button"
+                    onClick={setLiveServerPreset}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50/70 px-2.5 py-1 text-[11px] font-bold text-indigo-700 hover:bg-indigo-100 transition-colors dark:border-indigo-900/50 dark:bg-indigo-950/40 dark:text-indigo-300"
+                  >
+                    <ExternalLink className="h-3 w-3" />
+                    Preset tracker.saidilmuna.space
+                  </button>
+                  <button
+                    type="button"
+                    onClick={generateRandomSyncKey}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-1 text-[11px] font-bold text-gray-700 hover:bg-gray-100 transition-colors dark:border-gray-800 dark:bg-gray-800 dark:text-gray-300"
+                  >
+                    <Shuffle className="h-3 w-3" />
+                    Acak Kunci
+                  </button>
+                </div>
+
                 <div className="space-y-3">
                   <div>
                     <label className="mb-1 block text-xs font-semibold text-gray-700 dark:text-gray-300">
@@ -1825,7 +1871,7 @@ export default function ConfigurationPage() {
                     <Input
                       value={hostUrl}
                       onChange={(e) => handleHostUrlChange(e.target.value)}
-                      placeholder="https://tracker-induk.perusahaan.co.id"
+                      placeholder="https://tracker.saidilmuna.space"
                       className="font-mono text-xs"
                     />
                   </div>
@@ -1839,13 +1885,13 @@ export default function ConfigurationPage() {
                         type="password"
                         value={syncApiKey}
                         onChange={(e) => handleSyncApiKeyChange(e.target.value)}
-                        placeholder="Masukkan token otorisasi host induk (misal: TRACKERKERJA_SYNC_SECRET_DEFAULT_2026)"
+                        placeholder="Masukkan token otorisasi host induk (misal: TK-SYNC-VUBKJ5PNX3PHI1WX)"
                         className="font-mono text-xs pr-8"
                       />
                       <Key className="absolute right-2.5 top-2.5 h-4 w-4 text-gray-400" />
                     </div>
                     <p className="mt-1 text-[11px] text-gray-500">
-                      Header otorisasi <code>X-Sync-ApiKey</code> dan <code>X-Sync-Key</code> otomatis disertakan pada setiap permintaan push/pull.
+                      Header otorisasi <code>X-Sync-ApiKey</code> otomatis disertakan dengan sistem multi-key fallback cerdas.
                     </p>
                   </div>
 
@@ -1935,10 +1981,10 @@ export default function ConfigurationPage() {
                   size="sm"
                   onClick={() => pullMutation.mutate()}
                   disabled={pullMutation.isPending || !hostUrl.trim()}
-                  className="gap-1.5 bg-purple-600 text-xs font-semibold text-white shadow-xs hover:bg-purple-700"
+                  className="gap-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-xs font-bold text-white shadow-xs hover:from-purple-700 hover:to-indigo-700"
                 >
-                  <ArrowDownLeft className="h-3.5 w-3.5" />
-                  {pullMutation.isPending ? "Menarik Pull..." : "Pull dari Host Induk"}
+                  <ArrowDownLeft className={`h-3.5 w-3.5 ${pullMutation.isPending ? "animate-bounce" : ""}`} />
+                  {pullMutation.isPending ? "Menarik & Mengimpor Data..." : "Tarik / Impor Seluruh Data Host"}
                 </Button>
               </div>
             </div>

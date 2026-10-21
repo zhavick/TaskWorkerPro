@@ -161,7 +161,9 @@ public class AuthController : ControllerBase
         user.AccessFailedCount = 0;
         user.LockoutEnd = null;
 
+        var isUserRoleAdmin = await _context.UserRoles.AnyAsync(ur => ur.UserId == user.Id && (ur.RoleId == "r-admin" || _context.Roles.Any(r => r.Id == ur.RoleId && r.Name == "Administrator")));
         var isAdmin = user.Id == "usr-superadmin" 
+            || isUserRoleAdmin
             || user.Email?.Equals("admin@trackerkerja.local", StringComparison.OrdinalIgnoreCase) == true
             || user.JobTitle.Contains("Admin", StringComparison.OrdinalIgnoreCase)
             || user.JobTitle.Contains("Architect", StringComparison.OrdinalIgnoreCase);
@@ -336,7 +338,9 @@ public class AuthController : ControllerBase
             return NotFound(new { success = false, message = "Profil pengguna tidak ditemukan." });
         }
 
+        var isUserRoleAdmin = await _context.UserRoles.AnyAsync(ur => ur.UserId == user.Id && (ur.RoleId == "r-admin" || _context.Roles.Any(r => r.Id == ur.RoleId && r.Name == "Administrator")));
         var isAdmin = user.Id == "usr-superadmin" 
+            || isUserRoleAdmin
             || user.Email?.Equals("admin@trackerkerja.local", StringComparison.OrdinalIgnoreCase) == true
             || user.JobTitle.Contains("Admin", StringComparison.OrdinalIgnoreCase)
             || user.JobTitle.Contains("Architect", StringComparison.OrdinalIgnoreCase);

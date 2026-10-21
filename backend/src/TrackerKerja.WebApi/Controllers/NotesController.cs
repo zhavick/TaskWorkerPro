@@ -218,23 +218,59 @@ public class NotesController : ControllerBase
             return BadRequest(new { success = false, message = $"Format berkas {ext} tidak diizinkan." });
         }
 
+        var sanitizedFileName = $"{DateTime.UtcNow:yyyyMMdd_HHmmss}_{Path.GetFileName(file.FileName)}";
+
+        // Simpan langsung pada folder frontend/public/uploads/notes/{noteId} (TSD & User Requirement 3)
+        var candidateFrontendDirs = new[]
+        {
+            Path.GetFullPath(Path.Combine(_env.ContentRootPath, "..", "..", "..", "frontend", "public", "uploads", "notes", note.Id.ToString())),
+            Path.GetFullPath(Path.Combine(_env.ContentRootPath, "..", "..", "frontend", "public", "uploads", "notes", note.Id.ToString())),
+            Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "frontend", "public", "uploads", "notes", note.Id.ToString())),
+            Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "..", "frontend", "public", "uploads", "notes", note.Id.ToString())),
+            @"c:\TEMP\VSCODE\TrackerKerjaModern\frontend\public\uploads\notes\" + note.Id
+        };
+
+        string? frontendSavePath = null;
+        foreach (var dir in candidateFrontendDirs)
+        {
+            try
+            {
+                var parentDir = Directory.GetParent(dir)?.FullName;
+                if (parentDir != null && (Directory.Exists(parentDir) || parentDir.Contains("frontend")))
+                {
+                    Directory.CreateDirectory(dir);
+                    frontendSavePath = Path.Combine(dir, sanitizedFileName);
+                    using (var stream = new FileStream(frontendSavePath, FileMode.Create))
+                    {
+                        await file.CopyToAsync(stream);
+                    }
+                    break;
+                }
+            }
+            catch
+            {
+                // lanjutkan ke path berikutnya
+            }
+        }
+
         var companyId = _tenantService.CompanyId ?? 1;
         var folderPath = Path.Combine(_env.ContentRootPath, "uploads", "companies", companyId.ToString(), "notes", note.Id.ToString());
         Directory.CreateDirectory(folderPath);
-
-        var sanitizedFileName = $"{DateTime.UtcNow:yyyyMMdd_HHmmss}_{Path.GetFileName(file.FileName)}";
         var fullPath = Path.Combine(folderPath, sanitizedFileName);
 
-        using (var stream = new FileStream(fullPath, FileMode.Create))
+        if (!System.IO.File.Exists(fullPath))
         {
-            await file.CopyToAsync(stream);
+            using (var stream = new FileStream(fullPath, FileMode.Create))
+            {
+                await file.CopyToAsync(stream);
+            }
         }
 
         var attachment = new NoteAttachment
         {
             NoteId = note.Id,
             FileName = file.FileName,
-            FilePath = fullPath,
+            FilePath = frontendSavePath ?? fullPath,
             FileSize = file.Length,
             ContentType = file.ContentType,
             FileExtension = ext,
@@ -271,13 +307,21 @@ public class NotesController : ControllerBase
 
         if (attachment == null) return NotFound(new { success = false, message = "Lampiran tidak ditemukan." });
 
-        if (!System.IO.File.Exists(attachment.FilePath))
+        string? activePath = System.IO.File.Exists(attachment.FilePath) ? attachment.FilePath : null;
+        if (activePath == null)
+        {
+            var fileName = Path.GetFileName(attachment.FilePath);
+            var fallbackPath = Path.Combine(_env.ContentRootPath, "uploads", "companies", (_tenantService.CompanyId ?? 1).ToString(), "notes", attachment.NoteId.ToString(), fileName);
+            if (System.IO.File.Exists(fallbackPath)) activePath = fallbackPath;
+        }
+
+        if (activePath == null)
         {
             return NotFound(new { success = false, message = "Berkas fisik tidak ditemukan di server." });
         }
 
         var memory = new MemoryStream();
-        using (var stream = new FileStream(attachment.FilePath, FileMode.Open, FileAccess.Read))
+        using (var stream = new FileStream(activePath, FileMode.Open, FileAccess.Read))
         {
             await stream.CopyToAsync(memory);
         }
@@ -296,6 +340,13 @@ public class NotesController : ControllerBase
         if (System.IO.File.Exists(attachment.FilePath))
         {
             try { System.IO.File.Delete(attachment.FilePath); } catch { /* ignore */ }
+        }
+
+        var fileName = Path.GetFileName(attachment.FilePath);
+        var fallbackPath = Path.Combine(_env.ContentRootPath, "uploads", "companies", (_tenantService.CompanyId ?? 1).ToString(), "notes", attachment.NoteId.ToString(), fileName);
+        if (System.IO.File.Exists(fallbackPath))
+        {
+            try { System.IO.File.Delete(fallbackPath); } catch { /* ignore */ }
         }
 
         _context.NoteAttachments.Remove(attachment);

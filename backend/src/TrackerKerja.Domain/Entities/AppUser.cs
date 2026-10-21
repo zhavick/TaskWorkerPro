@@ -55,3 +55,17 @@ public class UserRefreshToken
 
     public AppUser User { get; set; } = null!;
 }
+
+public class AppRole
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString();
+    public string Name { get; set; } = string.Empty;
+    public string NormalizedName { get; set; } = string.Empty;
+    public string? ConcurrencyStamp { get; set; } = Guid.NewGuid().ToString();
+}
+
+public class AppUserRole
+{
+    public string UserId { get; set; } = string.Empty;
+    public string RoleId { get; set; } = string.Empty;
+}

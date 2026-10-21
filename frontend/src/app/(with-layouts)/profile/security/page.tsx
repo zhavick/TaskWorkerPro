@@ -31,7 +31,7 @@ export default function SecurityPage() {
 
   const changePasswordMutation = useMutation({
     mutationFn: async () => {
-      const response = await apiClient.put("/api/profile/change-password", {
+      const response = await apiClient.put("/profile/change-password", {
         currentPassword,
         newPassword,
       });

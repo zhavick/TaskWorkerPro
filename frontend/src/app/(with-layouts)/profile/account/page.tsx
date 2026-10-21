@@ -44,7 +44,7 @@ export default function AccountPage() {
   const { data: profile, isLoading } = useQuery<UserProfileResponse>({
     queryKey: ["user-profile"],
     queryFn: async () => {
-      const response = await apiClient.get("/api/profile");
+      const response = await apiClient.get("/profile");
       return response.data.data;
     },
   });
@@ -78,11 +78,12 @@ export default function AccountPage() {
 
     setIsUploadingAvatar(true);
     try {
-      const res = await apiClient.post("/api/profile/avatar", formData, {
+      const res = await apiClient.post("/profile/avatar", formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
       toast.success(res.data?.message || "Foto profil berhasil diperbarui!");
       queryClient.invalidateQueries({ queryKey: ["user-profile"] });
+      queryClient.invalidateQueries({ queryKey: ["currentUserProfile"] });
     } catch (err: any) {
       toast.error(err?.response?.data?.message || "Gagal mengunggah foto profil.");
     } finally {
@@ -93,7 +94,7 @@ export default function AccountPage() {
 
   const handleRemoveAvatar = async () => {
     try {
-      await apiClient.put("/api/profile", {
+      await apiClient.put("/profile", {
         fullName: fullName.trim() || profile?.fullName,
         jobTitle: jobTitle.trim() || profile?.jobTitle,
         avatarColor,
@@ -103,6 +104,7 @@ export default function AccountPage() {
       });
       toast.success("Foto profil telah dihapus.");
       queryClient.invalidateQueries({ queryKey: ["user-profile"] });
+      queryClient.invalidateQueries({ queryKey: ["currentUserProfile"] });
     } catch (err: any) {
       toast.error("Gagal menghapus foto profil.");
     }
@@ -122,7 +124,7 @@ export default function AccountPage() {
 
     setIsUploadingCover(true);
     try {
-      const res = await apiClient.post("/api/profile/cover", formData, {
+      const res = await apiClient.post("/profile/cover", formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
       toast.success(res.data?.message || "Banner sampul berhasil diperbarui!");
@@ -182,12 +184,27 @@ export default function AccountPage() {
         coverPictureUrl: activeCover || null,
         profilePictureUrl: profile?.profilePictureUrl || null,
       };
-      const response = await apiClient.put("/api/profile", payload);
+      const response = await apiClient.put("/profile", payload);
       return response.data;
     },
     onSuccess: () => {
       toast.success("Profil Anda berhasil diperbarui!");
+      if (typeof window !== "undefined") {
+        try {
+          const stored = localStorage.getItem("user_profile");
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            parsed.fullName = fullName.trim();
+            parsed.jobTitle = jobTitle.trim();
+            parsed.avatarColor = avatarColor;
+            localStorage.setItem("user_profile", JSON.stringify(parsed));
+          }
+        } catch {
+          // ignore
+        }
+      }
       queryClient.invalidateQueries({ queryKey: ["user-profile"] });
+      queryClient.invalidateQueries({ queryKey: ["currentUserProfile"] });
     },
     onError: (error: any) => {
       toast.error(

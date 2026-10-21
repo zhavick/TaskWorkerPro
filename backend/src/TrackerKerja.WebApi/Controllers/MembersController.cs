@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using TrackerKerja.Application.Common.Interfaces;
 using TrackerKerja.Application.DTOs;
+using TrackerKerja.Domain.Entities;
 using TrackerKerja.Infrastructure.Persistence;
 using TrackerKerja.Infrastructure.Services;
 
@@ -63,26 +64,38 @@ public class MembersController : ControllerBase
             .OrderBy(u => u.FullName)
             .ToListAsync();
 
-        var members = users.Select(u => new MemberListItemDto(
-            u.Id,
-            u.FullName,
-            u.Email ?? string.Empty,
-            u.JobTitle,
-            u.AvatarColor,
-            u.ProfilePictureUrl,
-            u.CompanyId,
-            u.Company != null ? u.Company.Name : null,
-            u.Company != null ? u.Company.Code : null,
-            u.IsApproved,
-            u.ApprovedAt,
-            u.CreatedAt,
-            new List<string> { u.JobTitle.Contains("Admin") ? "Administrator" : "Member" },
-            u.LockoutEnd.HasValue && u.LockoutEnd.Value > now,
-            u.AssignedTasks.Count,
-            u.AssignedTasks.Count(t => t.Status == Domain.Enums.TaskStatus.Done),
-            Math.Round(u.WorkSessions.Where(s => s.EndTime != null).Sum(s => s.Duration) / 3600.0, 1),
-            u.PhoneNumber
-        )).ToList();
+        var adminUserIds = await _context.UserRoles
+            .Where(ur => ur.RoleId == "r-admin" || _context.Roles.Any(r => r.Id == ur.RoleId && r.Name == "Administrator"))
+            .Select(ur => ur.UserId)
+            .ToListAsync();
+
+        var members = users.Select(u => {
+            var isUserAdmin = u.Id == "usr-superadmin" ||
+                              adminUserIds.Contains(u.Id) ||
+                              (u.Email != null && u.Email.Equals("admin@trackerkerja.local", StringComparison.OrdinalIgnoreCase)) ||
+                              u.JobTitle.Contains("Admin", StringComparison.OrdinalIgnoreCase);
+
+            return new MemberListItemDto(
+                u.Id,
+                u.FullName,
+                u.Email ?? string.Empty,
+                u.JobTitle,
+                u.AvatarColor,
+                u.ProfilePictureUrl,
+                u.CompanyId,
+                u.Company != null ? u.Company.Name : null,
+                u.Company != null ? u.Company.Code : null,
+                u.IsApproved,
+                u.ApprovedAt,
+                u.CreatedAt,
+                new List<string> { isUserAdmin ? "Administrator" : "Member" },
+                u.LockoutEnd.HasValue && u.LockoutEnd.Value > now,
+                u.AssignedTasks.Count,
+                u.AssignedTasks.Count(t => t.Status == Domain.Enums.TaskStatus.Done),
+                Math.Round(u.WorkSessions.Where(s => s.EndTime != null).Sum(s => s.Duration) / 3600.0, 1),
+                u.PhoneNumber
+            );
+        }).ToList();
 
         var groups = members
             .GroupBy(m => new { m.CompanyId, CompanyName = m.CompanyName ?? "Perusahaan Default", CompanyCode = m.CompanyCode ?? "WCH" })
@@ -121,6 +134,11 @@ public class MembersController : ControllerBase
             return Forbid();
         }
 
+        var isUserAdmin = user.Id == "usr-superadmin" ||
+                          await _context.UserRoles.AnyAsync(ur => ur.UserId == user.Id && (ur.RoleId == "r-admin" || _context.Roles.Any(r => r.Id == ur.RoleId && r.Name == "Administrator"))) ||
+                          (user.Email != null && user.Email.Equals("admin@trackerkerja.local", StringComparison.OrdinalIgnoreCase)) ||
+                          user.JobTitle.Contains("Admin", StringComparison.OrdinalIgnoreCase);
+
         var profile = new UserProfileDto(
             user.Id,
             user.FullName,
@@ -133,7 +151,7 @@ public class MembersController : ControllerBase
             user.Company?.Name,
             user.Company?.Code,
             user.IsApproved,
-            new List<string> { user.JobTitle.Contains("Admin") ? "Administrator" : "Member" },
+            new List<string> { isUserAdmin ? "Administrator" : "Member" },
             user.PhoneNumber,
             user.CreatedAt
         );
@@ -305,5 +323,153 @@ public class MembersController : ControllerBase
         await _context.SaveChangesAsync();
 
         return Ok(new { success = true, message = $"Akun {user.FullName} telah dihapus permanen dari sistem." });
+    }
+
+    [HttpGet("admin-group")]
+    [Authorize(Roles = "Administrator")]
+    public async Task<IActionResult> GetAdminGroup()
+    {
+        var adminRole = await _context.Roles.FirstOrDefaultAsync(r => r.Name == "Administrator" || r.Id == "r-admin");
+        var adminRoleId = adminRole?.Id ?? "r-admin";
+
+        var adminUserIds = await _context.UserRoles
+            .Where(ur => ur.RoleId == adminRoleId)
+            .Select(ur => ur.UserId)
+            .ToListAsync();
+
+        var adminUsers = await _context.Users
+            .AsNoTracking()
+            .Where(u => adminUserIds.Contains(u.Id) || u.Id == "usr-superadmin" || (u.Email != null && u.Email.ToLower() == "admin@trackerkerja.local") || u.JobTitle.Contains("Admin"))
+            .OrderBy(u => u.FullName)
+            .Select(u => new AdminGroupMemberDto(
+                u.Id,
+                u.FullName,
+                u.Email ?? string.Empty,
+                u.JobTitle,
+                u.AvatarColor,
+                u.CreatedAt
+            ))
+            .ToListAsync();
+
+        return Ok(new { success = true, data = adminUsers });
+    }
+
+    [HttpPost("admin-group/add")]
+    [Authorize(Roles = "Administrator")]
+    public async Task<IActionResult> AddToAdminGroup([FromBody] AdminGroupEmailRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request?.Email))
+        {
+            return BadRequest(new { success = false, message = "Email pengguna tidak boleh kosong." });
+        }
+
+        var normalizedEmail = request.Email.Trim().ToLowerInvariant();
+        var targetUser = await _context.Users.FirstOrDefaultAsync(u => u.Email != null && u.Email.ToLower() == normalizedEmail);
+
+        if (targetUser == null)
+        {
+            return NotFound(new { success = false, message = $"Pengguna dengan email '{request.Email}' tidak ditemukan dalam sistem." });
+        }
+
+        var adminRole = await _context.Roles.FirstOrDefaultAsync(r => r.Name == "Administrator" || r.Id == "r-admin");
+        if (adminRole == null)
+        {
+            adminRole = new AppRole
+            {
+                Id = "r-admin",
+                Name = "Administrator",
+                NormalizedName = "ADMINISTRATOR"
+            };
+            _context.Roles.Add(adminRole);
+            await _context.SaveChangesAsync();
+        }
+
+        var isAlreadyAdmin = await _context.UserRoles.AnyAsync(ur => ur.UserId == targetUser.Id && ur.RoleId == adminRole.Id);
+        if (!isAlreadyAdmin)
+        {
+            _context.UserRoles.Add(new AppUserRole
+            {
+                UserId = targetUser.Id,
+                RoleId = adminRole.Id
+            });
+        }
+
+        if (!targetUser.JobTitle.Contains("Admin", StringComparison.OrdinalIgnoreCase))
+        {
+            targetUser.JobTitle = string.IsNullOrWhiteSpace(targetUser.JobTitle) ? "Administrator" : $"{targetUser.JobTitle} (Admin)";
+        }
+        targetUser.IsApproved = true;
+        targetUser.ApprovedAt ??= DateTimeOffset.UtcNow;
+        targetUser.ConcurrencyStamp = Guid.NewGuid().ToString();
+
+        await _context.SaveChangesAsync();
+
+        return Ok(new
+        {
+            success = true,
+            message = $"Hak akses Administrator berhasil diberikan kepada {targetUser.FullName} ({targetUser.Email}).",
+            data = new AdminGroupMemberDto(
+                targetUser.Id,
+                targetUser.FullName,
+                targetUser.Email ?? string.Empty,
+                targetUser.JobTitle,
+                targetUser.AvatarColor,
+                targetUser.CreatedAt
+            )
+        });
+    }
+
+    [HttpPost("admin-group/remove")]
+    [Authorize(Roles = "Administrator")]
+    public async Task<IActionResult> RemoveFromAdminGroup([FromBody] AdminGroupEmailRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request?.Email))
+        {
+            return BadRequest(new { success = false, message = "Email pengguna tidak boleh kosong." });
+        }
+
+        var normalizedEmail = request.Email.Trim().ToLowerInvariant();
+        if (normalizedEmail == "admin@trackerkerja.local")
+        {
+            return BadRequest(new { success = false, message = "Akun Super Administrator utama sistem tidak dapat dicabut hak aksesnya." });
+        }
+
+        var targetUser = await _context.Users.FirstOrDefaultAsync(u => u.Email != null && u.Email.ToLower() == normalizedEmail);
+        if (targetUser == null)
+        {
+            return NotFound(new { success = false, message = $"Pengguna dengan email '{request.Email}' tidak ditemukan." });
+        }
+
+        if (targetUser.Id == "usr-superadmin" || targetUser.Id == _tenantService.UserId)
+        {
+            return BadRequest(new { success = false, message = "Anda tidak dapat mencabut hak akses administrator akun Anda sendiri." });
+        }
+
+        var adminRole = await _context.Roles.FirstOrDefaultAsync(r => r.Name == "Administrator" || r.Id == "r-admin");
+        var adminRoleId = adminRole?.Id ?? "r-admin";
+
+        var userRole = await _context.UserRoles.FirstOrDefaultAsync(ur => ur.UserId == targetUser.Id && ur.RoleId == adminRoleId);
+        if (userRole != null)
+        {
+            _context.UserRoles.Remove(userRole);
+        }
+
+        if (targetUser.JobTitle.EndsWith(" (Admin)", StringComparison.OrdinalIgnoreCase))
+        {
+            targetUser.JobTitle = targetUser.JobTitle.Substring(0, targetUser.JobTitle.Length - " (Admin)".Length).Trim();
+        }
+        else if (targetUser.JobTitle.Equals("Administrator", StringComparison.OrdinalIgnoreCase))
+        {
+            targetUser.JobTitle = "Staff Member";
+        }
+        targetUser.ConcurrencyStamp = Guid.NewGuid().ToString();
+
+        await _context.SaveChangesAsync();
+
+        return Ok(new
+        {
+            success = true,
+            message = $"Hak akses Administrator untuk {targetUser.FullName} ({targetUser.Email}) telah berhasil dicabut."
+        });
     }
 }

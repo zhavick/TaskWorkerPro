@@ -16,6 +16,8 @@ public class AppDbContext : DbContext
 
     public DbSet<Company> Companies => Set<Company>();
     public DbSet<AppUser> Users => Set<AppUser>();
+    public DbSet<AppRole> Roles => Set<AppRole>();
+    public DbSet<AppUserRole> UserRoles => Set<AppUserRole>();
     public DbSet<UserRefreshToken> UserRefreshTokens => Set<UserRefreshToken>();
     public DbSet<MasterPriority> MasterPriorities => Set<MasterPriority>();
     public DbSet<MasterStatus> MasterStatuses => Set<MasterStatus>();
@@ -53,6 +55,12 @@ public class AppDbContext : DbContext
         // 1. Table Names Mapping
         modelBuilder.Entity<Company>().ToTable("companies");
         modelBuilder.Entity<AppUser>().ToTable("asp_net_users");
+        modelBuilder.Entity<AppRole>().ToTable("asp_net_roles");
+        modelBuilder.Entity<AppUserRole>(entity =>
+        {
+            entity.ToTable("asp_net_user_roles");
+            entity.HasKey(ur => new { ur.UserId, ur.RoleId });
+        });
         modelBuilder.Entity<UserRefreshToken>().ToTable("user_refresh_tokens");
         modelBuilder.Entity<MasterPriority>().ToTable("master_priorities");
         modelBuilder.Entity<MasterStatus>().ToTable("master_statuses");

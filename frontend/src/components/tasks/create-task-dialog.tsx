@@ -26,6 +26,7 @@ import {
   DialogTitle,
   DialogBody,
 } from "@/components/tailgrids/core/dialog";
+import { SearchableSelect } from "@/components/tailgrids/core/searchable-select";
 import { toast } from "sonner";
 
 interface CreateTaskDialogProps {
@@ -139,6 +140,25 @@ export function CreateTaskDialog({
     },
     enabled: open,
   });
+
+  const projectOptions = React.useMemo(() => [
+    { value: "", label: "-- Tanpa Proyek --" },
+    ...projects.map((p) => ({
+      value: String(p.id),
+      label: p.name,
+      badge: p.status,
+      description: p.companyName ? `Perusahaan: ${p.companyName}` : undefined,
+    })),
+  ], [projects]);
+
+  const memberOptions = React.useMemo(() => [
+    { value: "", label: "-- Diri Sendiri / Belum Ditugaskan --" },
+    ...members.map((u: any) => ({
+      value: String(u.id),
+      label: `${u.fullName || u.userName}`,
+      description: `${u.email || ""}${u.jobTitle ? ` • ${u.jobTitle}` : ""}`,
+    })),
+  ], [members]);
 
   // Helper to map MasterPriority to enum value (0..3)
   const resolvePriorityValue = (p: any, idx: number) => {
@@ -277,22 +297,16 @@ export function CreateTaskDialog({
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {/* Proyek */}
             <div>
-              <label className="flex items-center gap-1.5 text-xs font-bold text-gray-700 dark:text-gray-300">
+              <label className="flex items-center gap-1.5 text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
                 <FolderKanban className="h-3.5 w-3.5 text-indigo-500" />
                 Proyek Terkait
               </label>
-              <select
+              <SearchableSelect
+                options={projectOptions}
                 value={projectId}
-                onChange={(e) => setProjectId(e.target.value)}
-                className="mt-1 w-full rounded-xl border border-gray-200 bg-white p-2 text-xs font-medium text-gray-900 dark:border-gray-800 dark:bg-gray-900 dark:text-white"
-              >
-                <option value="">-- Tanpa Proyek --</option>
-                {projects.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
+                onChange={(val) => setProjectId(val ? String(val) : "")}
+                searchPlaceholder="Cari nama proyek..."
+              />
             </div>
 
             {/* Kategori Tugas */}
@@ -398,22 +412,16 @@ export function CreateTaskDialog({
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {/* PIC Penanggung Jawab */}
             <div>
-              <label className="flex items-center gap-1.5 text-xs font-bold text-gray-700 dark:text-gray-300">
+              <label className="flex items-center gap-1.5 text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
                 <User className="h-3.5 w-3.5 text-blue-500" />
                 PIC Penanggung Jawab
               </label>
-              <select
+              <SearchableSelect
+                options={memberOptions}
                 value={assignedToUserId}
-                onChange={(e) => setAssignedToUserId(e.target.value)}
-                className="mt-1 w-full rounded-xl border border-gray-200 bg-white p-2 text-xs font-medium text-gray-900 dark:border-gray-800 dark:bg-gray-900 dark:text-white"
-              >
-                <option value="">-- Diri Sendiri / Belum Ditugaskan --</option>
-                {members.map((u: any) => (
-                  <option key={u.id} value={u.id}>
-                    {u.fullName || u.userName} ({u.jobTitle || "Member"})
-                  </option>
-                ))}
-              </select>
+                onChange={(val) => setAssignedToUserId(val ? String(val) : "")}
+                searchPlaceholder="Cari nama staf atau email..."
+              />
             </div>
 
             {/* Tenggat Waktu (Due Date) */}
