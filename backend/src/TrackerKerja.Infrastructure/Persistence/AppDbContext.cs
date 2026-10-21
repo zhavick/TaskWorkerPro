@@ -44,6 +44,7 @@ public class AppDbContext : DbContext
     public DbSet<SyncHistory> SyncHistories => Set<SyncHistory>();
     public DbSet<UserBadgeSnapshot> UserBadgeSnapshots => Set<UserBadgeSnapshot>();
     public DbSet<ImportLog> ImportLogs => Set<ImportLog>();
+    public DbSet<UserNotification> UserNotifications => Set<UserNotification>();
 
     public int? CurrentCompanyId => _tenantService?.CompanyId;
     public bool IsCurrentUserAdmin => _tenantService?.IsAdmin ?? false;
@@ -180,5 +181,21 @@ public class AppDbContext : DbContext
 
         modelBuilder.Entity<Announcement>().HasQueryFilter(a =>
             IsCurrentUserAdmin || a.CompanyId == null || CurrentCompanyId == null || a.CompanyId == CurrentCompanyId);
+
+        modelBuilder.Entity<UserNotification>().ToTable("user_notifications");
+        modelBuilder.Entity<UserNotification>()
+            .HasOne(n => n.User)
+            .WithMany()
+            .HasForeignKey(n => n.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<UserNotification>()
+            .HasOne(n => n.Company)
+            .WithMany()
+            .HasForeignKey(n => n.CompanyId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<UserNotification>().HasQueryFilter(n =>
+            IsCurrentUserAdmin || CurrentCompanyId == null || n.CompanyId == CurrentCompanyId);
     }
 }
