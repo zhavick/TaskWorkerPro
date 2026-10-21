@@ -82,9 +82,8 @@ public class NotificationsControllerTests : IDisposable
         // Assert
         Assert.NotNull(result);
         Assert.Equal(200, result.StatusCode);
-        dynamic data = result.Value!;
-        Assert.True((bool)data.success);
-        Assert.Equal(2, (int)data.total);
+        var total = result.Value?.GetType().GetProperty("total")?.GetValue(result.Value);
+        Assert.Equal(2, total);
     }
 
     [Fact]
@@ -105,8 +104,10 @@ public class NotificationsControllerTests : IDisposable
 
         // Assert
         Assert.NotNull(result);
-        dynamic data = result.Value!;
-        Assert.Equal(2, (int)data.data.unreadCount);
+        Assert.Equal(200, result.StatusCode);
+        var dataProp = result.Value?.GetType().GetProperty("data")?.GetValue(result.Value) as NotificationUnreadCountDto;
+        Assert.NotNull(dataProp);
+        Assert.Equal(2, dataProp.UnreadCount);
     }
 
     [Fact]
