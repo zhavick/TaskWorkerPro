@@ -81,7 +81,7 @@ public class NotificationService : INotificationService
     {
         var activeUsers = await _context.Users
             .AsNoTracking()
-            .Where(u => u.CompanyId == companyId && u.IsActive)
+            .Where(u => u.CompanyId == companyId && u.IsApproved)
             .ToListAsync();
 
         if (activeUsers.Count == 0) return 0;
