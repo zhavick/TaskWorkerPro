@@ -285,3 +285,19 @@ public class FakeNotificationService : INotificationService
         return Task.FromResult(5);
     }
 }
+
+public class FakeTenantService : ICurrentTenantService
+{
+    public FakeTenantService(int? companyId, string? companyCode, string? userId, bool isAdmin)
+    {
+        CompanyId = companyId;
+        CompanyCode = companyCode;
+        UserId = userId;
+        IsAdmin = isAdmin;
+    }
+
+    public int? CompanyId { get; set; }
+    public string? CompanyCode { get; set; }
+    public string? UserId { get; set; }
+    public bool IsAdmin { get; set; }
+}
