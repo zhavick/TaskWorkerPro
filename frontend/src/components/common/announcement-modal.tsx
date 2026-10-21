@@ -72,7 +72,8 @@ export function AnnouncementModal() {
         return [];
       }
     },
-    staleTime: 1000 * 60 * 5, // 5 minutes
+    refetchOnMount: "always",
+    staleTime: 0,
   });
 
   // Filter out any locally dismissed announcements
@@ -81,7 +82,13 @@ export function AnnouncementModal() {
       const localDismissed = JSON.parse(
         localStorage.getItem("wtp_dismissed_announcements") || "[]"
       );
-      return !localDismissed.includes(a.id);
+      if (localDismissed.includes(a.id)) return false;
+
+      if (typeof window !== "undefined" && sessionStorage.getItem("wtp_session_dismissed_" + a.id)) {
+        return false;
+      }
+
+      return true;
     } catch {
       return true;
     }
@@ -136,24 +143,30 @@ export function AnnouncementModal() {
   };
 
   const handleClose = () => {
-    if (dontShowAgain && currentItem) {
-      try {
-        const currentList = JSON.parse(
-          localStorage.getItem("wtp_dismissed_announcements") || "[]"
-        );
-        if (!currentList.includes(currentItem.id)) {
-          currentList.push(currentItem.id);
-          localStorage.setItem(
-            "wtp_dismissed_announcements",
-            JSON.stringify(currentList)
+    if (currentItem) {
+      if (dontShowAgain) {
+        try {
+          const currentList = JSON.parse(
+            localStorage.getItem("wtp_dismissed_announcements") || "[]"
           );
-        }
-      } catch {}
+          if (!currentList.includes(currentItem.id)) {
+            currentList.push(currentItem.id);
+            localStorage.setItem(
+              "wtp_dismissed_announcements",
+              JSON.stringify(currentList)
+            );
+          }
+        } catch {}
 
-      markReadMutation.mutate({
-        id: currentItem.id,
-        dontShow: true,
-      });
+        markReadMutation.mutate({
+          id: currentItem.id,
+          dontShow: true,
+        });
+      } else {
+        try {
+          sessionStorage.setItem("wtp_session_dismissed_" + currentItem.id, "true");
+        } catch {}
+      }
     }
 
     setIsOpen(false);

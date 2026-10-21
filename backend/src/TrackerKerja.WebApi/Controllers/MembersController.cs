@@ -34,10 +34,16 @@ public class MembersController : ControllerBase
             .AsNoTracking()
             .AsQueryable();
 
-        // Isolasi multi-tenant jika bukan admin
+        // Isolasi multi-tenant jika bukan admin (1 perusahaan yang sama)
         if (!_tenantService.IsAdmin)
         {
-            query = query.Where(u => u.CompanyId == _tenantService.CompanyId);
+            var userCompanyId = _tenantService.CompanyId;
+            if (!userCompanyId.HasValue && !string.IsNullOrEmpty(_tenantService.UserId))
+            {
+                var me = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == _tenantService.UserId);
+                userCompanyId = me?.CompanyId;
+            }
+            query = query.Where(u => u.CompanyId == userCompanyId);
         }
         else if (companyId.HasValue)
         {
@@ -60,6 +66,7 @@ public class MembersController : ControllerBase
         var now = DateTimeOffset.UtcNow;
         var users = await query
             .Include(u => u.AssignedTasks)
+                .ThenInclude(t => t.Project)
             .Include(u => u.WorkSessions)
             .OrderBy(u => u.FullName)
             .ToListAsync();
@@ -74,6 +81,13 @@ public class MembersController : ControllerBase
                               adminUserIds.Contains(u.Id) ||
                               (u.Email != null && u.Email.Equals("admin@trackerkerja.local", StringComparison.OrdinalIgnoreCase)) ||
                               u.JobTitle.Contains("Admin", StringComparison.OrdinalIgnoreCase);
+
+            var memberProjects = u.AssignedTasks
+                .Where(t => t.Project != null)
+                .Select(t => t.Project!.Name)
+                .Distinct()
+                .OrderBy(p => p)
+                .ToList();
 
             return new MemberListItemDto(
                 u.Id,
@@ -93,7 +107,8 @@ public class MembersController : ControllerBase
                 u.AssignedTasks.Count,
                 u.AssignedTasks.Count(t => t.Status == Domain.Enums.TaskStatus.Done),
                 Math.Round(u.WorkSessions.Where(s => s.EndTime != null).Sum(s => s.Duration) / 3600.0, 1),
-                u.PhoneNumber
+                u.PhoneNumber,
+                memberProjects
             );
         }).ToList();
 

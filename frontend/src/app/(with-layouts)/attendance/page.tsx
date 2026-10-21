@@ -30,6 +30,7 @@ import { Button } from "@/components/tailgrids/core/button";
 import { Input } from "@/components/tailgrids/core/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/tailgrids/core/dialog";
 import { toast } from "sonner";
+import { useCurrentUser } from "@/hooks/use-current-user";
 
 const locationLabels: Record<number, string> = {
   1: "WFO (Kantor)",
@@ -55,9 +56,18 @@ const monthNames = [
 export default function AttendancePage() {
   const queryClient = useQueryClient();
   const currentDate = new Date();
+  const { isAdmin, userId: currentUserId, user: currentUser } = useCurrentUser();
 
   // Tab & Filter states
   const [activeTab, setActiveTab] = useState<"personal" | "reconciliation">("personal");
+
+  // Keep non-admin on personal tab
+  useEffect(() => {
+    if (!isAdmin && activeTab === "reconciliation") {
+      setActiveTab("personal");
+    }
+  }, [isAdmin, activeTab]);
+
   const [selectedMonth, setSelectedMonth] = useState(currentDate.getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(currentDate.getFullYear());
   const [reconcileDate, setReconcileDate] = useState(
@@ -73,6 +83,19 @@ export default function AttendancePage() {
   // Clock In / Out states
   const [workLocation, setWorkLocation] = useState(1);
   const [clockNotes, setClockNotes] = useState("");
+
+  // Helper to open manual entry modal
+  const openManualModal = (targetUser?: string) => {
+    setManualUserId(isAdmin ? (targetUser || "") : (currentUserId || ""));
+    setManualDate(currentDate.toISOString().split("T")[0]);
+    setManualType(1);
+    setManualLoc(1);
+    setManualClockIn("");
+    setManualClockOut("");
+    setManualLeaveReason("");
+    setManualNotes("");
+    setManualModalOpen(true);
+  };
 
   // Leave Modal State
   const [leaveModalOpen, setLeaveModalOpen] = useState(false);
@@ -188,14 +211,14 @@ export default function AttendancePage() {
     enabled: activeTab === "reconciliation" && reconciliationView === "monthly",
   });
 
-  // 6. Team Members (for manual entry)
+  // 6. Team Members (for manual entry - admin only)
   const { data: members = [] } = useQuery<any[]>({
     queryKey: ["membersListForAttendance"],
     queryFn: async () => {
       const res = await apiClient.get("/members");
       return res.data.data;
     },
-    enabled: manualModalOpen,
+    enabled: manualModalOpen && isAdmin,
   });
 
   // Clock In Mutation
@@ -291,12 +314,15 @@ export default function AttendancePage() {
       toast.error(err.response?.data?.message || "Gagal menyimpan rekonsiliasi"),
   });
 
-  // Manual Entry Mutation (Admin)
+  // Manual Entry Mutation (Admin can record for all, Non-Admin records for self)
   const manualEntryMutation = useMutation({
     mutationFn: async () => {
-      if (!manualUserId) throw new Error("Pilih anggota tim terlebih dahulu.");
+      const targetUserId = isAdmin ? manualUserId : (currentUserId || manualUserId);
+      if (!targetUserId) {
+        throw new Error(isAdmin ? "Pilih anggota tim terlebih dahulu." : "Sesi pengguna tidak valid.");
+      }
       const res = await apiClient.post("/attendances/reconciliation/manual-entry", {
-        userId: manualUserId,
+        userId: targetUserId,
         date: manualDate,
         type: manualType,
         workLocation: manualLoc,
@@ -308,13 +334,16 @@ export default function AttendancePage() {
       return res.data;
     },
     onSuccess: () => {
-      toast.success("Presensi manual anggota berhasil disimpan!");
+      toast.success(isAdmin ? "Presensi manual anggota berhasil disimpan!" : "Presensi manual Anda berhasil dicatat!");
       setManualModalOpen(false);
-      setManualUserId("");
+      if (isAdmin) setManualUserId("");
       setManualClockIn("");
       setManualClockOut("");
       setManualLeaveReason("");
       setManualNotes("");
+      queryClient.invalidateQueries({ queryKey: ["attendanceTodayStatus"] });
+      queryClient.invalidateQueries({ queryKey: ["attendanceMyHistory"] });
+      queryClient.invalidateQueries({ queryKey: ["attendanceMySummary"] });
       queryClient.invalidateQueries({ queryKey: ["attendanceReconciliation"] });
       queryClient.invalidateQueries({ queryKey: ["teamMonthlyAttendance"] });
     },
@@ -347,16 +376,18 @@ export default function AttendancePage() {
           >
             Presensi Mandiri
           </button>
-          <button
-            onClick={() => setActiveTab("reconciliation")}
-            className={`rounded-lg px-3.5 py-1.5 text-xs font-semibold transition ${
-              activeTab === "reconciliation"
-                ? "bg-white text-indigo-700 shadow-xs dark:bg-gray-900 dark:text-indigo-400"
-                : "text-gray-500 hover:text-gray-900 dark:text-gray-400"
-            }`}
-          >
-            Rekonsiliasi Tim (Admin)
-          </button>
+          {isAdmin && (
+            <button
+              onClick={() => setActiveTab("reconciliation")}
+              className={`rounded-lg px-3.5 py-1.5 text-xs font-semibold transition ${
+                activeTab === "reconciliation"
+                  ? "bg-white text-indigo-700 shadow-xs dark:bg-gray-900 dark:text-indigo-400"
+                  : "text-gray-500 hover:text-gray-900 dark:text-gray-400"
+              }`}
+            >
+              Rekonsiliasi Tim (Admin)
+            </button>
+          )}
         </div>
       </div>
 
@@ -447,9 +478,19 @@ export default function AttendancePage() {
                       <Palmtree className="h-4 w-4 text-amber-600" />
                       Ajukan Izin / Cuti
                     </Button>
+
+                    <Button
+                      variant="outline"
+                      onClick={() => openManualModal()}
+                      className="gap-1.5 border-indigo-200 text-indigo-700 hover:bg-indigo-50 dark:border-indigo-800 dark:text-indigo-300 dark:hover:bg-indigo-950/40 text-xs"
+                      title="Catat manual jam masuk dan pulang jika berhalangan clock in/out di sistem secara langsung"
+                    >
+                      <Clock className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                      Presensi Manual
+                    </Button>
                   </>
                 ) : !todayStatus?.hasClockedOut && todayStatus?.type === 1 ? (
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <Input
                       placeholder="Catatan/rangkuman pekerjaan hari ini..."
                       value={clockNotes}
@@ -464,9 +505,18 @@ export default function AttendancePage() {
                       <Clock className="h-4 w-4" />
                       Clock Out (Pulang)
                     </Button>
+
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => openManualModal()}
+                      className="gap-1 text-xs text-indigo-600 border-indigo-200 hover:bg-indigo-50 dark:border-indigo-900 dark:text-indigo-400"
+                    >
+                      Presensi Manual
+                    </Button>
                   </div>
                 ) : (
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <span className="rounded-xl bg-emerald-100 px-3.5 py-1.5 text-xs font-bold text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
                       Presensi Tercatat
                     </span>
@@ -477,6 +527,15 @@ export default function AttendancePage() {
                       className="gap-1 text-xs"
                     >
                       Ubah Status Hari Ini
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => openManualModal()}
+                      className="gap-1 text-xs text-indigo-600 border-indigo-200 hover:bg-indigo-50 dark:border-indigo-900 dark:text-indigo-400"
+                    >
+                      <Clock className="h-3.5 w-3.5" />
+                      Catat Presensi Manual
                     </Button>
                   </div>
                 )}
@@ -559,8 +618,17 @@ export default function AttendancePage() {
                 </p>
               </div>
 
-              {/* Month/Year Picker */}
-              <div className="flex items-center gap-2">
+              {/* Month/Year Picker and Manual Entry Action */}
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  size="sm"
+                  onClick={() => openManualModal()}
+                  className="gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-xs"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Presensi Manual
+                </Button>
+
                 <select
                   value={selectedMonth}
                   onChange={(e) => setSelectedMonth(Number(e.target.value))}
@@ -1349,13 +1417,13 @@ export default function AttendancePage() {
         </DialogContent>
       </Dialog>
 
-      {/* Modal 3: Tambah Presensi Manual (Admin) */}
+      {/* Modal 3: Tambah Presensi Manual (Admin / Non-Admin) */}
       <Dialog open={manualModalOpen} onOpenChange={setManualModalOpen}>
         <DialogContent className="max-w-md bg-white p-6 shadow-2xl dark:bg-gray-900 rounded-2xl">
           <DialogHeader>
             <DialogTitle className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
               <Plus className="h-5 w-5 text-indigo-600" />
-              <span>Tambah Presensi Manual Anggota</span>
+              <span>{isAdmin ? "Tambah Presensi Manual Anggota" : "Catat Presensi Manual Mandiri"}</span>
             </DialogTitle>
           </DialogHeader>
 
@@ -1366,24 +1434,45 @@ export default function AttendancePage() {
             }}
             className="mt-4 space-y-3.5"
           >
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
-                Pilih Anggota Tim *
-              </label>
-              <select
-                value={manualUserId}
-                onChange={(e) => setManualUserId(e.target.value)}
-                required
-                className="mt-1 w-full rounded-xl border border-gray-200 bg-transparent p-2 text-xs text-gray-900 outline-none dark:border-gray-800 dark:bg-gray-900 dark:text-white"
-              >
-                <option value="">-- Pilih Anggota Tim --</option>
-                {members.map((m: any) => (
-                  <option key={m.id} value={m.id}>
-                    {m.fullName} ({m.email})
-                  </option>
-                ))}
-              </select>
-            </div>
+            {isAdmin ? (
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
+                  Pilih Anggota Tim *
+                </label>
+                <select
+                  value={manualUserId}
+                  onChange={(e) => setManualUserId(e.target.value)}
+                  required
+                  className="mt-1 w-full rounded-xl border border-gray-200 bg-transparent p-2 text-xs text-gray-900 outline-none dark:border-gray-800 dark:bg-gray-900 dark:text-white"
+                >
+                  <option value="">-- Pilih Anggota Tim --</option>
+                  {members.map((m: any) => (
+                    <option key={m.id} value={m.id}>
+                      {m.fullName} ({m.email})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 p-3 dark:border-indigo-900/40 dark:bg-indigo-950/30">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600 text-xs font-bold text-white shadow-xs">
+                    <User className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <span className="block text-[11px] font-medium text-gray-500 dark:text-gray-400">
+                      Presensi Mandiri untuk:
+                    </span>
+                    <span className="text-xs font-bold text-gray-900 dark:text-white truncate block">
+                      {currentUser?.fullName || "Pengguna"} ({currentUser?.email || ""})
+                    </span>
+                  </div>
+                </div>
+                <p className="mt-1.5 text-[10px] text-gray-400">
+                  * Kebijakan RBAC: Anda mengisi jam masuk dan pulang untuk diri Anda sendiri.
+                </p>
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -1420,18 +1509,31 @@ export default function AttendancePage() {
             {manualType === 1 && (
               <>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
-                    Lokasi Kerja
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                      Lokasi Kerja
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const datePart = manualDate || currentDate.toISOString().split("T")[0];
+                        setManualClockIn(`${datePart}T08:30`);
+                        setManualClockOut(`${datePart}T17:30`);
+                      }}
+                      className="text-[10px] font-semibold text-indigo-600 hover:underline dark:text-indigo-400"
+                    >
+                      ⚡ Isi Jam Standar (08:30 - 17:30)
+                    </button>
+                  </div>
                   <select
                     value={manualLoc}
                     onChange={(e) => setManualLoc(Number(e.target.value))}
-                    className="mt-1 w-full rounded-xl border border-gray-200 bg-transparent p-2 text-xs text-gray-900 outline-none dark:border-gray-800 dark:bg-gray-900 dark:text-white"
+                    className="w-full rounded-xl border border-gray-200 bg-transparent p-2 text-xs text-gray-900 outline-none dark:border-gray-800 dark:bg-gray-900 dark:text-white"
                   >
-                    <option value={1}>WFO (Kantor)</option>
-                    <option value={2}>WFH (Rumah)</option>
-                    <option value={3}>Dinas Lapangan</option>
-                    <option value={4}>Remote</option>
+                    <option value={1}>🏢 WFO (Kantor)</option>
+                    <option value={2}>🏠 WFH (Rumah)</option>
+                    <option value={3}>🚗 Dinas Lapangan</option>
+                    <option value={4}>🌐 Remote</option>
                   </select>
                 </div>
 

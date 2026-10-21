@@ -179,6 +179,125 @@ public class DashboardControllerTests : IDisposable
         Assert.Contains("Syifa", memberNames);
     }
 
+    [Fact]
+    public async Task GetDistribution_NonAdmin_CanViewTeamWorkloadOfSameCompany()
+    {
+        // Arrange
+        var comp1Project = new Project { Id = 201, Name = "Proyek Alpha Corp", Color = "#6366F1", CompanyId = 1 };
+        var comp2Project = new Project { Id = 202, Name = "Proyek Beta Inc", Color = "#EF4444", CompanyId = 2 };
+        _context.Projects.AddRange(comp1Project, comp2Project);
+
+        var memberAlpha = new AppUser
+        {
+            Id = "user-alpha",
+            UserName = "alpha",
+            FullName = "Alpha Member",
+            JobTitle = "Frontend Developer",
+            IsApproved = true,
+            CompanyId = 1
+        };
+
+        var memberBeta = new AppUser
+        {
+            Id = "user-beta",
+            UserName = "beta",
+            FullName = "Beta Teammate",
+            JobTitle = "Backend Developer",
+            IsApproved = true,
+            CompanyId = 1
+        };
+
+        var otherCompUser = new AppUser
+        {
+            Id = "user-gamma",
+            UserName = "gamma",
+            FullName = "Gamma Competitor",
+            JobTitle = "Analyst",
+            IsApproved = true,
+            CompanyId = 2
+        };
+
+        _context.Users.AddRange(memberAlpha, memberBeta, otherCompUser);
+
+        _context.Tasks.AddRange(
+            new WorkTask
+            {
+                Id = 301,
+                Title = "Alpha Task 1",
+                ProjectId = 201,
+                AssignedToUserId = "user-alpha",
+                Status = Domain.Enums.TaskStatus.Done,
+                CompanyId = 1
+            },
+            new WorkTask
+            {
+                Id = 302,
+                Title = "Alpha Task 2",
+                ProjectId = 201,
+                AssignedToUserId = "user-alpha",
+                Status = Domain.Enums.TaskStatus.InProgress,
+                CompanyId = 1
+            },
+            new WorkTask
+            {
+                Id = 303,
+                Title = "Beta Task Teammate",
+                ProjectId = 201,
+                AssignedToUserId = "user-beta",
+                Status = Domain.Enums.TaskStatus.InProgress,
+                CompanyId = 1
+            },
+            new WorkTask
+            {
+                Id = 304,
+                Title = "Gamma Other Company Task",
+                ProjectId = 202,
+                AssignedToUserId = "user-gamma",
+                Status = Domain.Enums.TaskStatus.Done,
+                CompanyId = 2
+            }
+        );
+
+        await _context.SaveChangesAsync();
+
+        // Non-Admin user 'user-alpha' in Company 1
+        var nonAdminTenant = new FakeTenantService(1, "COMP1", "user-alpha", false);
+        var controller = new DashboardController(_context, nonAdminTenant);
+
+        // Act
+        var result = await controller.GetDistribution() as OkObjectResult;
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal(200, result.StatusCode);
+
+        var json = System.Text.Json.JsonSerializer.Serialize(result.Value);
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        var data = doc.RootElement.GetProperty("data");
+
+        // Total company tasks should be 3 (excluding Company 2's task)
+        Assert.Equal(3, data.GetProperty("totalTasks").GetInt32());
+
+        var byMember = data.GetProperty("byMember");
+        var membersList = new List<(string name, int value, int inProgress, int done)>();
+        foreach (var item in byMember.EnumerateArray())
+        {
+            membersList.Add((
+                item.GetProperty("name").GetString()!,
+                item.GetProperty("value").GetInt32(),
+                item.GetProperty("inProgressCount").GetInt32(),
+                item.GetProperty("doneCount").GetInt32()
+            ));
+        }
+
+        // Must see both Alpha and Beta
+        Assert.Contains(membersList, m => m.name == "Alpha Member" && m.value == 2 && m.done == 1 && m.inProgress == 1);
+        Assert.Contains(membersList, m => m.name == "Beta Teammate" && m.value == 1 && m.inProgress == 1);
+
+        // Must NOT see user from Company 2 (multi-tenant boundary maintained)
+        Assert.DoesNotContain(membersList, m => m.name == "Gamma Competitor");
+    }
+
     private class FakeTenantService : TrackerKerja.Application.Common.Interfaces.ICurrentTenantService
     {
         public FakeTenantService(int? companyId, string? companyCode, string? userId, bool isAdmin)

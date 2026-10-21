@@ -41,7 +41,9 @@ public record TaskImportPreviewDto(
     int ValidCount,
     int WarningCount,
     int ErrorCount,
-    List<TaskImportRowDto> Rows
+    List<TaskImportRowDto> Rows,
+    int? DetectedCompanyId = null,
+    string? DetectedCompanyName = null
 );
 
 public record TaskImportCommitRequest(
@@ -53,7 +55,9 @@ public record TaskImportCommitRequest(
     string? DefaultJobTitle = null,
     string? DefaultPassword = null,
     string? EmailDomain = null,
-    bool AutoApproveNewUsers = true
+    bool AutoApproveNewUsers = true,
+    string? CompanyName = null,
+    int? CompanyId = null
 );
 
 public record TaskImportResultDto(

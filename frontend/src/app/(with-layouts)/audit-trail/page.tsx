@@ -31,6 +31,7 @@ import { Input } from "@/components/tailgrids/core/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/tailgrids/core/dialog";
 import { SheetOverlay, SheetContent, SheetTitle } from "@/components/tailgrids/core/sheet";
 import { toast } from "sonner";
+import { AdminGuard } from "@/components/guards/AdminGuard";
 
 export interface AuditLogItem {
   id: number;
@@ -258,7 +259,8 @@ export default function AuditTrailPage() {
   };
 
   return (
-    <div className="space-y-6 p-4 lg:p-8">
+    <AdminGuard>
+      <div className="space-y-6 p-4 lg:p-8">
       {/* 1. Header Page */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
@@ -855,6 +857,7 @@ export default function AuditTrailPage() {
           </div>
         </DialogContent>
       </Dialog>
-    </div>
+      </div>
+    </AdminGuard>
   );
 }

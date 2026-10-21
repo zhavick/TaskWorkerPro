@@ -281,7 +281,27 @@ public class TaskExcelImportService : ITaskExcelImportService
         memoryStream.Position = 0;
         using var workbook = new XLWorkbook(memoryStream);
 
-        if (companyId.HasValue)
+        // Auto-detect or resolve company from workbook metadata
+        string? detectedCompanyName = null;
+        foreach (var ws in workbook.Worksheets)
+        {
+            var detected = DetectCompanyInWorksheet(ws, 15);
+            if (!string.IsNullOrWhiteSpace(detected))
+            {
+                detectedCompanyName = detected;
+                break;
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(detectedCompanyName))
+        {
+            var autoCompany = await ResolveOrCreateCompanyAsync(detectedCompanyName, cancellationToken);
+            if (autoCompany != null)
+            {
+                companyId = autoCompany.Id;
+            }
+        }
+        else if (companyId.HasValue)
         {
             var companyExists = await _context.Companies.AnyAsync(c => c.Id == companyId.Value, cancellationToken);
             if (!companyExists)
@@ -658,7 +678,9 @@ public class TaskExcelImportService : ITaskExcelImportService
             validCount,
             warningCount,
             errorCount,
-            rows
+            rows,
+            companyId,
+            detectedCompanyName
         );
     }
 
@@ -685,6 +707,19 @@ public class TaskExcelImportService : ITaskExcelImportService
         }
 
         await EnsureSchemaSynchronizedAsync(cancellationToken);
+
+        if (!string.IsNullOrWhiteSpace(request.CompanyName) && (!companyId.HasValue || companyId.Value <= 0))
+        {
+            var autoCompany = await ResolveOrCreateCompanyAsync(request.CompanyName, cancellationToken);
+            if (autoCompany != null)
+            {
+                companyId = autoCompany.Id;
+            }
+        }
+        else if (request.CompanyId.HasValue && request.CompanyId.Value > 0 && !companyId.HasValue)
+        {
+            companyId = request.CompanyId.Value;
+        }
 
         if (companyId.HasValue)
         {
@@ -1228,8 +1263,9 @@ public class TaskExcelImportService : ITaskExcelImportService
         CancellationToken cancellationToken = default)
     {
         var preview = await PreviewImportAsync(fileStream, "Upload.xlsx", companyId, cancellationToken);
-        var commitReq = new TaskImportCommitRequest(null, null, null, preview.Rows);
-        var commitRes = await CommitImportAsync(commitReq, companyId, cancellationToken);
+        var resolvedCompanyId = preview.DetectedCompanyId ?? companyId;
+        var commitReq = new TaskImportCommitRequest(null, null, null, preview.Rows, CompanyName: preview.DetectedCompanyName, CompanyId: resolvedCompanyId);
+        var commitRes = await CommitImportAsync(commitReq, resolvedCompanyId, cancellationToken);
 
         return new ExcelImportResultDto(
             commitRes.TotalProcessed,
@@ -2528,5 +2564,75 @@ public class TaskExcelImportService : ITaskExcelImportService
         var hash = Math.Abs(name.GetHashCode());
         return colors[hash % colors.Length];
     }
+
+    public async Task<Company?> ResolveOrCreateCompanyAsync(string? companyNameOrCode, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(companyNameOrCode)) return null;
+
+        var clean = companyNameOrCode.Trim();
+        var company = await _context.Companies.FirstOrDefaultAsync(c =>
+            c.Name.ToLower() == clean.ToLower() ||
+            c.Code.ToUpper() == clean.ToUpper(),
+            cancellationToken);
+
+        if (company == null)
+        {
+            var code = new string(clean.Split(' ').Select(w => w.FirstOrDefault()).Where(char.IsLetterOrDigit).Take(4).ToArray()).ToUpperInvariant();
+            if (string.IsNullOrWhiteSpace(code) || code.Length < 2)
+            {
+                code = (clean.Length >= 4 ? clean[..4] : clean).ToUpperInvariant();
+            }
+
+            var baseCode = code;
+            int counter = 1;
+            while (await _context.Companies.AnyAsync(c => c.Code == code, cancellationToken))
+            {
+                code = $"{baseCode}{counter++}";
+            }
+
+            company = new Company
+            {
+                Name = clean,
+                Code = code,
+                Description = $"Perusahaan terdaftar otomatis via impor data ({clean})",
+                CreatedAt = DateTimeOffset.UtcNow
+            };
+            _context.Companies.Add(company);
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+
+        return company;
+    }
+
+    private static string? DetectCompanyInWorksheet(IXLWorksheet ws, int headerRowNum)
+    {
+        for (int r = 1; r < headerRowNum; r++)
+        {
+            var row = ws.Row(r);
+            var maxCol = Math.Min(ws.LastColumnUsed()?.ColumnNumber() ?? 1, 10);
+            for (int c = 1; c <= maxCol; c++)
+            {
+                var val = row.Cell(c).GetString().Trim();
+                if (string.IsNullOrWhiteSpace(val)) continue;
+
+                if (val.StartsWith("Perusahaan", StringComparison.OrdinalIgnoreCase) ||
+                    val.StartsWith("Company", StringComparison.OrdinalIgnoreCase) ||
+                    val.StartsWith("Tenant", StringComparison.OrdinalIgnoreCase))
+                {
+                    var parts = val.Split(new[] { ':', '=' }, 2);
+                    if (parts.Length > 1 && !string.IsNullOrWhiteSpace(parts[1]))
+                    {
+                        return parts[1].Trim();
+                    }
+                }
+                else if (val.StartsWith("PT ", StringComparison.OrdinalIgnoreCase) || val.StartsWith("CV ", StringComparison.OrdinalIgnoreCase))
+                {
+                    return val;
+                }
+            }
+        }
+        return null;
+    }
 }
+
 

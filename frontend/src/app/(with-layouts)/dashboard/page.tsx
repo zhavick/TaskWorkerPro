@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "@/services/api/client";
 import {
@@ -294,6 +294,16 @@ export default function DashboardPage() {
   const safePieData = hasPieData
     ? currentPieData.filter((d: any) => d.value > 0)
     : [{ name: "Belum Ada Data", value: 1, color: "#94A3B8" }];
+
+  const doughnutTotalTasks = useMemo(() => {
+    if (distributionData?.totalTasks !== undefined && distributionData?.totalTasks !== null) {
+      return distributionData.totalTasks;
+    }
+    if (hasPieData) {
+      return currentPieData.reduce((acc: number, d: any) => acc + (d.value || 0), 0);
+    }
+    return taskStats.total;
+  }, [distributionData?.totalTasks, hasPieData, currentPieData, taskStats.total]);
 
   return (
     <div className="space-y-6 px-2 py-4 lg:px-6">
@@ -716,9 +726,11 @@ export default function DashboardPage() {
               {/* Center Text in Doughnut */}
               <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
                 <span className="text-2xl font-black text-text-primary">
-                  {taskStats.total}
+                  {doughnutTotalTasks}
                 </span>
-                <span className="text-[11px] font-semibold text-text-secondary">Total Tugas</span>
+                <span className="text-[11px] font-semibold text-text-secondary">
+                  {activeDistributionTab === "member" ? "Tugas Tim" : "Total Tugas"}
+                </span>
               </div>
             </div>
 

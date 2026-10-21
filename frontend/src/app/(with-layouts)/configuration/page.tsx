@@ -46,6 +46,8 @@ import {
   Megaphone,
   ExternalLink,
   Shuffle,
+  Building2,
+  Search,
 } from "lucide-react";
 import { Button } from "@/components/tailgrids/core/button";
 import { Input } from "@/components/tailgrids/core/input";
@@ -57,6 +59,7 @@ import {
   DialogBody,
 } from "@/components/tailgrids/core/dialog";
 import { toast } from "sonner";
+import { AdminGuard } from "@/components/guards/AdminGuard";
 
 const COLOR_PRESETS = [
   "#6366F1", // Indigo
@@ -121,12 +124,25 @@ export default function ConfigurationPage() {
 
   // Subtab for Master Data
   const [masterSubTab, setMasterSubTab] = useState<
-    "priorities" | "statuses" | "milestones" | "categories"
-  >("priorities");
+    "companies" | "priorities" | "statuses" | "milestones" | "categories"
+  >("companies");
 
   // ==========================================
   // MASTER DATA MODAL STATES
   // ==========================================
+  // Company Modal
+  const [companyModalOpen, setCompanyModalOpen] = useState(false);
+  const [companyFormMode, setCompanyFormMode] = useState<"create" | "edit">("create");
+  const [editingCompanyId, setEditingCompanyId] = useState<number | null>(null);
+  const [companySearch, setCompanySearch] = useState("");
+  const [companyForm, setCompanyForm] = useState({
+    name: "",
+    code: "",
+    description: "",
+    address: "",
+    contactEmail: "",
+  });
+
   // Priority Modal
   const [priorityModalOpen, setPriorityModalOpen] = useState(false);
   const [priorityFormMode, setPriorityFormMode] = useState<"create" | "edit">("create");
@@ -180,7 +196,7 @@ export default function ConfigurationPage() {
   // Delete Confirm Modal
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<{
-    type: "priority" | "status" | "milestone" | "category";
+    type: "priority" | "status" | "milestone" | "category" | "company";
     id: number;
     name: string;
     isDefault?: boolean;
@@ -223,6 +239,15 @@ export default function ConfigurationPage() {
   });
 
   // Master Data Queries
+  const { data: companies = [], isLoading: loadingCompanies, refetch: refetchCompanies } = useQuery<any[]>({
+    queryKey: ["masterCompanies"],
+    queryFn: async () => {
+      const res = await apiClient.get("/companies");
+      return res.data?.data || [];
+    },
+    enabled: activeTab === "master",
+  });
+
   const { data: priorities = [], isLoading: loadingPriorities } = useQuery<any[]>({
     queryKey: ["masterPriorities"],
     queryFn: async () => {
@@ -516,6 +541,44 @@ export default function ConfigurationPage() {
   // ==========================================
   // MUTATIONS - MASTER DATA
   // ==========================================
+  // Company
+  const saveCompanyMutation = useMutation({
+    mutationFn: async () => {
+      if (companyFormMode === "create") {
+        const res = await apiClient.post("/companies", companyForm);
+        return res.data;
+      } else {
+        const res = await apiClient.put(`/companies/${editingCompanyId}`, companyForm);
+        return res.data;
+      }
+    },
+    onSuccess: () => {
+      toast.success(
+        companyFormMode === "create"
+          ? "Perusahaan baru berhasil ditambahkan!"
+          : "Data perusahaan berhasil diperbarui!"
+      );
+      queryClient.invalidateQueries({ queryKey: ["masterCompanies"] });
+      setCompanyModalOpen(false);
+    },
+    onError: (err: any) =>
+      toast.error(err.response?.data?.message || "Gagal memproses data perusahaan"),
+  });
+
+  const deleteCompanyMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiClient.delete(`/companies/${id}`);
+      return res.data;
+    },
+    onSuccess: () => {
+      toast.success("Perusahaan berhasil dihapus!");
+      queryClient.invalidateQueries({ queryKey: ["masterCompanies"] });
+      setDeleteModalOpen(false);
+    },
+    onError: (err: any) =>
+      toast.error(err.response?.data?.message || "Gagal menghapus perusahaan"),
+  });
+
   // Priority
   const savePriorityMutation = useMutation({
     mutationFn: async () => {
@@ -717,6 +780,32 @@ export default function ConfigurationPage() {
   };
 
   // Open Edit Modals Helpers
+  const handleOpenEditCompany = (item: any) => {
+    setCompanyFormMode("edit");
+    setEditingCompanyId(item.id);
+    setCompanyForm({
+      name: item.name || "",
+      code: item.code || "",
+      description: item.description || "",
+      address: item.address || "",
+      contactEmail: item.contactEmail || "",
+    });
+    setCompanyModalOpen(true);
+  };
+
+  const handleOpenCreateCompany = () => {
+    setCompanyFormMode("create");
+    setEditingCompanyId(null);
+    setCompanyForm({
+      name: "",
+      code: "",
+      description: "",
+      address: "",
+      contactEmail: "",
+    });
+    setCompanyModalOpen(true);
+  };
+
   const handleOpenEditPriority = (item: any) => {
     setPriorityFormMode("edit");
     setEditingPriorityId(item.id);
@@ -827,6 +916,7 @@ export default function ConfigurationPage() {
 
   const executeDelete = () => {
     if (!itemToDelete) return;
+    if (itemToDelete.type === "company") deleteCompanyMutation.mutate(itemToDelete.id);
     if (itemToDelete.type === "priority") deletePriorityMutation.mutate(itemToDelete.id);
     if (itemToDelete.type === "status") deleteStatusMutation.mutate(itemToDelete.id);
     if (itemToDelete.type === "milestone") deleteMilestoneMutation.mutate(itemToDelete.id);
@@ -834,7 +924,8 @@ export default function ConfigurationPage() {
   };
 
   return (
-    <div className="space-y-6 px-2 py-4 lg:px-6">
+    <AdminGuard>
+      <div className="space-y-6 px-2 py-4 lg:px-6">
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
@@ -1209,7 +1300,33 @@ export default function ConfigurationPage() {
       {activeTab === "master" && (
         <div className="space-y-6">
           {/* Sub Navigation Cards */}
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            <button
+              type="button"
+              onClick={() => setMasterSubTab("companies")}
+              className={`flex items-center gap-3 rounded-2xl border p-4 text-left transition ${
+                masterSubTab === "companies"
+                  ? "border-indigo-600 bg-indigo-50/70 shadow-xs dark:border-indigo-500 dark:bg-indigo-950/30"
+                  : "border-gray-200 bg-white hover:border-gray-300 dark:border-gray-800 dark:bg-gray-900"
+              }`}
+            >
+              <div
+                className={`flex h-10 w-10 items-center justify-center rounded-xl ${
+                  masterSubTab === "companies"
+                    ? "bg-indigo-600 text-white"
+                    : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300"
+                }`}
+              >
+                <Building2 className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="text-xs font-bold text-gray-900 dark:text-white">
+                  Perusahaan
+                </h3>
+                <p className="text-[11px] text-gray-500">{companies.length} Entitas Bisnis</p>
+              </div>
+            </button>
+
             <button
               type="button"
               onClick={() => setMasterSubTab("priorities")}
@@ -1310,6 +1427,148 @@ export default function ConfigurationPage() {
               </div>
             </button>
           </div>
+
+          {/* ======================================================== */}
+          {/* SUBTAB 0: PERUSAHAAN / TENANT */}
+          {/* ======================================================== */}
+          {masterSubTab === "companies" && (
+            <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-xs dark:border-gray-800 dark:bg-gray-900">
+              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h2 className="text-base font-bold text-gray-900 dark:text-white">
+                    Master Data Perusahaan &amp; Tenant
+                  </h2>
+                  <p className="text-xs text-gray-500">
+                    Entitas bisnis korporat yang digunakan untuk binding akun staf, isolasi data operasional, dan otomatisasi impor berkas.
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="relative min-w-[200px]">
+                    <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
+                    <Input
+                      value={companySearch}
+                      onChange={(e) => setCompanySearch(e.target.value)}
+                      placeholder="Cari perusahaan / kode..."
+                      className="h-8 pl-8 text-xs"
+                    />
+                  </div>
+                  <Button
+                    onClick={handleOpenCreateCompany}
+                    size="sm"
+                    className="gap-2 bg-indigo-600 text-white hover:bg-indigo-700"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Tambah Perusahaan
+                  </Button>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="border-b border-gray-100 bg-gray-50/50 dark:border-gray-800 dark:bg-gray-800/30">
+                    <tr>
+                      <th className="px-4 py-3 font-bold text-gray-600 dark:text-gray-300">Nama Perusahaan</th>
+                      <th className="px-4 py-3 font-bold text-gray-600 dark:text-gray-300">Kode</th>
+                      <th className="px-4 py-3 font-bold text-gray-600 dark:text-gray-300">Kontak &amp; Alamat</th>
+                      <th className="px-4 py-3 font-bold text-gray-600 dark:text-gray-300">Total Staf</th>
+                      <th className="px-4 py-3 font-bold text-gray-600 dark:text-gray-300">Total Proyek</th>
+                      <th className="px-4 py-3 font-bold text-gray-600 dark:text-gray-300">Terdaftar</th>
+                      <th className="px-4 py-3 text-right font-bold text-gray-600 dark:text-gray-300">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                    {companies
+                      .filter((c: any) => {
+                        if (!companySearch.trim()) return true;
+                        const s = companySearch.toLowerCase();
+                        return (
+                          c.name?.toLowerCase().includes(s) ||
+                          c.code?.toLowerCase().includes(s) ||
+                          c.contactEmail?.toLowerCase().includes(s)
+                        );
+                      })
+                      .map((item: any) => (
+                        <tr key={item.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/30">
+                          <td className="px-4 py-3 font-semibold text-gray-900 dark:text-white">
+                            <div className="flex items-center gap-2">
+                              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-50 font-bold text-indigo-600 dark:bg-indigo-950 dark:text-indigo-400">
+                                <Building2 className="h-4 w-4" />
+                              </div>
+                              <div>
+                                <span>{item.name}</span>
+                                {item.description && (
+                                  <p className="text-[11px] font-normal text-gray-400">{item.description}</p>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className="inline-flex rounded-md bg-indigo-50 px-2 py-0.5 font-mono text-[11px] font-bold text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300">
+                              {item.code || "-"}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-gray-500">
+                            <div>{item.contactEmail || "-"}</div>
+                            {item.address && (
+                              <div className="text-[11px] text-gray-400 truncate max-w-xs">{item.address}</div>
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className="inline-flex items-center gap-1 rounded bg-blue-50 px-2 py-0.5 text-[11px] font-bold text-blue-700 dark:bg-blue-950/50 dark:text-blue-300">
+                              <Users className="h-3 w-3" />
+                              {item.userCount ?? 0} Staf
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className="inline-flex items-center gap-1 rounded bg-purple-50 px-2 py-0.5 text-[11px] font-bold text-purple-700 dark:bg-purple-950/50 dark:text-purple-300">
+                              <Briefcase className="h-3 w-3" />
+                              {item.projectCount ?? 0} Proyek
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-gray-400">
+                            {item.createdAt ? new Date(item.createdAt).toLocaleDateString("id-ID") : "-"}
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleOpenEditCompany(item)}
+                                className="h-7 w-7 p-0"
+                              >
+                                <Pencil className="h-3.5 w-3.5 text-gray-600 dark:text-gray-300" />
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setItemToDelete({
+                                    type: "company",
+                                    id: item.id,
+                                    name: item.name,
+                                  });
+                                  setDeleteModalOpen(true);
+                                }}
+                                className="h-7 w-7 border-red-200 p-0 hover:bg-red-50 dark:border-red-900 dark:hover:bg-red-950/30"
+                              >
+                                <Trash2 className="h-3.5 w-3.5 text-red-500" />
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    {companies.length === 0 && (
+                      <tr>
+                        <td colSpan={7} className="py-8 text-center text-gray-400">
+                          {loadingCompanies ? "Memuat data perusahaan..." : "Belum ada master data perusahaan."}
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
 
           {/* ======================================================== */}
           {/* SUBTAB 1: PRIORITAS */}
@@ -2695,6 +2954,94 @@ export default function ConfigurationPage() {
       )}
 
       {/* ======================================================== */}
+      {/* DIALOG 0: MODAL TAMBAH / EDIT PERUSAHAAN */}
+      {/* ======================================================== */}
+      <Dialog isOpen={companyModalOpen} onOpenChange={setCompanyModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {companyFormMode === "create" ? "Tambah Perusahaan Baru" : "Edit Data Perusahaan"}
+            </DialogTitle>
+          </DialogHeader>
+          <DialogBody className="space-y-4">
+            <div>
+              <label className="mb-1 block text-xs font-bold text-gray-700 dark:text-gray-300">
+                Nama Perusahaan *
+              </label>
+              <Input
+                value={companyForm.name}
+                onChange={(e) => setCompanyForm({ ...companyForm, name: e.target.value })}
+                placeholder="misal: PT Wahana Digital Pratama"
+              />
+            </div>
+
+            <div>
+              <label className="mb-1 block text-xs font-bold text-gray-700 dark:text-gray-300">
+                Kode Singkat / Identifier
+              </label>
+              <Input
+                value={companyForm.code}
+                onChange={(e) => setCompanyForm({ ...companyForm, code: e.target.value.toUpperCase() })}
+                placeholder="misal: WDP"
+                className="font-mono text-xs uppercase"
+              />
+              <p className="mt-1 text-[11px] text-gray-400">
+                Digunakan untuk kode registrasi staf, subdomain, dan identifikasi berkas.
+              </p>
+            </div>
+
+            <div>
+              <label className="mb-1 block text-xs font-bold text-gray-700 dark:text-gray-300">
+                Email Kontak Perusahaan
+              </label>
+              <Input
+                type="email"
+                value={companyForm.contactEmail}
+                onChange={(e) => setCompanyForm({ ...companyForm, contactEmail: e.target.value })}
+                placeholder="info@perusahaan.co.id"
+              />
+            </div>
+
+            <div>
+              <label className="mb-1 block text-xs font-bold text-gray-700 dark:text-gray-300">
+                Alamat Kantor
+              </label>
+              <Input
+                value={companyForm.address}
+                onChange={(e) => setCompanyForm({ ...companyForm, address: e.target.value })}
+                placeholder="misal: Jl. Gatot Subroto Kav. 18, Jakarta"
+              />
+            </div>
+
+            <div>
+              <label className="mb-1 block text-xs font-bold text-gray-700 dark:text-gray-300">
+                Deskripsi / Catatan Perusahaan
+              </label>
+              <Input
+                value={companyForm.description}
+                onChange={(e) => setCompanyForm({ ...companyForm, description: e.target.value })}
+                placeholder="Profil singkat atau divisi induk"
+              />
+            </div>
+
+            <div className="mt-4 flex justify-end gap-2 pt-2">
+              <Button variant="outline" size="sm" onClick={() => setCompanyModalOpen(false)}>
+                Batal
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => saveCompanyMutation.mutate()}
+                disabled={saveCompanyMutation.isPending || !companyForm.name.trim()}
+                className="bg-indigo-600 text-white hover:bg-indigo-700"
+              >
+                {saveCompanyMutation.isPending ? "Menyimpan..." : "Simpan Perusahaan"}
+              </Button>
+            </div>
+          </DialogBody>
+        </DialogContent>
+      </Dialog>
+
+      {/* ======================================================== */}
       {/* DIALOG 1: MODAL TAMBAH / EDIT PRIORITAS */}
       {/* ======================================================== */}
       <Dialog isOpen={priorityModalOpen} onOpenChange={setPriorityModalOpen}>
@@ -3314,6 +3661,7 @@ export default function ConfigurationPage() {
           </DialogBody>
         </DialogContent>
       </Dialog>
-    </div>
+      </div>
+    </AdminGuard>
   );
 }

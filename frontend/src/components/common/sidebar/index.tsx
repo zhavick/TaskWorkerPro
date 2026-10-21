@@ -13,6 +13,7 @@ import { NAV_DATA } from './data';
 import { CloseIcon, SidebarExpandedIcon, ThreeDots } from './icon';
 import NavItem from './nav-item';
 import { findActiveGroupKey } from './utils';
+import { useCurrentUser } from '@/hooks/use-current-user';
 
 export default function Sidebar({
     isSidebarOpen,
@@ -28,6 +29,15 @@ export default function Sidebar({
     const pathname = usePathname();
     const { theme } = useTheme();
     const { appName } = useAppSettings();
+    const { isAdmin } = useCurrentUser();
+
+    // Filter navigation sections & items based on RBAC role (Admin vs Regular Member)
+    const filteredNavData = useMemo(() => {
+        return NAV_DATA.map((section) => ({
+            ...section,
+            items: section.items.filter((item: any) => !item.adminOnly || isAdmin),
+        })).filter((section) => section.items.length > 0);
+    }, [isAdmin]);
 
     // Compute which group should be open based on the current route
     const activeGroupKey = useMemo(
@@ -90,7 +100,7 @@ export default function Sidebar({
                     expandedKeys={expandedKeys}
                     onExpandedChange={setExpandedKeys}
                 >
-                    {NAV_DATA.map((section) => (
+                    {filteredNavData.map((section) => (
                         <div key={section.label}>
                             {/* Expanded: show section label | Collapsed: show divider between sections */}
                             {isSidebarOpen ? (

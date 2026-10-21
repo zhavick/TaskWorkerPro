@@ -1358,6 +1358,106 @@ public class TaskExcelImportServiceTests
         Assert.Equal("Haviz Indra", repairedUser.FullName); // Repaired!
         Assert.Equal("haviz.indra@elistec.com", repairedUser.Email);
     }
+
+    [Fact]
+    public async Task PreviewImportAsync_DetectsCompanyInWorksheet_AndAutoResolvesCompany()
+    {
+        using var context = CreateInMemoryContext();
+        var service = new TaskExcelImportService(context);
+
+        using var wb = new XLWorkbook();
+        var ws = wb.Worksheets.Add("Tasks");
+        ws.Cell(1, 1).Value = "Perusahaan: PT Sinergi Informatika Nusantara";
+        ws.Cell(2, 1).Value = "No.";
+        ws.Cell(2, 2).Value = "project_name";
+        ws.Cell(2, 3).Value = "pic";
+        ws.Cell(2, 4).Value = "title";
+
+        ws.Cell(3, 1).Value = 1;
+        ws.Cell(3, 2).Value = "Proyek Cloud Migration";
+        ws.Cell(3, 3).Value = "Rudi Hartono";
+        ws.Cell(3, 4).Value = "Migrasi Database ke Cloud";
+
+        using var ms = new MemoryStream();
+        wb.SaveAs(ms);
+        ms.Position = 0;
+
+        var preview = await service.PreviewImportAsync(ms, "MigrasiCloud.xlsx", companyId: null);
+
+        Assert.NotNull(preview);
+        Assert.Equal("PT Sinergi Informatika Nusantara", preview.DetectedCompanyName);
+        Assert.NotNull(preview.DetectedCompanyId);
+        Assert.True(preview.DetectedCompanyId > 0);
+
+        var createdCompany = await context.Companies.FirstOrDefaultAsync(c => c.Name == "PT Sinergi Informatika Nusantara");
+        Assert.NotNull(createdCompany);
+        Assert.Equal(preview.DetectedCompanyId, createdCompany.Id);
+    }
+
+    [Fact]
+    public async Task CommitImportAsync_WithAutoCompanyResolution_BindsUsersProjectsAndTasks()
+    {
+        using var context = CreateInMemoryContext();
+        var service = new TaskExcelImportService(context);
+
+        var row = new TaskImportRowDto(
+            RowIndex: 1,
+            TaskCode: null,
+            ParentTaskCode: null,
+            Title: "Setup Microservice Architecture",
+            Description: "Deskripsi arsitektur",
+            ProjectName: "Digital Core Platform",
+            MatchedProjectId: null,
+            PicIdentifier: "Aris Munandar",
+            MatchedUserId: null,
+            MatchedUserName: "Aris Munandar",
+            Priority: TaskPriority.High,
+            Status: TrackerKerja.Domain.Enums.TaskStatus.Todo,
+            Progress: 0,
+            StartDate: null,
+            DueDate: null,
+            Milestone: null,
+            Obstacle: null,
+            Solution: null,
+            ValidationStatus: TaskImportValidationStatus.Valid,
+            ValidationMessages: new List<string>(),
+            PicEmail: "aris.munandar@sinergi.co.id"
+        );
+
+        var commitReq = new TaskImportCommitRequest(
+            DefaultProjectId: null,
+            BulkAssignUserId: null,
+            SelectedRowIndexes: null,
+            Rows: [row],
+            AutoCreateMissingUsers: true,
+            CompanyName: "PT Sinergi Jaya Abadi"
+        );
+
+        var result = await service.CommitImportAsync(commitReq, companyId: null);
+
+        Assert.Equal(1, result.TotalImported);
+
+        // Verify Company was auto-created
+        var company = await context.Companies.FirstOrDefaultAsync(c => c.Name == "PT Sinergi Jaya Abadi");
+        Assert.NotNull(company);
+
+        // Verify Project is bound to this Company
+        var project = await context.Projects.FirstOrDefaultAsync(p => p.Name == "Digital Core Platform");
+        Assert.NotNull(project);
+        Assert.Equal(company.Id, project.CompanyId);
+
+        // Verify User is created and bound to this Company
+        var user = await context.Users.FirstOrDefaultAsync(u => u.Email == "aris.munandar@sinergi.co.id");
+        Assert.NotNull(user);
+        Assert.Equal(company.Id, user.CompanyId);
+
+        // Verify Task is bound to this Company
+        var task = await context.Tasks.FirstOrDefaultAsync(t => t.Title == "Setup Microservice Architecture");
+        Assert.NotNull(task);
+        Assert.Equal(company.Id, task.CompanyId);
+        Assert.Equal(project.Id, task.ProjectId);
+        Assert.Equal(user.Id, task.AssignedToUserId);
+    }
 }
 
 

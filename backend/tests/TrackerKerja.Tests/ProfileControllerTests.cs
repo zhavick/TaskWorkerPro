@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using TrackerKerja.Application.Common.Interfaces;
@@ -119,6 +120,91 @@ public class ProfileControllerTests : IDisposable
         Assert.Equal("+628999888777", updatedUser.PhoneNumber);
         Assert.Equal("/images/avatars/new-avatar.png", updatedUser.ProfilePictureUrl);
         Assert.Equal("/images/covers/nebula.jpg", updatedUser.CoverPictureUrl);
+    }
+
+    [Fact]
+    public async Task UpdateProfile_WhenPicturesAreNull_PreservesExistingPictures()
+    {
+        // Arrange
+        var request = new UpdateProfileRequest(
+            FullName: "Ahmad Maulana Updated",
+            JobTitle: "Lead Fullstack Architect",
+            AvatarColor: "#10B981",
+            PhoneNumber: "+628999888777",
+            ProfilePictureUrl: null, // should NOT wipe existing picture
+            CoverPictureUrl: null    // should NOT wipe existing cover
+        );
+
+        // Act
+        var result = await _controller.UpdateProfile(request);
+
+        // Assert
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        var updatedUser = await _context.Users.FindAsync("test-user-id");
+        Assert.NotNull(updatedUser);
+        Assert.Equal("Ahmad Maulana Updated", updatedUser.FullName);
+        Assert.Equal("/images/avatars/avatar1.png", updatedUser.ProfilePictureUrl);
+        Assert.Equal("/images/covers/cover1.jpg", updatedUser.CoverPictureUrl);
+    }
+
+    [Fact]
+    public async Task UploadAvatar_SavesIntoUserSpecificDirectory_AndUpdatesProfilePictureUrl()
+    {
+        // Arrange
+        var bytes = new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A };
+        using var stream = new MemoryStream(bytes);
+        var formFile = new FormFile(stream, 0, bytes.Length, "file", "photo.png")
+        {
+            Headers = new HeaderDictionary(),
+            ContentType = "image/png"
+        };
+
+        // Act
+        var result = await _controller.UploadAvatar(formFile);
+
+        // Assert
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        var json = ToJsonElement(okResult.Value);
+        Assert.True(json.GetProperty("success").GetBoolean());
+
+        var url = json.GetProperty("url").GetString();
+        Assert.NotNull(url);
+        Assert.Contains("/uploads/users/", url);
+        Assert.Contains("/avatar/", url);
+
+        var updatedUser = await _context.Users.FindAsync("test-user-id");
+        Assert.NotNull(updatedUser);
+        Assert.Equal(url, updatedUser.ProfilePictureUrl);
+    }
+
+    [Fact]
+    public async Task UploadCover_SavesIntoUserSpecificDirectory_AndUpdatesCoverPictureUrl()
+    {
+        // Arrange
+        var bytes = new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A };
+        using var stream = new MemoryStream(bytes);
+        var formFile = new FormFile(stream, 0, bytes.Length, "file", "banner.webp")
+        {
+            Headers = new HeaderDictionary(),
+            ContentType = "image/webp"
+        };
+
+        // Act
+        var result = await _controller.UploadCover(formFile);
+
+        // Assert
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        var json = ToJsonElement(okResult.Value);
+        Assert.True(json.GetProperty("success").GetBoolean());
+
+        var url = json.GetProperty("url").GetString();
+        Assert.NotNull(url);
+        Assert.Contains("/uploads/users/", url);
+        Assert.Contains("/cover/", url);
+
+        var updatedUser = await _context.Users.FindAsync("test-user-id");
+        Assert.NotNull(updatedUser);
+        Assert.Equal(url, updatedUser.CoverPictureUrl);
     }
 
     [Fact]

@@ -160,8 +160,12 @@ public record AuditLogSummaryDto(
 );
 
 public record JsonFormatRequest(
-    string JsonString,
-    string? Name,
-    int? TaskId
-);
+    string? JsonString = null,
+    string? Name = null,
+    int? TaskId = null,
+    string? RawJson = null
+)
+{
+    public string ResolvedJson => !string.IsNullOrEmpty(JsonString) ? JsonString : (RawJson ?? string.Empty);
+}
 

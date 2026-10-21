@@ -230,6 +230,40 @@ public class AttendancesControllerTests : IDisposable
         Assert.Equal(8.5, updated.TotalHours);
     }
 
+    [Fact]
+    public async Task CreateManualEntry_NonAdmin_EnforcesSelfOnly()
+    {
+        // Setup controller as non-admin regular user "user-1"
+        var nonAdminTenant = new FakeTenantService(1, "TEST", "user-1", false);
+        var nonAdminController = new AttendancesController(_context, nonAdminTenant);
+
+        var targetDate = new DateOnly(2026, 11, 5);
+
+        // Even if non-admin submits "user-2" in request body, it MUST be forced to "user-1"
+        var manualRes = await nonAdminController.CreateManualEntry(new ManualAttendanceEntryRequest(
+            "user-2",
+            targetDate,
+            AttendanceType.Present,
+            WorkLocation.WFO,
+            new DateTimeOffset(2026, 11, 5, 8, 30, 0, TimeSpan.Zero),
+            new DateTimeOffset(2026, 11, 5, 17, 30, 0, TimeSpan.Zero),
+            null,
+            "Non-admin manual entry"
+        ));
+
+        var okManual = Assert.IsType<OkObjectResult>(manualRes);
+        var json = ToJsonElement(okManual.Value);
+        Assert.True(json.GetProperty("success").GetBoolean());
+
+        // Verify that record was created for "user-1" (self), NOT "user-2"
+        var recordUser1 = await _context.Attendances.FirstOrDefaultAsync(a => a.UserId == "user-1" && a.Date == targetDate);
+        Assert.NotNull(recordUser1);
+        Assert.Equal(9.0, recordUser1.TotalHours);
+
+        var recordUser2 = await _context.Attendances.FirstOrDefaultAsync(a => a.UserId == "user-2" && a.Date == targetDate);
+        Assert.Null(recordUser2);
+    }
+
     private class FakeTenantService : ICurrentTenantService
     {
         public FakeTenantService(int? companyId, string? companyCode, string? userId, bool isAdmin)

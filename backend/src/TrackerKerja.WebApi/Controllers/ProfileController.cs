@@ -38,6 +38,16 @@ public class ProfileController : ControllerBase
 
         if (user == null) return NotFound(new { success = false, message = "Profil tidak ditemukan." });
 
+        var isUserRoleAdmin = await _context.UserRoles.AnyAsync(ur => ur.UserId == user.Id && (ur.RoleId == "r-admin" || _context.Roles.Any(r => r.Id == ur.RoleId && r.Name == "Administrator")));
+        var isAdmin = _tenantService.IsAdmin
+            || user.Id == "usr-superadmin"
+            || isUserRoleAdmin
+            || user.Email?.Equals("admin@trackerkerja.local", StringComparison.OrdinalIgnoreCase) == true
+            || user.JobTitle.Contains("Admin", StringComparison.OrdinalIgnoreCase)
+            || user.JobTitle.Contains("Architect", StringComparison.OrdinalIgnoreCase);
+
+        var roles = new List<string> { isAdmin ? "Administrator" : "Member" };
+
         var profile = new UserProfileDto(
             user.Id,
             user.FullName,
@@ -50,7 +60,7 @@ public class ProfileController : ControllerBase
             user.Company?.Name,
             user.Company?.Code,
             user.IsApproved,
-            new List<string> { user.JobTitle.Contains("Admin") ? "Administrator" : "Member" },
+            roles,
             user.PhoneNumber,
             user.CreatedAt
         );
@@ -74,8 +84,19 @@ public class ProfileController : ControllerBase
             user.AvatarColor = request.AvatarColor;
         }
         user.PhoneNumber = string.IsNullOrWhiteSpace(request.PhoneNumber) ? null : request.PhoneNumber.Trim();
-        user.ProfilePictureUrl = string.IsNullOrWhiteSpace(request.ProfilePictureUrl) ? null : request.ProfilePictureUrl.Trim();
-        user.CoverPictureUrl = string.IsNullOrWhiteSpace(request.CoverPictureUrl) ? null : request.CoverPictureUrl.Trim();
+
+        // Update avatar if explicitly provided (allow explicit clearing with empty string)
+        if (request.ProfilePictureUrl != null)
+        {
+            user.ProfilePictureUrl = string.IsNullOrWhiteSpace(request.ProfilePictureUrl) ? null : request.ProfilePictureUrl.Trim();
+        }
+
+        // Update cover if explicitly provided (allow explicit clearing with empty string)
+        if (request.CoverPictureUrl != null)
+        {
+            user.CoverPictureUrl = string.IsNullOrWhiteSpace(request.CoverPictureUrl) ? null : request.CoverPictureUrl.Trim();
+        }
+
         user.ConcurrencyStamp = Guid.NewGuid().ToString();
 
         await _context.SaveChangesAsync();
@@ -132,11 +153,12 @@ public class ProfileController : ControllerBase
         var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == userId);
         if (user == null) return NotFound();
 
-        var fileName = $"{userId}_{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}{ext}";
+        var safeUserName = SanitizeUserNameForFolder(user.UserName ?? user.Email ?? user.Id);
+        var fileName = $"{safeUserName}_avatar_{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}{ext}";
 
-        // 1. Simpan di backend wwwroot/uploads/avatars
+        // 1. Simpan di backend wwwroot/uploads/users/{safeUserName}/avatar/
         var rootPath = _environment?.WebRootPath ?? Path.Combine(_environment?.ContentRootPath ?? Directory.GetCurrentDirectory(), "wwwroot");
-        var avatarsDir = Path.Combine(rootPath, "uploads", "avatars");
+        var avatarsDir = Path.Combine(rootPath, "uploads", "users", safeUserName, "avatar");
         Directory.CreateDirectory(avatarsDir);
         var filePath = Path.Combine(avatarsDir, fileName);
 
@@ -145,13 +167,13 @@ public class ProfileController : ControllerBase
             await file.CopyToAsync(stream);
         }
 
-        // 2. Simpan juga di folder frontend/public/uploads/avatars
+        // 2. Simpan juga di folder frontend/public/uploads/users/{safeUserName}/avatar/
         var candidateFrontendDirs = new[]
         {
-            Path.GetFullPath(Path.Combine(_environment?.ContentRootPath ?? Directory.GetCurrentDirectory(), "..", "..", "..", "frontend", "public", "uploads", "avatars")),
-            Path.GetFullPath(Path.Combine(_environment?.ContentRootPath ?? Directory.GetCurrentDirectory(), "..", "..", "frontend", "public", "uploads", "avatars")),
-            Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "frontend", "public", "uploads", "avatars")),
-            @"c:\TEMP\VSCODE\TrackerKerjaModern\frontend\public\uploads\avatars"
+            Path.GetFullPath(Path.Combine(_environment?.ContentRootPath ?? Directory.GetCurrentDirectory(), "..", "..", "..", "frontend", "public", "uploads", "users", safeUserName, "avatar")),
+            Path.GetFullPath(Path.Combine(_environment?.ContentRootPath ?? Directory.GetCurrentDirectory(), "..", "..", "frontend", "public", "uploads", "users", safeUserName, "avatar")),
+            Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "frontend", "public", "uploads", "users", safeUserName, "avatar")),
+            Path.Combine(@"c:\TEMP\VSCODE\TrackerKerjaModern\frontend\public\uploads\users", safeUserName, "avatar")
         };
 
         foreach (var dir in candidateFrontendDirs)
@@ -170,7 +192,7 @@ public class ProfileController : ControllerBase
             catch { /* fallback */ }
         }
 
-        var relativeUrl = $"/uploads/avatars/{fileName}";
+        var relativeUrl = $"/uploads/users/{safeUserName}/avatar/{fileName}";
         user.ProfilePictureUrl = relativeUrl;
         user.ConcurrencyStamp = Guid.NewGuid().ToString();
         await _context.SaveChangesAsync();
@@ -211,11 +233,12 @@ public class ProfileController : ControllerBase
         var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == userId);
         if (user == null) return NotFound();
 
-        var fileName = $"{userId}_{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}{ext}";
+        var safeUserName = SanitizeUserNameForFolder(user.UserName ?? user.Email ?? user.Id);
+        var fileName = $"{safeUserName}_cover_{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}{ext}";
 
-        // 1. Simpan di backend wwwroot/uploads/covers
+        // 1. Simpan di backend wwwroot/uploads/users/{safeUserName}/cover/
         var rootPath = _environment?.WebRootPath ?? Path.Combine(_environment?.ContentRootPath ?? Directory.GetCurrentDirectory(), "wwwroot");
-        var coversDir = Path.Combine(rootPath, "uploads", "covers");
+        var coversDir = Path.Combine(rootPath, "uploads", "users", safeUserName, "cover");
         Directory.CreateDirectory(coversDir);
         var filePath = Path.Combine(coversDir, fileName);
 
@@ -224,13 +247,13 @@ public class ProfileController : ControllerBase
             await file.CopyToAsync(stream);
         }
 
-        // 2. Simpan juga di folder frontend/public/uploads/covers
+        // 2. Simpan juga di folder frontend/public/uploads/users/{safeUserName}/cover/
         var candidateFrontendDirs = new[]
         {
-            Path.GetFullPath(Path.Combine(_environment?.ContentRootPath ?? Directory.GetCurrentDirectory(), "..", "..", "..", "frontend", "public", "uploads", "covers")),
-            Path.GetFullPath(Path.Combine(_environment?.ContentRootPath ?? Directory.GetCurrentDirectory(), "..", "..", "frontend", "public", "uploads", "covers")),
-            Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "frontend", "public", "uploads", "covers")),
-            @"c:\TEMP\VSCODE\TrackerKerjaModern\frontend\public\uploads\covers"
+            Path.GetFullPath(Path.Combine(_environment?.ContentRootPath ?? Directory.GetCurrentDirectory(), "..", "..", "..", "frontend", "public", "uploads", "users", safeUserName, "cover")),
+            Path.GetFullPath(Path.Combine(_environment?.ContentRootPath ?? Directory.GetCurrentDirectory(), "..", "..", "frontend", "public", "uploads", "users", safeUserName, "cover")),
+            Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "frontend", "public", "uploads", "users", safeUserName, "cover")),
+            Path.Combine(@"c:\TEMP\VSCODE\TrackerKerjaModern\frontend\public\uploads\users", safeUserName, "cover")
         };
 
         foreach (var dir in candidateFrontendDirs)
@@ -249,7 +272,7 @@ public class ProfileController : ControllerBase
             catch { /* fallback */ }
         }
 
-        var relativeUrl = $"/uploads/covers/{fileName}";
+        var relativeUrl = $"/uploads/users/{safeUserName}/cover/{fileName}";
         user.CoverPictureUrl = relativeUrl;
         user.ConcurrencyStamp = Guid.NewGuid().ToString();
         await _context.SaveChangesAsync();
@@ -260,5 +283,17 @@ public class ProfileController : ControllerBase
             message = "Banner sampul profil berhasil diperbarui.",
             url = relativeUrl
         });
+    }
+
+    private static string SanitizeUserNameForFolder(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return "user_default";
+        var safe = raw.Trim().Replace("@", "_").Replace(".", "_");
+        var invalids = Path.GetInvalidFileNameChars();
+        foreach (var c in invalids)
+        {
+            safe = safe.Replace(c, '_');
+        }
+        return safe.ToLowerInvariant();
     }
 }

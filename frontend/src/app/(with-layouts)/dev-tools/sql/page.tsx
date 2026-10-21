@@ -22,6 +22,7 @@ import {
   FolderOpen,
   Save,
   Info,
+  Tag,
 } from "lucide-react";
 import { Button } from "@/components/tailgrids/core/button";
 import { Input } from "@/components/tailgrids/core/input";
@@ -60,6 +61,7 @@ interface HistoryItem {
   dialect: string;
   content: string;
   taskId?: number | null;
+  taskTitle?: string | null;
   createdAt: string;
 }
 
@@ -97,6 +99,20 @@ export default function SqlStudioPage() {
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [saveQueryName, setSaveQueryName] = useState("");
+  const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
+
+  // Fetch Tasks for Task Binding
+  const { data: tasks = [] } = useQuery<any[]>({
+    queryKey: ["tasksForSqlBinding"],
+    queryFn: async () => {
+      try {
+        const res = await apiClient.get("/tasks");
+        return res.data?.data || [];
+      } catch {
+        return [];
+      }
+    },
+  });
 
   // 1. Fetch Dialects
   const { data: dialects = [] } = useQuery<DialectInfo[]>({
@@ -118,7 +134,7 @@ export default function SqlStudioPage() {
 
   // Mutations
   const formatMutation = useMutation({
-    mutationFn: async (vars?: { name?: string } | void) => {
+    mutationFn: async (vars?: { name?: string; taskId?: number | null } | void) => {
       const res = await apiClient.post("/sqltools/format", {
         sql: inputSql,
         dialect: selectedDialect,
@@ -126,6 +142,7 @@ export default function SqlStudioPage() {
         comma: commaPosition,
         indentSpaces,
         name: vars?.name,
+        taskId: vars?.taskId !== undefined ? vars.taskId : selectedTaskId,
       });
       return res.data.data;
     },
@@ -242,7 +259,7 @@ export default function SqlStudioPage() {
       toast.error("Silakan masukkan nama kueri.");
       return;
     }
-    formatMutation.mutate({ name: saveQueryName });
+    formatMutation.mutate({ name: saveQueryName, taskId: selectedTaskId });
     setShowSaveModal(false);
     setSaveQueryName("");
   };
@@ -287,6 +304,16 @@ export default function SqlStudioPage() {
 
           <Button
             variant="outline"
+            onClick={() => setShowSaveModal(true)}
+            disabled={!inputSql.trim()}
+            className="gap-1.5 text-xs font-semibold border-indigo-200 text-indigo-600 hover:bg-indigo-50 dark:border-indigo-900/40 dark:text-indigo-400"
+          >
+            <Save className="h-3.5 w-3.5" />
+            Simpan Kueri
+          </Button>
+
+          <Button
+            variant="outline"
             onClick={() => validateMutation.mutate()}
             disabled={validateMutation.isPending || !inputSql.trim()}
             className="gap-1.5 text-xs font-semibold"
@@ -313,6 +340,43 @@ export default function SqlStudioPage() {
             <Sparkles className="h-3.5 w-3.5" />
             Beautify SQL
           </Button>
+        </div>
+      </div>
+
+      {/* Task Binding Bar */}
+      <div className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4 dark:border-indigo-950/60 dark:bg-indigo-950/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600 text-white shadow-xs">
+            <Layers className="h-4 w-4" />
+          </div>
+          <div>
+            <h4 className="text-xs font-bold text-gray-900 dark:text-white">
+              Tautkan ke Tugas yang Sedang Dikerjakan (Task Binding)
+            </h4>
+            <p className="text-[11px] text-gray-500 dark:text-gray-400">
+              Setiap kueri SQL yang disimpan akan otomatis terasosiasi dengan tugas ini dalam riwayat.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 min-w-[260px] sm:min-w-[320px]">
+          <select
+            value={selectedTaskId ?? ""}
+            onChange={(e) => setSelectedTaskId(e.target.value ? Number(e.target.value) : null)}
+            className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-800 shadow-2xs focus:border-indigo-500 focus:outline-hidden dark:border-gray-800 dark:bg-gray-900 dark:text-gray-200"
+          >
+            <option value="">— Tidak Ditautkan ke Tugas —</option>
+            {tasks.map((t: any) => (
+              <option key={t.id} value={t.id}>
+                [TK-{String(t.id).padStart(4, "0")}] {t.title} {t.projectName ? `(${t.projectName})` : ""}
+              </option>
+            ))}
+          </select>
+          {selectedTaskId && (
+            <span className="inline-flex items-center gap-1 shrink-0 rounded-lg bg-emerald-100 px-2 py-1 text-[11px] font-bold text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+              <Check className="h-3 w-3" /> Terpilih
+            </span>
+          )}
         </div>
       </div>
 
@@ -668,13 +732,19 @@ export default function SqlStudioPage() {
                 className="flex items-start justify-between rounded-xl border border-gray-200 p-3.5 transition hover:border-indigo-300 dark:border-gray-800"
               >
                 <div className="flex-1 mr-4">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-bold text-xs text-gray-900 dark:text-white">
                       {h.name}
                     </span>
                     <span className="rounded bg-indigo-50 px-1.5 py-0.2 font-mono text-[10px] font-bold text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-400">
                       {h.dialect}
                     </span>
+                    {h.taskTitle && (
+                      <span className="inline-flex items-center gap-1 rounded bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300">
+                        <Tag className="h-2.5 w-2.5" />
+                        {h.taskTitle}
+                      </span>
+                    )}
                   </div>
                   <pre className="mt-1.5 max-h-16 overflow-hidden text-ellipsis font-mono text-[11px] text-gray-500">
                     {h.content}
@@ -741,6 +811,24 @@ export default function SqlStudioPage() {
                 onChange={(e) => setSaveQueryName(e.target.value)}
                 className="mt-1 text-xs"
               />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
+                Tautkan ke Tugas (Opsional)
+              </label>
+              <select
+                value={selectedTaskId ?? ""}
+                onChange={(e) => setSelectedTaskId(e.target.value ? Number(e.target.value) : null)}
+                className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-800 shadow-2xs dark:border-gray-800 dark:bg-gray-900 dark:text-gray-200"
+              >
+                <option value="">— Tidak Ditautkan ke Tugas —</option>
+                {tasks.map((t: any) => (
+                  <option key={t.id} value={t.id}>
+                    [TK-{String(t.id).padStart(4, "0")}] {t.title} {t.projectName ? `(${t.projectName})` : ""}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div className="flex justify-end gap-2">

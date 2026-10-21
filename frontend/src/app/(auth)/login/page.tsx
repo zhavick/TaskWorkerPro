@@ -130,6 +130,17 @@ function LoginForm() {
       localStorage.setItem("access_token", accessToken);
       localStorage.setItem("user_profile", JSON.stringify(user));
 
+      // Reset session-level announcement dismissals on new login
+      if (typeof window !== "undefined") {
+        try {
+          Object.keys(sessionStorage).forEach((key) => {
+            if (key.startsWith("wtp_session_dismissed_")) {
+              sessionStorage.removeItem(key);
+            }
+          });
+        } catch {}
+      }
+
       toast.success(`Selamat datang kembali, ${user.fullName}!`);
       router.push("/dashboard");
     } catch (err: any) {

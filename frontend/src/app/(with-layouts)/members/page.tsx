@@ -65,6 +65,7 @@ interface MemberItem {
   totalTasks: number;
   completedTasks: number;
   totalHours: number;
+  projects?: string[];
 }
 
 interface CompanyGroup {
@@ -350,7 +351,8 @@ export default function MembersPage() {
       m.email.toLowerCase().includes(q) ||
       m.jobTitle.toLowerCase().includes(q) ||
       (m.companyName && m.companyName.toLowerCase().includes(q)) ||
-      (m.companyCode && m.companyCode.toLowerCase().includes(q));
+      (m.companyCode && m.companyCode.toLowerCase().includes(q)) ||
+      (m.projects && m.projects.some((p) => p.toLowerCase().includes(q)));
 
     let matchesStatus = true;
     if (statusFilter === "pending") matchesStatus = !m.isApproved;
@@ -401,9 +403,9 @@ export default function MembersPage() {
           </p>
         </div>
 
-        {/* View Mode Switcher & Admin Group Management (Admin Only) */}
-        {isAdmin && (
-          <div className="flex flex-wrap items-center gap-2">
+        {/* View Mode Switcher & Admin Group Management */}
+        <div className="flex flex-wrap items-center gap-2">
+          {isAdmin && (
             <button
               type="button"
               onClick={() => setIsManageAdminGroupOpen(true)}
@@ -412,35 +414,35 @@ export default function MembersPage() {
               <ShieldCheck className="h-4 w-4" />
               Kelola Group Admin
             </button>
+          )}
 
-            <div className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white p-1 shadow-2xs dark:border-gray-800 dark:bg-gray-900">
-              <button
-                type="button"
-                onClick={() => setViewMode("grouped")}
-                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
-                  viewMode === "grouped"
-                    ? "bg-indigo-600 text-white shadow-2xs"
-                    : "text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
-                }`}
-              >
-                <Layers className="h-3.5 w-3.5" />
-                Grup Perusahaan
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode("flat")}
-                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
-                  viewMode === "flat"
-                    ? "bg-indigo-600 text-white shadow-2xs"
-                    : "text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
-                }`}
-              >
-                <List className="h-3.5 w-3.5" />
-                Daftar Linier
-              </button>
-            </div>
+          <div className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white p-1 shadow-2xs dark:border-gray-800 dark:bg-gray-900">
+            <button
+              type="button"
+              onClick={() => setViewMode("grouped")}
+              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                viewMode === "grouped"
+                  ? "bg-indigo-600 text-white shadow-2xs"
+                  : "text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
+              }`}
+            >
+              <Layers className="h-3.5 w-3.5" />
+              {isAdmin ? "Grup Perusahaan" : "Struktur Tim"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("flat")}
+              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                viewMode === "flat"
+                  ? "bg-indigo-600 text-white shadow-2xs"
+                  : "text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
+              }`}
+            >
+              <List className="h-3.5 w-3.5" />
+              Daftar Linier
+            </button>
           </div>
-        )}
+        </div>
       </div>
 
       {/* Summary KPI Cards */}
@@ -558,7 +560,7 @@ export default function MembersPage() {
       </div>
 
       {/* Main Content Area */}
-      {isAdmin && viewMode === "grouped" ? (
+      {viewMode === "grouped" ? (
         // ----------------- GROUPED BY COMPANY VIEW -----------------
         <div className="space-y-8">
           {filteredGroups.map((group) => (
@@ -1187,6 +1189,28 @@ export default function MembersPage() {
                         </div>
                       </div>
                     )}
+                    {/* Alokasi Proyek */}
+                    {detailMember.projects && detailMember.projects.length > 0 ? (
+                      <div className="mt-3 rounded-xl border border-gray-100 bg-gray-50/70 p-3 dark:border-gray-800 dark:bg-gray-800/40">
+                        <span className="text-[10px] text-gray-400 block mb-1.5 font-bold uppercase tracking-wider">
+                          Proyek yang Dikerjakan ({detailMember.projects.length})
+                        </span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {detailMember.projects.map((proj) => (
+                            <span
+                              key={proj}
+                              className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs font-semibold text-gray-700 shadow-2xs dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
+                            >
+                              {proj}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="mt-3 rounded-xl border border-gray-100 bg-gray-50/70 p-3 text-center text-xs text-gray-400 italic dark:border-gray-800 dark:bg-gray-800/40">
+                        Belum ada alokasi proyek aktif
+                      </div>
+                    )}
                   </div>
                 </>
               )}
@@ -1728,6 +1752,19 @@ function MemberCard({
             </span>
           </div>
         </div>
+        {/* Assigned Projects */}
+        {m.projects && m.projects.length > 0 ? (
+          <div className="mt-3 flex flex-wrap gap-1">
+            {m.projects.map((proj) => (
+              <span
+                key={proj}
+                className="rounded-md border border-gray-200 bg-gray-50 px-1.5 py-0.5 text-[9px] font-semibold text-gray-600 dark:border-gray-800 dark:bg-gray-800/80 dark:text-gray-300 shadow-2xs"
+              >
+                {proj}
+              </span>
+            ))}
+          </div>
+        ) : null}
       </div>
 
       {/* Action Buttons */}
@@ -1753,8 +1790,8 @@ function MemberCard({
         </div>
 
         <div className="flex items-center gap-1.5">
-          {/* Approval Controls */}
-          {!m.isApproved && (
+          {/* Approval Controls (Admin Only) */}
+          {isAdmin && !m.isApproved && (
             <>
               <Button
                 size="sm"
@@ -1776,8 +1813,8 @@ function MemberCard({
             </>
           )}
 
-          {/* Unlock Controls */}
-          {m.isLockedOut && (
+          {/* Unlock Controls (Admin Only) */}
+          {isAdmin && m.isLockedOut && (
             <Button
               size="sm"
               variant="outline"

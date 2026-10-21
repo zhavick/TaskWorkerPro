@@ -120,6 +120,7 @@ public class SqlToolsController : ControllerBase
     public async Task<IActionResult> GetHistory()
     {
         var history = await _context.SqlHistories
+            .Include(h => h.Task)
             .AsNoTracking()
             .OrderByDescending(h => h.CreatedAt)
             .Take(50)
@@ -130,6 +131,7 @@ public class SqlToolsController : ControllerBase
                 h.Dialect,
                 h.Content,
                 h.TaskId,
+                TaskTitle = h.Task != null ? h.Task.Title : null,
                 h.CreatedAt
             })
             .ToListAsync();

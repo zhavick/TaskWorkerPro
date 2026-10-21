@@ -57,6 +57,7 @@ export default function AccountPage() {
   const [coverPictureUrl, setCoverPictureUrl] = useState("nebula");
   const [customCoverUrl, setCustomCoverUrl] = useState("");
   const [isCustomCover, setIsCustomCover] = useState(false);
+  const [currentAvatarUrl, setCurrentAvatarUrl] = useState<string | null>(null);
 
   // Upload States & Refs
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
@@ -81,6 +82,10 @@ export default function AccountPage() {
       const res = await apiClient.post("/profile/avatar", formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
+      const newUrl = res.data?.url;
+      if (newUrl) {
+        setCurrentAvatarUrl(newUrl);
+      }
       toast.success(res.data?.message || "Foto profil berhasil diperbarui!");
       queryClient.invalidateQueries({ queryKey: ["user-profile"] });
       queryClient.invalidateQueries({ queryKey: ["currentUserProfile"] });
@@ -100,8 +105,9 @@ export default function AccountPage() {
         avatarColor,
         phoneNumber: phoneNumber.trim() || null,
         coverPictureUrl: profile?.coverPictureUrl || null,
-        profilePictureUrl: null,
+        profilePictureUrl: "",
       });
+      setCurrentAvatarUrl(null);
       toast.success("Foto profil telah dihapus.");
       queryClient.invalidateQueries({ queryKey: ["user-profile"] });
       queryClient.invalidateQueries({ queryKey: ["currentUserProfile"] });
@@ -146,6 +152,7 @@ export default function AccountPage() {
       setJobTitle(profile.jobTitle || "");
       setPhoneNumber(profile.phoneNumber || "");
       setAvatarColor(profile.avatarColor || "#6366F1");
+      setCurrentAvatarUrl(profile.profilePictureUrl || null);
 
       const cover = profile.coverPictureUrl || "nebula";
       const isPreset = COVER_PRESETS.some(
@@ -169,6 +176,7 @@ export default function AccountPage() {
       jobTitle !== (profile.jobTitle || "") ||
       phoneNumber !== (profile.phoneNumber || "") ||
       avatarColor !== (profile.avatarColor || "#6366F1") ||
+      currentAvatarUrl !== (profile.profilePictureUrl || null) ||
       (isCustomCover
         ? customCoverUrl !== (profile.coverPictureUrl || "")
         : coverPictureUrl !== (profile.coverPictureUrl?.replace("preset:", "") || "nebula")));
@@ -182,7 +190,7 @@ export default function AccountPage() {
         avatarColor,
         phoneNumber: phoneNumber.trim() || null,
         coverPictureUrl: activeCover || null,
-        profilePictureUrl: profile?.profilePictureUrl || null,
+        profilePictureUrl: currentAvatarUrl || null,
       };
       const response = await apiClient.put("/profile", payload);
       return response.data;
@@ -219,6 +227,7 @@ export default function AccountPage() {
       setJobTitle(profile.jobTitle || "");
       setPhoneNumber(profile.phoneNumber || "");
       setAvatarColor(profile.avatarColor || "#6366F1");
+      setCurrentAvatarUrl(profile.profilePictureUrl || null);
       const cover = profile.coverPictureUrl || "nebula";
       const isPreset = COVER_PRESETS.some(
         (p) => p.id === cover || `preset:${p.id}` === cover
@@ -388,7 +397,7 @@ export default function AccountPage() {
                   )}
                 </Button>
 
-                {profile?.profilePictureUrl && (
+                {currentAvatarUrl && (
                   <Button
                     type="button"
                     variant="outline"
@@ -406,9 +415,9 @@ export default function AccountPage() {
 
             {/* Live Preview & Info Row */}
             <div className="flex items-center gap-4 p-3 rounded-xl bg-gray-50/80 dark:bg-gray-800/40 border border-card-border/60">
-              {profile?.profilePictureUrl ? (
+              {currentAvatarUrl ? (
                 <img
-                  src={profile.profilePictureUrl}
+                  src={currentAvatarUrl}
                   alt={fullName}
                   className="size-14 rounded-full ring-2 ring-indigo-500 object-cover shadow-sm shrink-0"
                 />
@@ -422,7 +431,7 @@ export default function AccountPage() {
               )}
               <div className="text-xs space-y-0.5">
                 <div className="font-bold text-gray-900 dark:text-white flex items-center gap-1.5">
-                  {profile?.profilePictureUrl ? "Foto Profil Kustom Aktif" : "Avatar Inisial Aktif"}
+                  {currentAvatarUrl ? "Foto Profil Kustom Aktif" : "Avatar Inisial Aktif"}
                   <span className="text-[10px] font-normal text-gray-400">
                     (Maks. 2MB, format .png, .jpg, .webp)
                   </span>

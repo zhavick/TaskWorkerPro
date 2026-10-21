@@ -430,11 +430,35 @@ public class AttendancesController : ControllerBase
     }
 
     [HttpPost("reconciliation/manual-entry")]
-    [Authorize(Roles = "Administrator")]
+    [HttpPost("manual-entry")]
+    [Authorize]
     public async Task<IActionResult> CreateManualEntry([FromBody] ManualAttendanceEntryRequest request)
     {
+        var currentUserId = _tenantService.UserId;
+        if (string.IsNullOrEmpty(currentUserId)) return Unauthorized();
+
+        // Enforce RBAC: Non-admin can only record manual entry for themselves
+        string targetUserId;
+        if (!_tenantService.IsAdmin)
+        {
+            targetUserId = currentUserId;
+        }
+        else
+        {
+            targetUserId = string.IsNullOrWhiteSpace(request.UserId) ? currentUserId : request.UserId;
+
+            if (targetUserId != currentUserId && _tenantService.CompanyId.HasValue)
+            {
+                var targetMember = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == targetUserId);
+                if (targetMember == null || targetMember.CompanyId != _tenantService.CompanyId.Value)
+                {
+                    return BadRequest(new { success = false, message = "Anggota tidak ditemukan pada perusahaan ini." });
+                }
+            }
+        }
+
         var existing = await _context.Attendances
-            .FirstOrDefaultAsync(a => a.UserId == request.UserId && a.Date == request.Date);
+            .FirstOrDefaultAsync(a => a.UserId == targetUserId && a.Date == request.Date);
 
         if (existing != null)
         {
@@ -449,7 +473,7 @@ public class AttendancesController : ControllerBase
 
         var entry = new Attendance
         {
-            UserId = request.UserId,
+            UserId = targetUserId,
             Date = request.Date,
             Type = request.Type,
             WorkLocation = request.WorkLocation,
