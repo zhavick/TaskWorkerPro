@@ -68,6 +68,12 @@ export const NAV_DATA = [
         url: "/notes",
         items: [],
       },
+      {
+        title: "Pusat Notifikasi",
+        icon: <Bell className="h-5 w-5" />,
+        url: "/notifications",
+        items: [],
+      },
     ],
   },
   {
@@ -107,12 +113,14 @@ export const NAV_DATA = [
         title: "Audit Trail & Log",
         icon: <ShieldCheck className="h-5 w-5" />,
         url: "/audit-trail",
+        adminOnly: true,
         items: [],
       },
       {
         title: "Konfigurasi Sistem",
         icon: <Settings className="h-5 w-5" />,
         url: "/configuration",
+        adminOnly: true,
         items: [],
       },
       {
