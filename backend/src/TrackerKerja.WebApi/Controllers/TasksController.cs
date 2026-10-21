@@ -20,17 +20,20 @@ public class TasksController : ControllerBase
     private readonly ICurrentTenantService _tenantService;
     private readonly ITaskExcelImportService _excelImportService;
     private readonly IExcelExportService _excelExportService;
+    private readonly INotificationService? _notificationService;
 
     public TasksController(
         AppDbContext context,
         ICurrentTenantService tenantService,
         ITaskExcelImportService? excelImportService = null,
-        IExcelExportService? excelExportService = null)
+        IExcelExportService? excelExportService = null,
+        INotificationService? notificationService = null)
     {
         _context = context;
         _tenantService = tenantService;
         _excelImportService = excelImportService ?? new TaskExcelImportService(context);
         _excelExportService = excelExportService ?? new ClosedXmlExportService(context);
+        _notificationService = notificationService;
     }
 
     [HttpGet]
@@ -362,6 +365,20 @@ public class TasksController : ControllerBase
         _context.Tasks.Add(task);
         await _context.SaveChangesAsync();
 
+        if (_notificationService != null && !string.IsNullOrEmpty(task.AssignedToUserId) && task.AssignedToUserId != _tenantService.UserId)
+        {
+            var companyId = task.CompanyId ?? _tenantService.CompanyId ?? 1;
+            await _notificationService.SendNotificationAsync(
+                task.AssignedToUserId,
+                companyId,
+                "Tugas Baru Ditugaskan",
+                $"Anda ditugaskan pada tugas: {task.Title}",
+                "Task",
+                "/tasks",
+                _tenantService.UserId
+            );
+        }
+
         return Ok(new { success = true, message = "Tugas berhasil dibuat.", data = task });
     }
 
@@ -370,6 +387,8 @@ public class TasksController : ControllerBase
     {
         var task = await _context.Tasks.FirstOrDefaultAsync(t => t.Id == id);
         if (task == null) return NotFound(new { success = false, message = "Tugas tidak ditemukan." });
+
+        var previousAssignedUserId = task.AssignedToUserId;
 
         task.Title = request.Title.Trim();
         task.Description = !string.IsNullOrWhiteSpace(request.Description) ? request.Description.Trim() : request.Title.Trim();
@@ -387,6 +406,21 @@ public class TasksController : ControllerBase
         task.UpdatedAt = DateTimeOffset.UtcNow;
 
         await _context.SaveChangesAsync();
+
+        if (_notificationService != null && !string.IsNullOrEmpty(task.AssignedToUserId) &&
+            task.AssignedToUserId != previousAssignedUserId && task.AssignedToUserId != _tenantService.UserId)
+        {
+            var companyId = task.CompanyId ?? _tenantService.CompanyId ?? 1;
+            await _notificationService.SendNotificationAsync(
+                task.AssignedToUserId,
+                companyId,
+                "Penugasan Tugas Diperbarui",
+                $"Anda ditugaskan pada tugas: {task.Title}",
+                "Task",
+                "/tasks",
+                _tenantService.UserId
+            );
+        }
 
         return Ok(new { success = true, message = "Tugas berhasil diperbarui.", data = task });
     }
@@ -470,6 +504,21 @@ public class TasksController : ControllerBase
         task.UpdatedAt = DateTimeOffset.UtcNow;
 
         await _context.SaveChangesAsync();
+
+        if (_notificationService != null && request.Status == Domain.Enums.TaskStatus.Done &&
+            !string.IsNullOrEmpty(task.CreatedByUserId) && task.CreatedByUserId != _tenantService.UserId)
+        {
+            var companyId = task.CompanyId ?? _tenantService.CompanyId ?? 1;
+            await _notificationService.SendNotificationAsync(
+                task.CreatedByUserId,
+                companyId,
+                "Tugas Selesai",
+                $"Tugas '{task.Title}' telah diselesaikan.",
+                "Task",
+                "/tasks",
+                _tenantService.UserId
+            );
+        }
 
         return Ok(new { success = true, message = "Status tugas berhasil diperbarui.", status = task.Status, progress = task.Progress });
     }

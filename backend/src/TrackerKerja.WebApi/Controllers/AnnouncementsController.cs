@@ -15,11 +15,16 @@ public class AnnouncementsController : ControllerBase
 {
     private readonly AppDbContext _context;
     private readonly ICurrentTenantService _tenantService;
+    private readonly INotificationService? _notificationService;
 
-    public AnnouncementsController(AppDbContext context, ICurrentTenantService tenantService)
+    public AnnouncementsController(
+        AppDbContext context,
+        ICurrentTenantService tenantService,
+        INotificationService? notificationService = null)
     {
         _context = context;
         _tenantService = tenantService;
+        _notificationService = notificationService;
     }
 
     [HttpGet("active")]
@@ -206,6 +211,23 @@ public class AnnouncementsController : ControllerBase
 
         _context.Announcements.Add(announcement);
         await _context.SaveChangesAsync();
+
+        if (_notificationService != null && announcement.IsActive)
+        {
+            var companyId = announcement.CompanyId ?? _tenantService.CompanyId ?? 1;
+            var snippet = !string.IsNullOrWhiteSpace(announcement.Content) && announcement.Content.Length > 120
+                ? announcement.Content[..120] + "..."
+                : announcement.Content;
+
+            await _notificationService.BroadcastCompanyAsync(
+                companyId,
+                $"Pengumuman Baru: {announcement.Title}",
+                snippet,
+                "Announcement",
+                "/announcements",
+                _tenantService.UserId
+            );
+        }
 
         return Ok(new { success = true, message = "Pengumuman berhasil diterbitkan.", data = announcement });
     }
