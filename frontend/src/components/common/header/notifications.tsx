@@ -1,112 +1,151 @@
 "use client";
 
-import {
-  BellIcon,
-  CreditCardIcon,
-  LetterIcon,
-  PrinterIcon,
-  SettingIcon,
-} from "@/components/common/header/icons";
+import React, { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { apiClient } from "@/services/api/client";
+import { BellIcon, SettingIcon } from "@/components/common/header/icons";
 import { Button } from "@/components/tailgrids/core/button";
 import { OverlayWrapper } from "@/components/tailgrids/core/overlay";
 import { Popover } from "@/components/tailgrids/core/popover";
 import { ScrollArea, ScrollAreaViewport, ScrollBar } from "@/components/tailgrids/core/scroll-area";
-import { cn } from "@/utils/cn";
-import Link from "next/link";
-import React, { useState } from "react";
 import { Header, Heading } from "react-aria-components";
+import {
+  CheckSquare,
+  Sparkles,
+  CalendarCheck,
+  Megaphone,
+  Bell,
+  Check,
+  ExternalLink,
+} from "lucide-react";
+import { cn } from "@/utils/cn";
+import { toast } from "sonner";
 
-interface Notification {
-  id: string;
-  icon: React.ReactNode;
+interface NotificationItem {
+  id: number;
+  userId: string;
+  companyId: number;
   title: string;
-  description: string;
-  timestamp: string;
-  isUnread?: boolean;
+  message: string;
+  category: string;
+  actionUrl?: string | null;
+  isRead: boolean;
+  readAt?: string | null;
+  createdAt: string;
+  createdByUserName?: string | null;
 }
 
-const defaultNotifications: { title: string; items: Notification[] }[] = [
-  {
-    title: "Today",
-    items: [
-      {
-        id: "1",
-        icon: <LetterIcon />,
-        title: "New Message Arrived",
-        description: "Elsie McElroy sent you new message",
-        timestamp: "5h ago",
-        isUnread: true,
-      },
-      {
-        id: "2",
-        icon: <CreditCardIcon />,
-        title: "Transaction Approved",
-        description: "Your payment of $75.00 to Chad Hurley was successful.",
-        timestamp: "10h ago",
-        isUnread: true,
-      },
-      {
-        id: "3",
-        icon: <PrinterIcon />,
-        title: "Upcoming Bill",
-        description: "Reminder: Invoice EST-INV012 is due in 3 days. Please submit payment.",
-        timestamp: "12h ago",
-        isUnread: false,
-      },
-    ],
-  },
-  {
-    title: "Yesterday",
-    items: [
-      {
-        id: "4",
-        icon: <CreditCardIcon />,
-        title: "Transaction Approved",
-        description: "Your payment of $75.00 to Chad Hurley was successful.",
-        timestamp: "10h ago",
-        isUnread: true,
-      },
-      {
-        id: "5",
-        icon: <LetterIcon />,
-        title: "New Message Arrived",
-        description: "Elsie McElroy sent you new message",
-        timestamp: "5h ago",
-        isUnread: true,
-      },
-      {
-        id: "6",
-        icon: <PrinterIcon />,
-        title: "Upcoming Bill",
-        description: "Reminder: Invoice EST-INV012 is due in 3 days. Please submit payment.",
-        timestamp: "12h ago",
-        isUnread: false,
-      },
-    ],
-  },
-];
+function getCategoryIcon(category: string) {
+  switch (category?.toLowerCase()) {
+    case "task":
+      return <CheckSquare className="h-4 w-4 text-indigo-500" />;
+    case "announcement":
+      return <Sparkles className="h-4 w-4 text-amber-500" />;
+    case "attendance":
+      return <CalendarCheck className="h-4 w-4 text-emerald-500" />;
+    case "broadcast":
+      return <Megaphone className="h-4 w-4 text-purple-500" />;
+    default:
+      return <Bell className="h-4 w-4 text-gray-500" />;
+  }
+}
+
+function formatRelativeTime(dateStr: string): string {
+  try {
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffSec = Math.floor(diffMs / 1000);
+    const diffMin = Math.floor(diffSec / 60);
+    const diffHour = Math.floor(diffMin / 60);
+    const diffDay = Math.floor(diffHour / 24);
+
+    if (diffMin < 1) return "Baru saja";
+    if (diffMin < 60) return `${diffMin}m yang lalu`;
+    if (diffHour < 24) return `${diffHour}j yang lalu`;
+    if (diffDay === 1) return "Kemarin";
+    if (diffDay < 7) return `${diffDay}h yang lalu`;
+
+    return date.toLocaleDateString("id-ID", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+  } catch {
+    return dateStr;
+  }
+}
 
 export function NotificationsButton() {
-  const [notifications, setNotifications] = useState(defaultNotifications);
+  const queryClient = useQueryClient();
+  const router = useRouter();
   const [isOpen, setIsOpen] = useState<boolean>(false);
 
-  const unreadCount = notifications.flatMap((n) => n.items).filter((n) => n.isUnread).length;
+  // 1. Fetch unread count for badge
+  const { data: unreadData } = useQuery<{ unreadCount: number }>({
+    queryKey: ["notifications-unread-count"],
+    queryFn: async () => {
+      try {
+        const res = await apiClient.get("/notifications/unread-count");
+        return res.data?.data || { unreadCount: 0 };
+      } catch {
+        return { unreadCount: 0 };
+      }
+    },
+    refetchInterval: 30000,
+  });
 
-  const handleMarkAsRead = (notificationId: string) => {
-    setNotifications((prevNotifications) =>
-      prevNotifications.map((group) => ({
-        ...group,
-        items: group.items.map((item) =>
-          item.id === notificationId ? { ...item, isUnread: false } : item,
-        ),
-      })),
-    );
-  };
+  const unreadCount = unreadData?.unreadCount ?? 0;
 
-  const handleMarkAllAsRead = () => {
-    setNotifications(
-      notifications.map((n) => ({ ...n, items: n.items.map((i) => ({ ...i, isUnread: false })) })),
-    );
+  // 2. Fetch latest 10 notifications for dropdown
+  const { data: notifications = [] } = useQuery<NotificationItem[]>({
+    queryKey: ["notifications-header"],
+    queryFn: async () => {
+      try {
+        const res = await apiClient.get("/notifications?pageSize=10");
+        return res.data?.data || [];
+      } catch {
+        return [];
+      }
+    },
+  });
+
+  // Mutations
+  const markAsReadMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await apiClient.put(`/notifications/${id}/read`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["notifications-unread-count"] });
+      queryClient.invalidateQueries({ queryKey: ["notifications-header"] });
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    },
+  });
+
+  const markAllAsReadMutation = useMutation({
+    mutationFn: async () => {
+      await apiClient.put("/notifications/read-all");
+    },
+    onSuccess: () => {
+      toast.success("Semua notifikasi ditandai telah dibaca.");
+      queryClient.invalidateQueries({ queryKey: ["notifications-unread-count"] });
+      queryClient.invalidateQueries({ queryKey: ["notifications-header"] });
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    },
+  });
+
+  const handleNotificationClick = (item: NotificationItem) => {
+    if (!item.isRead) {
+      markAsReadMutation.mutate(item.id);
+    }
+    setIsOpen(false);
+    if (item.actionUrl) {
+      router.push(item.actionUrl);
+    } else {
+      router.push("/notifications");
+    }
   };
 
   return (
@@ -118,91 +157,129 @@ export function NotificationsButton() {
       >
         <BellIcon />
         {unreadCount > 0 && (
-          <span className={cn("absolute top-2 right-2.75 z-1 size-2 rounded-full bg-red-400")}>
-            <span className="absolute inset-0 -z-1 animate-ping rounded-full bg-red-400 opacity-75" />
+          <span className={cn("absolute top-2 right-2.5 z-1 flex items-center justify-center")}>
+            <span className="relative flex h-2.5 w-2.5">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-400 opacity-75" />
+              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-rose-500" />
+            </span>
           </span>
         )}
       </Button>
 
       <Popover
         placement="bottom end"
-        className="w-84.5 overflow-hidden rounded-2xl border border-border-secondary-alt bg-background-white-secondary p-0 shadow-3xl"
+        className="w-96 overflow-hidden rounded-2xl border border-border-secondary-alt bg-background-white-secondary p-0 shadow-3xl dark:border-gray-800 dark:bg-gray-900"
       >
         {/* Header */}
-        <Header className="flex items-center justify-between border-b border-border-secondary-alt px-5 pt-5 pb-4">
-          <Heading level={4} className="leading-6 font-semibold text-text-primary">
-            Notifications
-          </Heading>
+        <Header className="flex items-center justify-between border-b border-border-secondary-alt px-5 pt-4 pb-3 dark:border-gray-800">
+          <div className="flex items-center gap-2">
+            <Heading level={4} className="text-sm font-bold text-text-primary dark:text-white">
+              Notifikasi
+            </Heading>
+            {unreadCount > 0 && (
+              <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-600 dark:bg-indigo-950/70 dark:text-indigo-400">
+                {unreadCount} baru
+              </span>
+            )}
+          </div>
 
-          <Link
-            className="p-1 text-icon-secondary transition-colors hover:text-icon-primary"
-            href="/profile/notification"
-            onClick={() => setIsOpen(false)}
-          >
-            <SettingIcon />
-          </Link>
+          <div className="flex items-center gap-1">
+            <Link
+              className="rounded-lg p-1 text-icon-secondary transition-colors hover:bg-gray-100 hover:text-icon-primary dark:hover:bg-gray-800"
+              href="/profile/notification"
+              title="Pengaturan Notifikasi"
+              onClick={() => setIsOpen(false)}
+            >
+              <SettingIcon />
+            </Link>
+          </div>
         </Header>
 
-        <ScrollArea className="h-100 max-h-100">
+        <ScrollArea className="h-96 max-h-96">
           <ScrollAreaViewport>
-            {notifications.map((group) => (
-              <section key={group.title}>
-                {/* Group Header */}
-                <div className="border-t border-b border-border-primary bg-background-gray-secondary px-5 py-2">
-                  <p className="text-xs leading-4 text-text-tertiary uppercase">{group.title}</p>
-                </div>
-                {/* Notifications List */}
-                <ul className="flex-1 overflow-y-auto px-3 py-2">
-                  {group.items.map((notification) => (
-                    <li key={notification.id}>
-                      <button
-                        className="group flex w-full cursor-pointer gap-3.5 rounded-lg px-3 py-3 transition-colors duration-300 hover:bg-background-gray-secondary_alt"
-                        onClick={() => handleMarkAsRead(notification.id)}
-                      >
-                        {/* Icon */}
-                        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border-secondary bg-background-gray-primary text-icon-secondary transition-all duration-300 group-hover:bg-brand-500 group-hover:text-base-white group-hover:shadow-[0_1px_3px_0.5px_rgba(13,13,18,0.08)]">
-                          {notification.icon}
-                        </span>
+            {notifications.length > 0 ? (
+              <ul className="divide-y divide-gray-100 dark:divide-gray-800/60">
+                {notifications.map((item) => (
+                  <li key={item.id}>
+                    <button
+                      className={cn(
+                        "group flex w-full cursor-pointer gap-3 p-3.5 text-left transition-colors hover:bg-gray-50/80 dark:hover:bg-gray-800/50",
+                        !item.isRead && "bg-indigo-50/30 dark:bg-indigo-950/20"
+                      )}
+                      onClick={() => handleNotificationClick(item)}
+                    >
+                      {/* Icon */}
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-gray-100 bg-white shadow-2xs dark:border-gray-800 dark:bg-gray-800">
+                        {getCategoryIcon(item.category)}
+                      </span>
 
-                        {/* Content */}
-                        <div className="min-w-0 flex-1 text-start">
-                          <div className="flex items-center justify-between gap-2">
-                            <p className="text-sm leading-5 font-semibold text-text-primary">
-                              {notification.title}
-                            </p>
-
-                            {notification.isUnread && (
-                              <div className="h-1.5 w-1.5 shrink-0 rounded-full bg-brand-500" />
+                      {/* Content */}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-1">
+                          <p
+                            className={cn(
+                              "truncate text-xs text-gray-900 dark:text-white",
+                              !item.isRead ? "font-bold" : "font-medium text-gray-700 dark:text-gray-300"
                             )}
-                          </div>
+                          >
+                            {item.title}
+                          </p>
 
-                          <p className="mt-1 line-clamp-2 text-xs leading-4 text-text-secondary">
-                            {notification.description}
-                          </p>
-                          <p className="mt-2 text-xs leading-4 text-text-tertiary">
-                            {notification.timestamp}
-                          </p>
+                          {!item.isRead && (
+                            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-indigo-600" />
+                          )}
                         </div>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            ))}
+
+                        <p className="mt-0.5 line-clamp-2 text-[11px] leading-relaxed text-gray-500 dark:text-gray-400">
+                          {item.message}
+                        </p>
+
+                        <div className="mt-1.5 flex items-center justify-between text-[10px] text-gray-400">
+                          <span>{formatRelativeTime(item.createdAt)}</span>
+                          {item.actionUrl && (
+                            <span className="inline-flex items-center gap-0.5 text-indigo-600 hover:underline dark:text-indigo-400">
+                              Buka <ExternalLink className="h-2.5 w-2.5" />
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className="py-12 text-center">
+                <Bell className="mx-auto h-8 w-8 text-gray-300 dark:text-gray-600" />
+                <p className="mt-2 text-xs font-semibold text-gray-500 dark:text-gray-400">
+                  Tidak ada notifikasi baru
+                </p>
+                <p className="text-[11px] text-gray-400">
+                  Semua aktivitas dan pemberitahuan akan tampil di sini.
+                </p>
+              </div>
+            )}
           </ScrollAreaViewport>
           <ScrollBar />
         </ScrollArea>
 
         {/* Footer */}
-        <div className="flex items-center justify-between border-t border-border-secondary-alt px-5 py-4">
+        <div className="flex items-center justify-between border-t border-border-secondary-alt px-4 py-3 dark:border-gray-800">
           <button
-            onClick={handleMarkAllAsRead}
-            className="text-xs font-medium text-text-secondary underline transition-colors hover:text-text-primary"
+            onClick={() => markAllAsReadMutation.mutate()}
+            disabled={markAllAsReadMutation.isPending || unreadCount === 0}
+            className="text-xs font-medium text-text-secondary transition-colors hover:text-indigo-600 disabled:opacity-40 dark:hover:text-indigo-400"
           >
-            Mark all as read
+            Tandai semua dibaca
           </button>
-          <Button variant="primary" size="sm" className="bg-brand-500 py-1.5">
-            View All
+          <Button
+            size="sm"
+            onClick={() => {
+              setIsOpen(false);
+              router.push("/notifications");
+            }}
+            className="h-7 bg-indigo-600 px-3 text-xs font-semibold text-white hover:bg-indigo-700"
+          >
+            Pusat Notifikasi
           </Button>
         </div>
       </Popover>

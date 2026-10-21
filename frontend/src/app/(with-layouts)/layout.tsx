@@ -9,8 +9,12 @@ import { OnboardingTour } from "@/components/common/onboarding-tour";
 import { SheetContent, SheetOverlay, SheetTitle } from "@/components/tailgrids/core/sheet";
 import { cn } from "@/utils/cn";
 import { ReactNode, useState, useEffect } from "react";
+import { useNotificationHub } from "@/hooks/use-notification-hub";
 
 export default function WithLayout({ children }: { children: ReactNode }) {
+  // Mount real-time SignalR notifications
+  useNotificationHub();
+
   // XL+ sidebar expand/collapse state
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   // Mobile sheet open state (< xl breakpoint)
