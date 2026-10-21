@@ -184,6 +184,12 @@ export function CreateTaskDialog({
   const createTaskMutation = useMutation({
     mutationFn: async () => {
       const finalDesc = description.trim() || title.trim();
+      const formatIsoOrNull = (dStr?: string | null) => {
+        if (!dStr || !dStr.trim()) return null;
+        const d = new Date(dStr);
+        if (isNaN(d.getTime())) return null;
+        return d.toISOString();
+      };
       const payload: any = {
         title: title.trim(),
         description: finalDesc,
@@ -194,7 +200,7 @@ export function CreateTaskDialog({
         projectId: projectId ? Number(projectId) : null,
         categoryId: categoryId ? Number(categoryId) : null,
         assignedToUserId: assignedToUserId || null,
-        dueDate: dueDate ? new Date(dueDate).toISOString() : null,
+        dueDate: formatIsoOrNull(dueDate),
         obstacle: obstacle.trim() || null,
         solution: solution.trim() || null,
       };

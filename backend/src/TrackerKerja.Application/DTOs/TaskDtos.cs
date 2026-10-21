@@ -27,7 +27,9 @@ public record TaskItemDto(
     DateTimeOffset? StartDate,
     DateTimeOffset? DueDate,
     DateTimeOffset CreatedAt,
-    DateTimeOffset UpdatedAt
+    DateTimeOffset UpdatedAt,
+    string? CreatedByUserId = null,
+    string? CreatedByUserName = null
 );
 
 public record SubtaskDto(

@@ -58,14 +58,14 @@ public class TasksController : ControllerBase
             .Include(t => t.Project)
             .Include(t => t.Category)
             .Include(t => t.AssignedToUser)
+            .Include(t => t.CreatedByUser)
             .Include(t => t.Subtasks)
             .Include(t => t.Sessions)
             .AsNoTracking()
             .AsQueryable();
 
-        // RBAC Scoping (FSD 5.14): Non-admin is automatically scoped to their own tasks, or admin filtering "mine"
-        if ((!_tenantService.IsAdmin && !string.IsNullOrEmpty(_tenantService.UserId)) ||
-            (filter == "mine" && !string.IsNullOrEmpty(_tenantService.UserId)))
+        // RBAC Scoping (User Requirement 4): Show all company tasks; only filter by user if filter == "mine"
+        if (string.Equals(filter, "mine", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(_tenantService.UserId))
         {
             query = query.Where(t => t.AssignedToUserId == _tenantService.UserId);
         }
@@ -175,6 +175,7 @@ public class TasksController : ControllerBase
             .Include(t => t.Project)
             .Include(t => t.Category)
             .Include(t => t.AssignedToUser)
+            .Include(t => t.CreatedByUser)
             .Include(t => t.Subtasks)
             .Include(t => t.Sessions)
             .AsNoTracking();
@@ -184,9 +185,8 @@ public class TasksController : ControllerBase
             query = query.Where(t => t.ParentTaskId == null);
         }
 
-        // RBAC Scoping (FSD 5.14): Non-admin is automatically scoped to their own tasks, or admin filtering "mine"
-        if ((!_tenantService.IsAdmin && !string.IsNullOrEmpty(_tenantService.UserId)) ||
-            (string.Equals(filter, "mine", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(_tenantService.UserId)))
+        // RBAC Scoping (User Requirement 4): Show all company tasks; only filter by user if filter == "mine"
+        if (string.Equals(filter, "mine", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(_tenantService.UserId))
         {
             query = query.Where(t => t.AssignedToUserId == _tenantService.UserId);
         }
@@ -299,6 +299,7 @@ public class TasksController : ControllerBase
             .Include(t => t.Project)
             .Include(t => t.Category)
             .Include(t => t.AssignedToUser)
+            .Include(t => t.CreatedByUser)
             .Include(t => t.Subtasks).ThenInclude(s => s.AssignedToUser)
             .Include(t => t.Sessions).ThenInclude(s => s.User)
             .AsNoTracking()
@@ -354,8 +355,9 @@ public class TasksController : ControllerBase
             ProjectId = request.ProjectId,
             CategoryId = request.CategoryId,
             AssignedToUserId = request.AssignedToUserId,
+            CreatedByUserId = _tenantService.UserId,
             ParentTaskId = request.ParentTaskId,
-            CompanyId = _tenantService.CompanyId,
+            CompanyId = _tenantService.CompanyId ?? 1,
             StartDate = request.StartDate,
             DueDate = request.DueDate,
             CreatedAt = DateTimeOffset.UtcNow,
@@ -388,6 +390,11 @@ public class TasksController : ControllerBase
         var task = await _context.Tasks.FirstOrDefaultAsync(t => t.Id == id);
         if (task == null) return NotFound(new { success = false, message = "Tugas tidak ditemukan." });
 
+        if (!CanUserModifyTask(task))
+        {
+            return StatusCode(403, new { success = false, message = "Hanya pembuat tugas atau Administrator yang dapat mengubah data tugas ini." });
+        }
+
         var previousAssignedUserId = task.AssignedToUserId;
 
         task.Title = request.Title.Trim();
@@ -404,6 +411,10 @@ public class TasksController : ControllerBase
         task.StartDate = request.StartDate;
         task.DueDate = request.DueDate;
         task.UpdatedAt = DateTimeOffset.UtcNow;
+        if (task.CompanyId == null && _tenantService.CompanyId.HasValue)
+        {
+            task.CompanyId = _tenantService.CompanyId.Value;
+        }
 
         await _context.SaveChangesAsync();
 
@@ -439,6 +450,14 @@ public class TasksController : ControllerBase
                 var task = await _context.Tasks.FirstOrDefaultAsync(t => t.Id == id);
                 if (task == null) return NotFound(new { success = false, message = "Tugas tidak ditemukan." });
 
+                if (!CanUserModifyTask(task))
+                {
+                    return StatusCode(403, new { success = false, message = "Hanya pembuat tugas atau Administrator yang dapat mengubah data tugas ini." });
+                }
+
+                var previousAssignedUserId = task.AssignedToUserId;
+                var previousStatus = task.Status;
+
                 // 1. Update task properties
                 task.Title = request.Title.Trim();
                 task.Description = !string.IsNullOrWhiteSpace(request.Description) ? request.Description.Trim() : request.Title.Trim();
@@ -454,6 +473,10 @@ public class TasksController : ControllerBase
                 task.StartDate = request.StartDate;
                 task.DueDate = request.DueDate;
                 task.UpdatedAt = DateTimeOffset.UtcNow;
+                if (task.CompanyId == null && _tenantService.CompanyId.HasValue)
+                {
+                    task.CompanyId = _tenantService.CompanyId.Value;
+                }
 
                 // 2. Add manual work session atomically if requested
                 if (request.LogManualSession && request.ManualSessionStartTime.HasValue && request.ManualSessionEndTime.HasValue)
@@ -461,30 +484,68 @@ public class TasksController : ControllerBase
                     var duration = (long)(request.ManualSessionEndTime.Value - request.ManualSessionStartTime.Value).TotalSeconds;
                     if (duration > 0)
                     {
-                        var session = new WorkSession
+                        var sessionUserId = _tenantService.UserId ?? task.AssignedToUserId ?? task.CreatedByUserId;
+                        if (!string.IsNullOrEmpty(sessionUserId))
                         {
-                            TaskId = task.Id,
-                            UserId = _tenantService.UserId ?? "anonymous",
-                            StartTime = request.ManualSessionStartTime.Value,
-                            EndTime = request.ManualSessionEndTime.Value,
-                            Duration = duration,
-                            Notes = string.IsNullOrWhiteSpace(request.ManualSessionNotes) ? "Dicatat via Unified Save Form" : request.ManualSessionNotes.Trim(),
-                            CreatedAt = DateTimeOffset.UtcNow
-                        };
+                            var session = new WorkSession
+                            {
+                                TaskId = task.Id,
+                                UserId = sessionUserId,
+                                StartTime = request.ManualSessionStartTime.Value,
+                                EndTime = request.ManualSessionEndTime.Value,
+                                Duration = duration,
+                                Notes = string.IsNullOrWhiteSpace(request.ManualSessionNotes) ? "Dicatat via Unified Save Form" : request.ManualSessionNotes.Trim(),
+                                CreatedAt = DateTimeOffset.UtcNow
+                            };
 
-                        _context.Sessions.Add(session);
+                            _context.Sessions.Add(session);
+                        }
                     }
                 }
 
                 await _context.SaveChangesAsync();
                 if (transaction != null) await transaction.CommitAsync();
 
+                // 3. Send notifications if relevant
+                if (_notificationService != null)
+                {
+                    var companyId = task.CompanyId ?? _tenantService.CompanyId ?? 1;
+                    if (!string.IsNullOrEmpty(task.AssignedToUserId) &&
+                        task.AssignedToUserId != previousAssignedUserId && task.AssignedToUserId != _tenantService.UserId)
+                    {
+                        await _notificationService.SendNotificationAsync(
+                            task.AssignedToUserId,
+                            companyId,
+                            "Penugasan Tugas Diperbarui",
+                            $"Anda ditugaskan pada tugas: {task.Title}",
+                            "Task",
+                            "/tasks",
+                            _tenantService.UserId
+                        );
+                    }
+
+                    if (request.Status == Domain.Enums.TaskStatus.Done && previousStatus != Domain.Enums.TaskStatus.Done &&
+                        !string.IsNullOrEmpty(task.AssignedToUserId) && task.AssignedToUserId != _tenantService.UserId)
+                    {
+                        await _notificationService.SendNotificationAsync(
+                            task.AssignedToUserId,
+                            companyId,
+                            "Tugas Selesai",
+                            $"Tugas '{task.Title}' telah diselesaikan.",
+                            "Task",
+                            "/tasks",
+                            _tenantService.UserId
+                        );
+                    }
+                }
+
                 return Ok(new { success = true, message = "Tugas dan sesi jam kerja berhasil disimpan." });
             }
             catch (Exception ex)
             {
                 if (transaction != null) await transaction.RollbackAsync();
-                return StatusCode(500, new { success = false, message = "Gagal menyimpan perubahan: " + ex.Message });
+                var innerMsg = ex.InnerException != null ? $" ({ex.InnerException.Message})" : "";
+                return StatusCode(500, new { success = false, message = "Gagal menyimpan perubahan: " + ex.Message + innerMsg });
             }
         });
     }
@@ -495,6 +556,11 @@ public class TasksController : ControllerBase
     {
         var task = await _context.Tasks.FirstOrDefaultAsync(t => t.Id == id);
         if (task == null) return NotFound(new { success = false, message = "Tugas tidak ditemukan." });
+
+        if (!CanUserModifyTask(task))
+        {
+            return StatusCode(403, new { success = false, message = "Hanya pembuat tugas atau Administrator yang dapat mengubah data tugas ini." });
+        }
 
         task.Status = request.Status;
         if (request.Status == Domain.Enums.TaskStatus.Done && task.Progress < 100)
@@ -532,6 +598,11 @@ public class TasksController : ControllerBase
         var task = await _context.Tasks.FirstOrDefaultAsync(t => t.Id == id);
         if (task == null) return NotFound(new { success = false, message = "Tugas tidak ditemukan." });
 
+        if (!CanUserModifyTask(task))
+        {
+            return StatusCode(403, new { success = false, message = "Hanya pembuat tugas atau Administrator yang dapat mengubah data tugas ini." });
+        }
+
         task.Progress = Math.Clamp(request.Progress, 0, 100);
         if (task.Progress == 100)
         {
@@ -554,6 +625,18 @@ public class TasksController : ControllerBase
 
         if (task == null) return NotFound(new { success = false, message = "Tugas tidak ditemukan." });
 
+        // Item 5: Protect Done tasks from past months from being deleted
+        if (IsProtectedDoneTaskFromPastMonth(task))
+        {
+            return BadRequest(new { success = false, message = "Tugas yang sudah selesai pada bulan-bulan sebelumnya telah diarsipkan secara permanen dan tidak boleh dihapus." });
+        }
+
+        // Item 4: Only creator or admin can delete task
+        if (!CanUserModifyTask(task))
+        {
+            return StatusCode(403, new { success = false, message = "Hanya pembuat tugas atau Administrator yang dapat menghapus tugas ini." });
+        }
+
         _context.Tasks.Remove(task);
         await _context.SaveChangesAsync();
 
@@ -575,6 +658,15 @@ public class TasksController : ControllerBase
         if (tasks.Count == 0)
         {
             return NotFound(new { success = false, message = "Tugas yang dipilih tidak ditemukan." });
+        }
+
+        if (!_tenantService.IsAdmin)
+        {
+            var nonModifiable = tasks.Where(t => !CanUserModifyTask(t)).ToList();
+            if (nonModifiable.Any())
+            {
+                return StatusCode(403, new { success = false, message = "Anda hanya dapat mengubah status tugas yang Anda buat sendiri." });
+            }
         }
 
         foreach (var task in tasks)
@@ -614,6 +706,15 @@ public class TasksController : ControllerBase
             return NotFound(new { success = false, message = "Tugas yang dipilih tidak ditemukan." });
         }
 
+        if (!_tenantService.IsAdmin)
+        {
+            var nonModifiable = tasks.Where(t => !CanUserModifyTask(t)).ToList();
+            if (nonModifiable.Any())
+            {
+                return StatusCode(403, new { success = false, message = "Anda hanya dapat mengubah prioritas tugas yang Anda buat sendiri." });
+            }
+        }
+
         foreach (var task in tasks)
         {
             task.Priority = request.Priority;
@@ -647,6 +748,27 @@ public class TasksController : ControllerBase
         if (tasks.Count == 0)
         {
             return NotFound(new { success = false, message = "Tugas yang dipilih tidak ditemukan." });
+        }
+
+        // Item 5: Check if any tasks are protected past-month done tasks
+        var protectedTasks = tasks.Where(IsProtectedDoneTaskFromPastMonth).ToList();
+        if (protectedTasks.Any())
+        {
+            return BadRequest(new
+            {
+                success = false,
+                message = $"Terdapat {protectedTasks.Count} tugas yang sudah selesai pada bulan-bulan sebelumnya dan tidak boleh dihapus."
+            });
+        }
+
+        // Item 4: Check if non-admin is trying to delete others' tasks
+        if (!_tenantService.IsAdmin)
+        {
+            var nonModifiable = tasks.Where(t => !CanUserModifyTask(t)).ToList();
+            if (nonModifiable.Any())
+            {
+                return StatusCode(403, new { success = false, message = "Anda hanya dapat menghapus tugas yang Anda buat sendiri." });
+            }
         }
 
         _context.Tasks.RemoveRange(tasks);
@@ -867,6 +989,27 @@ public class TasksController : ControllerBase
         return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
     }
 
+    private static bool IsProtectedDoneTaskFromPastMonth(WorkTask task)
+    {
+        if (task.Status != Domain.Enums.TaskStatus.Done) return false;
+
+        var now = DateTimeOffset.UtcNow;
+        var startOfCurrentMonth = new DateTimeOffset(now.Year, now.Month, 1, 0, 0, 0, TimeSpan.Zero);
+        var taskDate = task.DueDate ?? task.CreatedAt;
+        return taskDate < startOfCurrentMonth;
+    }
+
+    private bool CanUserModifyTask(WorkTask task)
+    {
+        if (_tenantService.IsAdmin) return true;
+        if (!string.IsNullOrEmpty(task.CreatedByUserId))
+        {
+            return task.CreatedByUserId == _tenantService.UserId;
+        }
+        // Fallback for legacy tasks
+        return task.AssignedToUserId == _tenantService.UserId;
+    }
+
     private static TaskItemDto MapToItemDto(WorkTask t)
     {
         var totalSecs = t.Sessions.Sum(s => s.Duration);
@@ -898,7 +1041,9 @@ public class TasksController : ControllerBase
             t.StartDate,
             t.DueDate,
             t.CreatedAt,
-            t.UpdatedAt
+            t.UpdatedAt,
+            t.CreatedByUserId,
+            t.CreatedByUser?.FullName
         );
     }
 }

@@ -278,13 +278,12 @@ public class AttendancesController : ControllerBase
     }
 
     [HttpGet("reconciliation")]
-    [Authorize(Roles = "Administrator")]
     public async Task<IActionResult> GetReconciliation(
         [FromQuery] DateOnly? date = null,
         [FromQuery] int? companyId = null)
     {
         var targetDate = date ?? DateOnly.FromDateTime(DateTime.UtcNow);
-        var targetCompany = companyId ?? _tenantService.CompanyId;
+        var targetCompany = _tenantService.IsAdmin ? (companyId ?? _tenantService.CompanyId) : _tenantService.CompanyId;
 
         var records = await _context.Attendances
             .Include(a => a.User)
@@ -311,7 +310,6 @@ public class AttendancesController : ControllerBase
     }
 
     [HttpGet("monthly")]
-    [Authorize(Roles = "Administrator")]
     public async Task<IActionResult> GetMonthlyTeamReconciliation(
         [FromQuery] int? month = null,
         [FromQuery] int? year = null,
@@ -320,7 +318,7 @@ public class AttendancesController : ControllerBase
         var now = DateTime.UtcNow;
         int targetMonth = month ?? now.Month;
         int targetYear = year ?? now.Year;
-        var targetCompany = companyId ?? _tenantService.CompanyId;
+        var targetCompany = _tenantService.IsAdmin ? (companyId ?? _tenantService.CompanyId) : _tenantService.CompanyId;
 
         var membersQuery = _context.Users.AsNoTracking().Where(u => u.IsApproved);
         if (targetCompany.HasValue)
@@ -401,11 +399,16 @@ public class AttendancesController : ControllerBase
     }
 
     [HttpPut("reconciliation/{id}")]
-    [Authorize(Roles = "Administrator")]
     public async Task<IActionResult> ReconcileAttendance(int id, [FromBody] ReconcileAttendanceRequest request)
     {
         var attendance = await _context.Attendances.FirstOrDefaultAsync(a => a.Id == id);
         if (attendance == null) return NotFound(new { success = false, message = "Catatan presensi tidak ditemukan." });
+
+        // Enforce RBAC: Non-admin can only update their own attendance record
+        if (!_tenantService.IsAdmin && attendance.UserId != _tenantService.UserId)
+        {
+            return StatusCode(403, new { success = false, message = "Anda hanya dapat memperbarui data presensi Anda sendiri." });
+        }
 
         attendance.Type = request.Type;
         attendance.WorkLocation = request.WorkLocation;

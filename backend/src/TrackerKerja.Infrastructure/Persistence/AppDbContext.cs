@@ -121,6 +121,12 @@ public class AppDbContext : DbContext
             .HasForeignKey(t => t.AssignedToUserId)
             .OnDelete(DeleteBehavior.SetNull);
 
+        modelBuilder.Entity<WorkTask>()
+            .HasOne(t => t.CreatedByUser)
+            .WithMany()
+            .HasForeignKey(t => t.CreatedByUserId)
+            .OnDelete(DeleteBehavior.SetNull);
+
         modelBuilder.Entity<Project>()
             .HasOne(p => p.ProjectManager)
             .WithMany()
@@ -171,7 +177,7 @@ public class AppDbContext : DbContext
 
         // 4. Multi-Tenancy Global Query Filter
         modelBuilder.Entity<WorkTask>().HasQueryFilter(t =>
-            IsCurrentUserAdmin || CurrentCompanyId == null || t.CompanyId == CurrentCompanyId);
+            IsCurrentUserAdmin || CurrentCompanyId == null || t.CompanyId == null || t.CompanyId == CurrentCompanyId);
 
         modelBuilder.Entity<Project>().HasQueryFilter(p =>
             IsCurrentUserAdmin || CurrentCompanyId == null || p.CompanyId == CurrentCompanyId);

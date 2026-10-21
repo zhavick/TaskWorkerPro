@@ -28,6 +28,7 @@ export interface CheckboxProps
   extends Omit<AriaCheckboxProps, "size">, VariantProps<typeof checkboxStyles> {
   checked?: boolean;
   onCheckedChange?: (checked: boolean) => void;
+  disabled?: boolean;
 }
 
 export function Checkbox({
@@ -38,9 +39,12 @@ export function Checkbox({
   onCheckedChange,
   isSelected,
   onChange,
+  disabled,
+  isDisabled,
   ...props
 }: CheckboxProps) {
   const selected = checked !== undefined ? checked : isSelected;
+  const isComponentDisabled = disabled !== undefined ? disabled : isDisabled;
   const handleChange = (val: boolean) => {
     onCheckedChange?.(val);
     onChange?.(val);
@@ -49,6 +53,7 @@ export function Checkbox({
   return (
     <AriaCheckbox
       isSelected={selected}
+      isDisabled={isComponentDisabled}
       onChange={handleChange}
       className={cn("group inline-flex items-center gap-2 overflow-hidden select-none relative", className)}
       {...props}

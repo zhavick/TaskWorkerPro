@@ -227,6 +227,9 @@ export default function ProjectStudioDetailPage() {
   // Update Project Mutation
   const updateProjectMutation = useMutation({
     mutationFn: async () => {
+      if (!isAdmin) {
+        throw new Error("Hanya Administrator yang memiliki akses untuk mengedit data proyek.");
+      }
       const payload = {
         name: name.trim(),
         description: description.trim(),
@@ -236,7 +239,7 @@ export default function ProjectStudioDetailPage() {
         projectManagerId: projectManagerId || null,
         budget: parseFloat(budget) || 0,
         actualCost: parseFloat(actualCost) || 0,
-        deadline: deadline ? new Date(deadline).toISOString() : null,
+        deadline: deadline && !isNaN(new Date(deadline).getTime()) ? new Date(deadline).toISOString() : null,
       };
       const res = await apiClient.put(`/projects/${projectId}`, payload);
       return res.data;
@@ -247,7 +250,7 @@ export default function ProjectStudioDetailPage() {
       queryClient.invalidateQueries({ queryKey: ["projectsList"] });
     },
     onError: (err: any) => {
-      toast.error(err.response?.data?.message || "Gagal memperbarui data proyek.");
+      toast.error(err.response?.data?.message || err.message || "Gagal memperbarui data proyek.");
     },
   });
 
@@ -290,6 +293,9 @@ export default function ProjectStudioDetailPage() {
   // Delete Project Mutation
   const deleteProjectMutation = useMutation({
     mutationFn: async () => {
+      if (!isAdmin) {
+        throw new Error("Hanya Administrator yang memiliki akses untuk menghapus proyek.");
+      }
       const res = await apiClient.delete(`/projects/${projectId}`);
       return res.data;
     },
@@ -299,7 +305,7 @@ export default function ProjectStudioDetailPage() {
       router.push("/projects");
     },
     onError: (err: any) => {
-      toast.error(err.response?.data?.message || "Gagal menghapus proyek.");
+      toast.error(err.response?.data?.message || err.message || "Gagal menghapus proyek.");
     },
   });
 
@@ -405,26 +411,42 @@ export default function ProjectStudioDetailPage() {
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            onClick={() => setBulkModalOpen(true)}
-            variant="outline"
-            className="gap-2 border-indigo-200 text-indigo-600 hover:bg-indigo-50 dark:border-indigo-900/50 dark:text-indigo-400 dark:hover:bg-indigo-950/40"
-          >
-            <Plus className="h-4 w-4" />
-            Alokasi Tugas Massal
-          </Button>
+        {isAdmin ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              onClick={() => setBulkModalOpen(true)}
+              variant="outline"
+              className="gap-2 border-indigo-200 text-indigo-600 hover:bg-indigo-50 dark:border-indigo-900/50 dark:text-indigo-400 dark:hover:bg-indigo-950/40"
+            >
+              <Plus className="h-4 w-4" />
+              Alokasi Tugas Massal
+            </Button>
 
-          <Button
-            onClick={() => updateProjectMutation.mutate()}
-            disabled={updateProjectMutation.isPending}
-            className="gap-2 bg-indigo-600 text-white shadow-md shadow-indigo-500/20 hover:bg-indigo-700"
-          >
-            <Save className="h-4 w-4" />
-            {updateProjectMutation.isPending ? "Menyimpan..." : "Simpan Perubahan"}
-          </Button>
-        </div>
+            <Button
+              onClick={() => updateProjectMutation.mutate()}
+              disabled={updateProjectMutation.isPending}
+              className="gap-2 bg-indigo-600 text-white shadow-md shadow-indigo-500/20 hover:bg-indigo-700"
+            >
+              <Save className="h-4 w-4" />
+              {updateProjectMutation.isPending ? "Menyimpan..." : "Simpan Perubahan"}
+            </Button>
+          </div>
+        ) : (
+          <div className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300">
+            <ShieldCheck className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+            Mode Hanya Lihat (Admin Only)
+          </div>
+        )}
       </div>
+
+      {!isAdmin && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50/80 p-4 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200 flex items-center gap-3 shadow-xs">
+          <ShieldCheck className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
+          <div className="text-xs sm:text-sm">
+            <span className="font-bold">Mode Hanya Lihat (Read-Only):</span> Informasi dan anggaran proyek ini hanya dapat diedit oleh <strong>Administrator</strong>. Anda dapat memantau serapan biaya dan mengelola tugas proyek.
+          </div>
+        </div>
+      )}
 
       {/* 2. 12-COLUMN STUDIO LAYOUT */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
@@ -443,9 +465,10 @@ export default function ProjectStudioDetailPage() {
                 </label>
                 <Input
                   value={name}
+                  disabled={!isAdmin}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Masukkan nama proyek..."
-                  className="font-semibold text-gray-900 dark:text-white"
+                  className="font-semibold text-gray-900 dark:text-white disabled:opacity-60 disabled:cursor-not-allowed"
                 />
               </div>
 
@@ -456,8 +479,10 @@ export default function ProjectStudioDetailPage() {
                   </label>
                   <Input
                     value={clientName}
+                    disabled={!isAdmin}
                     onChange={(e) => setClientName(e.target.value)}
                     placeholder="Contoh: PT Wahana Digital Pratama"
+                    className="disabled:opacity-60 disabled:cursor-not-allowed"
                   />
                 </div>
 
@@ -470,8 +495,9 @@ export default function ProjectStudioDetailPage() {
                       <button
                         key={c}
                         type="button"
-                        onClick={() => setColor(c)}
-                        className={`h-7 w-7 rounded-full transition-all ${
+                        disabled={!isAdmin}
+                        onClick={() => isAdmin && setColor(c)}
+                        className={`h-7 w-7 rounded-full transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
                           color.toLowerCase() === c.toLowerCase()
                             ? "scale-110 ring-2 ring-indigo-500 ring-offset-2 dark:ring-offset-gray-900"
                             : "hover:scale-105 opacity-80"
@@ -482,8 +508,9 @@ export default function ProjectStudioDetailPage() {
                     <input
                       type="color"
                       value={color}
+                      disabled={!isAdmin}
                       onChange={(e) => setColor(e.target.value)}
-                      className="ml-2 h-7 w-7 cursor-pointer rounded border-0 bg-transparent"
+                      className="ml-2 h-7 w-7 cursor-pointer rounded border-0 bg-transparent disabled:opacity-50 disabled:cursor-not-allowed"
                     />
                   </div>
                 </div>
@@ -496,9 +523,10 @@ export default function ProjectStudioDetailPage() {
                 <textarea
                   rows={3}
                   value={description}
+                  disabled={!isAdmin}
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="Jelaskan tujuan strategis, batasan kerja, dan target penyelesaian proyek ini..."
-                  className="w-full rounded-xl border border-gray-200 bg-transparent p-3 text-xs leading-relaxed text-gray-900 outline-none transition focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 dark:border-gray-800 dark:text-white"
+                  className="w-full rounded-xl border border-gray-200 bg-transparent p-3 text-xs leading-relaxed text-gray-900 outline-none transition focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 dark:border-gray-800 dark:text-white disabled:opacity-60 disabled:cursor-not-allowed"
                 />
               </div>
             </div>
@@ -1087,8 +1115,9 @@ export default function ProjectStudioDetailPage() {
               </label>
               <select
                 value={projectManagerId}
+                disabled={!isAdmin}
                 onChange={(e) => setProjectManagerId(e.target.value)}
-                className="w-full rounded-xl border border-gray-200 bg-transparent p-2.5 text-xs text-gray-900 dark:border-gray-800 dark:text-white"
+                className="w-full rounded-xl border border-gray-200 bg-transparent p-2.5 text-xs text-gray-900 dark:border-gray-800 dark:text-white disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 <option value="">-- Tanpa Project Manager --</option>
                 {members.map((m: any) => (
@@ -1114,8 +1143,9 @@ export default function ProjectStudioDetailPage() {
                 <Input
                   type="date"
                   value={deadline}
+                  disabled={!isAdmin}
                   onChange={(e) => setDeadline(e.target.value)}
-                  className="text-xs"
+                  className="text-xs disabled:opacity-60 disabled:cursor-not-allowed"
                 />
               </div>
 
@@ -1154,9 +1184,10 @@ export default function ProjectStudioDetailPage() {
                 <Input
                   type="number"
                   value={budget}
+                  disabled={!isAdmin}
                   onChange={(e) => setBudget(e.target.value)}
                   placeholder="50000000"
-                  className="text-xs font-mono font-bold"
+                  className="text-xs font-mono font-bold disabled:opacity-60 disabled:cursor-not-allowed"
                 />
               </div>
 
@@ -1167,9 +1198,10 @@ export default function ProjectStudioDetailPage() {
                 <Input
                   type="number"
                   value={actualCost}
+                  disabled={!isAdmin}
                   onChange={(e) => setActualCost(e.target.value)}
                   placeholder="10000000"
-                  className="text-xs font-mono font-bold"
+                  className="text-xs font-mono font-bold disabled:opacity-60 disabled:cursor-not-allowed"
                 />
               </div>
             </div>
@@ -1177,25 +1209,35 @@ export default function ProjectStudioDetailPage() {
 
           {/* Primary Action Buttons */}
           <div className="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-xs dark:border-gray-800 dark:bg-gray-900 space-y-3">
-            <Button
-              onClick={() => updateProjectMutation.mutate()}
-              disabled={updateProjectMutation.isPending}
-              className="w-full gap-2 bg-indigo-600 py-2.5 font-bold text-white shadow-md shadow-indigo-500/20 hover:bg-indigo-700"
-            >
-              <Save className="h-4 w-4" />
-              {updateProjectMutation.isPending
-                ? "Menyimpan Perubahan..."
-                : "Simpan Metadata Proyek"}
-            </Button>
+            {isAdmin ? (
+              <>
+                <Button
+                  onClick={() => updateProjectMutation.mutate()}
+                  disabled={updateProjectMutation.isPending}
+                  className="w-full gap-2 bg-indigo-600 py-2.5 font-bold text-white shadow-md shadow-indigo-500/20 hover:bg-indigo-700"
+                >
+                  <Save className="h-4 w-4" />
+                  {updateProjectMutation.isPending
+                    ? "Menyimpan Perubahan..."
+                    : "Simpan Metadata Proyek"}
+                </Button>
 
-            {isAdmin && (
+                <Button
+                  variant="outline"
+                  onClick={() => setDeleteModalOpen(true)}
+                  className="w-full gap-2 border-rose-200 text-rose-600 hover:bg-rose-50 dark:border-rose-900/50 dark:text-rose-400 dark:hover:bg-rose-950/40"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Hapus Proyek Ini
+                </Button>
+              </>
+            ) : (
               <Button
-                variant="outline"
-                onClick={() => setDeleteModalOpen(true)}
-                className="w-full gap-2 border-rose-200 text-rose-600 hover:bg-rose-50 dark:border-rose-900/50 dark:text-rose-400 dark:hover:bg-rose-950/40"
+                disabled
+                className="w-full gap-2 bg-gray-400 py-2.5 font-bold text-white cursor-not-allowed dark:bg-gray-700"
               >
-                <Trash2 className="h-4 w-4" />
-                Hapus Proyek Ini
+                <ShieldCheck className="h-4 w-4" />
+                Mode Hanya Lihat (Hanya Administrator)
               </Button>
             )}
           </div>

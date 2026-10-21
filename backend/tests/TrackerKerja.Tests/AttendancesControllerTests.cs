@@ -264,6 +264,93 @@ public class AttendancesControllerTests : IDisposable
         Assert.Null(recordUser2);
     }
 
+    [Fact]
+    public async Task GetReconciliation_NonAdmin_CanViewCompanyRecords()
+    {
+        // Arrange: non-admin controller
+        var nonAdminTenant = new FakeTenantService(1, "TEST", "user-1", false);
+        var nonAdminController = new AttendancesController(_context, nonAdminTenant);
+
+        // Act: Non-admin calls reconciliation for team
+        var result = await nonAdminController.GetReconciliation(date: new DateOnly(2026, 10, 20)) as OkObjectResult;
+
+        // Assert: 200 OK
+        Assert.NotNull(result);
+        Assert.Equal(200, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task ReconcileAttendance_NonAdmin_UpdatingOtherUser_Returns403()
+    {
+        // Seed attendance for user-2
+        var targetDate = new DateOnly(2026, 11, 10);
+        var record = new Attendance
+        {
+            UserId = "user-2",
+            Date = targetDate,
+            Type = AttendanceType.Present,
+            WorkLocation = WorkLocation.WFO,
+            TotalHours = 7.0
+        };
+        _context.Attendances.Add(record);
+        await _context.SaveChangesAsync();
+
+        // Arrange: non-admin controller as "user-1"
+        var nonAdminTenant = new FakeTenantService(1, "TEST", "user-1", false);
+        var nonAdminController = new AttendancesController(_context, nonAdminTenant);
+
+        // Act: tries to edit user-2's attendance
+        var result = await nonAdminController.ReconcileAttendance(record.Id, new ReconcileAttendanceRequest(
+            record.Id,
+            AttendanceType.Leave,
+            WorkLocation.WFH,
+            null,
+            null,
+            "Cuti tahunan",
+            "Catatan"
+        )) as ObjectResult;
+
+        // Assert: 403 Forbidden
+        Assert.NotNull(result);
+        Assert.Equal(403, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task ReconcileAttendance_NonAdmin_UpdatingOwnRecord_Returns200()
+    {
+        // Seed attendance for user-1
+        var targetDate = new DateOnly(2026, 11, 11);
+        var record = new Attendance
+        {
+            UserId = "user-1",
+            Date = targetDate,
+            Type = AttendanceType.Present,
+            WorkLocation = WorkLocation.WFO,
+            TotalHours = 7.0
+        };
+        _context.Attendances.Add(record);
+        await _context.SaveChangesAsync();
+
+        // Arrange: non-admin controller as "user-1"
+        var nonAdminTenant = new FakeTenantService(1, "TEST", "user-1", false);
+        var nonAdminController = new AttendancesController(_context, nonAdminTenant);
+
+        // Act: edits own attendance
+        var result = await nonAdminController.ReconcileAttendance(record.Id, new ReconcileAttendanceRequest(
+            record.Id,
+            AttendanceType.Leave,
+            WorkLocation.WFH,
+            null,
+            null,
+            "Izin keperluan keluarga",
+            "Catatan pribadi"
+        )) as OkObjectResult;
+
+        // Assert: 200 OK
+        Assert.NotNull(result);
+        Assert.Equal(200, result.StatusCode);
+    }
+
     private class FakeTenantService : ICurrentTenantService
     {
         public FakeTenantService(int? companyId, string? companyCode, string? userId, bool isAdmin)

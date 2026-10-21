@@ -24,9 +24,11 @@ import { Input } from "@/components/tailgrids/core/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/tailgrids/core/dialog";
 import { Checkbox } from "@/components/tailgrids/core/checkbox";
 import { toast } from "sonner";
+import { useCurrentUser } from "@/hooks/use-current-user";
 
 export default function ProjectsPage() {
   const queryClient = useQueryClient();
+  const { isAdmin } = useCurrentUser();
   const [search, setSearch] = useState("");
   const [selectedProjectForAssign, setSelectedProjectForAssign] = useState<any | null>(null);
   const [selectedTaskIds, setSelectedTaskIds] = useState<number[]>([]);
@@ -53,6 +55,10 @@ export default function ProjectsPage() {
   const [editDeadline, setEditDeadline] = useState("");
 
   const handleOpenEditModal = (p: any) => {
+    if (!isAdmin) {
+      toast.error("Hanya Administrator yang memiliki hak akses untuk mengedit proyek.");
+      return;
+    }
     setEditingProject(p);
     setEditName(p.name || "");
     setEditDescription(p.description || "");
@@ -88,6 +94,9 @@ export default function ProjectsPage() {
   // 3. Create Project Mutation
   const createProjectMutation = useMutation({
     mutationFn: async () => {
+      if (!isAdmin) {
+        throw new Error("Hanya Administrator yang dapat membuat proyek baru.");
+      }
       const res = await apiClient.post("/projects", {
         name: name.trim(),
         description: description.trim(),
@@ -107,12 +116,15 @@ export default function ProjectsPage() {
       setClientName("");
       queryClient.invalidateQueries({ queryKey: ["projectsList"] });
     },
-    onError: (err: any) => toast.error(err.response?.data?.message || "Gagal membuat proyek"),
+    onError: (err: any) => toast.error(err.response?.data?.message || err.message || "Gagal membuat proyek"),
   });
 
   // 3b. Update Project Mutation
   const updateProjectMutation = useMutation({
     mutationFn: async () => {
+      if (!isAdmin) {
+        throw new Error("Hanya Administrator yang dapat memperbarui data proyek.");
+      }
       if (!editingProject) return;
       const res = await apiClient.put(`/projects/${editingProject.id}`, {
         name: editName.trim(),
@@ -122,7 +134,7 @@ export default function ProjectsPage() {
         status: parseInt(editStatus, 10),
         budget: parseFloat(editBudget) || 0,
         actualCost: parseFloat(editActualCost) || 0,
-        deadline: editDeadline ? new Date(editDeadline).toISOString() : null,
+        deadline: editDeadline && !isNaN(new Date(editDeadline).getTime()) ? new Date(editDeadline).toISOString() : null,
       });
       return res.data;
     },
@@ -132,7 +144,7 @@ export default function ProjectsPage() {
       setEditingProject(null);
       queryClient.invalidateQueries({ queryKey: ["projectsList"] });
     },
-    onError: (err: any) => toast.error(err.response?.data?.message || "Gagal memperbarui proyek"),
+    onError: (err: any) => toast.error(err.response?.data?.message || err.message || "Gagal memperbarui proyek"),
   });
 
   // 4. Bulk Assign Tasks Mutation
@@ -171,13 +183,15 @@ export default function ProjectsPage() {
           </p>
         </div>
 
-        <Button
-          onClick={() => setCreateModalOpen(true)}
-          className="gap-2 bg-indigo-600 font-semibold text-white shadow-md shadow-indigo-500/20 hover:bg-indigo-700"
-        >
-          <Plus className="h-4 w-4" />
-          Proyek Baru
-        </Button>
+        {isAdmin && (
+          <Button
+            onClick={() => setCreateModalOpen(true)}
+            className="gap-2 bg-indigo-600 font-semibold text-white shadow-md shadow-indigo-500/20 hover:bg-indigo-700"
+          >
+            <Plus className="h-4 w-4" />
+            Proyek Baru
+          </Button>
+        )}
       </div>
 
       {/* Search and Filters */}
@@ -293,31 +307,33 @@ export default function ProjectsPage() {
                   </Button>
                 </Link>
 
-                <div className="flex items-center gap-1.5">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="gap-1.5 text-xs text-gray-700 hover:text-indigo-600 dark:text-gray-300 dark:hover:text-indigo-400"
-                    onClick={() => handleOpenEditModal(p)}
-                    title="Edit Metadata Cepat"
-                  >
-                    <Pencil className="h-3.5 w-3.5" />
-                    Edit
-                  </Button>
+                {isAdmin && (
+                  <div className="flex items-center gap-1.5">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="gap-1.5 text-xs text-gray-700 hover:text-indigo-600 dark:text-gray-300 dark:hover:text-indigo-400"
+                      onClick={() => handleOpenEditModal(p)}
+                      title="Edit Metadata Cepat"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                      Edit
+                    </Button>
 
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="gap-1.5 text-xs text-gray-700 hover:text-indigo-600 dark:text-gray-300 dark:hover:text-indigo-400"
-                    onClick={() => {
-                      setSelectedProjectForAssign(p);
-                      setSelectedTaskIds([]);
-                    }}
-                    title="Alokasikan Tugas Cepat"
-                  >
-                    <Layers className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="gap-1.5 text-xs text-gray-700 hover:text-indigo-600 dark:text-gray-300 dark:hover:text-indigo-400"
+                      onClick={() => {
+                        setSelectedProjectForAssign(p);
+                        setSelectedTaskIds([]);
+                      }}
+                      title="Alokasikan Tugas Cepat"
+                    >
+                      <Layers className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                )}
               </div>
             </div>
           );

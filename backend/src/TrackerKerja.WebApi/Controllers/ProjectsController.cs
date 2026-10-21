@@ -278,8 +278,14 @@ public class ProjectsController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Roles = "Administrator")]
     public async Task<IActionResult> CreateProject([FromBody] CreateProjectRequest request)
     {
+        if (!_tenantService.IsAdmin)
+        {
+            return StatusCode(403, new { success = false, message = "Hanya Administrator yang berwenang menambahkan proyek baru." });
+        }
+
         var project = new Project
         {
             Name = request.Name.Trim(),
@@ -302,8 +308,14 @@ public class ProjectsController : ControllerBase
     }
 
     [HttpPut("{id}")]
+    [Authorize(Roles = "Administrator")]
     public async Task<IActionResult> UpdateProject(int id, [FromBody] UpdateProjectRequest request)
     {
+        if (!_tenantService.IsAdmin)
+        {
+            return StatusCode(403, new { success = false, message = "Hanya Administrator yang berwenang mengubah data proyek." });
+        }
+
         var project = await _context.Projects.FirstOrDefaultAsync(p => p.Id == id);
         if (project == null) return NotFound(new { success = false, message = "Proyek tidak ditemukan." });
 
@@ -326,6 +338,11 @@ public class ProjectsController : ControllerBase
     [Authorize(Roles = "Administrator")]
     public async Task<IActionResult> DeleteProject(int id)
     {
+        if (!_tenantService.IsAdmin)
+        {
+            return StatusCode(403, new { success = false, message = "Hanya Administrator yang berwenang menghapus proyek." });
+        }
+
         var project = await _context.Projects.FirstOrDefaultAsync(p => p.Id == id);
         if (project == null) return NotFound(new { success = false, message = "Proyek tidak ditemukan." });
 

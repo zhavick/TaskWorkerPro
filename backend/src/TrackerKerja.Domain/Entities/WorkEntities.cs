@@ -40,6 +40,7 @@ public class WorkTask
     public int? ProjectId { get; set; }
     public int? CategoryId { get; set; }
     public string? AssignedToUserId { get; set; }
+    public string? CreatedByUserId { get; set; }
     public int? ParentTaskId { get; set; }
     public int? CompanyId { get; set; }
     public DateTimeOffset? StartDate { get; set; }
@@ -51,6 +52,7 @@ public class WorkTask
     public Project? Project { get; set; }
     public Category? Category { get; set; }
     public AppUser? AssignedToUser { get; set; }
+    public AppUser? CreatedByUser { get; set; }
     public WorkTask? ParentTask { get; set; }
     public Company? Company { get; set; }
     public ICollection<WorkTask> Subtasks { get; set; } = new List<WorkTask>();

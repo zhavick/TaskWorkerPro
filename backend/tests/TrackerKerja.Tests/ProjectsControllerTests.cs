@@ -290,6 +290,33 @@ public class ProjectsControllerTests
         result!.StatusCode.Should().Be(404);
     }
 
+    [Fact]
+    public async Task UpdateProject_WhenNotAdmin_ShouldReturn403Forbidden()
+    {
+        // Arrange: non-admin tenant
+        var nonAdmin = new FakeTenantService(10, "WCH", "user-non-admin", false);
+        var controller = new ProjectsController(_context, nonAdmin);
+
+        var req = new UpdateProjectRequest(
+            "Project Modified by Member",
+            "Hacked",
+            "#000000",
+            ProjectStatus.Archived,
+            null,
+            null,
+            100,
+            0,
+            null
+        );
+
+        // Act
+        var result = await controller.UpdateProject(1, req) as ObjectResult;
+
+        // Assert
+        result.Should().NotBeNull();
+        result!.StatusCode.Should().Be(403);
+    }
+
     private class FakeTenantService : ICurrentTenantService
     {
         public FakeTenantService(int? companyId, string? companyCode, string? userId, bool isAdmin)

@@ -61,13 +61,6 @@ export default function AttendancePage() {
   // Tab & Filter states
   const [activeTab, setActiveTab] = useState<"personal" | "reconciliation">("personal");
 
-  // Keep non-admin on personal tab
-  useEffect(() => {
-    if (!isAdmin && activeTab === "reconciliation") {
-      setActiveTab("personal");
-    }
-  }, [isAdmin, activeTab]);
-
   const [selectedMonth, setSelectedMonth] = useState(currentDate.getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(currentDate.getFullYear());
   const [reconcileDate, setReconcileDate] = useState(
@@ -287,9 +280,12 @@ export default function AttendancePage() {
       toast.error(err.response?.data?.message || err.message || "Gagal mengajukan izin"),
   });
 
-  // Reconcile Mutation (Admin)
+  // Reconcile Mutation (Admin or Self)
   const reconcileMutation = useMutation({
     mutationFn: async () => {
+      if (!isAdmin && selectedRecord?.userId !== currentUserId) {
+        throw new Error("Anda hanya dapat mengoreksi data presensi Anda sendiri.");
+      }
       const res = await apiClient.put(
         `/attendances/reconciliation/${selectedRecord.id}`,
         {
@@ -305,13 +301,16 @@ export default function AttendancePage() {
       return res.data;
     },
     onSuccess: () => {
-      toast.success("Presensi anggota berhasil direkonsiliasi!");
+      toast.success("Presensi berhasil direkonsiliasi!");
       setReconcileModalOpen(false);
+      queryClient.invalidateQueries({ queryKey: ["attendanceTodayStatus"] });
+      queryClient.invalidateQueries({ queryKey: ["attendanceMyHistory"] });
+      queryClient.invalidateQueries({ queryKey: ["attendanceMySummary"] });
       queryClient.invalidateQueries({ queryKey: ["attendanceReconciliation"] });
       queryClient.invalidateQueries({ queryKey: ["teamMonthlyAttendance"] });
     },
     onError: (err: any) =>
-      toast.error(err.response?.data?.message || "Gagal menyimpan rekonsiliasi"),
+      toast.error(err.response?.data?.message || err.message || "Gagal menyimpan rekonsiliasi"),
   });
 
   // Manual Entry Mutation (Admin can record for all, Non-Admin records for self)
@@ -376,18 +375,16 @@ export default function AttendancePage() {
           >
             Presensi Mandiri
           </button>
-          {isAdmin && (
-            <button
-              onClick={() => setActiveTab("reconciliation")}
-              className={`rounded-lg px-3.5 py-1.5 text-xs font-semibold transition ${
-                activeTab === "reconciliation"
-                  ? "bg-white text-indigo-700 shadow-xs dark:bg-gray-900 dark:text-indigo-400"
-                  : "text-gray-500 hover:text-gray-900 dark:text-gray-400"
-              }`}
-            >
-              Rekonsiliasi Tim (Admin)
-            </button>
-          )}
+          <button
+            onClick={() => setActiveTab("reconciliation")}
+            className={`rounded-lg px-3.5 py-1.5 text-xs font-semibold transition ${
+              activeTab === "reconciliation"
+                ? "bg-white text-indigo-700 shadow-xs dark:bg-gray-900 dark:text-indigo-400"
+                : "text-gray-500 hover:text-gray-900 dark:text-gray-400"
+            }`}
+          >
+            Presensi & Rekonsiliasi Tim
+          </button>
         </div>
       </div>
 
@@ -1158,28 +1155,32 @@ export default function AttendancePage() {
                             {r.leaveReason || r.notes || "-"}
                           </td>
                           <td className="px-4 py-3 text-right">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-7 gap-1 px-2 text-[11px]"
-                              onClick={() => {
-                                setSelectedRecord(r);
-                                setReconcileType(r.type);
-                                setReconcileLoc(r.workLocation);
-                                setReconcileClockIn(
-                                  r.clockIn ? new Date(r.clockIn).toISOString().slice(0, 16) : ""
-                                );
-                                setReconcileClockOut(
-                                  r.clockOut ? new Date(r.clockOut).toISOString().slice(0, 16) : ""
-                                );
-                                setReconcileLeaveReason(r.leaveReason || "");
-                                setReconcileNotes(r.notes || "");
-                                setReconcileModalOpen(true);
-                              }}
-                            >
-                              <Edit2 className="h-3 w-3" />
-                              Koreksi
-                            </Button>
+                            {isAdmin || r.userId === currentUserId ? (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 gap-1 px-2 text-[11px]"
+                                onClick={() => {
+                                  setSelectedRecord(r);
+                                  setReconcileType(r.type);
+                                  setReconcileLoc(r.workLocation);
+                                  setReconcileClockIn(
+                                    r.clockIn ? new Date(r.clockIn).toISOString().slice(0, 16) : ""
+                                  );
+                                  setReconcileClockOut(
+                                    r.clockOut ? new Date(r.clockOut).toISOString().slice(0, 16) : ""
+                                  );
+                                  setReconcileLeaveReason(r.leaveReason || "");
+                                  setReconcileNotes(r.notes || "");
+                                  setReconcileModalOpen(true);
+                                }}
+                              >
+                                <Edit2 className="h-3 w-3" />
+                                Koreksi
+                              </Button>
+                            ) : (
+                              <span className="text-[10px] text-gray-400 italic">Hanya Lihat</span>
+                            )}
                           </td>
                         </tr>
                       );

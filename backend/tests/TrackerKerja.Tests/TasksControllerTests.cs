@@ -417,6 +417,149 @@ public class TasksControllerTests
         doneRange!.Any(t => t.Id == 70).Should().BeFalse();
     }
 
+    [Fact]
+    public async Task GetTasks_NonAdmin_ShouldSeeOtherUsersTasks()
+    {
+        // Arrange: User-2 is a non-admin
+        var nonAdminTenant = new FakeTenantService(10, "WCH", "user-2", false);
+        var controller = new TasksController(_context, nonAdminTenant);
+
+        // Seed a task assigned to user-1, created by user-1
+        var taskByOther = new WorkTask
+        {
+            Id = 88,
+            Title = "Tugas Milik Rekan",
+            CompanyId = 10,
+            AssignedToUserId = "user-1",
+            CreatedByUserId = "user-1",
+            Status = Domain.Enums.TaskStatus.InProgress
+        };
+        _context.Tasks.Add(taskByOther);
+        await _context.SaveChangesAsync();
+
+        // Act: Non-admin fetches tasks
+        var result = await controller.GetTasks() as OkObjectResult;
+
+        // Assert: Non-admin can see task 88 belonging to user-1
+        result.Should().NotBeNull();
+        var data = result!.Value?.GetType().GetProperty("data")?.GetValue(result.Value) as List<TaskItemDto>;
+        data.Should().NotBeNull();
+        data!.Any(t => t.Id == 88).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task UpdateTask_ByNonCreatorNonAdmin_Returns403Forbidden()
+    {
+        // Arrange: User-2 (non-admin) tries to edit task created by user-1
+        var nonAdminTenant = new FakeTenantService(10, "WCH", "user-2", false);
+        var controller = new TasksController(_context, nonAdminTenant);
+
+        var task = new WorkTask
+        {
+            Id = 91,
+            Title = "Tugas Rahasia User 1",
+            CompanyId = 10,
+            AssignedToUserId = "user-1",
+            CreatedByUserId = "user-1",
+            Status = Domain.Enums.TaskStatus.Todo
+        };
+        _context.Tasks.Add(task);
+        await _context.SaveChangesAsync();
+
+        var updateReq = new UpdateTaskRequest(
+            "Tugas Diedit Hacker",
+            "Deskripsi hack",
+            TaskPriority.High,
+            Domain.Enums.TaskStatus.InProgress,
+            50,
+            null,
+            null,
+            null,
+            null,
+            null,
+            "user-2",
+            null,
+            null
+        );
+
+        // Act
+        var result = await controller.UpdateTask(91, updateReq) as ObjectResult;
+
+        // Assert: 403 Forbidden
+        result.Should().NotBeNull();
+        result!.StatusCode.Should().Be(403);
+    }
+
+    [Fact]
+    public async Task UpdateTask_ByCreator_ReturnsOk()
+    {
+        // Arrange: User-2 (non-admin) edits task they created
+        var nonAdminTenant = new FakeTenantService(10, "WCH", "user-2", false);
+        var controller = new TasksController(_context, nonAdminTenant);
+
+        var task = new WorkTask
+        {
+            Id = 92,
+            Title = "Tugas Buatan User 2",
+            CompanyId = 10,
+            AssignedToUserId = "user-1",
+            CreatedByUserId = "user-2",
+            Status = Domain.Enums.TaskStatus.Todo
+        };
+        _context.Tasks.Add(task);
+        await _context.SaveChangesAsync();
+
+        var updateReq = new UpdateTaskRequest(
+            "Tugas Buatan User 2 - Diperbarui",
+            "Deskripsi update",
+            TaskPriority.High,
+            Domain.Enums.TaskStatus.InProgress,
+            50,
+            null,
+            null,
+            null,
+            null,
+            null,
+            "user-1",
+            null,
+            null
+        );
+
+        // Act
+        var result = await controller.UpdateTask(92, updateReq) as OkObjectResult;
+
+        // Assert: 200 OK
+        result.Should().NotBeNull();
+        result!.StatusCode.Should().Be(200);
+    }
+
+    [Fact]
+    public async Task DeleteTask_DoneTaskFromPastMonth_Returns400BadRequest()
+    {
+        // Arrange: Admin tries to delete a Done task from prior months
+        var controller = new TasksController(_context, _tenantService);
+
+        var pastMonthDoneTask = new WorkTask
+        {
+            Id = 93,
+            Title = "Tugas Selesai Bulan Lalu",
+            CompanyId = 10,
+            Status = Domain.Enums.TaskStatus.Done,
+            DueDate = DateTimeOffset.UtcNow.AddMonths(-2), // 2 months ago
+            CreatedAt = DateTimeOffset.UtcNow.AddMonths(-2),
+            Progress = 100
+        };
+        _context.Tasks.Add(pastMonthDoneTask);
+        await _context.SaveChangesAsync();
+
+        // Act
+        var result = await controller.DeleteTask(93) as ObjectResult;
+
+        // Assert: 400 BadRequest with protection message
+        result.Should().NotBeNull();
+        result!.StatusCode.Should().Be(400);
+    }
+
     private class FakeTenantService : ICurrentTenantService
     {
         public FakeTenantService(int? companyId, string? companyCode, string? userId, bool isAdmin)

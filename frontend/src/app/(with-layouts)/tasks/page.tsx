@@ -29,6 +29,7 @@ import {
   Flame,
   Layers,
   Sparkles,
+  Lock,
 } from "lucide-react";
 import { Button } from "@/components/tailgrids/core/button";
 import { Input } from "@/components/tailgrids/core/input";
@@ -38,6 +39,7 @@ import { ExportTasksDialog } from "@/components/tasks/export-excel-dialog";
 import { CreateTaskDialog } from "@/components/tasks/create-task-dialog";
 import { toast } from "sonner";
 import Link from "next/link";
+import { useCurrentUser } from "@/hooks/use-current-user";
 
 const priorityLabels: Record<number, { label: string; badge: string; dot: string }> = {
   0: { label: "Rendah", badge: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-400 dark:border-emerald-800", dot: "bg-emerald-500" },
@@ -57,6 +59,7 @@ type SortField = "title" | "project" | "priority" | "status" | "progress" | "due
 
 export default function TasksListPage() {
   const queryClient = useQueryClient();
+  const { user: currentUser, isAdmin, userId: currentUserId } = useCurrentUser();
 
   // Search & Filter state
   const [search, setSearch] = useState("");
@@ -123,6 +126,37 @@ export default function TasksListPage() {
   const tasks = tasksResponse?.data || [];
   const totalCount = tasksResponse?.totalCount ?? 0;
   const totalPages = Math.max(1, tasksResponse?.totalPages ?? Math.ceil(totalCount / pageSize));
+
+  // Helpers for RBAC & Past-Month Done protection
+  const isPastMonthDone = (t: any) => {
+    if (t.status !== 2) return false;
+    const dateStr = t.dueDate || t.createdAt;
+    if (!dateStr) return false;
+    const taskDate = new Date(dateStr);
+    const startOfCurrentMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+    return taskDate < startOfCurrentMonth;
+  };
+
+  const canUserModifyTask = (t: any) => {
+    if (isAdmin) return true;
+    if (t.createdByUserId) {
+      return t.createdByUserId === currentUserId;
+    }
+    return t.assignedToUserId === currentUserId;
+  };
+
+  const selectedTasks = useMemo(() => {
+    return tasks.filter((t: any) => selectedTaskIds.includes(t.id));
+  }, [tasks, selectedTaskIds]);
+
+  const protectedDeleteCount = useMemo(() => {
+    return selectedTasks.filter((t: any) => isPastMonthDone(t)).length;
+  }, [selectedTasks]);
+
+  const nonModifiableCount = useMemo(() => {
+    if (isAdmin) return 0;
+    return selectedTasks.filter((t: any) => !canUserModifyTask(t)).length;
+  }, [selectedTasks, isAdmin, currentUserId]);
 
   // 2. Projects Query for filter & select
   const { data: projects = [] } = useQuery<any[]>({
@@ -277,9 +311,10 @@ export default function TasksListPage() {
 
   // 7. Bulk Delete Mutation
   const bulkDeleteMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (targetIds?: number[]) => {
+      const ids = targetIds && targetIds.length > 0 ? targetIds : selectedTaskIds;
       const res = await apiClient.post("/tasks/bulk-delete", {
-        taskIds: selectedTaskIds,
+        taskIds: ids,
       });
       return res.data;
     },
@@ -588,7 +623,13 @@ export default function TasksListPage() {
             <Button
               size="sm"
               variant="outline"
-              onClick={() => setBulkStatusModalOpen(true)}
+              onClick={() => {
+                if (nonModifiableCount > 0) {
+                  toast.error(`Terdapat ${nonModifiableCount} tugas yang dibuat oleh anggota lain. Anda hanya dapat mengubah status tugas yang Anda buat sendiri.`);
+                  return;
+                }
+                setBulkStatusModalOpen(true);
+              }}
               className="h-8 gap-1.5 bg-white text-xs font-semibold text-gray-700 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-200"
             >
               <CheckCircle2 className="h-3.5 w-3.5 text-indigo-600" />
@@ -598,7 +639,13 @@ export default function TasksListPage() {
             <Button
               size="sm"
               variant="outline"
-              onClick={() => setBulkPriorityModalOpen(true)}
+              onClick={() => {
+                if (nonModifiableCount > 0) {
+                  toast.error(`Terdapat ${nonModifiableCount} tugas yang dibuat oleh anggota lain. Anda hanya dapat mengubah prioritas tugas yang Anda buat sendiri.`);
+                  return;
+                }
+                setBulkPriorityModalOpen(true);
+              }}
               className="h-8 gap-1.5 bg-white text-xs font-semibold text-gray-700 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-200"
             >
               <Flame className="h-3.5 w-3.5 text-amber-500" />
@@ -773,6 +820,15 @@ export default function TasksListPage() {
                               {t.completedSubtasksCount}/{t.subtasksCount} Subtugas
                             </span>
                           )}
+                          {isPastMonthDone(t) && (
+                            <span className="inline-flex items-center gap-0.5 rounded bg-amber-100 px-1.5 py-0.2 text-[10px] font-semibold text-amber-800 dark:bg-amber-950/60 dark:text-amber-300" title="Arsip Permanen (Selesai bulan lalu - Terkunci dari penghapusan)">
+                              <Lock className="size-2.5 text-amber-600 dark:text-amber-400" />
+                              Arsip
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-gray-500 dark:text-gray-400">
+                          Dibuat oleh: <span className="font-semibold text-gray-700 dark:text-gray-300">{t.createdByUserName || "Sistem"}</span>
                         </div>
                       </div>
                     </td>
@@ -1189,9 +1245,34 @@ export default function TasksListPage() {
             </DialogTitle>
           </DialogHeader>
 
+          {protectedDeleteCount > 0 && (
+            <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-300 flex items-start gap-2">
+              <Lock className="size-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+              <div>
+                <strong>{protectedDeleteCount} tugas selesai bulan lalu</strong> telah diarsipkan secara permanen dan tidak boleh dihapus.
+              </div>
+            </div>
+          )}
+
+          {nonModifiableCount > 0 && (
+            <div className="mt-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800 dark:border-rose-900/50 dark:bg-rose-950/40 dark:text-rose-300 flex items-start gap-2">
+              <AlertTriangle className="size-4 shrink-0 mt-0.5 text-rose-600 dark:text-rose-400" />
+              <div>
+                <strong>{nonModifiableCount} tugas</strong> dibuat oleh anggota lain. Anda hanya dapat menghapus tugas yang Anda buat sendiri.
+              </div>
+            </div>
+          )}
+
           <p className="text-xs text-gray-600 dark:text-gray-300 mt-2">
-            Apakah Anda yakin ingin menghapus <strong>{selectedTaskIds.length} tugas</strong> yang dipilih?
-            Tindakan ini juga akan menghapus subtugas dan riwayat sesi kerja terkait, serta tidak dapat dibatalkan.
+            {protectedDeleteCount > 0 || nonModifiableCount > 0 ? (
+              <span>
+                Hanya tugas yang memenuhi syarat (dibuat sendiri dan bukan arsip permanen) yang akan diproses untuk dihapus.
+              </span>
+            ) : (
+              <span>
+                Apakah Anda yakin ingin menghapus <strong>{selectedTaskIds.length} tugas</strong> yang dipilih? Tindakan ini juga akan menghapus subtugas dan riwayat sesi kerja terkait, serta tidak dapat dibatalkan.
+              </span>
+            )}
           </p>
 
           <div className="mt-5 flex justify-end gap-2">
@@ -1204,11 +1285,20 @@ export default function TasksListPage() {
             </Button>
             <Button
               type="button"
-              disabled={bulkDeleteMutation.isPending}
-              onClick={() => bulkDeleteMutation.mutate()}
-              className="bg-rose-600 text-white hover:bg-rose-700"
+              disabled={bulkDeleteMutation.isPending || (selectedTaskIds.length - protectedDeleteCount - nonModifiableCount) <= 0}
+              onClick={() => {
+                const validIds = selectedTasks
+                  .filter((t: any) => !isPastMonthDone(t) && canUserModifyTask(t))
+                  .map((t: any) => t.id);
+                if (validIds.length === 0) {
+                  toast.error("Tidak ada tugas terpilih yang dapat dihapus.");
+                  return;
+                }
+                bulkDeleteMutation.mutate(validIds);
+              }}
+              className="bg-rose-600 text-white hover:bg-rose-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {bulkDeleteMutation.isPending ? "Menghapus..." : "Ya, Hapus Sekarang"}
+              {bulkDeleteMutation.isPending ? "Menghapus..." : `Ya, Hapus Sekarang (${Math.max(0, selectedTaskIds.length - protectedDeleteCount - nonModifiableCount)} Tugas)`}
             </Button>
           </div>
         </DialogContent>

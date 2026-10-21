@@ -27,12 +27,14 @@ import {
   Sparkles,
   Loader2,
   History,
+  Lock,
 } from "lucide-react";
 import { Button } from "@/components/tailgrids/core/button";
 import { Input } from "@/components/tailgrids/core/input";
 import { Checkbox } from "@/components/tailgrids/core/checkbox";
 import { toast } from "sonner";
 import Link from "next/link";
+import { useCurrentUser } from "@/hooks/use-current-user";
 
 const MILESTONE_OPTIONS = [
   "Requirement Analysis",
@@ -47,6 +49,7 @@ export default function TaskStudioPage() {
   const params = useParams();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { user: currentUser, isAdmin, userId: currentUserId } = useCurrentUser();
   const taskId = Number(params.id);
 
   // Main task fields
@@ -234,9 +237,44 @@ export default function TaskStudioPage() {
     setLogManualSession(false);
   };
 
+  // Safe ISO date formatter helper
+  const formatIsoOrNull = (dStr?: string | null) => {
+    if (!dStr || !dStr.trim()) return null;
+    const d = new Date(dStr);
+    if (isNaN(d.getTime())) return null;
+    return d.toISOString();
+  };
+
+  const task = detailData?.task;
+  const subtasks = detailData?.subtasks || [];
+  const sessions = detailData?.recentSessions || [];
+  const totalSeconds = sessions.reduce((acc: number, s: any) => acc + (s.duration || 0), 0);
+  const totalHours = Math.round((totalSeconds / 3600) * 10) / 10;
+
+  // Creator & Admin authorization check (User Request #4)
+  const isCreator = task?.createdByUserId
+    ? task.createdByUserId === currentUserId
+    : task?.assignedToUserId === currentUserId;
+  const canEdit = Boolean(isAdmin || isCreator);
+
+  // Past month completed task protection (User Request #5)
+  // If task status === 2 (Done), and its dueDate or createdAt is before the 1st of the current month, deletion is locked!
+  const isPastMonthDone = Boolean(
+    task?.status === 2 &&
+      (task?.dueDate || task?.createdAt) &&
+      new Date(task.dueDate || task.createdAt) < new Date(new Date().getFullYear(), new Date().getMonth(), 1)
+  );
+
   // Unified Save Mutation (FSD 5.5 & 5.21)
   const unifiedSaveMutation = useMutation({
     mutationFn: async () => {
+      if (!title.trim()) {
+        throw new Error("Judul tugas wajib diisi.");
+      }
+      if (!canEdit) {
+        throw new Error("Hanya pembuat tugas atau Administrator yang dapat menyimpan perubahan data tugas.");
+      }
+
       const payload: any = {
         title: title.trim(),
         description: description.trim() || title.trim(),
@@ -249,14 +287,14 @@ export default function TaskStudioPage() {
         projectId: projectId ? Number(projectId) : null,
         categoryId: categoryId ? Number(categoryId) : null,
         assignedToUserId: assignedToUserId || null,
-        startDate: startDate ? new Date(startDate).toISOString() : null,
-        dueDate: dueDate ? new Date(dueDate).toISOString() : null,
+        startDate: formatIsoOrNull(startDate),
+        dueDate: formatIsoOrNull(dueDate),
         logManualSession,
       };
 
       if (logManualSession && manualStartTime && manualEndTime) {
-        payload.manualSessionStartTime = new Date(manualStartTime).toISOString();
-        payload.manualSessionEndTime = new Date(manualEndTime).toISOString();
+        payload.manualSessionStartTime = formatIsoOrNull(manualStartTime);
+        payload.manualSessionEndTime = formatIsoOrNull(manualEndTime);
         payload.manualSessionNotes = manualNotes.trim() || null;
       }
 
@@ -273,13 +311,16 @@ export default function TaskStudioPage() {
       queryClient.invalidateQueries({ queryKey: ["dashboardStats"] });
     },
     onError: (err: any) => {
-      toast.error(err.response?.data?.message || "Gagal menyimpan perubahan tugas");
+      toast.error(err.response?.data?.message || err.message || "Gagal menyimpan perubahan tugas");
     },
   });
 
   // Toggle Subtask Status Mutation
   const toggleSubtaskMutation = useMutation({
     mutationFn: async ({ subtaskId, currentStatus }: { subtaskId: number; currentStatus: number }) => {
+      if (!canEdit) {
+        throw new Error("Hanya pembuat tugas atau Administrator yang dapat mengubah sub-tugas ini.");
+      }
       const nextStatus = currentStatus === 2 ? 0 : 2;
       const res = await apiClient.patch(`/tasks/${subtaskId}/status`, { status: nextStatus });
       return res.data;
@@ -291,13 +332,16 @@ export default function TaskStudioPage() {
       queryClient.invalidateQueries({ queryKey: ["kanbanTasks"] });
     },
     onError: (err: any) => {
-      toast.error(err.response?.data?.message || "Gagal mengubah status sub-tugas");
+      toast.error(err.response?.data?.message || err.message || "Gagal mengubah status sub-tugas");
     },
   });
 
   // Create Subtask Mutation
   const addSubtaskMutation = useMutation({
     mutationFn: async () => {
+      if (!canEdit) {
+        throw new Error("Hanya pembuat tugas atau Administrator yang dapat menambah sub-tugas.");
+      }
       const res = await apiClient.post(`/tasks/${taskId}/subtasks`, {
         title: subtaskTitle.trim(),
         priority: 1,
@@ -309,12 +353,18 @@ export default function TaskStudioPage() {
       setSubtaskTitle("");
       queryClient.invalidateQueries({ queryKey: ["taskDetail", taskId] });
     },
-    onError: (err: any) => toast.error(err.response?.data?.message || "Gagal menambah sub-tugas"),
+    onError: (err: any) => toast.error(err.response?.data?.message || err.message || "Gagal menambah sub-tugas"),
   });
 
   // Delete Task Mutation
   const deleteTaskMutation = useMutation({
     mutationFn: async () => {
+      if (!canEdit) {
+        throw new Error("Hanya pembuat tugas atau Administrator yang dapat menghapus tugas ini.");
+      }
+      if (isPastMonthDone) {
+        throw new Error("Data tugas bulan lalu yang sudah selesai dilindungi arsip dan tidak dapat dihapus.");
+      }
       const res = await apiClient.delete(`/tasks/${taskId}`);
       return res.data;
     },
@@ -322,7 +372,7 @@ export default function TaskStudioPage() {
       toast.success("Tugas berhasil dihapus.");
       router.push("/tasks");
     },
-    onError: (err: any) => toast.error(err.response?.data?.message || "Gagal menghapus tugas"),
+    onError: (err: any) => toast.error(err.response?.data?.message || err.message || "Gagal menghapus tugas"),
   });
 
   if (isLoading) {
@@ -335,12 +385,6 @@ export default function TaskStudioPage() {
       </div>
     );
   }
-
-  const task = detailData?.task;
-  const subtasks = detailData?.subtasks || [];
-  const sessions = detailData?.recentSessions || [];
-  const totalSeconds = sessions.reduce((acc: number, s: any) => acc + (s.duration || 0), 0);
-  const totalHours = Math.round((totalSeconds / 3600) * 10) / 10;
 
   return (
     <div className="relative pb-28">
@@ -384,6 +428,11 @@ export default function TaskStudioPage() {
                   Belum Ditugaskan
                 </span>
               )}
+              {task?.createdByUserName && (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50/80 px-2.5 py-0.5 text-xs font-medium text-gray-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                  Pembuat: <strong className="text-gray-900 dark:text-white">{task.createdByUserName}</strong>
+                </span>
+              )}
             </div>
           </div>
 
@@ -400,6 +449,16 @@ export default function TaskStudioPage() {
         </div>
       </div>
 
+      {/* Mode Hanya Lihat (Read-Only) Notification Banner */}
+      {!canEdit && (
+        <div className="mx-3 mt-4 sm:mx-6 lg:mx-8 xl:mx-10 rounded-2xl border border-amber-200 bg-amber-50/80 p-4 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200 flex items-center gap-3 shadow-xs">
+          <Lock className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
+          <div className="text-xs sm:text-sm">
+            <span className="font-bold">Mode Hanya Lihat (Read-Only):</span> Anda tidak memiliki hak akses untuk mengedit tugas ini. Tugas ini dibuat oleh <strong>{task?.createdByUserName || "pengguna lain"}</strong>. Hanya pembuat tugas tersebut atau Administrator yang dapat memperbarui atau menghapus tugas ini.
+          </div>
+        </div>
+      )}
+
       {/* 2. Full-Width Responsive Studio Grid (FSD 5.21) */}
       <div className="w-full px-3 py-4 sm:px-6 lg:px-8 xl:px-10">
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-12 lg:gap-8">
@@ -412,6 +471,7 @@ export default function TaskStudioPage() {
               </label>
               <Input
                 value={title}
+                disabled={!canEdit}
                 onChange={(e) => {
                   const newTitle = e.target.value;
                   if (!description.trim() || description.trim() === title.trim()) {
@@ -433,9 +493,10 @@ export default function TaskStudioPage() {
               <textarea
                 rows={5}
                 value={description}
+                disabled={!canEdit}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Tuliskan detail pekerjaan, deliverable yang diharapkan, dan instruksi teknis..."
-                className="mt-2 w-full rounded-xl border border-gray-200 bg-transparent p-3 text-sm text-gray-900 leading-relaxed dark:border-gray-800 dark:text-white"
+                className="mt-2 w-full rounded-xl border border-gray-200 bg-transparent p-3 text-sm text-gray-900 leading-relaxed dark:border-gray-800 dark:text-white disabled:opacity-60 disabled:cursor-not-allowed"
               />
             </div>
 
@@ -452,9 +513,10 @@ export default function TaskStudioPage() {
                 <textarea
                   rows={3}
                   value={obstacle}
+                  disabled={!canEdit}
                   onChange={(e) => setObstacle(e.target.value)}
                   placeholder="Contoh: Menunggu akses database development server atau API specification..."
-                  className="mt-2 w-full rounded-xl border border-red-200 bg-white/90 p-2.5 text-xs text-gray-900 dark:border-red-900/60 dark:bg-gray-900 dark:text-white"
+                  className="mt-2 w-full rounded-xl border border-red-200 bg-white/90 p-2.5 text-xs text-gray-900 dark:border-red-900/60 dark:bg-gray-900 dark:text-white disabled:opacity-60 disabled:cursor-not-allowed"
                 />
               </div>
 
@@ -469,9 +531,10 @@ export default function TaskStudioPage() {
                 <textarea
                   rows={3}
                   value={solution}
+                  disabled={!canEdit}
                   onChange={(e) => setSolution(e.target.value)}
                   placeholder="Contoh: Koordinasi dengan tim devops untuk pembukaan firewall port 5432..."
-                  className="mt-2 w-full rounded-xl border border-emerald-200 bg-white/90 p-2.5 text-xs text-gray-900 dark:border-emerald-900/60 dark:bg-gray-900 dark:text-white"
+                  className="mt-2 w-full rounded-xl border border-emerald-200 bg-white/90 p-2.5 text-xs text-gray-900 dark:border-emerald-900/60 dark:bg-gray-900 dark:text-white disabled:opacity-60 disabled:cursor-not-allowed"
                 />
               </div>
             </div>
@@ -491,10 +554,11 @@ export default function TaskStudioPage() {
                   </div>
                 </div>
 
-                <label className="flex items-center gap-2 text-xs font-semibold text-indigo-900 dark:text-indigo-300 cursor-pointer self-start sm:self-center">
+                <label className={`flex items-center gap-2 text-xs font-semibold text-indigo-900 dark:text-indigo-300 ${!canEdit ? "opacity-50 cursor-not-allowed" : "cursor-pointer"} self-start sm:self-center`}>
                   <Checkbox
                     checked={logManualSession}
-                    onCheckedChange={(checked) => setLogManualSession(!!checked)}
+                    disabled={!canEdit}
+                    onCheckedChange={(checked) => canEdit && setLogManualSession(!!checked)}
                   />
                   <span>Sertakan Log Sesi</span>
                 </label>
@@ -505,33 +569,37 @@ export default function TaskStudioPage() {
                 <span className="text-[11px] font-bold text-gray-600 dark:text-gray-300">Preset Cepat:</span>
                 <button
                   type="button"
-                  onClick={() => handleTimePreset(30)}
-                  className="rounded-lg border border-indigo-200 bg-white px-2.5 py-1 text-xs font-bold text-indigo-700 shadow-2xs hover:bg-indigo-50 dark:border-indigo-800 dark:bg-gray-900 dark:text-indigo-300"
+                  disabled={!canEdit}
+                  onClick={() => canEdit && handleTimePreset(30)}
+                  className="rounded-lg border border-indigo-200 bg-white px-2.5 py-1 text-xs font-bold text-indigo-700 shadow-2xs hover:bg-indigo-50 dark:border-indigo-800 dark:bg-gray-900 dark:text-indigo-300 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   +30 Menit
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleTimePreset(60)}
-                  className="rounded-lg border border-indigo-200 bg-white px-2.5 py-1 text-xs font-bold text-indigo-700 shadow-2xs hover:bg-indigo-50 dark:border-indigo-800 dark:bg-gray-900 dark:text-indigo-300"
+                  disabled={!canEdit}
+                  onClick={() => canEdit && handleTimePreset(60)}
+                  className="rounded-lg border border-indigo-200 bg-white px-2.5 py-1 text-xs font-bold text-indigo-700 shadow-2xs hover:bg-indigo-50 dark:border-indigo-800 dark:bg-gray-900 dark:text-indigo-300 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   +1 Jam
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleTimePreset(120)}
-                  className="rounded-lg border border-indigo-200 bg-white px-2.5 py-1 text-xs font-bold text-indigo-700 shadow-2xs hover:bg-indigo-50 dark:border-indigo-800 dark:bg-gray-900 dark:text-indigo-300"
+                  disabled={!canEdit}
+                  onClick={() => canEdit && handleTimePreset(120)}
+                  className="rounded-lg border border-indigo-200 bg-white px-2.5 py-1 text-xs font-bold text-indigo-700 shadow-2xs hover:bg-indigo-50 dark:border-indigo-800 dark:bg-gray-900 dark:text-indigo-300 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   +2 Jam
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleTimePreset(240)}
-                  className="rounded-lg border border-indigo-200 bg-white px-2.5 py-1 text-xs font-bold text-indigo-700 shadow-2xs hover:bg-indigo-50 dark:border-indigo-800 dark:bg-gray-900 dark:text-indigo-300"
+                  disabled={!canEdit}
+                  onClick={() => canEdit && handleTimePreset(240)}
+                  className="rounded-lg border border-indigo-200 bg-white px-2.5 py-1 text-xs font-bold text-indigo-700 shadow-2xs hover:bg-indigo-50 dark:border-indigo-800 dark:bg-gray-900 dark:text-indigo-300 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   +4 Jam
                 </button>
-                {logManualSession && (
+                {logManualSession && canEdit && (
                   <button
                     type="button"
                     onClick={handleTimeReset}
@@ -553,8 +621,9 @@ export default function TaskStudioPage() {
                       <Input
                         type="datetime-local"
                         value={manualStartTime}
+                        disabled={!canEdit}
                         onChange={(e) => setManualStartTime(e.target.value)}
-                        className="mt-1 text-xs bg-white dark:bg-gray-900"
+                        className="mt-1 text-xs bg-white dark:bg-gray-900 disabled:opacity-60 disabled:cursor-not-allowed"
                       />
                     </div>
                     <div>
@@ -564,8 +633,9 @@ export default function TaskStudioPage() {
                       <Input
                         type="datetime-local"
                         value={manualEndTime}
+                        disabled={!canEdit}
                         onChange={(e) => setManualEndTime(e.target.value)}
-                        className="mt-1 text-xs bg-white dark:bg-gray-900"
+                        className="mt-1 text-xs bg-white dark:bg-gray-900 disabled:opacity-60 disabled:cursor-not-allowed"
                       />
                     </div>
                   </div>
@@ -576,9 +646,10 @@ export default function TaskStudioPage() {
                     </label>
                     <Input
                       value={manualNotes}
+                      disabled={!canEdit}
                       onChange={(e) => setManualNotes(e.target.value)}
                       placeholder="Contoh: Diskusi teknis review arsitektur dan penulisan test case..."
-                      className="mt-1 text-xs bg-white dark:bg-gray-900"
+                      className="mt-1 text-xs bg-white dark:bg-gray-900 disabled:opacity-60 disabled:cursor-not-allowed"
                     />
                   </div>
                 </div>
@@ -640,13 +711,14 @@ export default function TaskStudioPage() {
                   </label>
                   <select
                     value={status}
+                    disabled={!canEdit}
                     onChange={(e) => {
                       const newStatus = Number(e.target.value);
                       setStatus(newStatus);
                       if (newStatus === 2 && progress < 100) setProgress(100);
                       if (newStatus === 0 && progress === 100) setProgress(0);
                     }}
-                    className="mt-1.5 w-full rounded-xl border border-gray-200 bg-transparent p-2 text-xs font-semibold text-gray-900 dark:border-gray-800 dark:text-white"
+                    className="mt-1.5 w-full rounded-xl border border-gray-200 bg-transparent p-2 text-xs font-semibold text-gray-900 dark:border-gray-800 dark:text-white disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     {masterStatuses.length > 0 ? (
                       masterStatuses.map((s: any, idx: number) => (
@@ -676,8 +748,9 @@ export default function TaskStudioPage() {
                     min="0"
                     max="100"
                     value={progress}
+                    disabled={!canEdit}
                     onChange={(e) => handleProgressPreset(Number(e.target.value))}
-                    className="mt-2 w-full accent-indigo-600 cursor-pointer"
+                    className="mt-2 w-full accent-indigo-600 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
                   />
                   {/* Preset Buttons */}
                   <div className="mt-1.5 flex justify-between gap-1">
@@ -685,8 +758,9 @@ export default function TaskStudioPage() {
                       <button
                         key={preset}
                         type="button"
-                        onClick={() => handleProgressPreset(preset)}
-                        className={`rounded px-1.5 py-0.5 text-[10px] font-bold transition-all ${
+                        disabled={!canEdit}
+                        onClick={() => canEdit && handleProgressPreset(preset)}
+                        className={`rounded px-1.5 py-0.5 text-[10px] font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
                           progress === preset
                             ? "bg-indigo-600 text-white"
                             : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300"
@@ -706,8 +780,9 @@ export default function TaskStudioPage() {
                   </label>
                   <select
                     value={priority}
+                    disabled={!canEdit}
                     onChange={(e) => setPriority(Number(e.target.value))}
-                    className="mt-1.5 w-full rounded-xl border border-gray-200 bg-transparent p-2 text-xs font-semibold text-gray-900 dark:border-gray-800 dark:text-white"
+                    className="mt-1.5 w-full rounded-xl border border-gray-200 bg-transparent p-2 text-xs font-semibold text-gray-900 dark:border-gray-800 dark:text-white disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     {masterPriorities.length > 0 ? (
                       masterPriorities.map((p: any, idx: number) => (
@@ -734,8 +809,9 @@ export default function TaskStudioPage() {
                   </label>
                   <select
                     value={assignedToUserId}
+                    disabled={!canEdit}
                     onChange={(e) => setAssignedToUserId(e.target.value)}
-                    className="mt-1.5 w-full rounded-xl border border-gray-200 bg-transparent p-2 text-xs font-semibold text-gray-900 dark:border-gray-800 dark:text-white"
+                    className="mt-1.5 w-full rounded-xl border border-gray-200 bg-transparent p-2 text-xs font-semibold text-gray-900 dark:border-gray-800 dark:text-white disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     <option value="">-- Belum Ditugaskan --</option>
                     {members.map((u: any) => (
@@ -778,8 +854,9 @@ export default function TaskStudioPage() {
                   </label>
                   <select
                     value={projectId || ""}
+                    disabled={!canEdit}
                     onChange={(e) => setProjectId(e.target.value ? Number(e.target.value) : undefined)}
-                    className="mt-1.5 w-full rounded-xl border border-gray-200 bg-transparent p-2 text-xs font-semibold text-gray-900 dark:border-gray-800 dark:text-white"
+                    className="mt-1.5 w-full rounded-xl border border-gray-200 bg-transparent p-2 text-xs font-semibold text-gray-900 dark:border-gray-800 dark:text-white disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     <option value="">-- Tanpa Proyek --</option>
                     {projects.map((p) => (
@@ -798,8 +875,9 @@ export default function TaskStudioPage() {
                   </label>
                   <select
                     value={categoryId || ""}
+                    disabled={!canEdit}
                     onChange={(e) => setCategoryId(e.target.value ? Number(e.target.value) : undefined)}
-                    className="mt-1.5 w-full rounded-xl border border-gray-200 bg-transparent p-2 text-xs font-semibold text-gray-900 dark:border-gray-800 dark:text-white"
+                    className="mt-1.5 w-full rounded-xl border border-gray-200 bg-transparent p-2 text-xs font-semibold text-gray-900 dark:border-gray-800 dark:text-white disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     <option value="">-- Tanpa Kategori --</option>
                     {categories.map((c: any) => (
@@ -818,8 +896,9 @@ export default function TaskStudioPage() {
                   </label>
                   <select
                     value={milestone}
+                    disabled={!canEdit}
                     onChange={(e) => setMilestone(e.target.value)}
-                    className="mt-1.5 w-full rounded-xl border border-gray-200 bg-transparent p-2 text-xs font-semibold text-gray-900 dark:border-gray-800 dark:text-white"
+                    className="mt-1.5 w-full rounded-xl border border-gray-200 bg-transparent p-2 text-xs font-semibold text-gray-900 dark:border-gray-800 dark:text-white disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     <option value="">-- Pilih Milestone --</option>
                     {masterMilestones.length > 0
@@ -845,8 +924,9 @@ export default function TaskStudioPage() {
                     <Input
                       type="date"
                       value={startDate}
+                      disabled={!canEdit}
                       onChange={(e) => setStartDate(e.target.value)}
-                      className="mt-1 text-xs"
+                      className="mt-1 text-xs disabled:opacity-60 disabled:cursor-not-allowed"
                     />
                   </div>
                   <div>
@@ -856,8 +936,9 @@ export default function TaskStudioPage() {
                     <Input
                       type="date"
                       value={dueDate}
+                      disabled={!canEdit}
                       onChange={(e) => setDueDate(e.target.value)}
-                      className="mt-1 text-xs"
+                      className="mt-1 text-xs disabled:opacity-60 disabled:cursor-not-allowed"
                     />
                   </div>
                 </div>
@@ -869,15 +950,19 @@ export default function TaskStudioPage() {
                   <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider dark:text-gray-400">
                     Checklist Sub-Tugas ({subtasks.filter((s: any) => s.status === 2).length}/{subtasks.length})
                   </h4>
-                  <span className="text-[10px] text-gray-400">Klik untuk centang</span>
+                  <span className="text-[10px] text-gray-400">{canEdit ? "Klik untuk centang" : "Hanya lihat"}</span>
                 </div>
 
                 <div className="mt-3 space-y-2">
                   {subtasks.map((st: any) => (
                     <div
                       key={st.id}
-                      onClick={() => toggleSubtaskMutation.mutate({ subtaskId: st.id, currentStatus: st.status })}
-                      className="flex items-center gap-2 rounded-lg p-2 text-xs text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/60 cursor-pointer transition select-none"
+                      onClick={() => canEdit && toggleSubtaskMutation.mutate({ subtaskId: st.id, currentStatus: st.status })}
+                      className={`flex items-center gap-2 rounded-lg p-2 text-xs text-gray-700 dark:text-gray-300 select-none ${
+                        canEdit
+                          ? "hover:bg-gray-50 dark:hover:bg-gray-800/60 cursor-pointer transition"
+                          : "opacity-80 cursor-default"
+                      }`}
                     >
                       {st.status === 2 ? (
                         <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
@@ -892,22 +977,23 @@ export default function TaskStudioPage() {
 
                   <div className="mt-3 flex gap-2 pt-2 border-t border-gray-100 dark:border-gray-800">
                     <Input
-                      placeholder="Tambah sub-tugas baru..."
+                      placeholder={canEdit ? "Tambah sub-tugas baru..." : "Sub-tugas terkunci"}
                       value={subtaskTitle}
+                      disabled={!canEdit}
                       onChange={(e) => setSubtaskTitle(e.target.value)}
                       onKeyDown={(e) => {
-                        if (e.key === "Enter") {
+                        if (e.key === "Enter" && canEdit) {
                           e.preventDefault();
                           if (subtaskTitle.trim()) addSubtaskMutation.mutate();
                         }
                       }}
-                      className="text-xs"
+                      className="text-xs disabled:opacity-60 disabled:cursor-not-allowed"
                     />
                     <Button
                       size="sm"
-                      onClick={() => addSubtaskMutation.mutate()}
-                      disabled={!subtaskTitle.trim() || addSubtaskMutation.isPending}
-                      className="bg-indigo-600 text-white hover:bg-indigo-700 shrink-0"
+                      onClick={() => canEdit && addSubtaskMutation.mutate()}
+                      disabled={!canEdit || !subtaskTitle.trim() || addSubtaskMutation.isPending}
+                      className="bg-indigo-600 text-white hover:bg-indigo-700 shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <Plus className="h-4 w-4" />
                     </Button>
@@ -986,33 +1072,59 @@ export default function TaskStudioPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={() => {
-                if (confirm("Apakah Anda yakin ingin menghapus tugas ini? Tindakan ini tidak dapat dibatalkan.")) {
-                  deleteTaskMutation.mutate();
-                }
-              }}
-              disabled={deleteTaskMutation.isPending}
-            >
-              <Trash2 className="mr-1.5 h-4 w-4" />
-              Hapus Tugas
-            </Button>
+            {!canEdit ? (
+              <Button
+                size="sm"
+                disabled
+                className="gap-2 bg-gray-400 font-bold text-white cursor-not-allowed dark:bg-gray-700"
+              >
+                <Lock className="h-4 w-4" />
+                Mode Hanya Lihat (Terkunci)
+              </Button>
+            ) : (
+              <>
+                {isPastMonthDone ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled
+                    className="gap-1.5 border-amber-300 bg-amber-50/80 text-amber-800 opacity-70 cursor-not-allowed dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-400"
+                    title="Data tugas bulan berlalu yang sudah selesai (Done) tidak boleh dihapus sesuai kebijakan proteksi arsip."
+                  >
+                    <Lock className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                    Hapus Terkunci (Selesai Bulan Lalu)
+                  </Button>
+                ) : (
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => {
+                      if (confirm("Apakah Anda yakin ingin menghapus tugas ini? Tindakan ini tidak dapat dibatalkan.")) {
+                        deleteTaskMutation.mutate();
+                      }
+                    }}
+                    disabled={deleteTaskMutation.isPending}
+                  >
+                    <Trash2 className="mr-1.5 h-4 w-4" />
+                    Hapus Tugas
+                  </Button>
+                )}
 
-            <Button
-              size="sm"
-              onClick={() => unifiedSaveMutation.mutate()}
-              disabled={unifiedSaveMutation.isPending}
-              className="gap-2 bg-indigo-600 font-bold text-white shadow-lg shadow-indigo-500/25 hover:bg-indigo-700"
-            >
-              {unifiedSaveMutation.isPending ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Save className="h-4 w-4" />
-              )}
-              Simpan Seluruh Perubahan
-            </Button>
+                <Button
+                  size="sm"
+                  onClick={() => unifiedSaveMutation.mutate()}
+                  disabled={unifiedSaveMutation.isPending}
+                  className="gap-2 bg-indigo-600 font-bold text-white shadow-lg shadow-indigo-500/25 hover:bg-indigo-700"
+                >
+                  {unifiedSaveMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Save className="h-4 w-4" />
+                  )}
+                  Simpan Seluruh Perubahan
+                </Button>
+              </>
+            )}
           </div>
         </div>
       </div>
