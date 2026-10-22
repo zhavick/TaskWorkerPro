@@ -11,6 +11,13 @@ namespace TrackerKerja.WebApi.Controllers;
 [Route("api/sync")]
 public class SyncController : ControllerBase
 {
+    private static readonly HashSet<string> LeakedSyncKeys = new(StringComparer.Ordinal)
+    {
+        "TK-SYNC-VUBKJ5PNX3PHI1WX",
+        "TK-SYNC-TNEBGVH4EEVMPCQ9",
+        "TRACKERKERJA_SYNC_SECRET_DEFAULT_2026"
+    };
+
     private readonly ISyncService _syncService;
     private readonly ICurrentTenantService _tenantService;
     private readonly IConfiguration _configuration;
@@ -243,12 +250,14 @@ public class SyncController : ControllerBase
 
         var incomingKey = syncKeyHeader.Trim();
 
-        var validKeys = new HashSet<string>(StringComparer.Ordinal)
+        // Kunci lama pernah ter-commit ke repository, jadi selalu ditolak walaupun masih tersimpan di konfigurasi/DB
+        if (LeakedSyncKeys.Contains(incomingKey))
         {
-            "TK-SYNC-VUBKJ5PNX3PHI1WX",
-            "TK-SYNC-TNEBGVH4EEVMPCQ9",
-            "TRACKERKERJA_SYNC_SECRET_DEFAULT_2026"
-        };
+            return false;
+        }
+
+        // Hanya kunci dari konfigurasi (env/appsettings) dan SystemSettings yang berlaku, tanpa kunci bawaan di kode
+        var validKeys = new HashSet<string>(StringComparer.Ordinal);
 
         var configuredKey = _configuration["SyncSettings:ApiKey"] 
             ?? _configuration["Sync_ApiKey"];

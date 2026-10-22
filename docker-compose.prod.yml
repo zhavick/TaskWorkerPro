@@ -1,0 +1,81 @@
+# Docker Compose untuk produksi (VPS + Nginx/aaPanel sebagai reverse proxy)
+# Jalankan: docker compose -f docker-compose.prod.yml up -d --build
+# Semua port hanya di-bind ke 127.0.0.1, akses publik wajib lewat Nginx.
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: trackerkerja_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: trackerkerja_db
+      POSTGRES_USER: tracker_admin
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD wajib diisi di .env}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./database/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tracker_admin -d trackerkerja_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - tracker_network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: src/TrackerKerja.WebApi/Dockerfile
+    container_name: trackerkerja_backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:5008
+      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=trackerkerja_db;Username=tracker_admin;Password=${POSTGRES_PASSWORD};Maximum Pool Size=100;Minimum Pool Size=10;
+      JwtSettings__SecretKey: ${JWT_SECRET:?JWT_SECRET wajib diisi di .env}
+      JwtSettings__Issuer: ${APP_URL:?APP_URL wajib diisi di .env}
+      JwtSettings__Audience: ${APP_URL}
+      CorsSettings__AllowedOrigins__0: ${APP_URL}
+      SyncSettings__ApiKey: ${SYNC_API_KEY:-}
+    ports:
+      - "127.0.0.1:5008:5008"
+    volumes:
+      - backend_uploads:/app/uploads
+    networks:
+      - tracker_network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # Relatif: browser memanggil /api, /hubs, /uploads di domain yang sama, diteruskan Nginx ke backend
+        NEXT_PUBLIC_API_BASE_URL: /api
+    container_name: trackerkerja_frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      BACKEND_URL: http://backend:5008
+      INTERNAL_API_URL: http://backend:5008/api
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:-5000}:3000"
+    networks:
+      - tracker_network
+
+volumes:
+  pgdata:
+    driver: local
+  backend_uploads:
+    driver: local
+
+networks:
+  tracker_network:
+    driver: bridge
