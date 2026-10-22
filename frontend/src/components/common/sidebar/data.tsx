@@ -15,6 +15,7 @@ import {
   Settings,
   User,
   ShieldCheck,
+  BarChart3,
 } from "lucide-react";
 
 export const NAV_DATA = [
@@ -46,6 +47,12 @@ export const NAV_DATA = [
         title: "Timesheet & Timer",
         icon: <Clock className="h-5 w-5" />,
         url: "/timesheets",
+        items: [],
+      },
+      {
+        title: "Pusat Pelaporan",
+        icon: <BarChart3 className="h-5 w-5" />,
+        url: "/reports",
         items: [],
       },
       {
