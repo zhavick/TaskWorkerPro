@@ -209,6 +209,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
     category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
     assigned_to_user_id VARCHAR(450) REFERENCES asp_net_users(id) ON DELETE SET NULL,
+    created_by_user_id VARCHAR(450) REFERENCES asp_net_users(id) ON DELETE SET NULL,
     parent_task_id INTEGER REFERENCES tasks(id) ON DELETE CASCADE,
     company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
     start_date TIMESTAMPTZ,
@@ -379,6 +380,7 @@ CREATE TABLE IF NOT EXISTS announcements (
     type VARCHAR(50) NOT NULL DEFAULT 'Pengumuman Umum', -- 'Informasi Penting' / 'Pengumuman Umum'
     start_date TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     end_date TIMESTAMPTZ NOT NULL,
+    announcement_date TIMESTAMPTZ,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE, -- NULL = Global untuk semua
     created_by_user_id VARCHAR(450) REFERENCES asp_net_users(id) ON DELETE SET NULL,

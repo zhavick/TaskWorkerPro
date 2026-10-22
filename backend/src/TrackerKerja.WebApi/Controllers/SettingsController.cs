@@ -11,7 +11,7 @@ namespace TrackerKerja.WebApi.Controllers;
 [ApiController]
 [Route("api/settings")]
 [Route("api/configuration")]
-[Authorize(Roles = "Administrator,SuperAdmin")]
+[Authorize(Roles = "Administrator,SuperAdmin,Admin")]
 public class SettingsController : ControllerBase
 {
     private readonly AppDbContext _context;
@@ -260,10 +260,33 @@ public class SettingsController : ControllerBase
                     }
 
                     var tasksWithAssignees = await _context.Tasks.IgnoreQueryFilters()
-                        .Where(t => t.AssignedToUserId != null).ToListAsync();
+                        .Where(t => t.AssignedToUserId != null || t.CreatedByUserId != null).ToListAsync();
                     foreach (var t in tasksWithAssignees)
                     {
                         t.AssignedToUserId = null;
+                        t.CreatedByUserId = null;
+                    }
+                }
+
+                // Disconnect or purge notifications, badge snapshots & import logs to eliminate all FK dangling pointers
+                if (isFullPurge || request.PurgeAuditAndHistories || request.PurgeNonAdminUsers)
+                {
+                    var notifs = await _context.UserNotifications.IgnoreQueryFilters().ToListAsync();
+                    if (notifs.Count > 0)
+                    {
+                        _context.UserNotifications.RemoveRange(notifs);
+                    }
+
+                    var badgeSnapshots = await _context.UserBadgeSnapshots.IgnoreQueryFilters().ToListAsync();
+                    if (badgeSnapshots.Count > 0)
+                    {
+                        _context.UserBadgeSnapshots.RemoveRange(badgeSnapshots);
+                    }
+
+                    var importLogs = await _context.ImportLogs.IgnoreQueryFilters().ToListAsync();
+                    if (importLogs.Count > 0)
+                    {
+                        _context.ImportLogs.RemoveRange(importLogs);
                     }
                 }
 
@@ -369,6 +392,21 @@ public class SettingsController : ControllerBase
                     if (nonAdminUsers.Count > 0)
                     {
                         var nonAdminUserIds = nonAdminUsers.Select(u => u.Id).ToHashSet();
+
+                        // Remove user roles for non-admin users
+                        var userRoles = await _context.UserRoles.IgnoreQueryFilters()
+                            .Where(ur => nonAdminUserIds.Contains(ur.UserId)).ToListAsync();
+                        if (userRoles.Count > 0) _context.UserRoles.RemoveRange(userRoles);
+
+                        // Remove notifications for non-admin users
+                        var userNotifs = await _context.UserNotifications.IgnoreQueryFilters()
+                            .Where(un => nonAdminUserIds.Contains(un.UserId) || (un.CreatedByUserId != null && nonAdminUserIds.Contains(un.CreatedByUserId))).ToListAsync();
+                        if (userNotifs.Count > 0) _context.UserNotifications.RemoveRange(userNotifs);
+
+                        // Remove badge snapshots for non-admin users
+                        var userSnapshots = await _context.UserBadgeSnapshots.IgnoreQueryFilters()
+                            .Where(ubs => nonAdminUserIds.Contains(ubs.UserId)).ToListAsync();
+                        if (userSnapshots.Count > 0) _context.UserBadgeSnapshots.RemoveRange(userSnapshots);
 
                         var checkIns = await _context.DailyCheckIns.IgnoreQueryFilters()
                             .Where(d => nonAdminUserIds.Contains(d.UserId)).ToListAsync();

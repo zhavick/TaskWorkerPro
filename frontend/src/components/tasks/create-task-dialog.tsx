@@ -280,7 +280,7 @@ export function CreateTaskDialog({
                 setTitle(newTitle);
               }}
               placeholder="Contoh: Implementasi modul autentikasi ganda JWT..."
-              className="mt-1 text-sm font-semibold"
+              className="mt-1.5 w-full text-base font-semibold py-2.5 px-3.5 rounded-xl border-gray-300 dark:border-gray-700 shadow-xs focus:ring-4 focus:ring-indigo-500/10"
               required
             />
           </div>

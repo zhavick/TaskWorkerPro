@@ -845,15 +845,20 @@ public class TasksController : ControllerBase
     }
 
     [HttpPost("import/preview")]
+    [Consumes("multipart/form-data")]
     [Authorize]
-    public async Task<IActionResult> PreviewImport(IFormFile file, CancellationToken cancellationToken)
+    public async Task<IActionResult> PreviewImport(IFormFile? file, CancellationToken cancellationToken)
     {
-        if (file == null || file.Length == 0)
+        var uploadFile = file ?? (Request.HasFormContentType && Request.Form.Files.Count > 0
+            ? Request.Form.Files["file"] ?? Request.Form.Files.FirstOrDefault()
+            : null);
+
+        if (uploadFile == null || uploadFile.Length == 0)
         {
             return BadRequest(new { success = false, message = "File Excel wajib diunggah." });
         }
 
-        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+        var ext = Path.GetExtension(uploadFile.FileName).ToLowerInvariant();
         if (ext != ".xlsx" && ext != ".xls")
         {
             return BadRequest(new { success = false, message = "Hanya file format Excel (.xlsx / .xls) yang diperbolehkan." });
@@ -861,10 +866,10 @@ public class TasksController : ControllerBase
 
         try
         {
-            await using var stream = file.OpenReadStream();
+            await using var stream = uploadFile.OpenReadStream();
             var preview = await _excelImportService.PreviewImportAsync(
                 stream,
-                file.FileName,
+                uploadFile.FileName,
                 _tenantService.CompanyId,
                 cancellationToken
             );
@@ -930,14 +935,19 @@ public class TasksController : ControllerBase
     }
 
     [HttpPost("import-excel")]
-    public async Task<IActionResult> ImportExcel(IFormFile file, CancellationToken cancellationToken)
+    [Consumes("multipart/form-data")]
+    public async Task<IActionResult> ImportExcel(IFormFile? file, CancellationToken cancellationToken)
     {
-        if (file == null || file.Length == 0)
+        var uploadFile = file ?? (Request.HasFormContentType && Request.Form.Files.Count > 0
+            ? Request.Form.Files["file"] ?? Request.Form.Files.FirstOrDefault()
+            : null);
+
+        if (uploadFile == null || uploadFile.Length == 0)
         {
             return BadRequest(new { success = false, message = "File Excel wajib diunggah." });
         }
 
-        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+        var ext = Path.GetExtension(uploadFile.FileName).ToLowerInvariant();
         if (ext != ".xlsx" && ext != ".xls")
         {
             return BadRequest(new { success = false, message = "Hanya file format Excel (.xlsx / .xls) yang diperbolehkan." });
@@ -945,7 +955,7 @@ public class TasksController : ControllerBase
 
         try
         {
-            await using var stream = file.OpenReadStream();
+            await using var stream = uploadFile.OpenReadStream();
             var result = await _excelImportService.ImportTasksFromExcelAsync(
                 stream,
                 _tenantService.CompanyId,

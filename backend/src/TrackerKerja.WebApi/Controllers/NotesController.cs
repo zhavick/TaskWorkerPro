@@ -19,7 +19,9 @@ public class NotesController : ControllerBase
 
     private static readonly HashSet<string> AllowedExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
-        ".pdf", ".docx", ".xlsx", ".png", ".jpg", ".jpeg", ".webp", ".zip", ".txt", ".json", ".sql"
+        ".pdf", ".docx", ".doc", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg", ".bmp",
+        ".zip", ".rar", ".7z", ".txt", ".md", ".markdown", ".json", ".sql", ".csv", ".xml", ".yaml", ".yml",
+        ".ts", ".js", ".cs", ".html", ".css", ".log"
     };
 
     public NotesController(
@@ -202,14 +204,23 @@ public class NotesController : ControllerBase
     }
 
     [HttpPost("{id:int}/attachments")]
-    public async Task<IActionResult> UploadAttachment(int id, IFormFile file)
+    [Consumes("multipart/form-data")]
+    public async Task<IActionResult> UploadAttachment(int id, IFormFile? file)
     {
         var note = await _context.Notes.FirstOrDefaultAsync(n => n.Id == id);
         if (note == null) return NotFound(new { success = false, message = "Catatan tidak ditemukan." });
 
         if (file == null || file.Length == 0)
         {
-            return BadRequest(new { success = false, message = "Berkas tidak valid." });
+            if (Request.HasFormContentType && Request.Form.Files.Count > 0)
+            {
+                file = Request.Form.Files["file"] ?? Request.Form.Files.FirstOrDefault();
+            }
+        }
+
+        if (file == null || file.Length == 0)
+        {
+            return BadRequest(new { success = false, message = "Berkas lampiran tidak valid atau kosong." });
         }
 
         var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
@@ -220,7 +231,30 @@ public class NotesController : ControllerBase
 
         var sanitizedFileName = $"{DateTime.UtcNow:yyyyMMdd_HHmmss}_{Path.GetFileName(file.FileName)}";
 
-        // Simpan langsung pada folder frontend/public/uploads/notes/{noteId} (TSD & User Requirement 3)
+        // 1. Simpan pada ContentRootPath/uploads/notes/{note.Id}/{sanitizedFileName}
+        var noteUploadDir = Path.Combine(_env.ContentRootPath, "uploads", "notes", note.Id.ToString());
+        Directory.CreateDirectory(noteUploadDir);
+        var noteFullPath = Path.Combine(noteUploadDir, sanitizedFileName);
+        using (var stream = new FileStream(noteFullPath, FileMode.Create))
+        {
+            await file.CopyToAsync(stream);
+        }
+
+        // 2. Simpan juga pada ContentRootPath/uploads/companies/{companyId}/notes/{note.Id}/{sanitizedFileName}
+        var companyId = _tenantService.CompanyId ?? 1;
+        try
+        {
+            var companyFolderPath = Path.Combine(_env.ContentRootPath, "uploads", "companies", companyId.ToString(), "notes", note.Id.ToString());
+            Directory.CreateDirectory(companyFolderPath);
+            var companyFullPath = Path.Combine(companyFolderPath, sanitizedFileName);
+            if (!System.IO.File.Exists(companyFullPath))
+            {
+                System.IO.File.Copy(noteFullPath, companyFullPath, true);
+            }
+        }
+        catch { /* ignore */ }
+
+        // 3. Simpan juga pada candidate frontend/public/uploads/notes/{noteId} jika ada
         var candidateFrontendDirs = new[]
         {
             Path.GetFullPath(Path.Combine(_env.ContentRootPath, "..", "..", "..", "frontend", "public", "uploads", "notes", note.Id.ToString())),
@@ -230,7 +264,6 @@ public class NotesController : ControllerBase
             @"c:\TEMP\VSCODE\TrackerKerjaModern\frontend\public\uploads\notes\" + note.Id
         };
 
-        string? frontendSavePath = null;
         foreach (var dir in candidateFrontendDirs)
         {
             try
@@ -239,38 +272,25 @@ public class NotesController : ControllerBase
                 if (parentDir != null && (Directory.Exists(parentDir) || parentDir.Contains("frontend")))
                 {
                     Directory.CreateDirectory(dir);
-                    frontendSavePath = Path.Combine(dir, sanitizedFileName);
-                    using (var stream = new FileStream(frontendSavePath, FileMode.Create))
+                    var fPath = Path.Combine(dir, sanitizedFileName);
+                    if (!System.IO.File.Exists(fPath))
                     {
-                        await file.CopyToAsync(stream);
+                        System.IO.File.Copy(noteFullPath, fPath, true);
                     }
                     break;
                 }
             }
-            catch
-            {
-                // lanjutkan ke path berikutnya
-            }
+            catch { /* fallback */ }
         }
 
-        var companyId = _tenantService.CompanyId ?? 1;
-        var folderPath = Path.Combine(_env.ContentRootPath, "uploads", "companies", companyId.ToString(), "notes", note.Id.ToString());
-        Directory.CreateDirectory(folderPath);
-        var fullPath = Path.Combine(folderPath, sanitizedFileName);
-
-        if (!System.IO.File.Exists(fullPath))
-        {
-            using (var stream = new FileStream(fullPath, FileMode.Create))
-            {
-                await file.CopyToAsync(stream);
-            }
-        }
+        // Relative URL konsisten yang dapat di binding di host induk mana pun
+        var relativeUrl = $"/uploads/notes/{note.Id}/{sanitizedFileName}";
 
         var attachment = new NoteAttachment
         {
             NoteId = note.Id,
             FileName = file.FileName,
-            FilePath = frontendSavePath ?? fullPath,
+            FilePath = relativeUrl,
             FileSize = file.Length,
             ContentType = file.ContentType,
             FileExtension = ext,
@@ -307,12 +327,33 @@ public class NotesController : ControllerBase
 
         if (attachment == null) return NotFound(new { success = false, message = "Lampiran tidak ditemukan." });
 
-        string? activePath = System.IO.File.Exists(attachment.FilePath) ? attachment.FilePath : null;
+        var fileName = Path.GetFileName(attachment.FilePath);
+        var candidatePaths = new List<string>
+        {
+            attachment.FilePath,
+            Path.Combine(_env.ContentRootPath, attachment.FilePath.TrimStart('/', '\\')),
+            Path.Combine(_env.ContentRootPath, "uploads", "notes", attachment.NoteId.ToString(), fileName),
+            Path.Combine(_env.ContentRootPath, "uploads", "companies", (attachment.Note?.CompanyId ?? _tenantService.CompanyId ?? 1).ToString(), "notes", attachment.NoteId.ToString(), fileName),
+            Path.Combine(_env.WebRootPath ?? Path.Combine(_env.ContentRootPath, "wwwroot"), "uploads", "notes", attachment.NoteId.ToString(), fileName),
+            Path.Combine(Directory.GetCurrentDirectory(), "frontend", "public", "uploads", "notes", attachment.NoteId.ToString(), fileName),
+            Path.Combine(@"c:\TEMP\VSCODE\TrackerKerjaModern\frontend\public\uploads\notes", attachment.NoteId.ToString(), fileName),
+            Path.Combine(@"c:\TEMP\VSCODE\TrackerKerjaModern\uploads\notes", attachment.NoteId.ToString(), fileName)
+        };
+
+        string? activePath = candidatePaths.FirstOrDefault(p => !string.IsNullOrWhiteSpace(p) && System.IO.File.Exists(p));
+
         if (activePath == null)
         {
-            var fileName = Path.GetFileName(attachment.FilePath);
-            var fallbackPath = Path.Combine(_env.ContentRootPath, "uploads", "companies", (_tenantService.CompanyId ?? 1).ToString(), "notes", attachment.NoteId.ToString(), fileName);
-            if (System.IO.File.Exists(fallbackPath)) activePath = fallbackPath;
+            // Deep search di direktori uploads jika file berada di subfolder berbeda setelah sinkronisasi
+            var uploadsRoot = Path.Combine(_env.ContentRootPath, "uploads");
+            if (Directory.Exists(uploadsRoot))
+            {
+                var matches = Directory.GetFiles(uploadsRoot, fileName, SearchOption.AllDirectories);
+                if (matches.Length > 0)
+                {
+                    activePath = matches[0];
+                }
+            }
         }
 
         if (activePath == null)

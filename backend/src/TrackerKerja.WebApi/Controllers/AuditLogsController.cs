@@ -37,11 +37,8 @@ public class AuditLogsController : ControllerBase
 
         var query = _context.AuditLogs.AsNoTracking().AsQueryable();
 
-        // Non-admin hanya dapat melihat riwayat aktivitas akunnya sendiri
-        if (!isAdmin && !string.IsNullOrEmpty(currentUserId))
-        {
-            query = query.Where(a => a.UserId == currentUserId);
-        }
+        // Menampilkan seluruh aktivitas baik dari admin maupun user lainnya
+        // Filter spesifik pengguna hanya diterapkan jika parameter userId diberikan
 
         if (!string.IsNullOrWhiteSpace(search))
         {
@@ -130,13 +127,7 @@ public class AuditLogsController : ControllerBase
     public async Task<IActionResult> GetAuditLogSummary()
     {
         var isAdmin = IsAuthorizedAdmin();
-        var currentUserId = GetCurrentUserId();
-
         var query = _context.AuditLogs.AsNoTracking().AsQueryable();
-        if (!isAdmin && !string.IsNullOrEmpty(currentUserId))
-        {
-            query = query.Where(a => a.UserId == currentUserId);
-        }
 
         var totalLogs = await query.CountAsync();
 
@@ -282,18 +273,12 @@ public class AuditLogsController : ControllerBase
     }
 
     [HttpGet("{id}")]
-    [Authorize(Roles = "Administrator,SuperAdmin")]
     public async Task<IActionResult> GetAuditLogById(long id)
     {
         var log = await _context.AuditLogs.AsNoTracking().FirstOrDefaultAsync(a => a.Id == id);
         if (log == null)
         {
             return NotFound(new { success = false, message = "Log audit tidak ditemukan." });
-        }
-
-        if (!IsAuthorizedAdmin() && log.UserId != GetCurrentUserId())
-        {
-            return Forbid();
         }
 
         return Ok(new { success = true, data = log });

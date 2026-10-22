@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "@/services/api/client";
 import {
@@ -62,6 +63,8 @@ interface MemberItem {
   isLockedOut: boolean;
   createdAt: string;
   avatarColor?: string | null;
+  profilePictureUrl?: string | null;
+  coverPictureUrl?: string | null;
   totalTasks: number;
   completedTasks: number;
   totalHours: number;
@@ -92,6 +95,7 @@ const AVATAR_COLORS = [
 ];
 
 export default function MembersPage() {
+  const router = useRouter();
   const queryClient = useQueryClient();
 
   // Filters & State
@@ -109,13 +113,7 @@ export default function MembersPage() {
   const [editCompanyId, setEditCompanyId] = useState<number | undefined>(undefined);
 
   const handleOpenDetail = (m: MemberItem) => {
-    setDetailMember(m);
-    setIsEditingMember(false);
-    setEditFullName(m.fullName);
-    setEditJobTitle(m.jobTitle);
-    setEditPhoneNumber(m.phoneNumber || "");
-    setEditAvatarColor(m.avatarColor || "#6366F1");
-    setEditCompanyId(m.companyId);
+    router.push(`/members/${m.id}`);
   };
 
   const [resetTarget, setResetTarget] = useState<MemberItem | null>(null);
@@ -447,18 +445,18 @@ export default function MembersPage() {
 
       {/* Summary KPI Cards */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        <div className="rounded-2xl border border-gray-200/80 bg-white p-4 shadow-2xs dark:border-gray-800 dark:bg-gray-900">
+        <div className="rounded-2xl border border-card-border bg-card-background p-4 shadow-2xs text-text-primary">
           <div className="flex items-center justify-between text-xs text-gray-500">
             <span>Total Anggota</span>
-            <Users className="h-4 w-4 text-indigo-500" />
+            <Users className="h-4 w-4 text-primary-500" />
           </div>
-          <p className="mt-2 text-2xl font-black text-gray-900 dark:text-white">
+          <p className="mt-2 text-2xl font-black text-text-primary">
             {metrics.totalCount}
           </p>
           <span className="text-[10px] text-gray-400">Seluruh unit tenant</span>
         </div>
 
-        <div className="rounded-2xl border border-gray-200/80 bg-white p-4 shadow-2xs dark:border-gray-800 dark:bg-gray-900">
+        <div className="rounded-2xl border border-card-border bg-card-background p-4 shadow-2xs text-text-primary">
           <div className="flex items-center justify-between text-xs text-gray-500">
             <span>Antrean Approval</span>
             <UserCheck className="h-4 w-4 text-amber-500" />
@@ -469,7 +467,7 @@ export default function MembersPage() {
           <span className="text-[10px] text-gray-400">Menunggu verifikasi admin</span>
         </div>
 
-        <div className="rounded-2xl border border-gray-200/80 bg-white p-4 shadow-2xs dark:border-gray-800 dark:bg-gray-900">
+        <div className="rounded-2xl border border-card-border bg-card-background p-4 shadow-2xs text-text-primary">
           <div className="flex items-center justify-between text-xs text-gray-500">
             <span>Akun Terkunci</span>
             <Lock className="h-4 w-4 text-rose-500" />
@@ -480,7 +478,7 @@ export default function MembersPage() {
           <span className="text-[10px] text-gray-400">Gagal login berturut-turut</span>
         </div>
 
-        <div className="rounded-2xl border border-gray-200/80 bg-white p-4 shadow-2xs dark:border-gray-800 dark:bg-gray-900">
+        <div className="rounded-2xl border border-card-border bg-card-background p-4 shadow-2xs text-text-primary">
           <div className="flex items-center justify-between text-xs text-gray-500">
             <span>Tugas Selesai</span>
             <CheckCircle2 className="h-4 w-4 text-emerald-500" />
@@ -496,7 +494,7 @@ export default function MembersPage() {
           </span>
         </div>
 
-        <div className="col-span-2 rounded-2xl border border-gray-200/80 bg-white p-4 shadow-2xs sm:col-span-1 dark:border-gray-800 dark:bg-gray-900">
+        <div className="col-span-2 rounded-2xl border border-card-border bg-card-background p-4 shadow-2xs sm:col-span-1 text-text-primary">
           <div className="flex items-center justify-between text-xs text-gray-500">
             <span>Total Jam Kerja</span>
             <Clock className="h-4 w-4 text-sky-500" />
@@ -509,7 +507,7 @@ export default function MembersPage() {
       </div>
 
       {/* Filter and Search Bar */}
-      <div className="flex flex-col gap-3 rounded-2xl border border-gray-200/80 bg-white p-4 shadow-2xs sm:flex-row sm:items-center sm:justify-between dark:border-gray-800 dark:bg-gray-900">
+      <div className="flex flex-col gap-3 rounded-2xl border border-card-border bg-card-background p-4 shadow-2xs sm:flex-row sm:items-center sm:justify-between text-text-primary">
         <div className="relative flex-1 max-w-md">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
           <Input
@@ -708,12 +706,20 @@ export default function MembersPage() {
             <DialogBody className="space-y-4 py-2">
               {/* Target User Info */}
               <div className="flex items-center gap-3 rounded-xl border border-gray-100 bg-gray-50/70 p-3 dark:border-gray-800 dark:bg-gray-800/40">
-                <div
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl font-bold text-white shadow-2xs"
-                  style={{ backgroundColor: resetTarget.avatarColor || "#6366F1" }}
-                >
-                  {resetTarget.fullName.slice(0, 2).toUpperCase()}
-                </div>
+                {resetTarget.profilePictureUrl ? (
+                  <img
+                    src={resetTarget.profilePictureUrl}
+                    alt={resetTarget.fullName}
+                    className="h-10 w-10 shrink-0 rounded-xl object-cover shadow-2xs border border-gray-200 dark:border-gray-700"
+                  />
+                ) : (
+                  <div
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl font-bold text-white shadow-2xs"
+                    style={{ backgroundColor: resetTarget.avatarColor || "#6366F1" }}
+                  >
+                    {resetTarget.fullName.slice(0, 2).toUpperCase()}
+                  </div>
+                )}
                 <div className="min-w-0 flex-1">
                   <p className="font-bold text-xs text-gray-900 dark:text-white truncate">
                     {resetTarget.fullName}
@@ -1664,34 +1670,47 @@ function MemberCard({
   isApprovePending,
   isUnlockPending,
 }: MemberCardProps) {
+  const router = useRouter();
   const isSuperadmin = m.id === "usr-superadmin";
   const isSelf = m.id === currentUserId;
 
   return (
     <div
-      className={`group flex flex-col justify-between rounded-2xl border bg-white p-5 shadow-2xs transition-all hover:shadow-md dark:bg-gray-900 ${
+      onClick={() => router.push(`/members/${m.id}`)}
+      className={`group flex flex-col justify-between rounded-2xl border bg-card-background text-text-primary p-5 shadow-2xs transition-all hover:shadow-md cursor-pointer hover:border-primary-400 ${
         !m.isApproved
           ? "border-amber-300 bg-amber-50/20 dark:border-amber-800/80"
           : m.isLockedOut
           ? "border-rose-300 bg-rose-50/20 dark:border-rose-800/80"
-          : "border-gray-200/80 hover:border-indigo-300 dark:border-gray-800 dark:hover:border-indigo-800"
+          : "border-card-border hover:border-primary-400 dark:hover:border-primary-500"
       }`}
     >
       <div>
         {/* Top Header: Avatar + Name + Status */}
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
-            <div
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl font-bold text-white shadow-2xs text-sm"
-              style={{ backgroundColor: m.avatarColor || "#6366F1" }}
-            >
-              {m.fullName.slice(0, 2).toUpperCase()}
-            </div>
+            {m.profilePictureUrl ? (
+              <img
+                src={m.profilePictureUrl}
+                alt={m.fullName}
+                className="h-11 w-11 shrink-0 rounded-xl object-cover shadow-2xs border border-gray-200 dark:border-gray-700"
+              />
+            ) : (
+              <div
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl font-bold text-white shadow-2xs text-sm"
+                style={{ backgroundColor: m.avatarColor || "#6366F1" }}
+              >
+                {m.fullName.slice(0, 2).toUpperCase()}
+              </div>
+            )}
             <div className="min-w-0">
               <button
                 type="button"
-                onClick={onOpenDetail}
-                className="font-bold text-sm text-gray-900 hover:text-indigo-600 dark:text-white dark:hover:text-indigo-400 leading-tight truncate text-left block"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  router.push(`/members/${m.id}`);
+                }}
+                className="font-bold text-sm text-text-primary hover:text-primary-500 dark:hover:text-primary-400 leading-tight truncate text-left block"
               >
                 {m.fullName}
               </button>
@@ -1772,7 +1791,10 @@ function MemberCard({
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={onOpenDetail}
+            onClick={(e) => {
+              e.stopPropagation();
+              router.push(`/members/${m.id}`);
+            }}
             className="text-[11px] font-semibold text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 flex items-center gap-1"
           >
             <Eye className="h-3 w-3" />
@@ -1780,7 +1802,10 @@ function MemberCard({
           </button>
           <button
             type="button"
-            onClick={onOpenAudit}
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenAudit?.();
+            }}
             className="text-[11px] font-semibold text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 flex items-center gap-1"
             title="Log Audit Aktivitas Anggota"
           >
@@ -1796,7 +1821,10 @@ function MemberCard({
               <Button
                 size="sm"
                 className="h-7 gap-1 bg-emerald-600 px-2 text-[11px] font-semibold text-white hover:bg-emerald-700"
-                onClick={onApprove}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onApprove();
+                }}
                 disabled={isApprovePending}
               >
                 <CheckCircle2 className="h-3 w-3" />
@@ -1806,7 +1834,10 @@ function MemberCard({
                 size="sm"
                 variant="ghost"
                 className="h-7 w-7 p-0 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40"
-                onClick={onReject}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onReject();
+                }}
               >
                 <XCircle className="h-3.5 w-3.5" />
               </Button>
@@ -1819,7 +1850,10 @@ function MemberCard({
               size="sm"
               variant="outline"
               className="h-7 gap-1 border-amber-500 text-amber-600 px-2 text-[11px]"
-              onClick={onUnlock}
+              onClick={(e) => {
+                e.stopPropagation();
+                onUnlock();
+              }}
               disabled={isUnlockPending}
             >
               <Unlock className="h-3 w-3" />
@@ -1833,7 +1867,10 @@ function MemberCard({
               size="sm"
               variant="outline"
               className="h-7 gap-1 px-2 text-[11px] text-gray-600 hover:text-indigo-600 hover:border-indigo-400 dark:text-gray-300 dark:hover:text-indigo-400"
-              onClick={onResetPassword}
+              onClick={(e) => {
+                e.stopPropagation();
+                onResetPassword();
+              }}
               title="Reset Kata Sandi"
             >
               <KeyRound className="h-3 w-3" />
@@ -1847,7 +1884,10 @@ function MemberCard({
               size="sm"
               variant="ghost"
               className="h-7 w-7 p-0 text-gray-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40"
-              onClick={onDeletePermanent}
+              onClick={(e) => {
+                e.stopPropagation();
+                onDeletePermanent();
+              }}
               title="Hapus Permanen Akun"
             >
               <Trash2 className="h-3.5 w-3.5" />

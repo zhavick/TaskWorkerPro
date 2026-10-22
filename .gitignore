@@ -26,8 +26,12 @@ Desktop.ini
 
 ## Database Local Mounts
 pgdata/
-uploads/
 scratch/
+
+## Uploaded Files (ignore uploaded files, keep directory structure via .gitkeep)
+**/uploads/**
+!**/uploads/**/
+!**/uploads/**/.gitkeep
 
 ## Test & Playwright Artifacts
 test-results/

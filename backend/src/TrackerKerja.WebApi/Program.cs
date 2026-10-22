@@ -154,7 +154,27 @@ var app = builder.Build();
 
 // 7. HTTP Pipeline
 app.UseMiddleware<ExceptionHandlingMiddleware>();
+
+// Pastikan direktori static files wwwroot dan uploads tersedia
+var webRootPath = app.Environment.WebRootPath ?? Path.Combine(app.Environment.ContentRootPath, "wwwroot");
+if (!Directory.Exists(webRootPath))
+{
+    Directory.CreateDirectory(webRootPath);
+}
+
 app.UseStaticFiles();
+
+var uploadsContentPath = Path.Combine(app.Environment.ContentRootPath, "uploads");
+if (!Directory.Exists(uploadsContentPath))
+{
+    Directory.CreateDirectory(uploadsContentPath);
+}
+
+app.UseStaticFiles(new StaticFileOptions
+{
+    FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(uploadsContentPath),
+    RequestPath = "/uploads"
+});
 
 // Always enable Swagger for testing/development
 app.UseSwagger();

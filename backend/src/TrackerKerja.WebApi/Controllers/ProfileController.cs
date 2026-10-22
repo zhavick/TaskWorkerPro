@@ -126,10 +126,19 @@ public class ProfileController : ControllerBase
     }
 
     [HttpPost("avatar")]
+    [Consumes("multipart/form-data")]
     public async Task<IActionResult> UploadAvatar(IFormFile? file)
     {
         var userId = _tenantService.UserId;
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
+        if (file == null || file.Length == 0)
+        {
+            if (Request.HasFormContentType && Request.Form.Files.Count > 0)
+            {
+                file = Request.Form.Files["file"] ?? Request.Form.Files.FirstOrDefault();
+            }
+        }
 
         if (file == null || file.Length == 0)
         {
@@ -167,7 +176,20 @@ public class ProfileController : ControllerBase
             await file.CopyToAsync(stream);
         }
 
-        // 2. Simpan juga di folder frontend/public/uploads/users/{safeUserName}/avatar/
+        // 2. Simpan juga di backend ContentRootPath/uploads/users/{safeUserName}/avatar/
+        try
+        {
+            var contentUploadDir = Path.Combine(_environment?.ContentRootPath ?? Directory.GetCurrentDirectory(), "uploads", "users", safeUserName, "avatar");
+            Directory.CreateDirectory(contentUploadDir);
+            var contentFilePath = Path.Combine(contentUploadDir, fileName);
+            if (!System.IO.File.Exists(contentFilePath))
+            {
+                System.IO.File.Copy(filePath, contentFilePath, true);
+            }
+        }
+        catch { /* ignore */ }
+
+        // 3. Simpan juga di folder frontend/public/uploads/users/{safeUserName}/avatar/
         var candidateFrontendDirs = new[]
         {
             Path.GetFullPath(Path.Combine(_environment?.ContentRootPath ?? Directory.GetCurrentDirectory(), "..", "..", "..", "frontend", "public", "uploads", "users", safeUserName, "avatar")),
@@ -206,10 +228,19 @@ public class ProfileController : ControllerBase
     }
 
     [HttpPost("cover")]
+    [Consumes("multipart/form-data")]
     public async Task<IActionResult> UploadCover(IFormFile? file)
     {
         var userId = _tenantService.UserId;
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
+        if (file == null || file.Length == 0)
+        {
+            if (Request.HasFormContentType && Request.Form.Files.Count > 0)
+            {
+                file = Request.Form.Files["file"] ?? Request.Form.Files.FirstOrDefault();
+            }
+        }
 
         if (file == null || file.Length == 0)
         {
@@ -247,7 +278,20 @@ public class ProfileController : ControllerBase
             await file.CopyToAsync(stream);
         }
 
-        // 2. Simpan juga di folder frontend/public/uploads/users/{safeUserName}/cover/
+        // 2. Simpan juga di backend ContentRootPath/uploads/users/{safeUserName}/cover/
+        try
+        {
+            var contentUploadDir = Path.Combine(_environment?.ContentRootPath ?? Directory.GetCurrentDirectory(), "uploads", "users", safeUserName, "cover");
+            Directory.CreateDirectory(contentUploadDir);
+            var contentFilePath = Path.Combine(contentUploadDir, fileName);
+            if (!System.IO.File.Exists(contentFilePath))
+            {
+                System.IO.File.Copy(filePath, contentFilePath, true);
+            }
+        }
+        catch { /* ignore */ }
+
+        // 3. Simpan juga di folder frontend/public/uploads/users/{safeUserName}/cover/
         var candidateFrontendDirs = new[]
         {
             Path.GetFullPath(Path.Combine(_environment?.ContentRootPath ?? Directory.GetCurrentDirectory(), "..", "..", "..", "frontend", "public", "uploads", "users", safeUserName, "cover")),

@@ -108,7 +108,8 @@ public class MembersController : ControllerBase
                 u.AssignedTasks.Count(t => t.Status == Domain.Enums.TaskStatus.Done),
                 Math.Round(u.WorkSessions.Where(s => s.EndTime != null).Sum(s => s.Duration) / 3600.0, 1),
                 u.PhoneNumber,
-                memberProjects
+                memberProjects,
+                u.CoverPictureUrl
             );
         }).ToList();
 
@@ -135,6 +136,11 @@ public class MembersController : ControllerBase
     {
         var user = await _context.Users
             .Include(u => u.Company)
+            .Include(u => u.AssignedTasks)
+                .ThenInclude(t => t.Project)
+            .Include(u => u.WorkSessions)
+                .ThenInclude(s => s.Task)
+                    .ThenInclude(t => t.Project)
             .AsNoTracking()
             .FirstOrDefaultAsync(u => u.Id == id);
 
@@ -144,9 +150,18 @@ public class MembersController : ControllerBase
         }
 
         // Validasi isolasi tenant
-        if (!_tenantService.IsAdmin && user.CompanyId != _tenantService.CompanyId)
+        if (!_tenantService.IsAdmin)
         {
-            return Forbid();
+            var userCompanyId = _tenantService.CompanyId;
+            if (!userCompanyId.HasValue && !string.IsNullOrEmpty(_tenantService.UserId))
+            {
+                var me = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == _tenantService.UserId);
+                userCompanyId = me?.CompanyId;
+            }
+            if (userCompanyId.HasValue && user.CompanyId.HasValue && user.CompanyId != userCompanyId)
+            {
+                return Forbid();
+            }
         }
 
         var isUserAdmin = user.Id == "usr-superadmin" ||
@@ -154,24 +169,108 @@ public class MembersController : ControllerBase
                           (user.Email != null && user.Email.Equals("admin@trackerkerja.local", StringComparison.OrdinalIgnoreCase)) ||
                           user.JobTitle.Contains("Admin", StringComparison.OrdinalIgnoreCase);
 
-        var profile = new UserProfileDto(
-            user.Id,
-            user.FullName,
-            user.Email ?? string.Empty,
-            user.JobTitle,
-            user.AvatarColor,
-            user.ProfilePictureUrl,
-            user.CoverPictureUrl,
-            user.CompanyId,
-            user.Company?.Name,
-            user.Company?.Code,
-            user.IsApproved,
-            new List<string> { isUserAdmin ? "Administrator" : "Member" },
-            user.PhoneNumber,
-            user.CreatedAt
-        );
+        var totalTasks = user.AssignedTasks.Count;
+        var completedTasks = user.AssignedTasks.Count(t => t.Status == Domain.Enums.TaskStatus.Done);
+        var inProgressTasks = user.AssignedTasks.Count(t => t.Status == Domain.Enums.TaskStatus.InProgress);
+        var todoTasks = user.AssignedTasks.Count(t => t.Status == Domain.Enums.TaskStatus.Todo);
+        var totalHours = Math.Round(user.WorkSessions.Where(s => s.EndTime != null).Sum(s => s.Duration) / 3600.0, 1);
+        var completionRate = totalTasks > 0 ? (int)Math.Round((double)completedTasks / totalTasks * 100) : 0;
 
-        return Ok(new { success = true, data = profile });
+        var tasksList = user.AssignedTasks
+            .OrderByDescending(t => t.CreatedAt)
+            .Select(t => new
+            {
+                id = t.Id,
+                title = t.Title,
+                description = t.Description,
+                status = t.Status.ToString(),
+                priority = t.Priority.ToString(),
+                progress = t.Progress,
+                projectId = t.ProjectId,
+                projectName = t.Project != null ? t.Project.Name : null,
+                projectColor = t.Project != null ? t.Project.Color : "#6366F1",
+                dueDate = t.DueDate,
+                createdAt = t.CreatedAt
+            })
+            .ToList();
+
+        var projectsList = user.AssignedTasks
+            .Where(t => t.Project != null)
+            .Select(t => t.Project!)
+            .DistinctBy(p => p.Id)
+            .Select(p => {
+                var pTasks = user.AssignedTasks.Where(t => t.ProjectId == p.Id).ToList();
+                var pCompleted = pTasks.Count(t => t.Status == Domain.Enums.TaskStatus.Done);
+                var pDurationSec = user.WorkSessions.Where(s => s.Task != null && s.Task.ProjectId == p.Id && s.EndTime != null).Sum(s => s.Duration);
+                return new
+                {
+                    id = p.Id,
+                    name = p.Name,
+                    description = p.Description,
+                    color = p.Color,
+                    status = p.Status.ToString(),
+                    clientName = p.ClientName,
+                    totalTasks = pTasks.Count,
+                    completedTasks = pCompleted,
+                    totalHours = Math.Round(pDurationSec / 3600.0, 1),
+                    deadline = p.Deadline
+                };
+            })
+            .OrderBy(p => p.name)
+            .ToList();
+
+        var recentSessions = user.WorkSessions
+            .Where(s => s.EndTime != null)
+            .OrderByDescending(s => s.StartTime)
+            .Take(20)
+            .Select(s => new
+            {
+                id = s.Id,
+                taskId = s.TaskId,
+                taskTitle = s.Task != null ? s.Task.Title : "Tugas #" + s.TaskId,
+                projectName = s.Task?.Project != null ? s.Task.Project.Name : null,
+                projectColor = s.Task?.Project != null ? s.Task.Project.Color : "#6366F1",
+                startTime = s.StartTime,
+                endTime = s.EndTime,
+                duration = s.Duration,
+                durationHours = Math.Round(s.Duration / 3600.0, 2),
+                notes = s.Notes
+            })
+            .ToList();
+
+        return Ok(new
+        {
+            success = true,
+            data = new
+            {
+                id = user.Id,
+                fullName = user.FullName,
+                email = user.Email ?? string.Empty,
+                jobTitle = user.JobTitle,
+                avatarColor = user.AvatarColor,
+                profilePictureUrl = user.ProfilePictureUrl,
+                coverPictureUrl = user.CoverPictureUrl,
+                companyId = user.CompanyId,
+                companyName = user.Company?.Name,
+                companyCode = user.Company?.Code,
+                isApproved = user.IsApproved,
+                roles = new List<string> { isUserAdmin ? "Administrator" : "Member" },
+                phoneNumber = user.PhoneNumber,
+                createdAt = user.CreatedAt,
+                kpi = new
+                {
+                    totalTasks,
+                    completedTasks,
+                    inProgressTasks,
+                    todoTasks,
+                    totalHours,
+                    completionRate
+                },
+                tasks = tasksList,
+                projects = projectsList,
+                recentSessions
+            }
+        });
     }
 
     [HttpPut("{id}")]

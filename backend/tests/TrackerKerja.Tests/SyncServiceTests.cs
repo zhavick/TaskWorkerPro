@@ -199,6 +199,130 @@ public class SyncServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task ImportPackageZipAsync_WithUserProfileAndAttachments_ShouldExtractFilesAndBindData()
+    {
+        // Arrange
+        // Existing user in target db (simulating host induk)
+        _context.Users.Add(new AppUser
+        {
+            Id = "usr-host",
+            UserName = "budi",
+            NormalizedUserName = "BUDI",
+            Email = "budi@corporate.com",
+            NormalizedEmail = "BUDI@CORPORATE.COM",
+            FullName = "Budi Santoso",
+            JobTitle = "Staff Lama",
+            AvatarColor = "#10B981"
+        });
+        await _context.SaveChangesAsync();
+
+        // Create a zip with avatars, covers, notes, and user data
+        using var zipMs = new MemoryStream();
+        using (var archive = new ZipArchive(zipMs, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            var manifestEntry = archive.CreateEntry("manifest.json");
+            using (var writer = new StreamWriter(manifestEntry.Open()))
+            {
+                await writer.WriteAsync(JsonSerializer.Serialize(new SyncManifest { EntityCount = 2 }));
+            }
+
+            var syncData = new SyncDatabaseData
+            {
+                Users = new List<UserSyncDto>
+                {
+                    new()
+                    {
+                        Id = "usr-remote-different-id",
+                        UserName = "budi",
+                        NormalizedUserName = "BUDI",
+                        Email = "budi@corporate.com",
+                        NormalizedEmail = "BUDI@CORPORATE.COM",
+                        FullName = "Budi Santoso Updated",
+                        JobTitle = "Senior Lead Architect",
+                        AvatarColor = "#6366F1",
+                        ProfilePictureUrl = "/uploads/users/budi/avatar/budi_avatar.png",
+                        CoverPictureUrl = "/uploads/users/budi/cover/budi_cover.jpg"
+                    }
+                },
+                NoteAttachments = new List<NoteAttachmentSyncDto>
+                {
+                    new()
+                    {
+                        Id = 9999,
+                        NoteId = 555,
+                        FileName = "blueprint.pdf",
+                        FilePath = @"C:\OldMachine\TrackerKerja\frontend\public\uploads\notes\555\blueprint.pdf",
+                        FileSize = 1024,
+                        ContentType = "application/pdf",
+                        FileExtension = ".pdf"
+                    }
+                }
+            };
+
+            var dataEntry = archive.CreateEntry("sync_data.json");
+            using (var writer = new StreamWriter(dataEntry.Open()))
+            {
+                await writer.WriteAsync(JsonSerializer.Serialize(syncData));
+            }
+
+            // Avatar physical file
+            var avatarEntry = archive.CreateEntry("uploads/users/budi/avatar/budi_avatar.png");
+            using (var writer = new StreamWriter(avatarEntry.Open()))
+            {
+                await writer.WriteAsync("FAKE_IMAGE_DATA_AVATAR");
+            }
+
+            // Cover physical file
+            var coverEntry = archive.CreateEntry("uploads/users/budi/cover/budi_cover.jpg");
+            using (var writer = new StreamWriter(coverEntry.Open()))
+            {
+                await writer.WriteAsync("FAKE_IMAGE_DATA_COVER");
+            }
+
+            // Note attachment file
+            var noteFileEntry = archive.CreateEntry("uploads/notes/555/blueprint.pdf");
+            using (var writer = new StreamWriter(noteFileEntry.Open()))
+            {
+                await writer.WriteAsync("FAKE_PDF_NOTE_CONTENT");
+            }
+        }
+
+        zipMs.Position = 0;
+
+        // Act
+        var result = await _syncService.ImportPackageZipAsync(zipMs, "admin-trigger");
+
+        // Assert
+        Assert.True(result.Success);
+
+        // 1. User profile data binding in host
+        var updatedUser = await _context.Users.FirstOrDefaultAsync(u => u.Email == "budi@corporate.com");
+        Assert.NotNull(updatedUser);
+        Assert.Equal("Budi Santoso Updated", updatedUser.FullName);
+        Assert.Equal("Senior Lead Architect", updatedUser.JobTitle);
+        Assert.Equal("/uploads/users/budi/avatar/budi_avatar.png", updatedUser.ProfilePictureUrl);
+        Assert.Equal("/uploads/users/budi/cover/budi_cover.jpg", updatedUser.CoverPictureUrl);
+
+        // 2. Note attachment data binding with normalized path
+        var attachment = await _context.NoteAttachments.FindAsync(9999);
+        Assert.NotNull(attachment);
+        Assert.Equal("/uploads/notes/555/blueprint.pdf", attachment.FilePath);
+
+        // 3. Physical file presence on disk in _tempUploadDir
+        var avatarFile = Path.Combine(_tempUploadDir, "users", "budi", "avatar", "budi_avatar.png");
+        Assert.True(File.Exists(avatarFile));
+        Assert.Equal("FAKE_IMAGE_DATA_AVATAR", await File.ReadAllTextAsync(avatarFile));
+
+        var coverFile = Path.Combine(_tempUploadDir, "users", "budi", "cover", "budi_cover.jpg");
+        Assert.True(File.Exists(coverFile));
+        Assert.Equal("FAKE_IMAGE_DATA_COVER", await File.ReadAllTextAsync(coverFile));
+
+        var noteFile = Path.Combine(_tempUploadDir, "notes", "555", "blueprint.pdf");
+        Assert.True(File.Exists(noteFile));
+        Assert.Equal("FAKE_PDF_NOTE_CONTENT", await File.ReadAllTextAsync(noteFile));
+    }
+
+    [Fact]
     public async Task ImportPackageZipAsync_MaliciousPathTraversal_ShouldRejectZipSlip()
     {
         // Arrange: build a ZIP containing an entry with path traversal (e.g. "../../evil.txt")
@@ -232,6 +356,254 @@ public class SyncServiceTests : IDisposable
         // Assert: Zip slip attempt must be rejected
         Assert.False(result.Success);
         Assert.Contains("Zip Slip", result.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task PrepareSyncPayloadAsync_ShouldIncludeTimesheetsAttendancesAndMasterData()
+    {
+        // Arrange
+        _context.Users.Add(new AppUser { Id = "usr-sync-1", UserName = "andi", FullName = "Andi Pratama" });
+        _context.Tasks.Add(new WorkTask { Id = 801, Title = "Sinkronisasi Fitur Baru" });
+        _context.Sessions.Add(new WorkSession
+        {
+            Id = 901,
+            TaskId = 801,
+            UserId = "usr-sync-1",
+            StartTime = DateTimeOffset.UtcNow.AddHours(-2),
+            EndTime = DateTimeOffset.UtcNow,
+            Duration = 7200,
+            Notes = "Sesi lembur timesheet"
+        });
+        _context.Attendances.Add(new Attendance
+        {
+            Id = 951,
+            UserId = "usr-sync-1",
+            Date = DateOnly.FromDateTime(DateTime.UtcNow),
+            Type = AttendanceType.Present,
+            WorkLocation = WorkLocation.WFO,
+            Status = 1,
+            TotalHours = 8.0
+        });
+        _context.MasterBadges.Add(new MasterBadge
+        {
+            Id = 701,
+            Code = "NIGHT_OWL",
+            Name = "Burung Hantu Malam",
+            Category = "Timesheet",
+            Points = 150,
+            Rarity = BadgeRarity.Rare
+        });
+        _context.EmailTemplates.Add(new EmailTemplate
+        {
+            Id = 601,
+            EventCode = "SYNC_ALERT",
+            EventName = "Peringatan Sinkronisasi",
+            Subject = "Pemberitahuan Sinkronisasi Selesai",
+            BodyHtml = "<p>Sinkronisasi berhasil.</p>"
+        });
+        _context.SystemSettings.Add(new SystemSetting
+        {
+            Key = "Sync_TestKey",
+            Value = "TestValue123",
+            Description = "Pengaturan uji coba"
+        });
+        await _context.SaveChangesAsync();
+
+        // Act
+        var payload = await _syncService.PrepareSyncPayloadAsync(includeFiles: false);
+
+        // Assert
+        Assert.NotNull(payload);
+        Assert.NotNull(payload.Data);
+        Assert.Contains(payload.Data.Sessions, s => s.Id == 901);
+        Assert.Contains(payload.Data.Attendances, a => a.Id == 951);
+        Assert.Contains(payload.Data.MasterBadges, b => b.Code == "NIGHT_OWL");
+        Assert.Contains(payload.Data.EmailTemplates, e => e.EventCode == "SYNC_ALERT");
+        Assert.Contains(payload.Data.SystemSettings, s => s.Key == "Sync_TestKey");
+        Assert.Contains("sessions", payload.Manifest.IncludedTables);
+        Assert.Contains("attendances", payload.Manifest.IncludedTables);
+        Assert.Contains("master_badges", payload.Manifest.IncludedTables);
+        Assert.Contains("email_templates", payload.Manifest.IncludedTables);
+    }
+
+    [Fact]
+    public async Task ImportPackageZipAsync_ShouldMergeTimesheetsAttendancesAndMasterData()
+    {
+        // Arrange
+        _context.Users.Add(new AppUser { Id = "usr-dest-1", NormalizedEmail = "DEV@TRACKERKERJA.LOCAL", FullName = "Local Dev" });
+        _context.Tasks.Add(new WorkTask { Id = 802, Title = "Backend Testing Task" });
+        await _context.SaveChangesAsync();
+
+        var syncData = new SyncDatabaseData
+        {
+            Sessions = new List<SessionSyncDto>
+            {
+                new SessionSyncDto
+                {
+                    Id = 902,
+                    TaskId = 802,
+                    UserId = "DEV@TRACKERKERJA.LOCAL", // Matching by email fallback
+                    StartTime = DateTimeOffset.UtcNow.AddHours(-1),
+                    EndTime = DateTimeOffset.UtcNow,
+                    Duration = 3600,
+                    Notes = "Timesheet dari host induk"
+                }
+            },
+            Attendances = new List<AttendanceSyncDto>
+            {
+                new AttendanceSyncDto
+                {
+                    Id = 952,
+                    UserId = "DEV@TRACKERKERJA.LOCAL",
+                    Date = new DateOnly(2026, 10, 22),
+                    Type = AttendanceType.Present,
+                    WorkLocation = WorkLocation.WFO,
+                    Status = 1,
+                    TotalHours = 8.5,
+                    Notes = "Presensi dari host induk"
+                }
+            },
+            MasterBadges = new List<MasterBadgeSyncDto>
+            {
+                new MasterBadgeSyncDto
+                {
+                    Id = 702,
+                    Code = "EARLY_BIRD",
+                    Name = "Rajin Subuh",
+                    Category = "Presensi",
+                    Points = 150,
+                    Rarity = BadgeRarity.Rare
+                }
+            },
+            EmailTemplates = new List<EmailTemplateSyncDto>
+            {
+                new EmailTemplateSyncDto
+                {
+                    Id = 602,
+                    EventCode = "REMOTE_HOST_SYNC",
+                    EventName = "Host Induk Sync",
+                    Subject = "Sync Notification",
+                    BodyHtml = "<p>Data presensi & timesheet berhasil diambil</p>"
+                }
+            },
+            SystemSettings = new List<SystemSettingSyncDto>
+            {
+                new SystemSettingSyncDto
+                {
+                    Key = "Sync_HostMasterMode",
+                    Value = "Active",
+                    Description = "Mode master host"
+                }
+            }
+        };
+
+        using var zipStream = new MemoryStream();
+        using (var archive = new ZipArchive(zipStream, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            var manifestEntry = archive.CreateEntry("manifest.json");
+            using (var writer = new StreamWriter(manifestEntry.Open()))
+            {
+                await writer.WriteAsync(JsonSerializer.Serialize(new SyncManifest { EntityCount = 5 }));
+            }
+
+            var dataEntry = archive.CreateEntry("sync_data.json");
+            using (var writer = new StreamWriter(dataEntry.Open()))
+            {
+                await writer.WriteAsync(JsonSerializer.Serialize(syncData));
+            }
+        }
+        zipStream.Position = 0;
+
+        // Act
+        var result = await _syncService.ImportPackageZipAsync(zipStream, "admin");
+
+        // Assert
+        Assert.True(result.Success);
+
+        var mergedSession = await _context.Sessions.FirstOrDefaultAsync(s => s.Id == 902);
+        Assert.NotNull(mergedSession);
+        Assert.Equal("usr-dest-1", mergedSession.UserId); // Resolved to local user id
+        Assert.Equal(3600, mergedSession.Duration);
+
+        var mergedAttendance = await _context.Attendances.FirstOrDefaultAsync(a => a.Id == 952);
+        Assert.NotNull(mergedAttendance);
+        Assert.Equal("usr-dest-1", mergedAttendance.UserId);
+        Assert.Equal(8.5, mergedAttendance.TotalHours);
+
+        var mergedBadge = await _context.MasterBadges.FirstOrDefaultAsync(b => b.Code == "EARLY_BIRD");
+        Assert.NotNull(mergedBadge);
+        Assert.Equal("Rajin Subuh", mergedBadge.Name);
+
+        var mergedTemplate = await _context.EmailTemplates.FirstOrDefaultAsync(e => e.EventCode == "REMOTE_HOST_SYNC");
+        Assert.NotNull(mergedTemplate);
+
+        var mergedSetting = await _context.SystemSettings.FirstOrDefaultAsync(s => s.Key == "Sync_HostMasterMode");
+        Assert.NotNull(mergedSetting);
+        Assert.Equal("Active", mergedSetting.Value);
+    }
+
+    [Fact]
+    public void GenerateSqlScript_ShouldIncludeMasterBadgesEmailTemplatesAndSessions()
+    {
+        // Arrange
+        var data = new SyncDatabaseData
+        {
+            Sessions = new List<SessionSyncDto>
+            {
+                new SessionSyncDto { Id = 1, TaskId = 10, UserId = "u1", Duration = 1800, Notes = "Test Session" }
+            },
+            Attendances = new List<AttendanceSyncDto>
+            {
+                new AttendanceSyncDto { Id = 1, UserId = "u1", Date = new DateOnly(2026, 10, 22), TotalHours = 8.0 }
+            },
+            MasterBadges = new List<MasterBadgeSyncDto>
+            {
+                new MasterBadgeSyncDto { Id = 1, Code = "NIGHT_OWL", Name = "Burung Hantu", Points = 150 }
+            },
+            EmailTemplates = new List<EmailTemplateSyncDto>
+            {
+                new EmailTemplateSyncDto { Id = 1, EventCode = "ALERT_1", EventName = "Alert", Subject = "Subj", BodyHtml = "<b>Body</b>" }
+            },
+            SystemSettings = new List<SystemSettingSyncDto>
+            {
+                new SystemSettingSyncDto { Key = "Sys_K", Value = "Sys_V" }
+            }
+        };
+
+        // Act
+        var sql = _syncService.GenerateSqlScript(data);
+
+        // Assert
+        Assert.Contains("master_badges", sql);
+        Assert.Contains("NIGHT_OWL", sql);
+        Assert.Contains("email_templates", sql);
+        Assert.Contains("system_settings", sql);
+        Assert.Contains("sessions", sql);
+        Assert.Contains("attendances", sql);
+    }
+
+    [Fact]
+    public async Task DbInitializer_ShouldSeed15NewCreativeBadges()
+    {
+        // Act
+        await DbInitializer.SeedAsync(_context);
+
+        // Assert: All 15 creative badges must exist
+        var newBadgeCodes = new[]
+        {
+            "NIGHT_OWL", "EARLY_BIRD", "TIME_LORD", "SPRINT_CHAMPION", "BUG_HUNTER",
+            "CLEAN_SWEEPER", "DOCUMENTATION_GURU", "MARATHONER", "PERFECT_ATTENDANCE",
+            "TASK_CRUSHER", "TEAM_CATALYST", "CONSISTENCY_KING", "MILESTONE_MASTER",
+            "ZEN_WORKER", "LIFELONG_LEARNER"
+        };
+
+        var allBadges = await _context.MasterBadges.ToListAsync();
+        Assert.True(allBadges.Count >= 57);
+
+        foreach (var code in newBadgeCodes)
+        {
+            Assert.Contains(allBadges, b => b.Code == code);
+        }
     }
 
     private class FakeTenantService : ICurrentTenantService

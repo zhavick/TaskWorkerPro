@@ -479,8 +479,8 @@ export default function TaskStudioPage() {
                   }
                   setTitle(newTitle);
                 }}
-                placeholder="Masukkan judul tugas..."
-                className="mt-2 text-base font-bold text-gray-900 dark:text-white"
+                placeholder="Masukkan judul tugas pekerjaan lengkap..."
+                className="mt-2.5 w-full text-base sm:text-lg font-bold py-3.5 px-4 text-gray-900 dark:text-white rounded-xl border-gray-300 dark:border-gray-700 shadow-xs focus:ring-4 focus:ring-indigo-500/10"
                 required
               />
             </div>

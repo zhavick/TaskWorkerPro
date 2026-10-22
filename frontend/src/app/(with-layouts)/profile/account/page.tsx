@@ -79,12 +79,21 @@ export default function AccountPage() {
 
     setIsUploadingAvatar(true);
     try {
-      const res = await apiClient.post("/profile/avatar", formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
+      const res = await apiClient.post("/profile/avatar", formData);
       const newUrl = res.data?.url;
       if (newUrl) {
         setCurrentAvatarUrl(newUrl);
+        if (typeof window !== "undefined") {
+          try {
+            const stored = localStorage.getItem("user_profile");
+            if (stored) {
+              const parsed = JSON.parse(stored);
+              parsed.profilePictureUrl = newUrl;
+              localStorage.setItem("user_profile", JSON.stringify(parsed));
+              window.dispatchEvent(new Event("profile-updated"));
+            }
+          } catch { /* ignore */ }
+        }
       }
       toast.success(res.data?.message || "Foto profil berhasil diperbarui!");
       queryClient.invalidateQueries({ queryKey: ["user-profile"] });
@@ -108,6 +117,17 @@ export default function AccountPage() {
         profilePictureUrl: "",
       });
       setCurrentAvatarUrl(null);
+      if (typeof window !== "undefined") {
+        try {
+          const stored = localStorage.getItem("user_profile");
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            parsed.profilePictureUrl = null;
+            localStorage.setItem("user_profile", JSON.stringify(parsed));
+            window.dispatchEvent(new Event("profile-updated"));
+          }
+        } catch { /* ignore */ }
+      }
       toast.success("Foto profil telah dihapus.");
       queryClient.invalidateQueries({ queryKey: ["user-profile"] });
       queryClient.invalidateQueries({ queryKey: ["currentUserProfile"] });
@@ -130,13 +150,24 @@ export default function AccountPage() {
 
     setIsUploadingCover(true);
     try {
-      const res = await apiClient.post("/profile/cover", formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
+      const res = await apiClient.post("/profile/cover", formData);
+      const newUrl = res.data?.url;
       toast.success(res.data?.message || "Banner sampul berhasil diperbarui!");
       setIsCustomCover(true);
-      setCustomCoverUrl(res.data?.url || "");
+      setCustomCoverUrl(newUrl || "");
+      if (newUrl && typeof window !== "undefined") {
+        try {
+          const stored = localStorage.getItem("user_profile");
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            parsed.coverPictureUrl = newUrl;
+            localStorage.setItem("user_profile", JSON.stringify(parsed));
+            window.dispatchEvent(new Event("profile-updated"));
+          }
+        } catch { /* ignore */ }
+      }
       queryClient.invalidateQueries({ queryKey: ["user-profile"] });
+      queryClient.invalidateQueries({ queryKey: ["currentUserProfile"] });
     } catch (err: any) {
       toast.error(err?.response?.data?.message || "Gagal mengunggah banner cover.");
     } finally {
@@ -205,7 +236,11 @@ export default function AccountPage() {
             parsed.fullName = fullName.trim();
             parsed.jobTitle = jobTitle.trim();
             parsed.avatarColor = avatarColor;
+            parsed.phoneNumber = phoneNumber.trim() || null;
+            parsed.profilePictureUrl = currentAvatarUrl || null;
+            parsed.coverPictureUrl = isCustomCover ? customCoverUrl.trim() : coverPictureUrl;
             localStorage.setItem("user_profile", JSON.stringify(parsed));
+            window.dispatchEvent(new Event("profile-updated"));
           }
         } catch {
           // ignore

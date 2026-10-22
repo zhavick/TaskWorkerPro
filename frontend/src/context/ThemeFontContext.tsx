@@ -422,8 +422,10 @@ export const GOOGLE_FONTS: FontOption[] = [
 interface ThemeFontContextType {
   currentPalette: string;
   currentFont: string;
+  isDark: boolean;
   setPalette: (paletteId: string) => void;
   setFont: (fontId: string) => void;
+  toggleMode: () => void;
   resetToDefault: () => void;
 }
 
@@ -434,17 +436,32 @@ export function ThemeFontProvider({ children }: { children: React.ReactNode }) {
   const [currentPalette, setCurrentPalette] = useState<string>("indigo-nebula");
   const [currentFont, setCurrentFont] = useState<string>("inter");
 
+  const isDark = resolvedTheme === "dark" || theme === "dark";
+
   // Load from localStorage on mount
   useEffect(() => {
     try {
-      const savedPalette = localStorage.getItem("wtp_theme_palette") || "indigo-nebula";
+      const activeMode = resolvedTheme || (theme === "dark" ? "dark" : "light");
+      let savedPalette = localStorage.getItem("wtp_theme_palette");
       const savedFont = localStorage.getItem("wtp_font_family") || "inter";
+
+      if (!savedPalette) {
+        savedPalette = activeMode === "dark" ? "midnight-oled" : "indigo-nebula";
+      }
 
       setCurrentPalette(savedPalette);
       setCurrentFont(savedFont);
 
       document.documentElement.setAttribute("data-theme-palette", savedPalette);
       document.documentElement.setAttribute("data-font", savedFont);
+      document.documentElement.setAttribute("data-theme", activeMode);
+      if (activeMode === "dark") {
+        document.documentElement.classList.add("dark");
+        document.documentElement.classList.remove("light");
+      } else {
+        document.documentElement.classList.remove("dark");
+        document.documentElement.classList.add("light");
+      }
     } catch (e) {
       console.error("Failed to load theme/font preferences:", e);
     }
@@ -472,6 +489,11 @@ export function ThemeFontProvider({ children }: { children: React.ReactNode }) {
     setCurrentPalette(paletteId);
     try {
       localStorage.setItem("wtp_theme_palette", paletteId);
+      if (found.mode === "dark") {
+        localStorage.setItem("wtp_last_dark_palette", paletteId);
+      } else {
+        localStorage.setItem("wtp_last_light_palette", paletteId);
+      }
       document.documentElement.setAttribute("data-theme-palette", paletteId);
 
       // Auto sync mode (light or dark)
@@ -487,6 +509,16 @@ export function ThemeFontProvider({ children }: { children: React.ReactNode }) {
     } catch (e) {
       console.error("Failed to persist theme palette:", e);
     }
+  };
+
+  const toggleMode = () => {
+    const nextMode = isDark ? "light" : "dark";
+    const targetPalette =
+      nextMode === "dark"
+        ? localStorage.getItem("wtp_last_dark_palette") || "midnight-oled"
+        : localStorage.getItem("wtp_last_light_palette") || "indigo-nebula";
+
+    setPalette(targetPalette);
   };
 
   const setFont = (fontId: string) => {
@@ -516,8 +548,10 @@ export function ThemeFontProvider({ children }: { children: React.ReactNode }) {
       value={{
         currentPalette,
         currentFont,
+        isDark,
         setPalette,
         setFont,
+        toggleMode,
         resetToDefault,
       }}
     >

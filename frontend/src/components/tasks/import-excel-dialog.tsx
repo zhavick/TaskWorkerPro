@@ -170,9 +170,7 @@ export function ImportExcelDialog({ open, onOpenChange, onSuccess }: ImportExcel
       const formData = new FormData();
       formData.append("file", selectedFile);
 
-      const res = await apiClient.post("/tasks/import/preview", formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
+      const res = await apiClient.post("/tasks/import/preview", formData);
       return res.data;
     },
     onSuccess: (data) => {

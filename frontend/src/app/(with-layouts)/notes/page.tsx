@@ -39,16 +39,34 @@ import { toast } from "sonner";
 const categories = ["Semua", "General", "Backend", "Frontend", "Database", "DevOps", "SOP"];
 const colorPresets = ["#6366F1", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6", "#EC4899", "#06B6D4"];
 
+const PREVIEWABLE_EXTS = {
+  image: [".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg", ".bmp"],
+  pdf: [".pdf"],
+  markdown: [".md", ".markdown"],
+  text: [".txt", ".json", ".sql", ".log", ".csv", ".xml", ".ts", ".js", ".cs", ".html", ".css", ".yaml", ".yml", ".env", ".sh", ".ps1"],
+};
+
+function getPreviewType(ext: string): "image" | "pdf" | "markdown" | "text" | null {
+  const e = ext.toLowerCase();
+  if (PREVIEWABLE_EXTS.image.includes(e)) return "image";
+  if (PREVIEWABLE_EXTS.pdf.includes(e)) return "pdf";
+  if (PREVIEWABLE_EXTS.markdown.includes(e)) return "markdown";
+  if (PREVIEWABLE_EXTS.text.includes(e)) return "text";
+  return null;
+}
+
 function getFileIcon(ext: string) {
   const e = ext.toLowerCase();
   if (e === ".pdf") return <FileText className="h-4 w-4 text-rose-500" />;
   if (e === ".xlsx" || e === ".xls") return <FileSpreadsheet className="h-4 w-4 text-emerald-500" />;
-  if (e === ".png" || e === ".jpg" || e === ".jpeg" || e === ".webp")
+  if (e === ".png" || e === ".jpg" || e === ".jpeg" || e === ".webp" || e === ".gif" || e === ".svg")
     return <ImageIcon className="h-4 w-4 text-sky-500" />;
-  if (e === ".zip" || e === ".rar" || e === ".tar" || e === ".gz")
+  if (e === ".zip" || e === ".rar" || e === ".tar" || e === ".gz" || e === ".7z")
     return <FileArchive className="h-4 w-4 text-amber-500" />;
-  if (e === ".sql" || e === ".json" || e === ".ts" || e === ".js")
+  if (e === ".sql" || e === ".json" || e === ".ts" || e === ".js" || e === ".cs" || e === ".html" || e === ".css")
     return <FileCode className="h-4 w-4 text-indigo-500" />;
+  if (e === ".md" || e === ".markdown" || e === ".txt")
+    return <FileText className="h-4 w-4 text-teal-500" />;
   return <File className="h-4 w-4 text-gray-500" />;
 }
 
@@ -75,10 +93,22 @@ export default function NotesPage() {
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [selectedNoteId, setSelectedNoteId] = useState<number | null>(null);
 
-  // Upload Modal state
+  // Upload Modal state (Quick upload)
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [uploadTargetNote, setUploadTargetNote] = useState<any | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+
+  // Staged files for Create/Edit Modal
+  const [stagedFiles, setStagedFiles] = useState<File[]>([]);
+  const stagedFileInputRef = React.useRef<HTMLInputElement>(null);
+
+  // Preview Modal state
+  const [previewModalOpen, setPreviewModalOpen] = useState(false);
+  const [previewAttachment, setPreviewAttachment] = useState<any | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewText, setPreviewText] = useState<string | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
 
   // Form Fields
   const [title, setTitle] = useState("");
@@ -146,6 +176,8 @@ export default function NotesPage() {
     setIsPinned(false);
     setEditingNoteId(null);
     setFormMode("create");
+    setStagedFiles([]);
+    if (stagedFileInputRef.current) stagedFileInputRef.current.value = "";
   };
 
   const openCreateModal = () => {
@@ -163,6 +195,8 @@ export default function NotesPage() {
     setTaskId(note.taskId || undefined);
     setIsPinned(note.isPinned || false);
     setFormMode("edit");
+    setStagedFiles([]);
+    if (stagedFileInputRef.current) stagedFileInputRef.current.value = "";
     setFormModalOpen(true);
   };
 
@@ -171,7 +205,7 @@ export default function NotesPage() {
     setDetailModalOpen(true);
   };
 
-  // Create Note Mutation
+  // Create Note Mutation (with staged file upload support)
   const createNoteMutation = useMutation({
     mutationFn: async () => {
       const res = await apiClient.post("/notes", {
@@ -182,10 +216,27 @@ export default function NotesPage() {
         isPinned,
         taskId: taskId || null,
       });
+
+      const newNoteId = res.data?.data?.id;
+      if (newNoteId && stagedFiles.length > 0) {
+        for (const file of stagedFiles) {
+          const fd = new FormData();
+          fd.append("file", file);
+          try {
+            await apiClient.post(`/notes/${newNoteId}/attachments`, fd);
+          } catch {
+            // lanjutkan file berikutnya
+          }
+        }
+      }
       return res.data;
     },
     onSuccess: () => {
-      toast.success("Catatan baru berhasil disimpan!");
+      toast.success(
+        stagedFiles.length > 0
+          ? `Catatan baru dan ${stagedFiles.length} berkas berhasil disimpan!`
+          : "Catatan baru berhasil disimpan!"
+      );
       setFormModalOpen(false);
       resetForm();
       queryClient.invalidateQueries({ queryKey: ["notesList"] });
@@ -193,7 +244,7 @@ export default function NotesPage() {
     onError: (err: any) => toast.error(err.response?.data?.message || "Gagal membuat catatan"),
   });
 
-  // Update Note Mutation
+  // Update Note Mutation (with staged file upload support)
   const updateNoteMutation = useMutation({
     mutationFn: async () => {
       if (!editingNoteId) return;
@@ -205,10 +256,26 @@ export default function NotesPage() {
         isPinned,
         taskId: taskId || null,
       });
+
+      if (stagedFiles.length > 0) {
+        for (const file of stagedFiles) {
+          const fd = new FormData();
+          fd.append("file", file);
+          try {
+            await apiClient.post(`/notes/${editingNoteId}/attachments`, fd);
+          } catch {
+            // lanjutkan file berikutnya
+          }
+        }
+      }
       return res.data;
     },
     onSuccess: () => {
-      toast.success("Catatan berhasil diperbarui!");
+      toast.success(
+        stagedFiles.length > 0
+          ? `Catatan dan ${stagedFiles.length} berkas berhasil diperbarui!`
+          : "Catatan berhasil diperbarui!"
+      );
       setFormModalOpen(false);
       resetForm();
       queryClient.invalidateQueries({ queryKey: ["notesList"] });
@@ -288,6 +355,56 @@ export default function NotesPage() {
     }
   };
 
+  // Preview Attachment Popup Handler
+  const handlePreview = async (att: any) => {
+    const previewType = getPreviewType(att.fileExtension || "");
+    if (!previewType) {
+      toast.info("Format file ini tidak mendukung pratinjau langsung. Mengunduh berkas...");
+      handleDownload(att.id, att.fileName);
+      return;
+    }
+
+    setPreviewAttachment(att);
+    setPreviewModalOpen(true);
+    setPreviewLoading(true);
+    setPreviewError(null);
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+      setPreviewUrl(null);
+    }
+    setPreviewText(null);
+
+    try {
+      const res = await apiClient.get(`/notes/attachments/${att.id}/download`, {
+        responseType: "blob",
+      });
+
+      if (previewType === "image" || previewType === "pdf") {
+        const mime = previewType === "pdf" ? "application/pdf" : (att.contentType || "image/png");
+        const blobUrl = URL.createObjectURL(new Blob([res.data], { type: mime }));
+        setPreviewUrl(blobUrl);
+      } else {
+        const text = await res.data.text();
+        setPreviewText(text);
+      }
+    } catch {
+      setPreviewError("Gagal memuat pratinjau dokumen dari server.");
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  const closePreviewModal = () => {
+    setPreviewModalOpen(false);
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+      setPreviewUrl(null);
+    }
+    setPreviewText(null);
+    setPreviewAttachment(null);
+    setPreviewError(null);
+  };
+
   // Upload Attachment
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, targetNoteId?: number) => {
     const file = e.target.files?.[0];
@@ -331,7 +448,7 @@ export default function NotesPage() {
 
         <Button
           onClick={openCreateModal}
-          className="gap-2 bg-indigo-600 font-semibold text-white shadow-md shadow-indigo-500/20 hover:bg-indigo-700 text-xs"
+          className="gap-2 bg-primary-500 font-semibold text-white shadow-md shadow-primary-500/20 hover:bg-primary-600 text-xs"
         >
           <Plus className="h-4 w-4" />
           Catatan Baru
@@ -347,7 +464,7 @@ export default function NotesPage() {
               onClick={() => setSelectedCategory(cat)}
               className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
                 selectedCategory === cat
-                  ? "bg-indigo-600 text-white shadow-xs"
+                  ? "bg-primary-500 text-white shadow-xs"
                   : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
               }`}
             >
@@ -384,10 +501,10 @@ export default function NotesPage() {
         {notes.map((note) => (
           <div
             key={note.id}
-            className={`group flex flex-col justify-between rounded-2xl border bg-white p-5 shadow-xs transition hover:shadow-md dark:bg-gray-900 ${
+            className={`group flex flex-col justify-between rounded-2xl border p-5 shadow-xs transition hover:shadow-md bg-card-background text-text-primary ${
               note.isPinned
-                ? "border-indigo-400/80 bg-indigo-50/15 dark:border-indigo-600/80"
-                : "border-gray-200/80 dark:border-gray-800"
+                ? "border-primary-500/60 bg-primary-500/5 dark:border-primary-500/60"
+                : "border-card-border"
             }`}
           >
             <div>
@@ -402,7 +519,7 @@ export default function NotesPage() {
                     {note.category}
                   </span>
                   {note.taskTitle && (
-                    <span className="max-w-[120px] truncate rounded bg-indigo-50 px-1.5 py-0.5 text-[9px] font-semibold text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300">
+                    <span className="max-w-[120px] truncate rounded bg-primary-50 px-1.5 py-0.5 text-[9px] font-semibold text-primary-700 dark:bg-primary-950/60 dark:text-primary-300">
                       Tugas: {note.taskTitle}
                     </span>
                   )}
@@ -414,7 +531,7 @@ export default function NotesPage() {
                     onClick={() => togglePinMutation.mutate(note.id)}
                     className={`rounded-lg p-1 text-xs transition ${
                       note.isPinned
-                        ? "text-indigo-600 hover:text-indigo-800 dark:text-indigo-400"
+                        ? "text-primary-500 hover:text-primary-700 dark:text-primary-400"
                         : "text-gray-300 hover:text-gray-600 dark:text-gray-600 dark:hover:text-gray-400"
                     }`}
                     title={note.isPinned ? "Lepas sematan" : "Sematkan di atas"}
@@ -427,7 +544,7 @@ export default function NotesPage() {
               {/* Title & Clickable to View */}
               <h3
                 onClick={() => openDetailModal(note.id)}
-                className="mt-3 font-bold text-base text-gray-900 dark:text-white leading-snug cursor-pointer hover:text-indigo-600 dark:hover:text-indigo-400 transition"
+                className="mt-3 font-bold text-base text-text-primary leading-snug cursor-pointer hover:text-primary-500 dark:hover:text-primary-400 transition"
               >
                 {note.title}
               </h3>
@@ -444,7 +561,7 @@ export default function NotesPage() {
                 <button
                   type="button"
                   onClick={() => openDetailModal(note.id)}
-                  className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-indigo-50 px-2 py-1 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:text-indigo-300 transition"
+                  className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-primary-50 px-2 py-1 text-[11px] font-semibold text-primary-700 hover:bg-primary-100 dark:bg-primary-950/60 dark:text-primary-300 transition"
                 >
                   <Paperclip className="h-3.5 w-3.5" />
                   <span>{note.attachmentsCount} Berkas Terlampir</span>
@@ -463,7 +580,7 @@ export default function NotesPage() {
                 <Button
                   size="sm"
                   variant="ghost"
-                  className="h-7 gap-1 px-2 text-[11px] text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/40"
+                  className="h-7 gap-1 px-2 text-[11px] text-primary-500 hover:bg-primary-50 dark:hover:bg-primary-950/40"
                   onClick={() => openDetailModal(note.id)}
                   title="Lihat Detail & Berkas"
                 >
@@ -524,8 +641,8 @@ export default function NotesPage() {
       <Dialog open={formModalOpen} onOpenChange={setFormModalOpen}>
         <DialogContent className="max-w-2xl bg-white p-6 shadow-2xl dark:bg-gray-900 rounded-2xl max-h-[92vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
-              <BookOpen className="h-5 w-5 text-indigo-600" />
+            <DialogTitle className="text-lg font-bold text-text-primary flex items-center gap-2">
+              <BookOpen className="h-5 w-5 text-primary-500" />
               <span>{formMode === "create" ? "Buat Catatan Kerja / SOP Baru" : "Edit Catatan Kerja"}</span>
             </DialogTitle>
           </DialogHeader>
@@ -624,6 +741,93 @@ export default function NotesPage() {
               />
             </div>
 
+            {/* Field Unggah Dokumen / Lampiran Berkas */}
+            <div className="space-y-2 rounded-xl border border-gray-200/80 bg-gray-50/60 p-3.5 dark:border-gray-800 dark:bg-gray-800/40">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-gray-900 dark:text-white flex items-center gap-1.5">
+                  <Paperclip className="h-4 w-4 text-primary-500 dark:text-primary-400" />
+                  <span>Unggah Dokumen Lampiran</span>
+                  <span className="text-[10px] font-normal text-gray-400">(Opsional)</span>
+                </label>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => stagedFileInputRef.current?.click()}
+                  className="h-7 gap-1 text-[11px] font-semibold text-primary-500 border-primary-500/30 hover:bg-primary-50 dark:border-primary-500/30 dark:text-primary-400"
+                >
+                  <Upload className="h-3.5 w-3.5" />
+                  <span>Pilih Berkas</span>
+                </Button>
+              </div>
+
+              <input
+                type="file"
+                ref={stagedFileInputRef}
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  if (e.target.files && e.target.files.length > 0) {
+                    const newFiles = Array.from(e.target.files);
+                    setStagedFiles((prev) => [...prev, ...newFiles]);
+                  }
+                  if (e.target) e.target.value = "";
+                }}
+              />
+
+              <p className="text-[11px] text-gray-400">
+                Format didukung: PDF, DOCX, XLSX, PNG, JPG, WEBP, MD, TXT, JSON, SQL, ZIP (Maks. 50MB per file).
+              </p>
+
+              {stagedFiles.length > 0 ? (
+                <div className="mt-2 space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                  {stagedFiles.map((file, idx) => {
+                    const ext = "." + (file.name.split(".").pop() || "");
+                    return (
+                      <div
+                        key={`${file.name}-${idx}`}
+                        className="flex items-center justify-between rounded-lg border border-gray-200 bg-white p-2 shadow-2xs dark:border-gray-750 dark:bg-gray-800/80 text-xs"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className="shrink-0">{getFileIcon(ext)}</div>
+                          <div className="min-w-0">
+                            <p className="font-semibold text-gray-800 dark:text-gray-200 truncate max-w-[280px] sm:max-w-md">
+                              {file.name}
+                            </p>
+                            <span className="text-[10px] text-gray-400">
+                              {formatFileSize(file.size)}
+                            </span>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setStagedFiles((prev) => prev.filter((_, i) => i !== idx));
+                          }}
+                          className="rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-rose-500 dark:hover:bg-gray-700 transition"
+                          title="Batal lampirkan file ini"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div
+                  onClick={() => stagedFileInputRef.current?.click()}
+                  className="cursor-pointer rounded-lg border border-dashed border-gray-300 py-4 text-center hover:border-indigo-400 hover:bg-indigo-50/30 dark:border-gray-700 dark:hover:border-indigo-600 transition"
+                >
+                  <Upload className="mx-auto h-6 w-6 text-gray-400 mb-1" />
+                  <p className="text-xs font-medium text-gray-600 dark:text-gray-300">
+                    Klik untuk memilih berkas dari komputer
+                  </p>
+                </div>
+              )}
+            </div>
+
             <div className="mt-4 flex justify-end gap-2">
               <Button type="button" variant="outline" onClick={() => setFormModalOpen(false)} className="text-xs">
                 Batal
@@ -631,7 +835,7 @@ export default function NotesPage() {
               <Button
                 type="submit"
                 disabled={createNoteMutation.isPending || updateNoteMutation.isPending}
-                className="bg-indigo-600 text-white hover:bg-indigo-700 text-xs font-semibold"
+                className="bg-primary-500 text-white hover:bg-primary-600 text-xs font-semibold"
               >
                 {formMode === "create"
                   ? createNoteMutation.isPending
@@ -720,13 +924,13 @@ export default function NotesPage() {
               {/* Attachments Section */}
               <div className="border-t border-gray-100 pt-3 dark:border-gray-800">
                 <div className="flex items-center justify-between mb-3">
-                  <h4 className="text-xs font-bold text-gray-900 dark:text-white flex items-center gap-1.5">
-                    <Paperclip className="h-4 w-4 text-indigo-600" />
+                  <h4 className="text-xs font-bold text-text-primary flex items-center gap-1.5">
+                    <Paperclip className="h-4 w-4 text-primary-500" />
                     <span>Berkas Lampiran Dokumen ({noteDetail.attachments?.length || 0})</span>
                   </h4>
 
                   {/* Inline quick upload button */}
-                  <label className="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-600 hover:bg-indigo-100 cursor-pointer dark:bg-indigo-950/60 dark:text-indigo-400 transition">
+                  <label className="inline-flex items-center gap-1 rounded-lg bg-primary-50 px-2.5 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100 cursor-pointer dark:bg-primary-950/60 dark:text-primary-300 transition">
                     <Upload className="h-3.5 w-3.5" />
                     <span>Unggah Berkas</span>
                     <input
@@ -760,10 +964,23 @@ export default function NotesPage() {
                         </div>
 
                         <div className="flex items-center gap-1">
+                          {/* Tombol Preview khusus tipe image, pdf, md, text */}
+                          {getPreviewType(att.fileExtension || "") && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 gap-1 px-2 text-[11px] font-semibold text-emerald-600 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/40"
+                              onClick={() => handlePreview(att)}
+                              title="Pratinjau Berkas"
+                            >
+                              <Eye className="h-3.5 w-3.5" />
+                              <span>Preview</span>
+                            </Button>
+                          )}
                           <Button
                             size="sm"
                             variant="ghost"
-                            className="h-7 w-7 p-0 text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/40"
+                            className="h-7 w-7 p-0 text-primary-500 hover:bg-primary-50 dark:hover:bg-primary-950/40"
                             onClick={() => handleDownload(att.id, att.fileName)}
                             title="Unduh Berkas"
                           >
@@ -822,7 +1039,7 @@ export default function NotesPage() {
         <DialogContent className="max-w-md bg-white p-6 shadow-2xl dark:bg-gray-900 rounded-2xl">
           <DialogHeader>
             <DialogTitle className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
-              <Upload className="h-5 w-5 text-indigo-600" />
+              <Upload className="h-5 w-5 text-primary-500" />
               <span>Lampirkan Berkas: {uploadTargetNote?.title}</span>
             </DialogTitle>
           </DialogHeader>
@@ -842,7 +1059,7 @@ export default function NotesPage() {
                   Pilih file dokumen atau gambar untuk dilampirkan
                 </p>
                 <p className="text-[11px] text-gray-400 mt-1">
-                  Format didukung: .pdf, .docx, .xlsx, .png, .jpg, .zip, .json, .sql (Maks. 50MB)
+                  Format didukung: .pdf, .docx, .xlsx, .png, .jpg, .webp, .md, .txt, .json, .sql, .zip (Maks. 50MB)
                 </p>
                 <input
                   type="file"
@@ -850,6 +1067,96 @@ export default function NotesPage() {
                   className="mt-4 block w-full text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 dark:file:bg-indigo-950 dark:file:text-indigo-300"
                 />
               </>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal 4: Popup Preview Dokumen (Image, PDF, Markdown, Text) */}
+      <Dialog open={previewModalOpen} onOpenChange={(open) => !open && closePreviewModal()}>
+        <DialogContent className="max-w-4xl bg-white p-5 sm:p-6 shadow-2xl dark:bg-gray-900 rounded-2xl max-h-[92vh] flex flex-col">
+          <DialogHeader>
+            <div className="flex items-center justify-between gap-3 border-b border-gray-100 pb-3 dark:border-gray-800">
+              <DialogTitle className="text-sm sm:text-base font-bold text-gray-900 dark:text-white flex items-center gap-2 truncate">
+                {previewAttachment && getFileIcon(previewAttachment.fileExtension || "")}
+                <span className="truncate max-w-[200px] sm:max-w-md">{previewAttachment?.fileName}</span>
+                {previewAttachment && (
+                  <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 uppercase">
+                    {getPreviewType(previewAttachment.fileExtension || "")}
+                  </span>
+                )}
+              </DialogTitle>
+
+              <div className="flex items-center gap-2 shrink-0">
+                {previewAttachment && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleDownload(previewAttachment.id, previewAttachment.fileName)}
+                    className="h-7 gap-1 text-xs text-primary-500 border-primary-500/30 hover:bg-primary-50 dark:border-primary-500/30 dark:text-primary-400"
+                    title="Unduh Berkas Fisik"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">Unduh</span>
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={closePreviewModal}
+                  className="h-7 w-7 p-0 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-auto mt-3 min-h-[300px] flex items-center justify-center">
+            {previewLoading ? (
+              <div className="py-16 text-center text-xs text-gray-500">
+                <Loader2 className="mx-auto h-8 w-8 animate-spin text-indigo-600 mb-2" />
+                <p className="font-semibold">Memuat pratinjau dokumen...</p>
+              </div>
+            ) : previewError ? (
+              <div className="py-12 text-center text-xs text-rose-500 space-y-2">
+                <p className="font-semibold">{previewError}</p>
+                {previewAttachment && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleDownload(previewAttachment.id, previewAttachment.fileName)}
+                    className="text-xs gap-1.5"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    Unduh Berkas Langsung
+                  </Button>
+                )}
+              </div>
+            ) : previewAttachment && getPreviewType(previewAttachment.fileExtension) === "image" && previewUrl ? (
+              <div className="w-full flex items-center justify-center p-2 rounded-xl bg-gray-50/50 dark:bg-gray-950/50">
+                <img
+                  src={previewUrl}
+                  alt={previewAttachment.fileName}
+                  className="max-h-[72vh] w-auto max-w-full rounded-lg object-contain shadow-sm border border-gray-200/80 dark:border-gray-800"
+                />
+              </div>
+            ) : previewAttachment && getPreviewType(previewAttachment.fileExtension) === "pdf" && previewUrl ? (
+              <iframe
+                src={previewUrl}
+                title={previewAttachment.fileName}
+                className="w-full h-[72vh] rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-100 dark:bg-gray-800"
+              />
+            ) : previewAttachment && (getPreviewType(previewAttachment.fileExtension) === "markdown" || getPreviewType(previewAttachment.fileExtension) === "text") && previewText !== null ? (
+              <div className="w-full h-[72vh] overflow-auto rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-900 text-gray-100 p-4">
+                <pre className="font-mono text-xs leading-relaxed whitespace-pre-wrap select-text">
+                  {previewText}
+                </pre>
+              </div>
+            ) : (
+              <div className="py-12 text-center text-xs text-gray-400">
+                Pratinjau tidak tersedia untuk format berkas ini. Silakan klik tombol unduh di kanan atas.
+              </div>
             )}
           </div>
         </DialogContent>

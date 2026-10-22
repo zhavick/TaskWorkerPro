@@ -14,6 +14,9 @@ public record SyncPingResponse
     public int TotalTasks { get; init; }
     public int TotalNotes { get; init; }
     public int TotalAttachments { get; init; }
+    public int TotalSessions { get; init; }
+    public int TotalAttendances { get; init; }
+    public int TotalBadges { get; init; }
     public long TotalUploadsSizeBytes { get; init; }
     public bool Ready { get; init; } = true;
     public long ResponseLatencyMs { get; init; }
@@ -223,6 +226,116 @@ public record NoteAttachmentSyncDto
     public DateTimeOffset UploadedAt { get; init; }
 }
 
+public record MasterBadgeSyncDto
+{
+    public int Id { get; init; }
+    public string Code { get; init; } = string.Empty;
+    public string Name { get; init; } = string.Empty;
+    public string? Description { get; init; }
+    public string? Category { get; init; }
+    public string Icon { get; init; } = "award";
+    public string Color { get; init; } = "#10B981";
+    public int Points { get; init; } = 0;
+    public BadgeRarity Rarity { get; init; } = BadgeRarity.Common;
+    public int TriggerType { get; init; } = 0;
+    public int TriggerThreshold { get; init; } = 1;
+    public bool IsActive { get; init; } = true;
+    public int OrderIndex { get; init; }
+    public DateTimeOffset CreatedAt { get; init; }
+}
+
+public record RewardItemSyncDto
+{
+    public int Id { get; init; }
+    public string Name { get; init; } = string.Empty;
+    public string? Description { get; init; }
+    public int PointCost { get; init; }
+    public int Stock { get; init; } = 10;
+    public string Category { get; init; } = "Voucher";
+    public string? ImageUrl { get; init; }
+    public string Icon { get; init; } = "gift";
+    public string Color { get; init; } = "indigo";
+    public bool IsActive { get; init; } = true;
+    public bool IsMonthlyMilestoneReward { get; init; }
+    public int OrderIndex { get; init; }
+    public DateTimeOffset CreatedAt { get; init; }
+}
+
+public record EmailTemplateSyncDto
+{
+    public int Id { get; init; }
+    public string EventCode { get; init; } = string.Empty;
+    public string EventName { get; init; } = string.Empty;
+    public string? Category { get; init; }
+    public string Subject { get; init; } = string.Empty;
+    public string BodyHtml { get; init; } = string.Empty;
+    public string? AvailableVariables { get; set; }
+    public bool IsActive { get; init; } = true;
+    public string? UpdatedByUserId { get; init; }
+    public DateTimeOffset CreatedAt { get; init; }
+    public DateTimeOffset UpdatedAt { get; init; }
+}
+
+public record SystemSettingSyncDto
+{
+    public string Key { get; init; } = string.Empty;
+    public string Value { get; init; } = string.Empty;
+    public string? Description { get; init; }
+    public DateTimeOffset UpdatedAt { get; init; }
+}
+
+public record UserBadgeSyncDto
+{
+    public int Id { get; init; }
+    public string UserId { get; init; } = string.Empty;
+    public int BadgeId { get; init; }
+    public string? BadgeCode { get; init; }
+    public DateTimeOffset UnlockedAt { get; init; }
+    public bool IsFeatured { get; init; }
+    public string? AwardedBy { get; init; }
+}
+
+public record DailyCheckInSyncDto
+{
+    public int Id { get; init; }
+    public string UserId { get; init; } = string.Empty;
+    public DateOnly CheckInDate { get; init; }
+    public DateTimeOffset CheckInTime { get; init; }
+    public int PointsEarned { get; init; }
+    public int StreakDay { get; init; }
+    public bool IsMonthlyMilestone { get; init; }
+    public string? Notes { get; init; }
+}
+
+public record RewardClaimSyncDto
+{
+    public int Id { get; init; }
+    public string UserId { get; init; } = string.Empty;
+    public int RewardItemId { get; init; }
+    public string? RewardItemName { get; init; }
+    public int PointsSpent { get; init; }
+    public ClaimStatus Status { get; init; }
+    public DateTimeOffset ClaimedAt { get; init; }
+    public DateTimeOffset? ProcessedAt { get; init; }
+    public string? ProcessedByUserId { get; init; }
+    public string? AdminNotes { get; init; }
+}
+
+public record AnnouncementSyncDto
+{
+    public int Id { get; init; }
+    public string Title { get; init; } = string.Empty;
+    public string Content { get; init; } = string.Empty;
+    public string Type { get; init; } = "Pengumuman Umum";
+    public DateTimeOffset StartDate { get; init; }
+    public DateTimeOffset EndDate { get; init; }
+    public bool IsActive { get; init; } = true;
+    public int? CompanyId { get; init; }
+    public string? CreatedByUserId { get; init; }
+    public DateTimeOffset CreatedAt { get; init; }
+    public DateTimeOffset UpdatedAt { get; init; }
+}
+
 public record SyncDatabaseData
 {
     public List<CompanySyncDto> Companies { get; init; } = new();
@@ -231,6 +344,14 @@ public record SyncDatabaseData
     public List<MasterPrioritySyncDto> MasterPriorities { get; init; } = new();
     public List<MasterStatusSyncDto> MasterStatuses { get; init; } = new();
     public List<MasterMilestoneSyncDto> MasterMilestones { get; init; } = new();
+    public List<MasterBadgeSyncDto> MasterBadges { get; init; } = new();
+    public List<UserBadgeSyncDto> UserBadges { get; init; } = new();
+    public List<DailyCheckInSyncDto> DailyCheckIns { get; init; } = new();
+    public List<RewardItemSyncDto> RewardItems { get; init; } = new();
+    public List<RewardClaimSyncDto> RewardClaims { get; init; } = new();
+    public List<EmailTemplateSyncDto> EmailTemplates { get; init; } = new();
+    public List<SystemSettingSyncDto> SystemSettings { get; init; } = new();
+    public List<AnnouncementSyncDto> Announcements { get; init; } = new();
     public List<ProjectSyncDto> Projects { get; init; } = new();
     public List<TaskSyncDto> Tasks { get; init; } = new();
     public List<SessionSyncDto> Sessions { get; init; } = new();

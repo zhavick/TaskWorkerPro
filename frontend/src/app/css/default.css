@@ -73,10 +73,10 @@
   /* ======== Button Color =========*/
 
   /* Primary */
-  --button-primary-background: #5750f1;
-  --button-primary-hover-background: #3c35d8;
+  --button-primary-background: var(--primary-500);
+  --button-primary-hover-background: var(--primary-600);
   --button-primary-text: #ffffff;
-  --button-primary-focus-ring: rgba(87, 80, 241, 0.2);
+  --button-primary-focus-ring: color-mix(in srgb, var(--primary-500) 25%, transparent);
 
   /* Outline */
   --button-outline-background: #ffffff;
@@ -133,8 +133,8 @@
 
   /* Button Group Primary */
   --button-group-primary-background: #ffffff;
-  --button-group-primary-hover-background: #5750f1;
-  --button-group-primary-text: #5750f1;
+  --button-group-primary-hover-background: var(--primary-500);
+  --button-group-primary-text: var(--primary-500);
   --button-group-primary-hover-text: #ffffff;
 
   /* Button Group Secondary */
@@ -305,7 +305,7 @@
   --input-disabled-background: #fafafa;
   --input-disabled-border: #e4e4e7;
   --input-placeholder-text: #9ca3af;
-  --input-primary-focus-border: #5750f1;
+  --input-primary-focus-border: var(--primary-500);
   --input-error-focus-border: #ef4444;
   --input-success-focus-border: #22c55e;
   --input-error: #ef4444;
@@ -318,8 +318,8 @@
 
   /* ======== Checkbox Color =========*/
   --checkbox-background: #ffffff;
-  --checkbox-checked-border: #5750f1;
-  --checkbox-checked-background: #5750f1;
+  --checkbox-checked-border: var(--primary-500);
+  --checkbox-checked-background: var(--primary-500);
   --checkbox-checked-icon-color: #ffffff;
 
   /* ======== Scrollbar Color =========*/
@@ -327,7 +327,7 @@
 
   /* ======== Datepicker Color =========*/
   --datepicker-background: #ffffff;
-  --datepicker-selected-background: #3758f9;
+  --datepicker-selected-background: var(--primary-500);
   --datepicker-selected-hover-background: #f9fafb;
 
   /* ======== Dropdowns Color =========*/
@@ -431,7 +431,7 @@
   --toggle-default-background: #e4e4e7;
   --toggle-disabled-foreground: #ffffff;
   --toggle-disabled-background: #f3f4f6;
-  --toggle-active-background: #5750f1;
+  --toggle-active-background: var(--primary-500);
 
   /* ======== Map Color =========*/
   --map-fill: #d1d5db;
@@ -489,12 +489,12 @@
   --background-gray-quaternary: #d4d4d8;
 
   /* general color */
-  --brand-100: #e0e7ff;
-  --brand-200: #c7d2fe;
-  --brand-300: #a5b4fc;
-  --brand-400: #818cf8;
-  --brand-500: #5750f1;
-  --brand-600: #3c35d8;
+  --brand-100: var(--primary-100);
+  --brand-200: var(--primary-200);
+  --brand-300: var(--primary-300);
+  --brand-400: var(--primary-400);
+  --brand-500: var(--primary-500);
+  --brand-600: var(--primary-600);
   --base-white: #ffffff;
   --green-600: #16a34a;
   --red-600: #dc2626;

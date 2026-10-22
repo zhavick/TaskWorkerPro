@@ -40,11 +40,11 @@ export function Dialog({
     >
       <AriaDialog
         className={cn(
-          "relative flex flex-col w-full bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-2xl outline-none transition-all",
+          "relative flex flex-col w-full bg-card-background text-text-primary shadow-2xl outline-none transition-all",
           // MOBILE: Full 1 Halaman Penuh tanpa modal popup yang terpotong per permintaan pengguna!
           "max-sm:!fixed max-sm:!inset-0 max-sm:!w-full max-sm:!h-[100dvh] max-sm:!max-w-none max-sm:!max-h-none max-sm:!rounded-none max-sm:!border-0 max-sm:!p-4 max-sm:!m-0 max-sm:!overflow-hidden max-sm:!top-0 max-sm:!left-0 max-sm:!translate-x-0 max-sm:!translate-y-0",
           // DESKTOP: Centered, rounded-2xl, max-h 92vh, flex flex-col
-          "sm:max-h-[92vh] sm:max-w-xl sm:rounded-2xl sm:border sm:border-gray-200 sm:dark:border-gray-800 sm:p-6",
+          "sm:max-h-[92vh] sm:max-w-xl sm:rounded-2xl sm:border sm:border-card-border sm:p-6",
           className,
         )}
         {...props}
@@ -110,7 +110,7 @@ export function DialogTitle({ className, ...props }: DialogTitleProps) {
   return (
     <Heading
       slot="title"
-      className={cn("text-lg leading-snug font-bold text-gray-900 dark:text-white", className)}
+      className={cn("text-lg leading-snug font-bold text-text-primary", className)}
       {...props}
     />
   );

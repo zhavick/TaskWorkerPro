@@ -10,7 +10,7 @@ import {
 } from "react-aria-components";
 
 const checkboxStyles = cva(
-  "grid place-items-center overflow-hidden border border-button-primary-outline-stroke bg-checkbox-background transition group-hover:border-checkbox-checked-border group-data-[disabled=true]:border-base-50 group-data-[focused=true]:border-primary-300 group-data-[focused=true]:ring-4 group-data-[focused=true]:ring-checkbox-checked-border/20 group-data-[selected=true]:border-checkbox-checked-border! group-data-[selected=true]:bg-checkbox-checked-background [&>svg]:hidden [&>svg]:text-checkbox-checked-icon-color group-data-[disabled=true]:[&>svg]:text-(--border-color-base-50) group-data-[selected=true]:[&>svg]:block",
+  "grid place-items-center overflow-hidden border border-border-secondary-alt dark:border-gray-600 bg-checkbox-background transition group-hover:border-primary-500 group-data-[disabled=true]:border-base-50 group-data-[focused=true]:border-primary-400 group-data-[focused=true]:ring-4 group-data-[focused=true]:ring-primary-500/20 group-data-[selected=true]:border-checkbox-checked-border! group-data-[selected=true]:bg-checkbox-checked-background [&>svg]:hidden [&>svg]:text-checkbox-checked-icon-color group-data-[disabled=true]:[&>svg]:text-(--border-color-base-50) group-data-[selected=true]:[&>svg]:block",
   {
     variants: {
       size: {

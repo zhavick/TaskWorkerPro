@@ -1,7 +1,18 @@
 import axios from "axios";
 
-export const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5008/api";
+export const getBaseUrl = () => {
+  if (typeof window === "undefined") {
+    return (
+      process.env.INTERNAL_API_URL ||
+      (process.env.BACKEND_URL ? `${process.env.BACKEND_URL}/api` : null) ||
+      process.env.NEXT_PUBLIC_API_BASE_URL ||
+      "http://localhost:5008/api"
+    );
+  }
+  return process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5008/api";
+};
+
+export const API_BASE_URL = getBaseUrl();
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
@@ -19,6 +30,20 @@ apiClient.interceptors.request.use(
       config.url = config.url.substring(4);
     } else if (config.url === "/api") {
       config.url = "";
+    }
+
+    // Jika data adalah FormData, hapus Content-Type agar Axios/Browser menyetel boundary secara otomatis
+    if (config.data instanceof FormData && config.headers) {
+      delete config.headers["Content-Type"];
+      delete config.headers["content-type"];
+      if (typeof (config.headers as any).delete === "function") {
+        (config.headers as any).delete("Content-Type");
+        (config.headers as any).delete("content-type");
+      }
+    }
+
+    if (typeof window === "undefined") {
+      config.baseURL = getBaseUrl();
     }
 
     if (typeof window !== "undefined") {

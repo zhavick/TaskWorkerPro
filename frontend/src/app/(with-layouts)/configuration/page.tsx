@@ -60,6 +60,11 @@ import {
 } from "@/components/tailgrids/core/dialog";
 import { toast } from "sonner";
 import { AdminGuard } from "@/components/guards/AdminGuard";
+import {
+  SyncProgressModal,
+  SyncOperationType,
+  SyncResultData,
+} from "@/components/sync/sync-progress-modal";
 
 const COLOR_PRESETS = [
   "#6366F1", // Indigo
@@ -121,6 +126,13 @@ export default function ConfigurationPage() {
     message?: string;
   } | null>(null);
   const [importFile, setImportFile] = useState<File | null>(null);
+  
+  // Modal Popup Sinkronisasi Progress State (Mencegah Idle Situation)
+  const [syncModalOpen, setSyncModalOpen] = useState(false);
+  const [syncModalType, setSyncModalType] = useState<SyncOperationType>("pull");
+  const [syncModalStatus, setSyncModalStatus] = useState<"idle" | "running" | "success" | "error">("idle");
+  const [syncResultData, setSyncResultData] = useState<SyncResultData | null>(null);
+  const [syncModalError, setSyncModalError] = useState<string | null>(null);
 
   // Subtab for Master Data
   const [masterSubTab, setMasterSubTab] = useState<
@@ -430,42 +442,114 @@ export default function ConfigurationPage() {
     },
   });
 
+  const handleSyncSuccess = async (data: any) => {
+    // 1. Invalidate ALL queries across the entire TanStack React Query cache
+    await queryClient.invalidateQueries();
+
+    // 2. Refresh current user profile in localStorage and React Query cache
+    try {
+      const profileRes = await apiClient.get("/profile");
+      if (profileRes.data?.data) {
+        localStorage.setItem("user_profile", JSON.stringify(profileRes.data.data));
+        queryClient.setQueryData(["currentUserProfile"], profileRes.data.data);
+      }
+    } catch {
+      // Fallback
+    }
+
+    // 3. Specifically trigger refetch of essential app queries
+    queryClient.refetchQueries({ queryKey: ["tasksList"] });
+    queryClient.refetchQueries({ queryKey: ["kanbanTasks"] });
+    queryClient.refetchQueries({ queryKey: ["calendarTasks"] });
+    queryClient.refetchQueries({ queryKey: ["projectsList"] });
+    queryClient.refetchQueries({ queryKey: ["projectsSelect"] });
+    queryClient.refetchQueries({ queryKey: ["notesList"] });
+    queryClient.refetchQueries({ queryKey: ["members"] });
+    queryClient.refetchQueries({ queryKey: ["dashboardOverview"] });
+    queryClient.refetchQueries({ queryKey: ["dashboardStats"] });
+    queryClient.refetchQueries({ queryKey: ["gamificationSummary"] });
+    queryClient.refetchQueries({ queryKey: ["userBadges"] });
+    queryClient.refetchQueries({ queryKey: ["attendances"] });
+    queryClient.refetchQueries({ queryKey: ["timesheetSessions"] });
+    queryClient.refetchQueries({ queryKey: ["systemSettings"] });
+    refetchHistory();
+    refetchPing();
+  };
+
   const pushMutation = useMutation({
     mutationFn: async () => {
+      setSyncModalType("push");
+      setSyncModalStatus("running");
+      setSyncModalError(null);
+      setSyncResultData(null);
+      setSyncModalOpen(true);
+
       const res = await apiClient.post("/sync/push", { hostUrl, apiKey: syncApiKey, includeFiles, allowUntrustedSsl });
       return res.data;
     },
     onSuccess: (data: any) => {
+      setSyncModalStatus("success");
+      setSyncResultData({
+        recordsProcessed: data?.recordsProcessed,
+        fileSizeBytes: data?.fileSizeBytes,
+        details: data?.details,
+        message: data?.message || "Data berhasil di-push ke host induk!",
+      });
       toast.success(data.message || "Data berhasil di-push ke host induk!");
-      refetchHistory();
-      refetchPing();
+      handleSyncSuccess(data);
     },
     onError: (err: any) => {
-      toast.error(err.response?.data?.message || "Gagal melakukan push ke host induk");
+      setSyncModalStatus("error");
+      const errMsg = err.response?.data?.message || err.message || "Gagal melakukan push ke host induk";
+      setSyncModalError(errMsg);
+      toast.error(errMsg);
     },
   });
 
   const pullMutation = useMutation({
     mutationFn: async () => {
+      setSyncModalType("pull");
+      setSyncModalStatus("running");
+      setSyncModalError(null);
+      setSyncResultData(null);
+      setSyncModalOpen(true);
+
       const res = await apiClient.post("/sync/pull", { hostUrl, apiKey: syncApiKey, includeFiles, allowUntrustedSsl });
       return res.data;
     },
     onSuccess: (data: any) => {
+      setSyncModalStatus("success");
+      setSyncResultData({
+        recordsProcessed: data?.recordsProcessed,
+        filesExtracted: data?.details?.length,
+        fileSizeBytes: data?.fileSizeBytes,
+        details: data?.details,
+        message: data?.message || "Data dan berkas fisik berhasil ditarik dari host induk!",
+      });
       toast.success(data.message || "Data berhasil ditarik dari host induk!");
-      refetchHistory();
-      refetchPing();
+      handleSyncSuccess(data);
     },
     onError: (err: any) => {
-      toast.error(err.response?.data?.message || "Gagal melakukan pull dari host induk");
+      setSyncModalStatus("error");
+      const errMsg = err.response?.data?.message || err.message || "Gagal melakukan pull dari host induk";
+      setSyncModalError(errMsg);
+      toast.error(errMsg);
     },
   });
 
   const exportZipMutation = useMutation({
     mutationFn: async () => {
+      setSyncModalType("export-zip");
+      setSyncModalStatus("running");
+      setSyncModalError(null);
+      setSyncResultData(null);
+      setSyncModalOpen(true);
+
       const response = await apiClient.get(`/sync/export-package?includeFiles=${includeFiles}`, {
         responseType: "blob",
       });
-      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const blob = new Blob([response.data]);
+      const url = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
       link.setAttribute("download", `trackerkerja_sync_package_${Date.now()}.zip`);
@@ -473,24 +557,39 @@ export default function ConfigurationPage() {
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
-      return true;
+      return { size: blob.size };
     },
-    onSuccess: () => {
+    onSuccess: (res: any) => {
+      setSyncModalStatus("success");
+      setSyncResultData({
+        fileSizeBytes: res?.size,
+        message: "Paket .ZIP mandiri berhasil dikemas dan diunduh!",
+      });
       toast.success("Paket .ZIP berhasil diunduh!");
       refetchHistory();
       refetchPing();
     },
     onError: (err: any) => {
-      toast.error(err.response?.data?.message || "Gagal mengekspor paket .ZIP");
+      setSyncModalStatus("error");
+      const errMsg = err.response?.data?.message || err.message || "Gagal mengekspor paket .ZIP";
+      setSyncModalError(errMsg);
+      toast.error(errMsg);
     },
   });
 
   const exportSqlMutation = useMutation({
     mutationFn: async () => {
+      setSyncModalType("export-sql");
+      setSyncModalStatus("running");
+      setSyncModalError(null);
+      setSyncResultData(null);
+      setSyncModalOpen(true);
+
       const response = await apiClient.get("/sync/export-sql", {
         responseType: "blob",
       });
-      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const blob = new Blob([response.data]);
+      const url = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
       link.setAttribute("download", `trackerkerja_sync_dump_${Date.now()}.sql`);
@@ -498,20 +597,34 @@ export default function ConfigurationPage() {
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
-      return true;
+      return { size: blob.size };
     },
-    onSuccess: () => {
+    onSuccess: (res: any) => {
+      setSyncModalStatus("success");
+      setSyncResultData({
+        fileSizeBytes: res?.size,
+        message: "Skrip DML .SQL dump berhasil dihasilkan dan diunduh!",
+      });
       toast.success("Skrip DML .SQL berhasil diunduh!");
       refetchHistory();
       refetchPing();
     },
     onError: (err: any) => {
-      toast.error(err.response?.data?.message || "Gagal mengekspor skrip .SQL");
+      setSyncModalStatus("error");
+      const errMsg = err.response?.data?.message || err.message || "Gagal mengekspor skrip .SQL";
+      setSyncModalError(errMsg);
+      toast.error(errMsg);
     },
   });
 
   const importPackageMutation = useMutation({
     mutationFn: async (file: File) => {
+      setSyncModalType("import-package");
+      setSyncModalStatus("running");
+      setSyncModalError(null);
+      setSyncResultData(null);
+      setSyncModalOpen(true);
+
       const formData = new FormData();
       formData.append("file", file);
       const res = await apiClient.post("/sync/import-package", formData, {
@@ -520,13 +633,23 @@ export default function ConfigurationPage() {
       return res.data;
     },
     onSuccess: (data: any) => {
+      setSyncModalStatus("success");
+      setSyncResultData({
+        recordsProcessed: data?.recordsProcessed,
+        filesExtracted: data?.details?.length,
+        fileSizeBytes: data?.fileSizeBytes,
+        details: data?.details,
+        message: data?.message || "Paket sinkronisasi berhasil diterapkan!",
+      });
       toast.success(data.message || "Paket sinkronisasi berhasil diterapkan!");
       setImportFile(null);
-      refetchHistory();
-      refetchPing();
+      handleSyncSuccess(data);
     },
     onError: (err: any) => {
-      toast.error(err.response?.data?.message || "Gagal mengimpor berkas paket");
+      setSyncModalStatus("error");
+      const errMsg = err.response?.data?.message || err.message || "Gagal mengimpor berkas paket";
+      setSyncModalError(errMsg);
+      toast.error(errMsg);
     },
   });
 
@@ -3661,6 +3784,24 @@ export default function ConfigurationPage() {
           </DialogBody>
         </DialogContent>
       </Dialog>
+
+      {/* Modal Popup Progress Sinkronisasi (Mencegah Idle Situation) */}
+      <SyncProgressModal
+        isOpen={syncModalOpen}
+        onClose={() => setSyncModalOpen(false)}
+        operationType={syncModalType}
+        status={syncModalStatus}
+        targetHost={hostUrl}
+        resultData={syncResultData}
+        errorMessage={syncModalError}
+        onRetry={() => {
+          if (syncModalType === "pull") pullMutation.mutate();
+          else if (syncModalType === "push") pushMutation.mutate();
+          else if (syncModalType === "import-package" && importFile) importPackageMutation.mutate(importFile);
+          else if (syncModalType === "export-zip") exportZipMutation.mutate();
+          else if (syncModalType === "export-sql") exportSqlMutation.mutate();
+        }}
+      />
       </div>
     </AdminGuard>
   );

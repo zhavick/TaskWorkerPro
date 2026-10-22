@@ -71,6 +71,54 @@ public class BadgeEvaluationService : IBadgeEvaluationService
         var totalClaims = await _context.RewardClaims
             .CountAsync(c => c.UserId == userId && c.Status != ClaimStatus.Rejected);
 
+        var totalSessionsCount = await _context.Sessions
+            .CountAsync(s => s.UserId == userId);
+
+        var hasNightSession = await _context.Sessions
+            .AnyAsync(s => s.UserId == userId && (s.StartTime.Hour >= 21 || s.StartTime.Hour < 4));
+
+        var hasEarlyAttendance = attendances.Any(a => a.ClockIn.HasValue &&
+            (a.ClockIn.Value.ToOffset(TimeSpan.FromHours(7)).Hour < 7 ||
+             (a.ClockIn.Value.ToOffset(TimeSpan.FromHours(7)).Hour == 7 && a.ClockIn.Value.ToOffset(TimeSpan.FromHours(7)).Minute <= 30)));
+
+        var hasSprintChampion = await _context.Tasks
+            .Where(t => t.AssignedToUserId == userId && t.Status == Domain.Enums.TaskStatus.Done)
+            .GroupBy(t => t.UpdatedAt.Date)
+            .AnyAsync(g => g.Count() >= 3);
+
+        var bugTasksCount = await _context.Tasks
+            .CountAsync(t => t.AssignedToUserId == userId && t.Status == Domain.Enums.TaskStatus.Done &&
+                (t.Title.ToLower().Contains("bug") || t.Title.ToLower().Contains("fix") || t.Title.ToLower().Contains("error") || t.Title.ToLower().Contains("kendala")));
+
+        var hasCleanSweeper = totalSubtasks >= 3 && await _context.Tasks
+            .Where(t => t.AssignedToUserId == userId && t.ParentTaskId != null)
+            .AllAsync(t => t.Status == Domain.Enums.TaskStatus.Done);
+
+        var notesWithAttachments = await _context.Notes
+            .CountAsync(n => n.AuthorUserId == userId && n.Attachments.Count > 0);
+
+        var hasMarathonSession = await _context.Sessions
+            .AnyAsync(s => s.UserId == userId && s.Duration >= 10800);
+
+        var approvedAttendances = attendances.Count(a => a.Status == 1 || a.Type == AttendanceType.Present);
+
+        var highPriorityTasks = await _context.Tasks
+            .CountAsync(t => t.AssignedToUserId == userId && t.Status == Domain.Enums.TaskStatus.Done &&
+                (t.Priority == TaskPriority.Critical || t.Priority == TaskPriority.High));
+
+        var distinctProjectsCount = await _context.Tasks
+            .Where(t => t.AssignedToUserId == userId && t.Status == Domain.Enums.TaskStatus.Done && t.ProjectId.HasValue)
+            .Select(t => t.ProjectId!.Value)
+            .Distinct()
+            .CountAsync();
+
+        var milestoneTasks = await _context.Tasks
+            .CountAsync(t => t.AssignedToUserId == userId && t.Status == Domain.Enums.TaskStatus.Done && !string.IsNullOrEmpty(t.Milestone));
+
+        var learningNotes = await _context.Notes
+            .CountAsync(n => n.AuthorUserId == userId &&
+                (n.Title.ToLower().Contains("sop") || n.Title.ToLower().Contains("panduan") || n.Title.ToLower().Contains("guide") || n.Title.ToLower().Contains("catatan") || n.Title.ToLower().Contains("riset") || n.Title.ToLower().Contains("arsitektur")));
+
         // 4. Evaluate each master badge
         var newlyUnlocked = new List<MasterBadge>();
 
@@ -117,6 +165,27 @@ public class BadgeEvaluationService : IBadgeEvaluationService
                 "SI_SOLUTIF" => tasksWithSolution >= 1,
                 "PEMBABAT_SUBTASK" => totalSubtasks >= 1,
                 "PEMBURU_REWARD" => totalClaims >= 1,
+
+                // 15 Lencana Baru Super Kreatif & Gaul
+                "NIGHT_OWL" => hasNightSession,
+                "EARLY_BIRD" => hasEarlyAttendance,
+                "TIME_LORD" => totalSessionsCount >= 15,
+                "SPRINT_CHAMPION" => hasSprintChampion,
+                "BUG_HUNTER" => bugTasksCount >= 1,
+                "CLEAN_SWEEPER" => hasCleanSweeper,
+                "DOCUMENTATION_GURU" => notesWithAttachments >= 1,
+                "MARATHONER" => hasMarathonSession,
+                "PERFECT_ATTENDANCE" => approvedAttendances >= 20,
+                "TASK_CRUSHER" => highPriorityTasks >= 1,
+                "TEAM_CATALYST" => distinctProjectsCount >= 2,
+                "CONSISTENCY_KING" => maxStreak >= 21,
+                "MILESTONE_MASTER" => milestoneTasks >= 1,
+                "ZEN_WORKER" => completedTasks >= 10,
+                "LIFELONG_LEARNER" => learningNotes >= 1,
+
+                "PEJUANG_LEMBUR" => hasNightSession || totalHours >= 10.0,
+                "SQUAD_LEADER" => completedTasks >= 15,
+                "ULTIMATE_LEGEND" => (completedTasks * 50 + (int)totalHours * 10 + totalCheckIns * 10) >= 2000,
 
                 _ => false
             };

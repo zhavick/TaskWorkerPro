@@ -31,7 +31,7 @@ import { Input } from "@/components/tailgrids/core/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/tailgrids/core/dialog";
 import { SheetOverlay, SheetContent, SheetTitle } from "@/components/tailgrids/core/sheet";
 import { toast } from "sonner";
-import { AdminGuard } from "@/components/guards/AdminGuard";
+import { useCurrentUser } from "@/hooks/use-current-user";
 
 export interface AuditLogItem {
   id: number;
@@ -64,6 +64,7 @@ export interface AuditLogSummary {
 
 export default function AuditTrailPage() {
   const queryClient = useQueryClient();
+  const { isAdmin } = useCurrentUser();
 
   // Filters & Pagination State
   const [page, setPage] = useState(1);
@@ -259,8 +260,7 @@ export default function AuditTrailPage() {
   };
 
   return (
-    <AdminGuard>
-      <div className="space-y-6 p-4 lg:p-8">
+    <div className="space-y-6 p-4 lg:p-8">
       {/* 1. Header Page */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
@@ -287,52 +287,54 @@ export default function AuditTrailPage() {
             Segarkan
           </Button>
 
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setCleanupOpen(true)}
-            className="gap-1.5 text-xs font-semibold text-rose-600 border-rose-200 hover:bg-rose-50 dark:border-rose-900/50 dark:text-rose-400 dark:hover:bg-rose-950/30"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-            Bersihkan Log
-          </Button>
+          {isAdmin && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCleanupOpen(true)}
+              className="gap-1.5 text-xs font-semibold text-rose-600 border-rose-200 hover:bg-rose-50 dark:border-rose-900/50 dark:text-rose-400 dark:hover:bg-rose-950/30"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Bersihkan Log
+            </Button>
+          )}
         </div>
       </div>
 
       {/* 2. Top Analytics Stat Cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {/* Total Logs */}
-        <div className="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-xs dark:border-gray-800 dark:bg-gray-900">
+        <div className="rounded-2xl border border-card-border bg-card-background p-5 shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Total Log Audit</span>
-            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-slate-100 text-slate-600 dark:bg-gray-800 dark:text-slate-300">
+            <span className="text-xs font-medium text-text-secondary">Total Log Audit</span>
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-slate-100 text-slate-600 dark:bg-card-surface-area dark:text-slate-300">
               <FileText className="h-4 w-4" />
             </div>
           </div>
-          <div className="mt-2 text-2xl font-black text-gray-900 dark:text-white">
+          <div className="mt-2 text-2xl font-black text-text-primary">
             {loadingSummary ? "..." : summary?.totalLogs.toLocaleString() ?? 0}
           </div>
-          <span className="text-[11px] text-gray-400">Tercatat dalam basis data</span>
+          <span className="text-[11px] text-text-secondary">Tercatat dalam basis data</span>
         </div>
 
         {/* Today's Activity */}
-        <div className="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-xs dark:border-gray-800 dark:bg-gray-900">
+        <div className="rounded-2xl border border-card-border bg-card-background p-5 shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Mutasi Hari Ini</span>
-            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 dark:bg-indigo-950/80 dark:text-indigo-400">
+            <span className="text-xs font-medium text-text-secondary">Mutasi Hari Ini</span>
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary-50 text-primary-600 dark:bg-primary-950/80 dark:text-primary-400">
               <Activity className="h-4 w-4" />
             </div>
           </div>
-          <div className="mt-2 text-2xl font-black text-indigo-600 dark:text-indigo-400">
+          <div className="mt-2 text-2xl font-black text-primary-600 dark:text-primary-400">
             {loadingSummary ? "..." : summary?.todayCount.toLocaleString() ?? 0}
           </div>
-          <span className="text-[11px] text-gray-400">Operasi POST/PUT/DELETE</span>
+          <span className="text-[11px] text-text-secondary">Operasi POST/PUT/DELETE</span>
         </div>
 
         {/* Successful Requests */}
-        <div className="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-xs dark:border-gray-800 dark:bg-gray-900">
+        <div className="rounded-2xl border border-card-border bg-card-background p-5 shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Operasi Berhasil (2xx)</span>
+            <span className="text-xs font-medium text-text-secondary">Operasi Berhasil (2xx)</span>
             <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 dark:bg-emerald-950/80 dark:text-emerald-400">
               <CheckCircle2 className="h-4 w-4" />
             </div>
@@ -344,9 +346,9 @@ export default function AuditTrailPage() {
         </div>
 
         {/* Warning / Error Requests */}
-        <div className="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-xs dark:border-gray-800 dark:bg-gray-900">
+        <div className="rounded-2xl border border-card-border bg-card-background p-5 shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Peringatan & Error</span>
+            <span className="text-xs font-medium text-text-secondary">Peringatan & Error</span>
             <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-rose-50 text-rose-600 dark:bg-rose-950/80 dark:text-rose-400">
               <AlertTriangle className="h-4 w-4" />
             </div>
@@ -359,11 +361,11 @@ export default function AuditTrailPage() {
       </div>
 
       {/* 3. Filter & Search Toolbar */}
-      <div className="rounded-2xl border border-gray-200/80 bg-white p-4 shadow-xs dark:border-gray-800 dark:bg-gray-900 space-y-3">
+      <div className="rounded-2xl border border-card-border bg-card-background p-4 shadow-xs space-y-3">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
           {/* Search Input */}
           <div className="relative lg:col-span-1">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+            <Search className="absolute left-3 top-2.5 h-4 w-4 text-text-secondary" />
             <input
               type="text"
               placeholder="Cari aksi, user, path..."
@@ -372,7 +374,7 @@ export default function AuditTrailPage() {
                 setSearch(e.target.value);
                 setPage(1);
               }}
-              className="w-full rounded-xl border border-gray-200 bg-white py-2 pl-9 pr-3 text-xs text-gray-900 outline-hidden focus:border-indigo-600 dark:border-gray-800 dark:bg-gray-900 dark:text-white"
+              className="w-full rounded-xl border border-card-border bg-card-surface-area py-2 pl-9 pr-3 text-xs text-text-primary outline-hidden focus:border-primary-500"
             />
           </div>
 
@@ -384,7 +386,7 @@ export default function AuditTrailPage() {
                 setModuleFilter(e.target.value);
                 setPage(1);
               }}
-              className="w-full rounded-xl border border-gray-200 bg-white py-2 px-3 text-xs text-gray-900 outline-hidden focus:border-indigo-600 dark:border-gray-800 dark:bg-gray-900 dark:text-white font-medium"
+              className="w-full rounded-xl border border-card-border bg-card-surface-area py-2 px-3 text-xs text-text-primary outline-hidden focus:border-primary-500 font-medium"
             >
               <option value="ALL">Semua Modul Bisnis</option>
               {availableModules.map((mod) => (
@@ -403,7 +405,7 @@ export default function AuditTrailPage() {
                 setMethod(e.target.value);
                 setPage(1);
               }}
-              className="w-full rounded-xl border border-gray-200 bg-white py-2 px-3 text-xs text-gray-900 outline-hidden focus:border-indigo-600 dark:border-gray-800 dark:bg-gray-900 dark:text-white"
+              className="w-full rounded-xl border border-card-border bg-card-surface-area py-2 px-3 text-xs text-text-primary outline-hidden focus:border-primary-500"
             >
               <option value="ALL">Semua Metode HTTP</option>
               <option value="POST">POST (Pembuatan)</option>
@@ -421,7 +423,7 @@ export default function AuditTrailPage() {
                 setStatusCodeFilter(e.target.value);
                 setPage(1);
               }}
-              className="w-full rounded-xl border border-gray-200 bg-white py-2 px-3 text-xs text-gray-900 outline-hidden focus:border-indigo-600 dark:border-gray-800 dark:bg-gray-900 dark:text-white"
+              className="w-full rounded-xl border border-card-border bg-card-surface-area py-2 px-3 text-xs text-text-primary outline-hidden focus:border-primary-500"
             >
               <option value="ALL">Semua Status Code</option>
               <option value="200">2xx (Sukses / Berhasil)</option>
@@ -438,7 +440,7 @@ export default function AuditTrailPage() {
                 setDateRange(e.target.value as any);
                 setPage(1);
               }}
-              className="w-full rounded-xl border border-gray-200 bg-white py-2 px-3 text-xs text-gray-900 outline-hidden focus:border-indigo-600 dark:border-gray-800 dark:bg-gray-900 dark:text-white"
+              className="w-full rounded-xl border border-card-border bg-card-surface-area py-2 px-3 text-xs text-text-primary outline-hidden focus:border-primary-500"
             >
               <option value="ALL">Rentang Waktu: Semua</option>
               <option value="TODAY">Hari Ini</option>
@@ -450,10 +452,10 @@ export default function AuditTrailPage() {
       </div>
 
       {/* 4. Audit Log Table */}
-      <div className="rounded-2xl border border-gray-200/80 bg-white shadow-xs dark:border-gray-800 dark:bg-gray-900 overflow-hidden">
+      <div className="rounded-2xl border border-card-border bg-card-background shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
-            <thead className="bg-gray-50/80 text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:bg-gray-800/60 dark:text-gray-400">
+            <thead className="bg-card-surface-area border-b border-card-border text-[11px] font-semibold uppercase tracking-wider text-text-secondary">
               <tr>
                 <th className="py-3.5 px-4 w-40">Waktu & Tanggal</th>
                 <th className="py-3.5 px-4">Pengguna</th>
@@ -465,16 +467,16 @@ export default function AuditTrailPage() {
                 <th className="py-3.5 px-4 text-center w-24">Detail</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+            <tbody className="divide-y divide-card-border">
               {loadingLogs ? (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-xs text-gray-400">
+                  <td colSpan={8} className="py-12 text-center text-xs text-text-secondary">
                     Memuat rekaman audit log...
                   </td>
                 </tr>
               ) : logs.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-xs text-gray-400">
+                  <td colSpan={8} className="py-12 text-center text-xs text-text-secondary">
                     Tidak ada rekaman log audit yang cocok dengan filter pencarian.
                   </td>
                 </tr>
@@ -503,27 +505,27 @@ export default function AuditTrailPage() {
                         setSelectedLog(log);
                         setIsDrawerOpen(true);
                       }}
-                      className="cursor-pointer transition hover:bg-gray-50/80 dark:hover:bg-gray-800/40"
+                      className="cursor-pointer transition hover:bg-card-surface-area"
                     >
                       {/* Timestamp */}
                       <td className="py-3 px-4">
-                        <div className="font-mono text-xs font-semibold text-gray-900 dark:text-white">
+                        <div className="font-mono text-xs font-semibold text-text-primary">
                           {formattedTime}
                         </div>
-                        <div className="text-[10px] text-gray-400">{formattedDate}</div>
+                        <div className="text-[10px] text-text-secondary">{formattedDate}</div>
                       </td>
 
                       {/* User */}
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-2">
-                          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-indigo-700 text-[11px] font-bold dark:bg-indigo-950 dark:text-indigo-400">
+                          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary-100 text-primary-700 text-[11px] font-bold dark:bg-primary-950 dark:text-primary-400">
                             {log.userName ? log.userName.charAt(0).toUpperCase() : "U"}
                           </div>
                           <div className="truncate max-w-[150px]">
-                            <div className="font-semibold text-gray-800 dark:text-gray-200 truncate">
+                            <div className="font-semibold text-text-primary truncate">
                               {log.userName || "Sistem / Anonim"}
                             </div>
-                            <div className="text-[10px] text-gray-400 truncate">{log.userEmail || "-"}</div>
+                            <div className="text-[10px] text-text-secondary truncate">{log.userEmail || "-"}</div>
                           </div>
                         </div>
                       </td>
@@ -541,10 +543,10 @@ export default function AuditTrailPage() {
 
                       {/* Action & Activity Summary */}
                       <td className="py-3 px-4">
-                        <div className="font-semibold text-gray-800 dark:text-gray-200 line-clamp-1">
+                        <div className="font-semibold text-text-primary line-clamp-1">
                           {displaySummary}
                         </div>
-                        <div className="flex items-center gap-1 text-[10px] text-gray-400 font-mono mt-0.5">
+                        <div className="flex items-center gap-1 text-[10px] text-text-secondary font-mono mt-0.5">
                           <span>{log.controllerName}</span>
                           <span>•</span>
                           <span>{log.actionName}</span>
@@ -574,7 +576,7 @@ export default function AuditTrailPage() {
                       <td className="py-3 px-3 text-center">{getStatusCodeBadge(log.statusCode)}</td>
 
                       {/* Duration */}
-                      <td className="py-3 px-3 text-right font-mono text-[11px] text-gray-500 dark:text-gray-400">
+                      <td className="py-3 px-3 text-right font-mono text-[11px] text-text-secondary">
                         {log.durationMs}ms
                       </td>
 
@@ -587,7 +589,7 @@ export default function AuditTrailPage() {
                             setSelectedLog(log);
                             setIsDrawerOpen(true);
                           }}
-                          className="rounded-lg bg-gray-100 px-2.5 py-1 text-[11px] font-semibold text-indigo-600 hover:bg-indigo-50 dark:bg-gray-800 dark:text-indigo-400 dark:hover:bg-indigo-950/40 transition"
+                          className="rounded-lg border border-card-border bg-card-surface-area px-2.5 py-1 text-[11px] font-semibold text-primary-600 hover:bg-primary-50 dark:text-primary-400 dark:hover:bg-primary-950/40 transition"
                         >
                           Rincian
                         </button>
@@ -601,18 +603,18 @@ export default function AuditTrailPage() {
         </div>
 
         {/* Pagination Bar */}
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-t border-gray-100 p-4 dark:border-gray-800 text-xs">
-          <div className="text-gray-500">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-t border-card-border p-4 text-xs">
+          <div className="text-text-secondary">
             Menampilkan{" "}
-            <span className="font-semibold text-gray-900 dark:text-white">
+            <span className="font-semibold text-text-primary">
               {logs.length > 0 ? (page - 1) * pageSize + 1 : 0}
             </span>{" "}
             -{" "}
-            <span className="font-semibold text-gray-900 dark:text-white">
+            <span className="font-semibold text-text-primary">
               {Math.min(page * pageSize, pagination.totalItems)}
             </span>{" "}
             dari{" "}
-            <span className="font-semibold text-gray-900 dark:text-white">
+            <span className="font-semibold text-text-primary">
               {pagination.totalItems.toLocaleString()}
             </span>{" "}
             rekaman log
@@ -648,7 +650,7 @@ export default function AuditTrailPage() {
 
       {/* 5. Slide-Over Detail Drawer (Sheet) */}
       <SheetOverlay isOpen={isDrawerOpen} onOpenChange={setIsDrawerOpen}>
-        <SheetContent side="right" className="w-full max-w-lg p-0 bg-white dark:bg-gray-900 shadow-2xl overflow-y-auto">
+        <SheetContent side="right" className="w-full max-w-lg p-0 bg-card-background text-text-primary border-l border-card-border shadow-2xl overflow-y-auto">
           {selectedLog && (() => {
             const detailsInfo = parseLogDetails(selectedLog.details);
             const displayModule = detailsInfo.module || "Sistem Umum";
@@ -656,7 +658,7 @@ export default function AuditTrailPage() {
 
             return (
               <div className="p-6 space-y-6">
-                <div className="flex items-start justify-between border-b border-gray-100 pb-4 dark:border-gray-800">
+                <div className="flex items-start justify-between border-b border-card-border pb-4">
                   <div>
                     <div className="flex items-center gap-2">
                       <span
@@ -675,10 +677,10 @@ export default function AuditTrailPage() {
                         {displayModule}
                       </span>
                     </div>
-                    <SheetTitle className="text-base font-bold text-gray-900 dark:text-white mt-2">
+                    <SheetTitle className="text-base font-bold text-text-primary mt-2">
                       {displaySummary}
                     </SheetTitle>
-                    <p className="text-xs font-mono text-gray-500 dark:text-gray-400 mt-0.5">
+                    <p className="text-xs font-mono text-text-secondary mt-0.5">
                       Audit Log #{selectedLog.id} • {new Date(selectedLog.timestamp).toLocaleString("id-ID", {
                         dateStyle: "full",
                         timeStyle: "medium",
@@ -689,26 +691,26 @@ export default function AuditTrailPage() {
 
                 {/* User Section */}
                 <div className="space-y-3">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-gray-400 flex items-center gap-1.5">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-text-secondary flex items-center gap-1.5">
                     <User className="h-3.5 w-3.5" />
                     Informasi Pengguna
                   </h4>
-                  <div className="rounded-xl border border-gray-100 bg-gray-50/70 p-3.5 dark:border-gray-800 dark:bg-gray-800/40 text-xs space-y-2">
+                  <div className="rounded-xl border border-card-border bg-card-surface-area p-3.5 text-xs space-y-2">
                     <div className="flex justify-between">
-                      <span className="text-gray-500">Nama Lengkap:</span>
-                      <span className="font-semibold text-gray-900 dark:text-white">
+                      <span className="text-text-secondary">Nama Lengkap:</span>
+                      <span className="font-semibold text-text-primary">
                         {selectedLog.userName || "Sistem / Anonim"}
                       </span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-gray-500">Email:</span>
-                      <span className="font-mono text-gray-800 dark:text-gray-200">
+                      <span className="text-text-secondary">Email:</span>
+                      <span className="font-mono text-text-primary">
                         {selectedLog.userEmail || "-"}
                       </span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-gray-500">User ID:</span>
-                      <span className="font-mono text-[11px] text-gray-600 dark:text-gray-400">
+                      <span className="text-text-secondary">User ID:</span>
+                      <span className="font-mono text-[11px] text-text-secondary">
                         {selectedLog.userId || "-"}
                       </span>
                     </div>
@@ -717,41 +719,41 @@ export default function AuditTrailPage() {
 
                 {/* Request Telemetry */}
                 <div className="space-y-3">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-gray-400 flex items-center gap-1.5">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-text-secondary flex items-center gap-1.5">
                     <Globe className="h-3.5 w-3.5" />
                     Telemetri Permintaan & Jaringan
                   </h4>
-                  <div className="rounded-xl border border-gray-100 bg-gray-50/70 p-3.5 dark:border-gray-800 dark:bg-gray-800/40 text-xs space-y-2 font-mono">
+                  <div className="rounded-xl border border-card-border bg-card-surface-area p-3.5 text-xs space-y-2 font-mono">
                     <div className="flex justify-between">
-                      <span className="text-gray-500 font-sans">Modul Bisnis:</span>
-                      <span className="font-semibold text-indigo-600 dark:text-indigo-400 font-sans">{displayModule}</span>
+                      <span className="text-text-secondary font-sans">Modul Bisnis:</span>
+                      <span className="font-semibold text-primary-600 dark:text-primary-400 font-sans">{displayModule}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-gray-500 font-sans">Controller:</span>
-                      <span className="font-semibold text-gray-800 dark:text-gray-200">{selectedLog.controllerName}</span>
+                      <span className="text-text-secondary font-sans">Controller:</span>
+                      <span className="font-semibold text-text-primary">{selectedLog.controllerName}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-gray-500 font-sans">Aksi (Action):</span>
-                      <span className="font-semibold text-gray-800 dark:text-gray-200">{selectedLog.actionName}</span>
+                      <span className="text-text-secondary font-sans">Aksi (Action):</span>
+                      <span className="font-semibold text-text-primary">{selectedLog.actionName}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-gray-500 font-sans">Endpoint:</span>
-                      <span className="text-gray-700 dark:text-gray-300 break-all">{selectedLog.path}</span>
+                      <span className="text-text-secondary font-sans">Endpoint:</span>
+                      <span className="text-text-secondary break-all">{selectedLog.path}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-gray-500 font-sans">Alamat IP:</span>
-                      <span className="font-semibold text-gray-800 dark:text-gray-200">
+                      <span className="text-text-secondary font-sans">Alamat IP:</span>
+                      <span className="font-semibold text-text-primary">
                         {detailsInfo.ipAddress || "127.0.0.1"}
                       </span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-gray-500 font-sans">Durasi Pemrosesan:</span>
-                      <span className="font-semibold text-indigo-600 dark:text-indigo-400">{selectedLog.durationMs} ms</span>
+                      <span className="text-text-secondary font-sans">Durasi Pemrosesan:</span>
+                      <span className="font-semibold text-primary-600 dark:text-primary-400">{selectedLog.durationMs} ms</span>
                     </div>
                     {detailsInfo.userAgent && (
-                      <div className="pt-1 border-t border-gray-200/50 dark:border-gray-700/50">
-                        <span className="text-gray-500 font-sans block mb-1">User Agent:</span>
-                        <span className="text-[10px] text-gray-600 dark:text-gray-300 break-all block">
+                      <div className="pt-1 border-t border-card-border">
+                        <span className="text-text-secondary font-sans block mb-1">User Agent:</span>
+                        <span className="text-[10px] text-text-secondary break-all block">
                           {detailsInfo.userAgent}
                         </span>
                       </div>
@@ -762,7 +764,7 @@ export default function AuditTrailPage() {
                 {/* Payload Details */}
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <h4 className="text-xs font-bold uppercase tracking-wider text-gray-400 flex items-center gap-1.5">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-text-secondary flex items-center gap-1.5">
                       <Code className="h-3.5 w-3.5" />
                       Parameter & Payload (Sanitized)
                     </h4>
@@ -770,7 +772,7 @@ export default function AuditTrailPage() {
                       <button
                         type="button"
                         onClick={() => handleCopyJson(selectedLog.details || "")}
-                        className="flex items-center gap-1 text-[11px] font-semibold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400"
+                        className="flex items-center gap-1 text-[11px] font-semibold text-primary-600 hover:text-primary-700 dark:text-primary-400"
                       >
                         <Copy className="h-3 w-3" />
                         Salin JSON
@@ -779,7 +781,7 @@ export default function AuditTrailPage() {
                   </div>
 
                   {selectedLog.details ? (
-                    <pre className="max-h-60 overflow-y-auto rounded-xl border border-gray-200 bg-gray-900 p-3.5 text-[11px] font-mono text-emerald-400 dark:border-gray-800">
+                    <pre className="max-h-60 overflow-y-auto rounded-xl border border-card-border bg-card-surface-area p-3.5 text-[11px] font-mono text-emerald-500 dark:text-emerald-400">
                       {(() => {
                         try {
                           const payloadToDisplay = detailsInfo.parameters !== undefined ? detailsInfo.parameters : JSON.parse(selectedLog.details);
@@ -790,7 +792,7 @@ export default function AuditTrailPage() {
                       })()}
                     </pre>
                   ) : (
-                    <div className="rounded-xl border border-dashed border-gray-200 p-4 text-center text-xs text-gray-400">
+                    <div className="rounded-xl border border-dashed border-card-border p-4 text-center text-xs text-text-secondary">
                       Tidak ada data payload yang dicatat untuk aksi ini.
                     </div>
                   )}
@@ -803,9 +805,9 @@ export default function AuditTrailPage() {
 
       {/* 6. Cleanup Retention Dialog */}
       <Dialog open={cleanupOpen} onOpenChange={setCleanupOpen}>
-        <DialogContent className="max-w-md bg-white p-6 shadow-2xl dark:bg-gray-900 rounded-2xl">
+        <DialogContent className="max-w-md bg-card-background border border-card-border p-6 shadow-2xl rounded-2xl text-text-primary">
           <DialogHeader>
-            <DialogTitle className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
+            <DialogTitle className="text-base font-bold text-text-primary flex items-center gap-2">
               <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-rose-50 text-rose-600 dark:bg-rose-950 dark:text-rose-400">
                 <Trash2 className="h-4 w-4" />
               </div>
@@ -813,18 +815,18 @@ export default function AuditTrailPage() {
             </DialogTitle>
           </DialogHeader>
 
-          <p className="text-xs text-gray-500 dark:text-gray-400">
+          <p className="text-xs text-text-secondary">
             Hapus rekaman log audit yang telah melampaui masa retensi tertentu untuk menghemat ruang penyimpanan database.
           </p>
 
           <div className="space-y-2 pt-2">
-            <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+            <label className="text-xs font-semibold text-text-primary">
               Pilih Masa Retensi Minimal:
             </label>
             <select
               value={retentionDays}
               onChange={(e) => setRetentionDays(parseInt(e.target.value, 10))}
-              className="w-full rounded-xl border border-gray-200 bg-white p-2 text-xs text-gray-900 outline-hidden focus:border-rose-600 dark:border-gray-800 dark:bg-gray-900 dark:text-white"
+              className="w-full rounded-xl border border-card-border bg-card-surface-area p-2 text-xs text-text-primary outline-hidden focus:border-rose-600"
             >
               <option value={30}>Lebih tua dari 30 hari (1 bulan)</option>
               <option value={60}>Lebih tua dari 60 hari (2 bulan)</option>
@@ -857,7 +859,6 @@ export default function AuditTrailPage() {
           </div>
         </DialogContent>
       </Dialog>
-      </div>
-    </AdminGuard>
+    </div>
   );
 }

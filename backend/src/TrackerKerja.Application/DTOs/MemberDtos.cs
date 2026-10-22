@@ -36,7 +36,8 @@ public record MemberListItemDto(
     int CompletedTasks = 0,
     double TotalHours = 0.0,
     string? PhoneNumber = null,
-    List<string>? Projects = null
+    List<string>? Projects = null,
+    string? CoverPictureUrl = null
 );
 
 public record UpdateMemberRequest(

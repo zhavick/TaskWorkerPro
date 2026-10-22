@@ -63,6 +63,9 @@ public class SyncService : ISyncService
         var totalTasks = await _context.Tasks.IgnoreQueryFilters().CountAsync();
         var totalNotes = await _context.Notes.IgnoreQueryFilters().CountAsync();
         var totalAttachments = await _context.NoteAttachments.IgnoreQueryFilters().CountAsync();
+        var totalSessions = await _context.Sessions.IgnoreQueryFilters().CountAsync();
+        var totalAttendances = await _context.Attendances.IgnoreQueryFilters().CountAsync();
+        var totalBadges = await _context.MasterBadges.IgnoreQueryFilters().CountAsync();
 
         var totalUploadsSize = CalculateDirectorySize(_uploadBasePath);
 
@@ -77,6 +80,9 @@ public class SyncService : ISyncService
             TotalTasks = totalTasks,
             TotalNotes = totalNotes,
             TotalAttachments = totalAttachments,
+            TotalSessions = totalSessions,
+            TotalAttendances = totalAttendances,
+            TotalBadges = totalBadges,
             TotalUploadsSizeBytes = totalUploadsSize,
             Ready = true,
             ResponseLatencyMs = 0
@@ -170,19 +176,25 @@ public class SyncService : ISyncService
                 await writer.WriteAsync(sqlScript);
             }
 
-            // 4. Add physical files if requested
-            if (includeFiles && Directory.Exists(_uploadBasePath))
+            // 4. Add physical files if requested (avatars, covers, note attachments, etc.)
+            if (includeFiles)
             {
-                var files = Directory.GetFiles(_uploadBasePath, "*.*", SearchOption.AllDirectories);
-                foreach (var file in files)
+                ConsolidateLocalUploads();
+                if (Directory.Exists(_uploadBasePath))
                 {
-                    var relativePath = Path.GetRelativePath(_uploadBasePath, file).Replace('\\', '/');
-                    var entryName = $"uploads/{relativePath}";
-                    var fileEntry = archive.CreateEntry(entryName, CompressionLevel.Optimal);
+                    var files = Directory.GetFiles(_uploadBasePath, "*.*", SearchOption.AllDirectories);
+                    foreach (var file in files)
+                    {
+                        var relativePath = Path.GetRelativePath(_uploadBasePath, file).Replace('\\', '/');
+                        var entryName = relativePath.StartsWith("uploads/", StringComparison.OrdinalIgnoreCase)
+                            ? relativePath
+                            : $"uploads/{relativePath}";
+                        var fileEntry = archive.CreateEntry(entryName, CompressionLevel.Optimal);
 
-                    using var sourceStream = File.OpenRead(file);
-                    using var targetStream = fileEntry.Open();
-                    await sourceStream.CopyToAsync(targetStream);
+                        using var sourceStream = File.OpenRead(file);
+                        using var targetStream = fileEntry.Open();
+                        await sourceStream.CopyToAsync(targetStream);
+                    }
                 }
             }
         }
@@ -276,22 +288,39 @@ public class SyncService : ISyncService
                 };
             }
 
-            // Extract file attachments if present
+            // Extract file attachments if present (avatars, covers, note attachments, etc.)
             var extractedFilesCount = 0;
             foreach (var entry in archive.Entries)
             {
-                if (entry.FullName.StartsWith("uploads/", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(entry.Name))
+                if (string.IsNullOrEmpty(entry.Name)) continue; // directory entry
+
+                var rawName = entry.FullName.Replace('\\', '/');
+                var isUploadEntry = rawName.StartsWith("uploads/", StringComparison.OrdinalIgnoreCase);
+                var relPath = isUploadEntry ? rawName.Substring("uploads/".Length) : rawName;
+
+                if (string.IsNullOrWhiteSpace(relPath) ||
+                    relPath.Equals("manifest.json", StringComparison.OrdinalIgnoreCase) ||
+                    relPath.Equals("sync_data.json", StringComparison.OrdinalIgnoreCase) ||
+                    relPath.Equals("sync_data.sql", StringComparison.OrdinalIgnoreCase))
                 {
-                    var relPath = entry.FullName.Substring("uploads/".Length);
-                    var destinationPath = Path.GetFullPath(Path.Combine(_uploadBasePath, relPath));
-                    var destinationDir = Path.GetDirectoryName(destinationPath);
-                    if (!string.IsNullOrEmpty(destinationDir))
-                    {
-                        Directory.CreateDirectory(destinationDir);
-                    }
-                    entry.ExtractToFile(destinationPath, overwrite: true);
-                    extractedFilesCount++;
+                    continue;
                 }
+
+                var destinationPath = Path.GetFullPath(Path.Combine(_uploadBasePath, relPath));
+                if (!destinationPath.StartsWith(_uploadBasePath, StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidOperationException($"Zip Slip detected: {entry.FullName}");
+                }
+
+                var destinationDir = Path.GetDirectoryName(destinationPath);
+                if (!string.IsNullOrEmpty(destinationDir))
+                {
+                    Directory.CreateDirectory(destinationDir);
+                }
+                entry.ExtractToFile(destinationPath, overwrite: true);
+                extractedFilesCount++;
+
+                MirrorExtractedFile(relPath, destinationPath);
             }
 
             var mergedCount = 0;
@@ -641,12 +670,134 @@ public class SyncService : ISyncService
                 Id = a.Id,
                 NoteId = a.NoteId,
                 FileName = a.FileName,
-                FilePath = a.FilePath,
+                FilePath = (!string.IsNullOrWhiteSpace(a.FilePath) && !a.FilePath.Contains('\\') && a.FilePath.StartsWith("/uploads/"))
+                    ? a.FilePath
+                    : $"/uploads/notes/{a.NoteId}/{a.FileName}",
                 FileSize = a.FileSize,
                 ContentType = a.ContentType,
                 FileExtension = a.FileExtension,
                 UploadedByUserId = a.UploadedByUserId,
                 UploadedAt = a.UploadedAt
+            }).ToListAsync();
+
+        var masterBadges = await _context.MasterBadges.IgnoreQueryFilters()
+            .Select(b => new MasterBadgeSyncDto
+            {
+                Id = b.Id,
+                Code = b.Code,
+                Name = b.Name,
+                Description = b.Description,
+                Category = b.Category,
+                Icon = b.Icon,
+                Color = b.Color,
+                Points = b.Points,
+                Rarity = b.Rarity,
+                TriggerType = b.TriggerType,
+                TriggerThreshold = b.TriggerThreshold,
+                IsActive = b.IsActive,
+                OrderIndex = b.OrderIndex,
+                CreatedAt = b.CreatedAt
+            }).ToListAsync();
+
+        var rewardItems = await _context.RewardItems.IgnoreQueryFilters()
+            .Select(r => new RewardItemSyncDto
+            {
+                Id = r.Id,
+                Name = r.Name,
+                Description = r.Description,
+                PointCost = r.PointCost,
+                Stock = r.Stock,
+                Category = r.Category,
+                ImageUrl = r.ImageUrl,
+                Icon = r.Icon,
+                Color = r.Color,
+                IsActive = r.IsActive,
+                IsMonthlyMilestoneReward = r.IsMonthlyMilestoneReward,
+                OrderIndex = r.OrderIndex,
+                CreatedAt = r.CreatedAt
+            }).ToListAsync();
+
+        var emailTemplates = await _context.EmailTemplates.IgnoreQueryFilters()
+            .Select(e => new EmailTemplateSyncDto
+            {
+                Id = e.Id,
+                EventCode = e.EventCode,
+                EventName = e.EventName,
+                Category = e.Category,
+                Subject = e.Subject,
+                BodyHtml = e.BodyHtml,
+                AvailableVariables = e.AvailableVariables,
+                IsActive = e.IsActive,
+                UpdatedByUserId = e.UpdatedByUserId,
+                CreatedAt = e.CreatedAt,
+                UpdatedAt = e.UpdatedAt
+            }).ToListAsync();
+
+        var systemSettings = await _context.SystemSettings.IgnoreQueryFilters()
+            .Select(s => new SystemSettingSyncDto
+            {
+                Key = s.Key,
+                Value = s.Value,
+                Description = s.Description,
+                UpdatedAt = s.UpdatedAt
+            }).ToListAsync();
+
+        var userBadges = await _context.UserBadges.IgnoreQueryFilters()
+            .Include(ub => ub.Badge)
+            .Select(ub => new UserBadgeSyncDto
+            {
+                Id = ub.Id,
+                UserId = ub.UserId,
+                BadgeId = ub.BadgeId,
+                BadgeCode = ub.Badge != null ? ub.Badge.Code : null,
+                UnlockedAt = ub.UnlockedAt,
+                IsFeatured = ub.IsFeatured,
+                AwardedBy = ub.AwardedBy
+            }).ToListAsync();
+
+        var dailyCheckIns = await _context.DailyCheckIns.IgnoreQueryFilters()
+            .Select(dc => new DailyCheckInSyncDto
+            {
+                Id = dc.Id,
+                UserId = dc.UserId,
+                CheckInDate = dc.CheckInDate,
+                CheckInTime = dc.CheckInTime,
+                PointsEarned = dc.PointsEarned,
+                StreakDay = dc.StreakDay,
+                IsMonthlyMilestone = dc.IsMonthlyMilestone,
+                Notes = dc.Notes
+            }).ToListAsync();
+
+        var rewardClaims = await _context.RewardClaims.IgnoreQueryFilters()
+            .Include(rc => rc.RewardItem)
+            .Select(rc => new RewardClaimSyncDto
+            {
+                Id = rc.Id,
+                UserId = rc.UserId,
+                RewardItemId = rc.RewardItemId,
+                RewardItemName = rc.RewardItem != null ? rc.RewardItem.Name : null,
+                PointsSpent = rc.PointsSpent,
+                Status = rc.Status,
+                ClaimedAt = rc.ClaimedAt,
+                ProcessedAt = rc.ProcessedAt,
+                ProcessedByUserId = rc.ProcessedByUserId,
+                AdminNotes = rc.AdminNotes
+            }).ToListAsync();
+
+        var announcements = await _context.Announcements.IgnoreQueryFilters()
+            .Select(a => new AnnouncementSyncDto
+            {
+                Id = a.Id,
+                Title = a.Title,
+                Content = a.Content,
+                Type = a.Type,
+                StartDate = a.StartDate,
+                EndDate = a.EndDate,
+                IsActive = a.IsActive,
+                CompanyId = a.CompanyId,
+                CreatedByUserId = a.CreatedByUserId,
+                CreatedAt = a.CreatedAt,
+                UpdatedAt = a.UpdatedAt
             }).ToListAsync();
 
         var data = new SyncDatabaseData
@@ -657,6 +808,14 @@ public class SyncService : ISyncService
             MasterPriorities = priorities,
             MasterStatuses = statuses,
             MasterMilestones = milestones,
+            MasterBadges = masterBadges,
+            UserBadges = userBadges,
+            DailyCheckIns = dailyCheckIns,
+            RewardItems = rewardItems,
+            RewardClaims = rewardClaims,
+            EmailTemplates = emailTemplates,
+            SystemSettings = systemSettings,
+            Announcements = announcements,
             Projects = projects,
             Tasks = tasks,
             Sessions = sessions,
@@ -666,10 +825,17 @@ public class SyncService : ISyncService
         };
 
         var entityCount = companies.Count + users.Count + categories.Count + priorities.Count +
-                          statuses.Count + milestones.Count + projects.Count + tasks.Count +
-                          sessions.Count + attendances.Count + notes.Count + attachments.Count;
+                          statuses.Count + milestones.Count + masterBadges.Count + userBadges.Count +
+                          dailyCheckIns.Count + rewardItems.Count + rewardClaims.Count +
+                          emailTemplates.Count + systemSettings.Count + announcements.Count +
+                          projects.Count + tasks.Count + sessions.Count + attendances.Count +
+                          notes.Count + attachments.Count;
 
         string? filesZipBase64 = null;
+        if (includeFiles)
+        {
+            ConsolidateLocalUploads();
+        }
         long uploadsSize = CalculateDirectorySize(_uploadBasePath);
 
         if (includeFiles && Directory.Exists(_uploadBasePath))
@@ -681,7 +847,10 @@ public class SyncService : ISyncService
                 foreach (var file in files)
                 {
                     var relPath = Path.GetRelativePath(_uploadBasePath, file).Replace('\\', '/');
-                    var entry = zip.CreateEntry(relPath, CompressionLevel.Optimal);
+                    var entryName = relPath.StartsWith("uploads/", StringComparison.OrdinalIgnoreCase)
+                        ? relPath
+                        : $"uploads/{relPath}";
+                    var entry = zip.CreateEntry(entryName, CompressionLevel.Optimal);
                     using var s = File.OpenRead(file);
                     using var d = entry.Open();
                     await s.CopyToAsync(d);
@@ -701,7 +870,9 @@ public class SyncService : ISyncService
             IncludedTables = new List<string>
             {
                 "companies", "asp_net_users", "categories", "master_priorities",
-                "master_statuses", "master_milestones", "projects", "tasks",
+                "master_statuses", "master_milestones", "master_badges", "user_badges",
+                "daily_check_ins", "reward_items", "reward_claims",
+                "email_templates", "system_settings", "announcements", "projects", "tasks",
                 "sessions", "attendances", "notes", "note_attachments"
             }
         };
@@ -725,11 +896,24 @@ public class SyncService : ISyncService
                 using var ms = new MemoryStream(zipBytes);
                 using var archive = new ZipArchive(ms, ZipArchiveMode.Read);
 
-                // Zip slip check
+                // Zip slip check & extraction
                 foreach (var entry in archive.Entries)
                 {
                     if (string.IsNullOrEmpty(entry.Name)) continue;
-                    var dest = Path.GetFullPath(Path.Combine(_uploadBasePath, entry.FullName));
+
+                    var rawName = entry.FullName.Replace('\\', '/');
+                    var isUploadEntry = rawName.StartsWith("uploads/", StringComparison.OrdinalIgnoreCase);
+                    var relPath = isUploadEntry ? rawName.Substring("uploads/".Length) : rawName;
+
+                    if (string.IsNullOrWhiteSpace(relPath) ||
+                        relPath.Equals("manifest.json", StringComparison.OrdinalIgnoreCase) ||
+                        relPath.Equals("sync_data.json", StringComparison.OrdinalIgnoreCase) ||
+                        relPath.Equals("sync_data.sql", StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    var dest = Path.GetFullPath(Path.Combine(_uploadBasePath, relPath));
                     if (!dest.StartsWith(_uploadBasePath, StringComparison.OrdinalIgnoreCase))
                     {
                         throw new InvalidOperationException($"Zip Slip detected: {entry.FullName}");
@@ -738,6 +922,8 @@ public class SyncService : ISyncService
                     if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
                     entry.ExtractToFile(dest, overwrite: true);
                     extractedFiles++;
+
+                    MirrorExtractedFile(relPath, dest);
                 }
             }
 
@@ -1023,16 +1209,24 @@ public class SyncService : ISyncService
         // 2. Merge Users
         foreach (var u in data.Users)
         {
-            var existing = await _context.Users.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.Id == u.Id);
+            var existing = await _context.Users.IgnoreQueryFilters()
+                .FirstOrDefaultAsync(x => x.Id == u.Id ||
+                    (!string.IsNullOrEmpty(u.NormalizedEmail) && x.NormalizedEmail == u.NormalizedEmail) ||
+                    (!string.IsNullOrEmpty(u.NormalizedUserName) && x.NormalizedUserName == u.NormalizedUserName));
+
             if (existing != null)
             {
                 existing.FullName = u.FullName;
                 existing.JobTitle = u.JobTitle;
-                existing.AvatarColor = u.AvatarColor;
-                existing.ProfilePictureUrl = u.ProfilePictureUrl;
-                existing.CoverPictureUrl = u.CoverPictureUrl;
-                existing.CompanyId = u.CompanyId;
+                if (!string.IsNullOrWhiteSpace(u.AvatarColor)) existing.AvatarColor = u.AvatarColor;
+                if (!string.IsNullOrWhiteSpace(u.ProfilePictureUrl)) existing.ProfilePictureUrl = u.ProfilePictureUrl;
+                if (!string.IsNullOrWhiteSpace(u.CoverPictureUrl)) existing.CoverPictureUrl = u.CoverPictureUrl;
+                if (!string.IsNullOrWhiteSpace(u.PhoneNumber)) existing.PhoneNumber = u.PhoneNumber;
+                if (u.CompanyId.HasValue) existing.CompanyId = u.CompanyId;
                 existing.IsApproved = u.IsApproved;
+                if (u.ApprovedAt.HasValue) existing.ApprovedAt = u.ApprovedAt;
+                if (!string.IsNullOrWhiteSpace(u.ApprovedByUserId)) existing.ApprovedByUserId = u.ApprovedByUserId;
+                existing.ConcurrencyStamp = Guid.NewGuid().ToString();
             }
             else
             {
@@ -1173,11 +1367,203 @@ public class SyncService : ISyncService
             }
             totalMerged++;
         }
+
+        foreach (var b in data.MasterBadges)
+        {
+            var existing = await _context.MasterBadges.IgnoreQueryFilters()
+                .FirstOrDefaultAsync(x => x.Id == b.Id || (!string.IsNullOrEmpty(b.Code) && x.Code == b.Code));
+            if (existing != null)
+            {
+                existing.Code = b.Code;
+                existing.Name = b.Name;
+                existing.Description = b.Description;
+                existing.Category = b.Category;
+                existing.Icon = b.Icon;
+                existing.Color = b.Color;
+                existing.Points = b.Points;
+                existing.Rarity = b.Rarity;
+                existing.TriggerType = b.TriggerType;
+                existing.TriggerThreshold = b.TriggerThreshold;
+                existing.IsActive = b.IsActive;
+                existing.OrderIndex = b.OrderIndex;
+            }
+            else
+            {
+                _context.MasterBadges.Add(new MasterBadge
+                {
+                    Id = b.Id,
+                    Code = b.Code,
+                    Name = b.Name,
+                    Description = b.Description,
+                    Category = b.Category,
+                    Icon = b.Icon,
+                    Color = b.Color,
+                    Points = b.Points,
+                    Rarity = b.Rarity,
+                    TriggerType = b.TriggerType,
+                    TriggerThreshold = b.TriggerThreshold,
+                    IsActive = b.IsActive,
+                    OrderIndex = b.OrderIndex,
+                    CreatedAt = b.CreatedAt
+                });
+            }
+            totalMerged++;
+        }
+
+        foreach (var r in data.RewardItems)
+        {
+            var existing = await _context.RewardItems.IgnoreQueryFilters()
+                .FirstOrDefaultAsync(x => x.Id == r.Id || (!string.IsNullOrEmpty(r.Name) && x.Name == r.Name));
+            if (existing != null)
+            {
+                existing.Name = r.Name;
+                existing.Description = r.Description;
+                existing.PointCost = r.PointCost;
+                existing.Stock = r.Stock;
+                existing.Category = r.Category;
+                existing.ImageUrl = r.ImageUrl;
+                existing.Icon = r.Icon;
+                existing.Color = r.Color;
+                existing.IsActive = r.IsActive;
+                existing.IsMonthlyMilestoneReward = r.IsMonthlyMilestoneReward;
+                existing.OrderIndex = r.OrderIndex;
+            }
+            else
+            {
+                _context.RewardItems.Add(new RewardItem
+                {
+                    Id = r.Id,
+                    Name = r.Name,
+                    Description = r.Description,
+                    PointCost = r.PointCost,
+                    Stock = r.Stock,
+                    Category = r.Category,
+                    ImageUrl = r.ImageUrl,
+                    Icon = r.Icon,
+                    Color = r.Color,
+                    IsActive = r.IsActive,
+                    IsMonthlyMilestoneReward = r.IsMonthlyMilestoneReward,
+                    OrderIndex = r.OrderIndex,
+                    CreatedAt = r.CreatedAt
+                });
+            }
+            totalMerged++;
+        }
+
+        foreach (var e in data.EmailTemplates)
+        {
+            var existing = await _context.EmailTemplates.IgnoreQueryFilters()
+                .FirstOrDefaultAsync(x => x.Id == e.Id || (!string.IsNullOrEmpty(e.EventCode) && x.EventCode == e.EventCode));
+            if (existing != null)
+            {
+                existing.EventCode = e.EventCode;
+                existing.EventName = e.EventName;
+                existing.Category = e.Category;
+                existing.Subject = e.Subject;
+                existing.BodyHtml = e.BodyHtml;
+                existing.AvailableVariables = e.AvailableVariables;
+                existing.IsActive = e.IsActive;
+                existing.UpdatedByUserId = e.UpdatedByUserId;
+                existing.UpdatedAt = e.UpdatedAt;
+            }
+            else
+            {
+                _context.EmailTemplates.Add(new EmailTemplate
+                {
+                    Id = e.Id,
+                    EventCode = e.EventCode,
+                    EventName = e.EventName,
+                    Category = e.Category,
+                    Subject = e.Subject,
+                    BodyHtml = e.BodyHtml,
+                    AvailableVariables = e.AvailableVariables,
+                    IsActive = e.IsActive,
+                    UpdatedByUserId = e.UpdatedByUserId,
+                    CreatedAt = e.CreatedAt,
+                    UpdatedAt = e.UpdatedAt
+                });
+            }
+            totalMerged++;
+        }
+
+        foreach (var set in data.SystemSettings)
+        {
+            var existing = await _context.SystemSettings.IgnoreQueryFilters()
+                .FirstOrDefaultAsync(x => x.Key == set.Key);
+            if (existing != null)
+            {
+                existing.Value = set.Value;
+                existing.Description = set.Description;
+                existing.UpdatedAt = set.UpdatedAt;
+            }
+            else
+            {
+                _context.SystemSettings.Add(new SystemSetting
+                {
+                    Key = set.Key,
+                    Value = set.Value,
+                    Description = set.Description,
+                    UpdatedAt = set.UpdatedAt
+                });
+            }
+            totalMerged++;
+        }
+
         await _context.SaveChangesAsync();
+
+        // 3.1. Build company and user lookup dictionaries for robust relational binding
+        var allLocalCompanies = await _context.Companies.IgnoreQueryFilters().ToListAsync();
+        var defaultCompanyId = allLocalCompanies.FirstOrDefault()?.Id;
+        var companyIdLookup = new Dictionary<int, int>();
+        foreach (var c in allLocalCompanies)
+        {
+            companyIdLookup[c.Id] = c.Id;
+        }
+        foreach (var c in data.Companies)
+        {
+            var match = allLocalCompanies.FirstOrDefault(x => x.Id == c.Id || (!string.IsNullOrEmpty(c.Code) && string.Equals(x.Code, c.Code, StringComparison.OrdinalIgnoreCase)));
+            if (match != null)
+            {
+                companyIdLookup[c.Id] = match.Id;
+            }
+        }
+
+        var allUsers = await _context.Users.IgnoreQueryFilters().ToListAsync();
+        var defaultFallbackUserId = allUsers.FirstOrDefault()?.Id;
+        var userLookup = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var u in allUsers)
+        {
+            userLookup[u.Id] = u.Id;
+            if (!string.IsNullOrEmpty(u.NormalizedEmail)) userLookup[u.NormalizedEmail] = u.Id;
+            if (!string.IsNullOrEmpty(u.Email)) userLookup[u.Email] = u.Id;
+            if (!string.IsNullOrEmpty(u.NormalizedUserName)) userLookup[u.NormalizedUserName] = u.Id;
+            if (!string.IsNullOrEmpty(u.UserName)) userLookup[u.UserName] = u.Id;
+        }
+        foreach (var u in data.Users)
+        {
+            var match = allUsers.FirstOrDefault(x => x.Id == u.Id ||
+                (!string.IsNullOrEmpty(u.NormalizedEmail) && string.Equals(x.NormalizedEmail, u.NormalizedEmail, StringComparison.OrdinalIgnoreCase)) ||
+                (!string.IsNullOrEmpty(u.Email) && string.Equals(x.Email, u.Email, StringComparison.OrdinalIgnoreCase)) ||
+                (!string.IsNullOrEmpty(u.NormalizedUserName) && string.Equals(x.NormalizedUserName, u.NormalizedUserName, StringComparison.OrdinalIgnoreCase)) ||
+                (!string.IsNullOrEmpty(u.UserName) && string.Equals(x.UserName, u.UserName, StringComparison.OrdinalIgnoreCase)));
+            if (match != null)
+            {
+                userLookup[u.Id] = match.Id;
+                if (!string.IsNullOrEmpty(u.Email)) userLookup[u.Email] = match.Id;
+            }
+        }
 
         // 4. Merge Projects
         foreach (var pr in data.Projects)
         {
+            var resolvedCompanyId = pr.CompanyId.HasValue && companyIdLookup.TryGetValue(pr.CompanyId.Value, out var pcId)
+                ? pcId
+                : (pr.CompanyId ?? defaultCompanyId);
+
+            var resolvedPmId = (!string.IsNullOrEmpty(pr.ProjectManagerId) && userLookup.TryGetValue(pr.ProjectManagerId, out var pmUid))
+                ? pmUid
+                : pr.ProjectManagerId;
+
             var existing = await _context.Projects.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.Id == pr.Id);
             if (existing != null)
             {
@@ -1185,9 +1571,9 @@ public class SyncService : ISyncService
                 existing.Description = pr.Description;
                 existing.Color = pr.Color;
                 existing.Status = pr.Status;
-                existing.CompanyId = pr.CompanyId;
+                existing.CompanyId = resolvedCompanyId;
                 existing.ClientName = pr.ClientName;
-                existing.ProjectManagerId = pr.ProjectManagerId;
+                existing.ProjectManagerId = resolvedPmId;
                 existing.Budget = pr.Budget;
                 existing.ActualCost = pr.ActualCost;
                 existing.UseBudget = pr.UseBudget;
@@ -1203,9 +1589,9 @@ public class SyncService : ISyncService
                     Description = pr.Description,
                     Color = pr.Color,
                     Status = pr.Status,
-                    CompanyId = pr.CompanyId,
+                    CompanyId = resolvedCompanyId,
                     ClientName = pr.ClientName,
-                    ProjectManagerId = pr.ProjectManagerId,
+                    ProjectManagerId = resolvedPmId,
                     Budget = pr.Budget,
                     ActualCost = pr.ActualCost,
                     UseBudget = pr.UseBudget,
@@ -1221,6 +1607,17 @@ public class SyncService : ISyncService
         // 5. Merge Tasks
         foreach (var t in data.Tasks)
         {
+            var resolvedCompanyId = t.CompanyId.HasValue && companyIdLookup.TryGetValue(t.CompanyId.Value, out var tcId)
+                ? tcId
+                : (t.CompanyId ?? defaultCompanyId);
+
+            var resolvedAssignedUserId = (!string.IsNullOrEmpty(t.AssignedToUserId) && userLookup.TryGetValue(t.AssignedToUserId, out var aUid))
+                ? aUid
+                : (string.IsNullOrEmpty(t.AssignedToUserId) ? null : defaultFallbackUserId);
+
+            var parentExists = t.ParentTaskId.HasValue && (data.Tasks.Any(x => x.Id == t.ParentTaskId.Value) || await _context.Tasks.IgnoreQueryFilters().AnyAsync(x => x.Id == t.ParentTaskId.Value));
+            var resolvedParentTaskId = parentExists ? t.ParentTaskId : null;
+
             var existing = await _context.Tasks.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.Id == t.Id);
             if (existing != null)
             {
@@ -1235,9 +1632,9 @@ public class SyncService : ISyncService
                 existing.Tags = t.Tags;
                 existing.ProjectId = t.ProjectId;
                 existing.CategoryId = t.CategoryId;
-                existing.AssignedToUserId = t.AssignedToUserId;
-                existing.ParentTaskId = t.ParentTaskId;
-                existing.CompanyId = t.CompanyId;
+                existing.AssignedToUserId = resolvedAssignedUserId;
+                existing.ParentTaskId = resolvedParentTaskId;
+                existing.CompanyId = resolvedCompanyId;
                 existing.StartDate = t.StartDate;
                 existing.DueDate = t.DueDate;
                 existing.UpdatedAt = t.UpdatedAt;
@@ -1258,9 +1655,9 @@ public class SyncService : ISyncService
                     Tags = t.Tags,
                     ProjectId = t.ProjectId,
                     CategoryId = t.CategoryId,
-                    AssignedToUserId = t.AssignedToUserId,
-                    ParentTaskId = t.ParentTaskId,
-                    CompanyId = t.CompanyId,
+                    AssignedToUserId = resolvedAssignedUserId,
+                    ParentTaskId = resolvedParentTaskId,
+                    CompanyId = resolvedCompanyId,
                     StartDate = t.StartDate,
                     DueDate = t.DueDate,
                     CreatedAt = t.CreatedAt,
@@ -1271,14 +1668,36 @@ public class SyncService : ISyncService
         }
         await _context.SaveChangesAsync();
 
-        // 6. Merge Sessions
+        // 6. Merge Sessions (Timesheets)
         foreach (var s in data.Sessions)
         {
-            var existing = await _context.Sessions.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.Id == s.Id);
+            var resolvedUserId = (!string.IsNullOrEmpty(s.UserId) && userLookup.TryGetValue(s.UserId, out var uid))
+                ? uid
+                : (defaultFallbackUserId ?? s.UserId);
+
+            // Verify task exists or fallback to existing task
+            var targetTaskId = s.TaskId;
+            var taskExists = await _context.Tasks.IgnoreQueryFilters().AnyAsync(x => x.Id == targetTaskId);
+            if (!taskExists)
+            {
+                var fallbackTask = await _context.Tasks.IgnoreQueryFilters().FirstOrDefaultAsync();
+                if (fallbackTask != null)
+                {
+                    targetTaskId = fallbackTask.Id;
+                }
+                else
+                {
+                    continue; // Skip orphan session if no task exists
+                }
+            }
+
+            var existing = await _context.Sessions.IgnoreQueryFilters()
+                .FirstOrDefaultAsync(x => x.Id == s.Id || (x.TaskId == targetTaskId && x.UserId == resolvedUserId && x.StartTime == s.StartTime));
+
             if (existing != null)
             {
-                existing.TaskId = s.TaskId;
-                existing.UserId = s.UserId;
+                existing.TaskId = targetTaskId;
+                existing.UserId = resolvedUserId;
                 existing.StartTime = s.StartTime;
                 existing.EndTime = s.EndTime;
                 existing.Duration = s.Duration;
@@ -1289,8 +1708,8 @@ public class SyncService : ISyncService
                 _context.Sessions.Add(new WorkSession
                 {
                     Id = s.Id,
-                    TaskId = s.TaskId,
-                    UserId = s.UserId,
+                    TaskId = targetTaskId,
+                    UserId = resolvedUserId,
                     StartTime = s.StartTime,
                     EndTime = s.EndTime,
                     Duration = s.Duration,
@@ -1300,19 +1719,30 @@ public class SyncService : ISyncService
             }
             totalMerged++;
         }
+        await _context.SaveChangesAsync();
 
-        // 7. Merge Attendances
+        // 7. Merge Attendances (Presensi)
         foreach (var a in data.Attendances)
         {
-            var existing = await _context.Attendances.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.Id == a.Id);
+            var resolvedUserId = (!string.IsNullOrEmpty(a.UserId) && userLookup.TryGetValue(a.UserId, out var uid))
+                ? uid
+                : (defaultFallbackUserId ?? a.UserId);
+
+            var resolvedApproverId = (!string.IsNullOrEmpty(a.ApprovedByUserId) && userLookup.TryGetValue(a.ApprovedByUserId, out var appUid))
+                ? appUid
+                : a.ApprovedByUserId;
+
+            var existing = await _context.Attendances.IgnoreQueryFilters()
+                .FirstOrDefaultAsync(x => x.Id == a.Id || (x.UserId == resolvedUserId && x.Date == a.Date));
+
             if (existing != null)
             {
-                existing.UserId = a.UserId;
+                existing.UserId = resolvedUserId;
                 existing.Date = a.Date;
                 existing.Type = a.Type;
                 existing.WorkLocation = a.WorkLocation;
                 existing.Status = a.Status;
-                existing.ApprovedByUserId = a.ApprovedByUserId;
+                existing.ApprovedByUserId = resolvedApproverId;
                 existing.ClockIn = a.ClockIn;
                 existing.ClockOut = a.ClockOut;
                 existing.TotalHours = a.TotalHours;
@@ -1325,12 +1755,12 @@ public class SyncService : ISyncService
                 _context.Attendances.Add(new Attendance
                 {
                     Id = a.Id,
-                    UserId = a.UserId,
+                    UserId = resolvedUserId,
                     Date = a.Date,
                     Type = a.Type,
                     WorkLocation = a.WorkLocation,
                     Status = a.Status,
-                    ApprovedByUserId = a.ApprovedByUserId,
+                    ApprovedByUserId = resolvedApproverId,
                     ClockIn = a.ClockIn,
                     ClockOut = a.ClockOut,
                     TotalHours = a.TotalHours,
@@ -1342,10 +1772,19 @@ public class SyncService : ISyncService
             }
             totalMerged++;
         }
+        await _context.SaveChangesAsync();
 
         // 8. Merge Notes
         foreach (var n in data.Notes)
         {
+            var resolvedCompanyId = n.CompanyId.HasValue && companyIdLookup.TryGetValue(n.CompanyId.Value, out var ncId)
+                ? ncId
+                : (n.CompanyId ?? defaultCompanyId);
+
+            var resolvedAuthorId = (!string.IsNullOrEmpty(n.AuthorUserId) && userLookup.TryGetValue(n.AuthorUserId, out var nUid))
+                ? nUid
+                : (defaultFallbackUserId ?? n.AuthorUserId);
+
             var existing = await _context.Notes.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.Id == n.Id);
             if (existing != null)
             {
@@ -1354,9 +1793,9 @@ public class SyncService : ISyncService
                 existing.Category = n.Category;
                 existing.Color = n.Color;
                 existing.IsPinned = n.IsPinned;
-                existing.AuthorUserId = n.AuthorUserId;
+                existing.AuthorUserId = resolvedAuthorId;
                 existing.TaskId = n.TaskId;
-                existing.CompanyId = n.CompanyId;
+                existing.CompanyId = resolvedCompanyId;
                 existing.UpdatedAt = n.UpdatedAt;
             }
             else
@@ -1369,9 +1808,9 @@ public class SyncService : ISyncService
                     Category = n.Category,
                     Color = n.Color,
                     IsPinned = n.IsPinned,
-                    AuthorUserId = n.AuthorUserId,
+                    AuthorUserId = resolvedAuthorId,
                     TaskId = n.TaskId,
-                    CompanyId = n.CompanyId,
+                    CompanyId = resolvedCompanyId,
                     CreatedAt = n.CreatedAt,
                     UpdatedAt = n.UpdatedAt
                 });
@@ -1383,12 +1822,18 @@ public class SyncService : ISyncService
         // 9. Merge NoteAttachments
         foreach (var att in data.NoteAttachments)
         {
+            var normalizedFilePath = att.FilePath;
+            if (string.IsNullOrWhiteSpace(normalizedFilePath) || Path.IsPathRooted(normalizedFilePath) || normalizedFilePath.Contains('\\'))
+            {
+                normalizedFilePath = $"/uploads/notes/{att.NoteId}/{att.FileName}";
+            }
+
             var existing = await _context.NoteAttachments.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.Id == att.Id);
             if (existing != null)
             {
                 existing.NoteId = att.NoteId;
                 existing.FileName = att.FileName;
-                existing.FilePath = att.FilePath;
+                existing.FilePath = normalizedFilePath;
                 existing.FileSize = att.FileSize;
                 existing.ContentType = att.ContentType;
                 existing.FileExtension = att.FileExtension;
@@ -1402,7 +1847,7 @@ public class SyncService : ISyncService
                     Id = att.Id,
                     NoteId = att.NoteId,
                     FileName = att.FileName,
-                    FilePath = att.FilePath,
+                    FilePath = normalizedFilePath,
                     FileSize = att.FileSize,
                     ContentType = att.ContentType,
                     FileExtension = att.FileExtension,
@@ -1412,8 +1857,210 @@ public class SyncService : ISyncService
             }
             totalMerged++;
         }
-
         await _context.SaveChangesAsync();
+
+        // 10. Merge UserBadges (Gamifikasi Lencana Pengguna)
+        var allLocalBadges = await _context.MasterBadges.IgnoreQueryFilters().ToListAsync();
+        var badgeCodeLookup = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var badgeIdLookup = new Dictionary<int, int>();
+        foreach (var b in allLocalBadges)
+        {
+            badgeIdLookup[b.Id] = b.Id;
+            if (!string.IsNullOrEmpty(b.Code)) badgeCodeLookup[b.Code] = b.Id;
+        }
+
+        foreach (var ub in data.UserBadges)
+        {
+            var resolvedUserId = (!string.IsNullOrEmpty(ub.UserId) && userLookup.TryGetValue(ub.UserId, out var uid))
+                ? uid
+                : (defaultFallbackUserId ?? ub.UserId);
+
+            var resolvedBadgeId = ub.BadgeId;
+            if (!string.IsNullOrEmpty(ub.BadgeCode) && badgeCodeLookup.TryGetValue(ub.BadgeCode, out var bId))
+            {
+                resolvedBadgeId = bId;
+            }
+            else if (badgeIdLookup.TryGetValue(ub.BadgeId, out var bId2))
+            {
+                resolvedBadgeId = bId2;
+            }
+
+            var badgeExists = allLocalBadges.Any(x => x.Id == resolvedBadgeId);
+            var userExists = allUsers.Any(x => x.Id == resolvedUserId);
+            if (!badgeExists || !userExists) continue;
+
+            var existing = await _context.UserBadges.IgnoreQueryFilters()
+                .FirstOrDefaultAsync(x => x.Id == ub.Id || (x.UserId == resolvedUserId && x.BadgeId == resolvedBadgeId));
+
+            if (existing != null)
+            {
+                existing.UserId = resolvedUserId;
+                existing.BadgeId = resolvedBadgeId;
+                existing.UnlockedAt = ub.UnlockedAt;
+                existing.IsFeatured = ub.IsFeatured;
+                existing.AwardedBy = ub.AwardedBy;
+            }
+            else
+            {
+                _context.UserBadges.Add(new UserBadge
+                {
+                    Id = ub.Id,
+                    UserId = resolvedUserId,
+                    BadgeId = resolvedBadgeId,
+                    UnlockedAt = ub.UnlockedAt,
+                    IsFeatured = ub.IsFeatured,
+                    AwardedBy = ub.AwardedBy
+                });
+            }
+            totalMerged++;
+        }
+        await _context.SaveChangesAsync();
+
+        // 11. Merge DailyCheckIns (Gamifikasi Presensi & Streak Harian)
+        foreach (var dc in data.DailyCheckIns)
+        {
+            var resolvedUserId = (!string.IsNullOrEmpty(dc.UserId) && userLookup.TryGetValue(dc.UserId, out var uid))
+                ? uid
+                : (defaultFallbackUserId ?? dc.UserId);
+
+            var userExists = allUsers.Any(x => x.Id == resolvedUserId);
+            if (!userExists) continue;
+
+            var existing = await _context.DailyCheckIns.IgnoreQueryFilters()
+                .FirstOrDefaultAsync(x => x.Id == dc.Id || (x.UserId == resolvedUserId && x.CheckInDate == dc.CheckInDate));
+
+            if (existing != null)
+            {
+                existing.UserId = resolvedUserId;
+                existing.CheckInDate = dc.CheckInDate;
+                existing.CheckInTime = dc.CheckInTime;
+                existing.PointsEarned = dc.PointsEarned;
+                existing.StreakDay = dc.StreakDay;
+                existing.IsMonthlyMilestone = dc.IsMonthlyMilestone;
+                existing.Notes = dc.Notes;
+            }
+            else
+            {
+                _context.DailyCheckIns.Add(new DailyCheckIn
+                {
+                    Id = dc.Id,
+                    UserId = resolvedUserId,
+                    CheckInDate = dc.CheckInDate,
+                    CheckInTime = dc.CheckInTime,
+                    PointsEarned = dc.PointsEarned,
+                    StreakDay = dc.StreakDay,
+                    IsMonthlyMilestone = dc.IsMonthlyMilestone,
+                    Notes = dc.Notes
+                });
+            }
+            totalMerged++;
+        }
+        await _context.SaveChangesAsync();
+
+        // 12. Merge RewardClaims (Gamifikasi Penukaran Poin)
+        var allLocalRewards = await _context.RewardItems.IgnoreQueryFilters().ToListAsync();
+        var rewardItemLookup = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var r in allLocalRewards)
+        {
+            if (!string.IsNullOrEmpty(r.Name)) rewardItemLookup[r.Name] = r.Id;
+        }
+
+        foreach (var rc in data.RewardClaims)
+        {
+            var resolvedUserId = (!string.IsNullOrEmpty(rc.UserId) && userLookup.TryGetValue(rc.UserId, out var uid))
+                ? uid
+                : (defaultFallbackUserId ?? rc.UserId);
+
+            var resolvedItemId = rc.RewardItemId;
+            if (!string.IsNullOrEmpty(rc.RewardItemName) && rewardItemLookup.TryGetValue(rc.RewardItemName, out var rId))
+            {
+                resolvedItemId = rId;
+            }
+
+            var itemExists = allLocalRewards.Any(x => x.Id == resolvedItemId);
+            var userExists = allUsers.Any(x => x.Id == resolvedUserId);
+            if (!itemExists || !userExists) continue;
+
+            var resolvedProcessorId = (!string.IsNullOrEmpty(rc.ProcessedByUserId) && userLookup.TryGetValue(rc.ProcessedByUserId, out var pUid))
+                ? pUid
+                : rc.ProcessedByUserId;
+
+            var existing = await _context.RewardClaims.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.Id == rc.Id);
+            if (existing != null)
+            {
+                existing.UserId = resolvedUserId;
+                existing.RewardItemId = resolvedItemId;
+                existing.PointsSpent = rc.PointsSpent;
+                existing.Status = rc.Status;
+                existing.ClaimedAt = rc.ClaimedAt;
+                existing.ProcessedAt = rc.ProcessedAt;
+                existing.ProcessedByUserId = resolvedProcessorId;
+                existing.AdminNotes = rc.AdminNotes;
+            }
+            else
+            {
+                _context.RewardClaims.Add(new RewardClaim
+                {
+                    Id = rc.Id,
+                    UserId = resolvedUserId,
+                    RewardItemId = resolvedItemId,
+                    PointsSpent = rc.PointsSpent,
+                    Status = rc.Status,
+                    ClaimedAt = rc.ClaimedAt,
+                    ProcessedAt = rc.ProcessedAt,
+                    ProcessedByUserId = resolvedProcessorId,
+                    AdminNotes = rc.AdminNotes
+                });
+            }
+            totalMerged++;
+        }
+        await _context.SaveChangesAsync();
+
+        // 13. Merge Announcements (Papan Pengumuman & Buletin)
+        foreach (var a in data.Announcements)
+        {
+            var resolvedCompanyId = a.CompanyId.HasValue && companyIdLookup.TryGetValue(a.CompanyId.Value, out var acId)
+                ? acId
+                : (a.CompanyId ?? defaultCompanyId);
+
+            var resolvedAuthorId = (!string.IsNullOrEmpty(a.CreatedByUserId) && userLookup.TryGetValue(a.CreatedByUserId, out var aUid))
+                ? aUid
+                : (defaultFallbackUserId ?? a.CreatedByUserId);
+
+            var existing = await _context.Announcements.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.Id == a.Id);
+            if (existing != null)
+            {
+                existing.Title = a.Title;
+                existing.Content = a.Content;
+                existing.Type = a.Type;
+                existing.StartDate = a.StartDate;
+                existing.EndDate = a.EndDate;
+                existing.IsActive = a.IsActive;
+                existing.CompanyId = resolvedCompanyId;
+                existing.CreatedByUserId = resolvedAuthorId;
+                existing.UpdatedAt = a.UpdatedAt;
+            }
+            else
+            {
+                _context.Announcements.Add(new Announcement
+                {
+                    Id = a.Id,
+                    Title = a.Title,
+                    Content = a.Content,
+                    Type = a.Type,
+                    StartDate = a.StartDate,
+                    EndDate = a.EndDate,
+                    IsActive = a.IsActive,
+                    CompanyId = resolvedCompanyId,
+                    CreatedByUserId = resolvedAuthorId,
+                    CreatedAt = a.CreatedAt,
+                    UpdatedAt = a.UpdatedAt
+                });
+            }
+            totalMerged++;
+        }
+        await _context.SaveChangesAsync();
+
         return totalMerged;
     }
 
@@ -1579,6 +2226,74 @@ public class SyncService : ISyncService
             sb.AppendLine();
         }
 
+        // 6b. Master Badges
+        if (data.MasterBadges.Count > 0)
+        {
+            sb.AppendLine("-- 6b. Master Badges");
+            foreach (var b in data.MasterBadges)
+            {
+                AppendUpsert(
+                    sb,
+                    "master_badges",
+                    "id, code, name, description, category, icon, color, points, rarity, trigger_type, trigger_threshold, is_active, order_index, created_at",
+                    $"{b.Id}, {SqlEscape(b.Code)}, {SqlEscape(b.Name)}, {SqlEscape(b.Description)}, {SqlEscape(b.Category)}, {SqlEscape(b.Icon)}, {SqlEscape(b.Color)}, {b.Points}, {(int)b.Rarity}, {b.TriggerType}, {b.TriggerThreshold}, {SqlBool(b.IsActive, isPostgres)}, {b.OrderIndex}, {SqlDate(b.CreatedAt)}",
+                    new[] { "code", "name", "description", "category", "icon", "color", "points", "rarity", "trigger_type", "trigger_threshold", "is_active", "order_index", "created_at" },
+                    isPostgres);
+            }
+            sb.AppendLine();
+        }
+
+        // 6c. Reward Items
+        if (data.RewardItems.Count > 0)
+        {
+            sb.AppendLine("-- 6c. Reward Items");
+            foreach (var r in data.RewardItems)
+            {
+                AppendUpsert(
+                    sb,
+                    "reward_items",
+                    "id, name, description, point_cost, stock, category, image_url, icon, color, is_active, is_monthly_milestone_reward, order_index, created_at",
+                    $"{r.Id}, {SqlEscape(r.Name)}, {SqlEscape(r.Description)}, {r.PointCost}, {r.Stock}, {SqlEscape(r.Category)}, {SqlEscape(r.ImageUrl)}, {SqlEscape(r.Icon)}, {SqlEscape(r.Color)}, {SqlBool(r.IsActive, isPostgres)}, {SqlBool(r.IsMonthlyMilestoneReward, isPostgres)}, {r.OrderIndex}, {SqlDate(r.CreatedAt)}",
+                    new[] { "name", "description", "point_cost", "stock", "category", "image_url", "icon", "color", "is_active", "is_monthly_milestone_reward", "order_index", "created_at" },
+                    isPostgres);
+            }
+            sb.AppendLine();
+        }
+
+        // 6d. Email Templates
+        if (data.EmailTemplates.Count > 0)
+        {
+            sb.AppendLine("-- 6d. Email Templates");
+            foreach (var e in data.EmailTemplates)
+            {
+                AppendUpsert(
+                    sb,
+                    "email_templates",
+                    "id, event_code, event_name, category, subject, body_html, available_variables, is_active, updated_by_user_id, created_at, updated_at",
+                    $"{e.Id}, {SqlEscape(e.EventCode)}, {SqlEscape(e.EventName)}, {SqlEscape(e.Category)}, {SqlEscape(e.Subject)}, {SqlEscape(e.BodyHtml)}, {SqlEscape(e.AvailableVariables)}, {SqlBool(e.IsActive, isPostgres)}, {SqlEscape(e.UpdatedByUserId)}, {SqlDate(e.CreatedAt)}, {SqlDate(e.UpdatedAt)}",
+                    new[] { "event_code", "event_name", "category", "subject", "body_html", "available_variables", "is_active", "updated_by_user_id", "created_at", "updated_at" },
+                    isPostgres);
+            }
+            sb.AppendLine();
+        }
+
+        // 6e. System Settings
+        if (data.SystemSettings.Count > 0)
+        {
+            sb.AppendLine("-- 6e. System Settings");
+            foreach (var s in data.SystemSettings)
+            {
+                AppendUpsert(
+                    sb,
+                    "system_settings",
+                    "key, value, description, updated_at",
+                    $"{SqlEscape(s.Key)}, {SqlEscape(s.Value)}, {SqlEscape(s.Description)}, {SqlDate(s.UpdatedAt)}",
+                    new[] { "value", "description", "updated_at" },
+                    isPostgres);
+            }
+            sb.AppendLine();
+        }
+
         // 7. Projects
         if (data.Projects.Count > 0)
         {
@@ -1681,6 +2396,74 @@ public class SyncService : ISyncService
             sb.AppendLine();
         }
 
+        // 13. User Badges
+        if (data.UserBadges.Count > 0)
+        {
+            sb.AppendLine("-- 13. User Badges");
+            foreach (var ub in data.UserBadges)
+            {
+                AppendUpsert(
+                    sb,
+                    "user_badges",
+                    "id, user_id, badge_id, unlocked_at, is_featured, awarded_by",
+                    $"{ub.Id}, {SqlEscape(ub.UserId)}, {ub.BadgeId}, {SqlDate(ub.UnlockedAt)}, {SqlBool(ub.IsFeatured, isPostgres)}, {SqlEscape(ub.AwardedBy)}",
+                    new[] { "user_id", "badge_id", "unlocked_at", "is_featured", "awarded_by" },
+                    isPostgres);
+            }
+            sb.AppendLine();
+        }
+
+        // 14. Daily Check-ins
+        if (data.DailyCheckIns.Count > 0)
+        {
+            sb.AppendLine("-- 14. Daily Check-Ins");
+            foreach (var dc in data.DailyCheckIns)
+            {
+                AppendUpsert(
+                    sb,
+                    "daily_check_ins",
+                    "id, user_id, check_in_date, check_in_time, points_earned, streak_day, is_monthly_milestone, notes",
+                    $"{dc.Id}, {SqlEscape(dc.UserId)}, '{dc.CheckInDate:yyyy-MM-dd}', {SqlDate(dc.CheckInTime)}, {dc.PointsEarned}, {dc.StreakDay}, {SqlBool(dc.IsMonthlyMilestone, isPostgres)}, {SqlEscape(dc.Notes)}",
+                    new[] { "user_id", "check_in_date", "check_in_time", "points_earned", "streak_day", "is_monthly_milestone", "notes" },
+                    isPostgres);
+            }
+            sb.AppendLine();
+        }
+
+        // 15. Reward Claims
+        if (data.RewardClaims.Count > 0)
+        {
+            sb.AppendLine("-- 15. Reward Claims");
+            foreach (var rc in data.RewardClaims)
+            {
+                AppendUpsert(
+                    sb,
+                    "reward_claims",
+                    "id, user_id, reward_item_id, points_spent, status, claimed_at, processed_at, processed_by_user_id, admin_notes",
+                    $"{rc.Id}, {SqlEscape(rc.UserId)}, {rc.RewardItemId}, {rc.PointsSpent}, {(int)rc.Status}, {SqlDate(rc.ClaimedAt)}, {SqlDate(rc.ProcessedAt)}, {SqlEscape(rc.ProcessedByUserId)}, {SqlEscape(rc.AdminNotes)}",
+                    new[] { "user_id", "reward_item_id", "points_spent", "status", "claimed_at", "processed_at", "processed_by_user_id", "admin_notes" },
+                    isPostgres);
+            }
+            sb.AppendLine();
+        }
+
+        // 16. Announcements
+        if (data.Announcements.Count > 0)
+        {
+            sb.AppendLine("-- 16. Announcements");
+            foreach (var a in data.Announcements)
+            {
+                AppendUpsert(
+                    sb,
+                    "announcements",
+                    "id, title, content, type, start_date, end_date, is_active, company_id, created_by_user_id, created_at, updated_at",
+                    $"{a.Id}, {SqlEscape(a.Title)}, {SqlEscape(a.Content)}, {SqlEscape(a.Type)}, {SqlDate(a.StartDate)}, {SqlDate(a.EndDate)}, {SqlBool(a.IsActive, isPostgres)}, {SqlNullableInt(a.CompanyId)}, {SqlEscape(a.CreatedByUserId)}, {SqlDate(a.CreatedAt)}, {SqlDate(a.UpdatedAt)}",
+                    new[] { "title", "content", "type", "start_date", "end_date", "is_active", "company_id", "created_by_user_id", "updated_at" },
+                    isPostgres);
+            }
+            sb.AppendLine();
+        }
+
         return sb.ToString();
     }
 
@@ -1694,8 +2477,9 @@ public class SyncService : ISyncService
     {
         if (isPostgres)
         {
+            var conflictTarget = table.Equals("system_settings", StringComparison.OrdinalIgnoreCase) ? "key" : "id";
             var updateSet = string.Join(", ", updateColumns.Select(c => $"{c} = EXCLUDED.{c}"));
-            sb.AppendLine($"INSERT INTO {table} ({columns}) VALUES ({values}) ON CONFLICT (id) DO UPDATE SET {updateSet};");
+            sb.AppendLine($"INSERT INTO {table} ({columns}) VALUES ({values}) ON CONFLICT ({conflictTarget}) DO UPDATE SET {updateSet};");
         }
         else
         {
@@ -2018,6 +2802,145 @@ public class SyncService : ISyncService
         catch
         {
             return 0;
+        }
+    }
+
+    private void ConsolidateLocalUploads()
+    {
+        try
+        {
+            if (!Directory.Exists(_uploadBasePath))
+            {
+                Directory.CreateDirectory(_uploadBasePath);
+            }
+
+            var candidateSources = new List<string>();
+
+            // 1. Check wwwroot/uploads relative to _uploadBasePath
+            var wwwrootUploads = Path.GetFullPath(Path.Combine(_uploadBasePath, "..", "wwwroot", "uploads"));
+            if (Directory.Exists(wwwrootUploads) && !wwwrootUploads.Equals(_uploadBasePath, StringComparison.OrdinalIgnoreCase))
+            {
+                candidateSources.Add(wwwrootUploads);
+            }
+
+            // 2. Check AppDomain based wwwroot/uploads
+            var baseDirWwwrootUploads = Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "wwwroot", "uploads"));
+            if (Directory.Exists(baseDirWwwrootUploads) && !baseDirWwwrootUploads.Equals(_uploadBasePath, StringComparison.OrdinalIgnoreCase))
+            {
+                candidateSources.Add(baseDirWwwrootUploads);
+            }
+
+            // 3. Search directory parents (up to 6 levels) for frontend/public/uploads, root uploads, etc.
+            var currentDir = new DirectoryInfo(_uploadBasePath);
+            for (int i = 0; i < 6 && currentDir != null; i++)
+            {
+                var potentialFrontend = Path.Combine(currentDir.FullName, "frontend", "public", "uploads");
+                if (Directory.Exists(potentialFrontend) && !potentialFrontend.Equals(_uploadBasePath, StringComparison.OrdinalIgnoreCase))
+                {
+                    candidateSources.Add(Path.GetFullPath(potentialFrontend));
+                }
+
+                var potentialRootUploads = Path.Combine(currentDir.FullName, "uploads");
+                if (Directory.Exists(potentialRootUploads) && !potentialRootUploads.Equals(_uploadBasePath, StringComparison.OrdinalIgnoreCase))
+                {
+                    candidateSources.Add(Path.GetFullPath(potentialRootUploads));
+                }
+
+                currentDir = currentDir.Parent;
+            }
+
+            foreach (var sourceDir in candidateSources.Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                if (!Directory.Exists(sourceDir)) continue;
+
+                var files = Directory.GetFiles(sourceDir, "*.*", SearchOption.AllDirectories);
+                foreach (var file in files)
+                {
+                    try
+                    {
+                        var rel = Path.GetRelativePath(sourceDir, file);
+                        var targetFile = Path.Combine(_uploadBasePath, rel);
+
+                        var targetDir = Path.GetDirectoryName(targetFile);
+                        if (!string.IsNullOrEmpty(targetDir) && !Directory.Exists(targetDir))
+                        {
+                            Directory.CreateDirectory(targetDir);
+                        }
+
+                        if (!File.Exists(targetFile) || new FileInfo(file).Length != new FileInfo(targetFile).Length)
+                        {
+                            File.Copy(file, targetFile, overwrite: true);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger?.LogDebug(ex, "Could not consolidate file: {File}", file);
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "ConsolidateLocalUploads encountered an error");
+        }
+    }
+
+    private void MirrorExtractedFile(string relPath, string sourceFilePath)
+    {
+        try
+        {
+            if (!File.Exists(sourceFilePath)) return;
+
+            var targetRoots = new List<string>();
+
+            // 1. wwwroot/uploads relative to _uploadBasePath
+            var wwwrootUploads = Path.GetFullPath(Path.Combine(_uploadBasePath, "..", "wwwroot", "uploads"));
+            targetRoots.Add(wwwrootUploads);
+
+            // 2. AppDomain based wwwroot/uploads
+            var baseDirWwwrootUploads = Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "wwwroot", "uploads"));
+            targetRoots.Add(baseDirWwwrootUploads);
+
+            // 3. Search directory parents (up to 6 levels) for frontend/public/uploads and root uploads
+            var currentDir = new DirectoryInfo(_uploadBasePath);
+            for (int i = 0; i < 6 && currentDir != null; i++)
+            {
+                var potentialFrontend = Path.Combine(currentDir.FullName, "frontend", "public", "uploads");
+                targetRoots.Add(Path.GetFullPath(potentialFrontend));
+
+                var potentialRootUploads = Path.Combine(currentDir.FullName, "uploads");
+                targetRoots.Add(Path.GetFullPath(potentialRootUploads));
+
+                currentDir = currentDir.Parent;
+            }
+
+            foreach (var targetRoot in targetRoots.Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    var targetFile = Path.GetFullPath(Path.Combine(targetRoot, relPath));
+                    if (targetFile.Equals(sourceFilePath, StringComparison.OrdinalIgnoreCase)) continue;
+
+                    var parentDir = Directory.GetParent(targetRoot)?.FullName;
+                    if (parentDir != null && (Directory.Exists(targetRoot) || Directory.Exists(parentDir)))
+                    {
+                        var targetDir = Path.GetDirectoryName(targetFile);
+                        if (!string.IsNullOrEmpty(targetDir) && !Directory.Exists(targetDir))
+                        {
+                            Directory.CreateDirectory(targetDir);
+                        }
+                        File.Copy(sourceFilePath, targetFile, overwrite: true);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogDebug(ex, "Could not mirror extracted file to {Root}", targetRoot);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "MirrorExtractedFile encountered an error for {RelPath}", relPath);
         }
     }
 }

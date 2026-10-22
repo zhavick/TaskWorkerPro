@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "@/services/api/client";
 import {
@@ -83,8 +83,8 @@ export default function AttendancePage() {
     setManualDate(currentDate.toISOString().split("T")[0]);
     setManualType(1);
     setManualLoc(1);
-    setManualClockIn("");
-    setManualClockOut("");
+    setManualTimeIn("08:30");
+    setManualTimeOut("17:30");
     setManualLeaveReason("");
     setManualNotes("");
     setManualModalOpen(true);
@@ -109,7 +109,7 @@ export default function AttendancePage() {
   const [reconcileLeaveReason, setReconcileLeaveReason] = useState("");
   const [reconcileNotes, setReconcileNotes] = useState("");
 
-  // Manual Entry Modal state (Admin)
+  // Manual Entry Modal state (Admin / Personal)
   const [manualModalOpen, setManualModalOpen] = useState(false);
   const [manualUserId, setManualUserId] = useState("");
   const [manualDate, setManualDate] = useState(
@@ -117,10 +117,34 @@ export default function AttendancePage() {
   );
   const [manualType, setManualType] = useState(1);
   const [manualLoc, setManualLoc] = useState(1);
-  const [manualClockIn, setManualClockIn] = useState("");
-  const [manualClockOut, setManualClockOut] = useState("");
+  const [manualTimeIn, setManualTimeIn] = useState("08:30");
+  const [manualTimeOut, setManualTimeOut] = useState("17:30");
   const [manualLeaveReason, setManualLeaveReason] = useState("");
   const [manualNotes, setManualNotes] = useState("");
+
+  // Durasi jam kerja untuk entri presensi manual (selisih waktu masuk & pulang)
+  const manualDuration = useMemo(() => {
+    if (!manualTimeIn || !manualTimeOut) return null;
+    const [inH, inM] = manualTimeIn.split(":").map(Number);
+    const [outH, outM] = manualTimeOut.split(":").map(Number);
+    if (isNaN(inH) || isNaN(inM) || isNaN(outH) || isNaN(outM)) return null;
+
+    let diffMinutes = (outH * 60 + outM) - (inH * 60 + inM);
+    if (diffMinutes < 0) {
+      diffMinutes += 24 * 60; // Dukungan shift malam / lintas hari
+    }
+    const hours = Math.floor(diffMinutes / 60);
+    const mins = diffMinutes % 60;
+    const decimalHours = (diffMinutes / 60).toFixed(2);
+
+    return {
+      diffMinutes,
+      hours,
+      mins,
+      decimalHours,
+      formatted: `${hours} Jam ${mins} Menit (${decimalHours} Jam)`,
+    };
+  }, [manualTimeIn, manualTimeOut]);
 
   // 1. Status Today
   const { data: todayStatus } = useQuery<any>({
@@ -320,15 +344,39 @@ export default function AttendancePage() {
       if (!targetUserId) {
         throw new Error(isAdmin ? "Pilih anggota tim terlebih dahulu." : "Sesi pengguna tidak valid.");
       }
+
+      let clockInIso: string | null = null;
+      let clockOutIso: string | null = null;
+
+      if (manualType === 1) {
+        if (manualTimeIn) {
+          const inDate = new Date(`${manualDate}T${manualTimeIn}:00`);
+          if (!isNaN(inDate.getTime())) {
+            clockInIso = inDate.toISOString();
+          }
+        }
+        if (manualTimeOut) {
+          const outDate = new Date(`${manualDate}T${manualTimeOut}:00`);
+          if (!isNaN(outDate.getTime())) {
+            if (manualTimeIn && manualTimeOut < manualTimeIn) {
+              outDate.setDate(outDate.getDate() + 1);
+            }
+            clockOutIso = outDate.toISOString();
+          }
+        }
+      }
+
+      const isWfo = manualType === 1 && manualLoc === 1;
+
       const res = await apiClient.post("/attendances/reconciliation/manual-entry", {
         userId: targetUserId,
         date: manualDate,
         type: manualType,
         workLocation: manualLoc,
-        clockIn: manualClockIn ? new Date(manualClockIn).toISOString() : null,
-        clockOut: manualClockOut ? new Date(manualClockOut).toISOString() : null,
-        leaveReason: manualLeaveReason || null,
-        notes: manualNotes || null,
+        clockIn: clockInIso,
+        clockOut: clockOutIso,
+        leaveReason: isWfo ? null : (manualLeaveReason.trim() || null),
+        notes: manualNotes.trim() || null,
       });
       return res.data;
     },
@@ -336,8 +384,8 @@ export default function AttendancePage() {
       toast.success(isAdmin ? "Presensi manual anggota berhasil disimpan!" : "Presensi manual Anda berhasil dicatat!");
       setManualModalOpen(false);
       if (isAdmin) setManualUserId("");
-      setManualClockIn("");
-      setManualClockOut("");
+      setManualTimeIn("08:30");
+      setManualTimeOut("17:30");
       setManualLeaveReason("");
       setManualNotes("");
       queryClient.invalidateQueries({ queryKey: ["attendanceTodayStatus"] });
@@ -369,7 +417,7 @@ export default function AttendancePage() {
             onClick={() => setActiveTab("personal")}
             className={`rounded-lg px-3.5 py-1.5 text-xs font-semibold transition ${
               activeTab === "personal"
-                ? "bg-white text-indigo-700 shadow-xs dark:bg-gray-900 dark:text-indigo-400"
+                ? "bg-card-background text-primary-500 shadow-xs"
                 : "text-gray-500 hover:text-gray-900 dark:text-gray-400"
             }`}
           >
@@ -379,7 +427,7 @@ export default function AttendancePage() {
             onClick={() => setActiveTab("reconciliation")}
             className={`rounded-lg px-3.5 py-1.5 text-xs font-semibold transition ${
               activeTab === "reconciliation"
-                ? "bg-white text-indigo-700 shadow-xs dark:bg-gray-900 dark:text-indigo-400"
+                ? "bg-card-background text-primary-500 shadow-xs"
                 : "text-gray-500 hover:text-gray-900 dark:text-gray-400"
             }`}
           >
@@ -391,10 +439,10 @@ export default function AttendancePage() {
       {activeTab === "personal" ? (
         <div className="space-y-6">
           {/* Quick Clock In/Out Hero Card */}
-          <div className="rounded-2xl border border-indigo-200/80 bg-gradient-to-br from-indigo-50/70 via-purple-50/40 to-white p-6 shadow-xs dark:border-indigo-900/60 dark:from-indigo-950/40 dark:via-purple-950/20 dark:to-gray-900">
+          <div className="rounded-2xl border border-card-border bg-gradient-to-br from-primary-500/10 via-card-background to-card-background p-6 shadow-xs text-text-primary">
             <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
               <div>
-                <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-primary-500 dark:text-primary-400">
                   Status Presensi Hari Ini
                 </span>
                 <div className="mt-1 flex flex-wrap items-center gap-3">
@@ -542,7 +590,7 @@ export default function AttendancePage() {
 
           {/* Monthly Statistics Summary Cards */}
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-            <div className="rounded-2xl border border-gray-200/80 bg-white p-4 shadow-xs dark:border-gray-800 dark:bg-gray-900">
+            <div className="rounded-2xl border border-card-border bg-card-background p-4 shadow-xs text-text-primary">
               <div className="flex items-center justify-between text-gray-500">
                 <span className="text-xs font-semibold">Total Hadir</span>
                 <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 dark:bg-emerald-950/80 dark:text-emerald-400">
@@ -556,10 +604,10 @@ export default function AttendancePage() {
               <p className="text-[11px] text-gray-400 mt-0.5">Bulan {monthNames[selectedMonth - 1]}</p>
             </div>
 
-            <div className="rounded-2xl border border-gray-200/80 bg-white p-4 shadow-xs dark:border-gray-800 dark:bg-gray-900">
+            <div className="rounded-2xl border border-card-border bg-card-background p-4 shadow-xs text-text-primary">
               <div className="flex items-center justify-between text-gray-500">
                 <span className="text-xs font-semibold">Rata-rata Jam/Hari</span>
-                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 dark:bg-indigo-950/80 dark:text-indigo-400">
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary-50 text-primary-600 dark:bg-primary-950/80 dark:text-primary-300">
                   <Clock className="h-4 w-4" />
                 </div>
               </div>
@@ -570,7 +618,7 @@ export default function AttendancePage() {
               <p className="text-[11px] text-gray-400 mt-0.5">Total {mySummary?.totalWorkingHours ?? 0} Jam</p>
             </div>
 
-            <div className="rounded-2xl border border-gray-200/80 bg-white p-4 shadow-xs dark:border-gray-800 dark:bg-gray-900">
+            <div className="rounded-2xl border border-card-border bg-card-background p-4 shadow-xs text-text-primary">
               <div className="flex items-center justify-between text-gray-500">
                 <span className="text-xs font-semibold">Izin & Dinas</span>
                 <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-50 text-amber-600 dark:bg-amber-950/80 dark:text-amber-400">
@@ -586,7 +634,7 @@ export default function AttendancePage() {
               </p>
             </div>
 
-            <div className="rounded-2xl border border-gray-200/80 bg-white p-4 shadow-xs dark:border-gray-800 dark:bg-gray-900">
+            <div className="rounded-2xl border border-card-border bg-card-background p-4 shadow-xs text-text-primary">
               <div className="flex items-center justify-between text-gray-500">
                 <span className="text-xs font-semibold">Cuti & Sakit</span>
                 <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-sky-50 text-sky-600 dark:bg-sky-950/80 dark:text-sky-400">
@@ -604,7 +652,7 @@ export default function AttendancePage() {
           </div>
 
           {/* Personal History Table with Month/Year Filter */}
-          <div className="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-xs dark:border-gray-800 dark:bg-gray-900">
+          <div className="rounded-2xl border border-card-border bg-card-background p-5 shadow-xs text-text-primary">
             <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h4 className="font-bold text-sm text-gray-900 dark:text-white">
@@ -830,38 +878,38 @@ export default function AttendancePage() {
             <div className="space-y-4">
               {/* Monthly KPI Summary Cards */}
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-                <div className="rounded-2xl border border-gray-200/80 bg-white p-4 shadow-xs dark:border-gray-800 dark:bg-gray-900">
-                  <div className="flex items-center justify-between text-gray-500">
+                <div className="rounded-2xl border border-card-border bg-card-background p-4 shadow-xs">
+                  <div className="flex items-center justify-between text-text-secondary">
                     <span className="text-xs font-semibold">Total Jam Kerja Tim</span>
-                    <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 dark:bg-indigo-950/80 dark:text-indigo-400">
+                    <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary-50 text-primary-600 dark:bg-primary-950/80 dark:text-primary-400">
                       <Clock className="h-4 w-4" />
                     </div>
                   </div>
-                  <p className="mt-2 text-2xl font-black text-gray-900 dark:text-white">
+                  <p className="mt-2 text-2xl font-black text-text-primary">
                     {teamMonthlyReport?.teamTotalHours ?? 0}{" "}
-                    <span className="text-xs font-normal text-gray-500">Jam</span>
+                    <span className="text-xs font-normal text-text-secondary">Jam</span>
                   </p>
-                  <p className="text-[11px] text-gray-400 mt-0.5">
+                  <p className="text-[11px] text-text-secondary/70 mt-0.5">
                     Periode {monthNames[reconcileMonth - 1]} {reconcileYear}
                   </p>
                 </div>
 
-                <div className="rounded-2xl border border-gray-200/80 bg-white p-4 shadow-xs dark:border-gray-800 dark:bg-gray-900">
-                  <div className="flex items-center justify-between text-gray-500">
+                <div className="rounded-2xl border border-card-border bg-card-background p-4 shadow-xs">
+                  <div className="flex items-center justify-between text-text-secondary">
                     <span className="text-xs font-semibold">Anggota Terdaftar</span>
                     <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 dark:bg-emerald-950/80 dark:text-emerald-400">
                       <Users className="h-4 w-4" />
                     </div>
                   </div>
-                  <p className="mt-2 text-2xl font-black text-gray-900 dark:text-white">
+                  <p className="mt-2 text-2xl font-black text-text-primary">
                     {teamMonthlyReport?.totalTeamMembers ?? 0}{" "}
-                    <span className="text-xs font-normal text-gray-500">Personel</span>
+                    <span className="text-xs font-normal text-text-secondary">Personel</span>
                   </p>
-                  <p className="text-[11px] text-gray-400 mt-0.5">Staf aktif perusahaan</p>
+                  <p className="text-[11px] text-text-secondary/70 mt-0.5">Staf aktif perusahaan</p>
                 </div>
 
-                <div className="rounded-2xl border border-gray-200/80 bg-white p-4 shadow-xs dark:border-gray-800 dark:bg-gray-900">
-                  <div className="flex items-center justify-between text-gray-500">
+                <div className="rounded-2xl border border-card-border bg-card-background p-4 shadow-xs">
+                  <div className="flex items-center justify-between text-text-secondary">
                     <span className="text-xs font-semibold">Total Kehadiran Tim</span>
                     <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-teal-50 text-teal-600 dark:bg-teal-950/80 dark:text-teal-400">
                       <CheckCircle2 className="h-4 w-4" />
@@ -872,13 +920,13 @@ export default function AttendancePage() {
                       (acc: number, m: any) => acc + (m.totalPresent || 0),
                       0
                     ) ?? 0}{" "}
-                    <span className="text-xs font-normal text-gray-500">Hari</span>
+                    <span className="text-xs font-normal text-text-secondary">Hari</span>
                   </p>
-                  <p className="text-[11px] text-gray-400 mt-0.5">Kumulatif seluruh staf</p>
+                  <p className="text-[11px] text-text-secondary/70 mt-0.5">Kumulatif seluruh staf</p>
                 </div>
 
-                <div className="rounded-2xl border border-gray-200/80 bg-white p-4 shadow-xs dark:border-gray-800 dark:bg-gray-900">
-                  <div className="flex items-center justify-between text-gray-500">
+                <div className="rounded-2xl border border-card-border bg-card-background p-4 shadow-xs">
+                  <div className="flex items-center justify-between text-text-secondary">
                     <span className="text-xs font-semibold">Izin / Sakit / Cuti</span>
                     <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-50 text-amber-600 dark:bg-amber-950/80 dark:text-amber-400">
                       <Palmtree className="h-4 w-4" />
@@ -894,20 +942,20 @@ export default function AttendancePage() {
                         (m.totalBusinessTrip || 0),
                       0
                     ) ?? 0}{" "}
-                    <span className="text-xs font-normal text-gray-500">Hari</span>
+                    <span className="text-xs font-normal text-text-secondary">Hari</span>
                   </p>
-                  <p className="text-[11px] text-gray-400 mt-0.5">Total non-hadir terdata</p>
+                  <p className="text-[11px] text-text-secondary/70 mt-0.5">Total non-hadir terdata</p>
                 </div>
               </div>
 
               {/* Monthly Matrix Grid Table */}
-              <div className="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-xs dark:border-gray-800 dark:bg-gray-900">
+              <div className="rounded-2xl border border-card-border bg-card-background p-5 shadow-xs">
                 <div className="mb-3 flex items-center justify-between">
-                  <h5 className="font-bold text-sm text-gray-900 dark:text-white flex items-center gap-2">
-                    <LayoutGrid className="h-4 w-4 text-indigo-600" />
+                  <h5 className="font-bold text-sm text-text-primary flex items-center gap-2">
+                    <LayoutGrid className="h-4 w-4 text-primary-600" />
                     <span>Matriks Kehadiran Tim ({monthNames[reconcileMonth - 1]} {reconcileYear})</span>
                   </h5>
-                  <div className="flex items-center gap-2 text-[11px] text-gray-500">
+                  <div className="flex items-center gap-2 text-[11px] text-text-secondary">
                     <span className="inline-flex items-center gap-1">
                       <span className="h-2 w-2 rounded-full bg-emerald-500"></span> Hadir
                     </span>
@@ -929,11 +977,11 @@ export default function AttendancePage() {
                 <div className="overflow-x-auto">
                   <table className="w-full text-left border-collapse text-xs">
                     <thead>
-                      <tr className="border-b border-gray-100 bg-gray-50/75 dark:border-gray-800 dark:bg-gray-800/50">
-                        <th className="px-3 py-2.5 font-bold text-gray-700 dark:text-gray-300 min-w-[200px]">
+                      <tr className="border-b border-card-border bg-card-surface-area">
+                        <th className="px-3 py-2.5 font-bold text-text-primary min-w-[200px]">
                           Anggota Tim
                         </th>
-                        <th className="px-2.5 py-2.5 text-center font-bold text-gray-700 dark:text-gray-300">
+                        <th className="px-2.5 py-2.5 text-center font-bold text-text-primary">
                           Total Jam
                         </th>
                         <th className="px-2 py-2.5 text-center font-bold text-emerald-700 dark:text-emerald-400">
@@ -958,14 +1006,14 @@ export default function AttendancePage() {
                         ).map((day) => (
                           <th
                             key={day}
-                            className="px-1.5 py-2.5 text-center font-mono text-[11px] text-gray-500 dark:text-gray-400 min-w-[26px]"
+                            className="px-1.5 py-2.5 text-center font-mono text-[11px] text-text-secondary min-w-[26px]"
                           >
                             {day}
                           </th>
                         ))}
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                    <tbody className="divide-y divide-card-border">
                       {teamMonthlyReport?.members?.map((m: any) => {
                         const dailyMap = new Map(
                           m.dailyRecords?.map((d: any) => [d.day, d])
@@ -973,7 +1021,7 @@ export default function AttendancePage() {
                         return (
                           <tr
                             key={m.userId}
-                            className="transition hover:bg-gray-50/60 dark:hover:bg-gray-800/40"
+                            className="transition hover:bg-card-surface-area"
                           >
                             {/* Member Profile */}
                             <td className="px-3 py-2.5">
@@ -982,18 +1030,18 @@ export default function AttendancePage() {
                                   <img
                                     src={m.avatarUrl}
                                     alt={m.fullName}
-                                    className="h-7 w-7 rounded-full object-cover border border-gray-200 dark:border-gray-700"
+                                    className="h-7 w-7 rounded-full object-cover border border-card-border"
                                   />
                                 ) : (
-                                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-indigo-100 text-indigo-700 font-bold text-[11px] dark:bg-indigo-950 dark:text-indigo-300">
+                                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary-100 text-primary-700 font-bold text-[11px] dark:bg-primary-950 dark:text-primary-300">
                                     {m.fullName?.slice(0, 2).toUpperCase() || "US"}
                                   </div>
                                 )}
                                 <div className="min-w-0">
-                                  <p className="truncate font-semibold text-gray-900 dark:text-white text-xs">
+                                  <p className="truncate font-semibold text-text-primary text-xs">
                                     {m.fullName}
                                   </p>
-                                  <p className="truncate text-[10px] text-gray-400">
+                                  <p className="truncate text-[10px] text-text-secondary">
                                     {m.jobTitle || "Anggota Tim"}
                                   </p>
                                 </div>
@@ -1001,7 +1049,7 @@ export default function AttendancePage() {
                             </td>
 
                             {/* Counters */}
-                            <td className="px-2.5 py-2.5 text-center font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                            <td className="px-2.5 py-2.5 text-center font-mono font-bold text-primary-600 dark:text-primary-400">
                               {m.totalHours > 0 ? `${m.totalHours}h` : "-"}
                             </td>
                             <td className="px-2 py-2.5 text-center font-bold text-emerald-600 dark:text-emerald-400">
@@ -1517,9 +1565,8 @@ export default function AttendancePage() {
                     <button
                       type="button"
                       onClick={() => {
-                        const datePart = manualDate || currentDate.toISOString().split("T")[0];
-                        setManualClockIn(`${datePart}T08:30`);
-                        setManualClockOut(`${datePart}T17:30`);
+                        setManualTimeIn("08:30");
+                        setManualTimeOut("17:30");
                       }}
                       className="text-[10px] font-semibold text-indigo-600 hover:underline dark:text-indigo-400"
                     >
@@ -1541,42 +1588,75 @@ export default function AttendancePage() {
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
-                      Waktu Masuk
+                      Waktu Masuk (Time Picker) *
                     </label>
                     <Input
-                      type="datetime-local"
-                      value={manualClockIn}
-                      onChange={(e) => setManualClockIn(e.target.value)}
+                      type="time"
+                      value={manualTimeIn}
+                      onChange={(e) => setManualTimeIn(e.target.value)}
+                      required
                       className="mt-1 text-xs"
                     />
                   </div>
 
                   <div>
                     <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
-                      Waktu Pulang
+                      Waktu Pulang (Time Picker) *
                     </label>
                     <Input
-                      type="datetime-local"
-                      value={manualClockOut}
-                      onChange={(e) => setManualClockOut(e.target.value)}
+                      type="time"
+                      value={manualTimeOut}
+                      onChange={(e) => setManualTimeOut(e.target.value)}
+                      required
                       className="mt-1 text-xs"
                     />
                   </div>
                 </div>
+
+                {/* Info Selisih Durasi Kerja */}
+                {manualDuration && (
+                  <div className="flex items-center justify-between rounded-xl border border-indigo-100 bg-indigo-50/80 p-2.5 text-xs text-indigo-800 dark:border-indigo-900/60 dark:bg-indigo-950/40 dark:text-indigo-300">
+                    <span className="flex items-center gap-1.5 font-medium">
+                      <Clock className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                      Selisih Durasi Kerja:
+                    </span>
+                    <span className="font-bold text-indigo-950 dark:text-indigo-200">
+                      {manualDuration.formatted}
+                    </span>
+                  </div>
+                )}
               </>
             )}
 
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
-                Alasan / Keperluan (Jika Non-Hadir)
-              </label>
-              <Input
-                value={manualLeaveReason}
-                onChange={(e) => setManualLeaveReason(e.target.value)}
-                placeholder="Contoh: Izin urusan keluarga / sakit..."
-                className="mt-1 text-xs"
-              />
-            </div>
+            {/* Alasan tidak perlu muncul jika user hanya mengisi dalam bentuk WFO, kecuali lainnya */}
+            {!(manualType === 1 && manualLoc === 1) && (
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
+                  Alasan / Keperluan {manualType !== 1 ? "*" : "(Opsional)"}
+                </label>
+                <Input
+                  value={manualLeaveReason}
+                  onChange={(e) => setManualLeaveReason(e.target.value)}
+                  placeholder={
+                    manualType === 2
+                      ? "Contoh: Cuti tahunan / urusan keluarga..."
+                      : manualType === 3
+                      ? "Contoh: Sakit demam / surat dokter terlampir..."
+                      : manualType === 4
+                      ? "Contoh: Keperluan perpanjangan SIM..."
+                      : manualType === 5
+                      ? "Contoh: Kunjungan klien / dinas luar kota..."
+                      : manualLoc === 2
+                      ? "Alasan WFH (Rumah)..."
+                      : manualLoc === 3
+                      ? "Alasan Dinas Lapangan..."
+                      : "Alasan Remote..."
+                  }
+                  required={manualType !== 1}
+                  className="mt-1 text-xs"
+                />
+              </div>
+            )}
 
             <div>
               <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">

@@ -36,7 +36,7 @@
    ========================================================================== */
 
 /* 1. Indigo Nebula (Default) */
-[data-theme-palette="indigo-nebula"] {
+:is(html, :root)[data-theme-palette="indigo-nebula"] {
   --primary-50: #eff3ff;
   --primary-100: #dae2ff;
   --primary-200: #becdff;
@@ -52,7 +52,7 @@
 }
 
 /* 2. Emerald Forest */
-[data-theme-palette="emerald-forest"] {
+:is(html, :root)[data-theme-palette="emerald-forest"] {
   --primary-50: #ecfdf5;
   --primary-100: #d1fae5;
   --primary-200: #a7f3d0;
@@ -68,7 +68,7 @@
 }
 
 /* 3. Ocean Azure */
-[data-theme-palette="ocean-azure"] {
+:is(html, :root)[data-theme-palette="ocean-azure"] {
   --primary-50: #f0f9ff;
   --primary-100: #e0f2fe;
   --primary-200: #bae6fd;
@@ -84,7 +84,7 @@
 }
 
 /* 4. Sunset Crimson */
-[data-theme-palette="sunset-crimson"] {
+:is(html, :root)[data-theme-palette="sunset-crimson"] {
   --primary-50: #fff1f2;
   --primary-100: #ffe4e6;
   --primary-200: #fecdd3;
@@ -100,7 +100,7 @@
 }
 
 /* 5. Cyberpunk Neon */
-[data-theme-palette="cyberpunk-neon"] {
+:is(html, :root)[data-theme-palette="cyberpunk-neon"] {
   --primary-50: #ecfeff;
   --primary-100: #cffafe;
   --primary-200: #a5f3fc;
@@ -116,7 +116,7 @@
 }
 
 /* 6. Royal Amethyst */
-[data-theme-palette="royal-amethyst"] {
+:is(html, :root)[data-theme-palette="royal-amethyst"] {
   --primary-50: #f5f3ff;
   --primary-100: #ede9fe;
   --primary-200: #ddd6fe;
@@ -132,7 +132,7 @@
 }
 
 /* 7. Amber Gold */
-[data-theme-palette="amber-gold"] {
+:is(html, :root)[data-theme-palette="amber-gold"] {
   --primary-50: #fffbeb;
   --primary-100: #fef3c7;
   --primary-200: #fde68a;
@@ -148,7 +148,7 @@
 }
 
 /* 8. Slate Minimalist */
-[data-theme-palette="slate-minimalist"] {
+:is(html, :root)[data-theme-palette="slate-minimalist"] {
   --primary-50: #f8fafc;
   --primary-100: #f1f5f9;
   --primary-200: #e2e8f0;
@@ -164,7 +164,7 @@
 }
 
 /* 9. Nordic Teal */
-[data-theme-palette="nordic-teal"] {
+:is(html, :root)[data-theme-palette="nordic-teal"] {
   --primary-50: #f0fdfa;
   --primary-100: #ccfbf1;
   --primary-200: #99f6e4;
@@ -180,7 +180,7 @@
 }
 
 /* 10. Midnight Titanium */
-[data-theme-palette="midnight-titanium"] {
+:is(html, :root)[data-theme-palette="midnight-titanium"] {
   --primary-50: #f8fafc;
   --primary-100: #e2e8f0;
   --primary-200: #cbd5e1;
@@ -196,7 +196,7 @@
 }
 
 /* 11. Sakura Blossom */
-[data-theme-palette="sakura-blossom"] {
+:is(html, :root)[data-theme-palette="sakura-blossom"] {
   --primary-50: #fdf2f8;
   --primary-100: #fce7f3;
   --primary-200: #fbcfe8;
@@ -212,7 +212,7 @@
 }
 
 /* 12. Citrus Lime */
-[data-theme-palette="citrus-lime"] {
+:is(html, :root)[data-theme-palette="citrus-lime"] {
   --primary-50: #f7fee7;
   --primary-100: #ecfccb;
   --primary-200: #d9f99d;
@@ -228,7 +228,7 @@
 }
 
 /* 13. Terracotta Clay */
-[data-theme-palette="terracotta-clay"] {
+:is(html, :root)[data-theme-palette="terracotta-clay"] {
   --primary-50: #fff7ed;
   --primary-100: #ffedd5;
   --primary-200: #fed7aa;
@@ -244,7 +244,7 @@
 }
 
 /* 14. Lavender Mist */
-[data-theme-palette="lavender-mist"] {
+:is(html, :root)[data-theme-palette="lavender-mist"] {
   --primary-50: #faf5ff;
   --primary-100: #f3e8ff;
   --primary-200: #e9d5ff;
@@ -260,7 +260,7 @@
 }
 
 /* 15. Peacock Cyan */
-[data-theme-palette="peacock-cyan"] {
+:is(html, :root)[data-theme-palette="peacock-cyan"] {
   --primary-50: #ecfeff;
   --primary-100: #cffafe;
   --primary-200: #a5f3fc;
@@ -276,7 +276,7 @@
 }
 
 /* 16. Coffee Mocha */
-[data-theme-palette="coffee-mocha"] {
+:is(html, :root)[data-theme-palette="coffee-mocha"] {
   --primary-50: #fefce8;
   --primary-100: #fef9c3;
   --primary-200: #fef08a;
@@ -292,7 +292,7 @@
 }
 
 /* 17. Sapphire Sky */
-[data-theme-palette="sapphire-sky"] {
+:is(html, :root)[data-theme-palette="sapphire-sky"] {
   --primary-50: #eff6ff;
   --primary-100: #dbeafe;
   --primary-200: #bfdbfe;
@@ -308,7 +308,7 @@
 }
 
 /* 18. Coral Reef */
-[data-theme-palette="coral-reef"] {
+:is(html, :root)[data-theme-palette="coral-reef"] {
   --primary-50: #fff7ed;
   --primary-100: #ffedd5;
   --primary-200: #fed7aa;
@@ -324,7 +324,7 @@
 }
 
 /* 19. Mint Breeze */
-[data-theme-palette="mint-breeze"] {
+:is(html, :root)[data-theme-palette="mint-breeze"] {
   --primary-50: #f0fdf4;
   --primary-100: #dcfce7;
   --primary-200: #bbf7d0;
@@ -340,7 +340,7 @@
 }
 
 /* 20. Autumn Maple */
-[data-theme-palette="autumn-maple"] {
+:is(html, :root)[data-theme-palette="autumn-maple"] {
   --primary-50: #fef2f2;
   --primary-100: #fee2e2;
   --primary-200: #fecaca;
@@ -356,7 +356,7 @@
 }
 
 /* 21. Rose Quartz */
-[data-theme-palette="rose-quartz"] {
+:is(html, :root)[data-theme-palette="rose-quartz"] {
   --primary-50: #fff1f2;
   --primary-100: #ffe4e6;
   --primary-200: #fecdd3;
@@ -372,7 +372,7 @@
 }
 
 /* 22. Desert Sand */
-[data-theme-palette="desert-sand"] {
+:is(html, :root)[data-theme-palette="desert-sand"] {
   --primary-50: #fefce8;
   --primary-100: #fef9c3;
   --primary-200: #fef08a;
@@ -392,7 +392,7 @@
    ========================================================================== */
 
 /* 23. Nordic Frost (Dark) */
-[data-theme-palette="nordic-frost"] {
+:is(html, :root)[data-theme-palette="nordic-frost"] {
   --primary-50: #f0f9ff;
   --primary-100: #e0f2fe;
   --primary-200: #bae6fd;
@@ -411,7 +411,7 @@
 }
 
 /* 24. Midnight OLED (Pitch Black Dark) */
-[data-theme-palette="midnight-oled"] {
+:is(html, :root)[data-theme-palette="midnight-oled"] {
   --primary-50: #eff6ff;
   --primary-100: #dbeafe;
   --primary-200: #bfdbfe;
@@ -432,7 +432,7 @@
 }
 
 /* 25. Cyberpunk Synthwave (Neon Pink & Cyan on Deep Violet) */
-[data-theme-palette="cyberpunk-synthwave"] {
+:is(html, :root)[data-theme-palette="cyberpunk-synthwave"] {
   --primary-50: #fdf2f8;
   --primary-100: #fce7f3;
   --primary-200: #fbcfe8;
@@ -452,7 +452,7 @@
 }
 
 /* 26. Emerald Matrix (Terminal Green on Deep Obsidian) */
-[data-theme-palette="emerald-matrix"] {
+:is(html, :root)[data-theme-palette="emerald-matrix"] {
   --primary-50: #ecfdf5;
   --primary-100: #d1fae5;
   --primary-200: #a7f3d0;
@@ -472,7 +472,7 @@
 }
 
 /* 27. Dracula Eclipse (Purple, Pink & Slate Dark) */
-[data-theme-palette="dracula-eclipse"] {
+:is(html, :root)[data-theme-palette="dracula-eclipse"] {
   --primary-50: #f5f3ff;
   --primary-100: #ede9fe;
   --primary-200: #ddd6fe;
@@ -492,7 +492,7 @@
 }
 
 /* 28. Abyssal Ocean (Deep Ocean Blue) */
-[data-theme-palette="abyssal-ocean"] {
+:is(html, :root)[data-theme-palette="abyssal-ocean"] {
   --primary-50: #f0f9ff;
   --primary-100: #e0f2fe;
   --primary-200: #bae6fd;
@@ -512,7 +512,7 @@
 }
 
 /* 29. Solar Ember (Warm Amber & Fire on Coal) */
-[data-theme-palette="solar-ember"] {
+:is(html, :root)[data-theme-palette="solar-ember"] {
   --primary-50: #fff7ed;
   --primary-100: #ffedd5;
   --primary-200: #fed7aa;
@@ -532,7 +532,7 @@
 }
 
 /* 30. Neon Violet */
-[data-theme-palette="neon-violet"] {
+:is(html, :root)[data-theme-palette="neon-violet"] {
   --primary-50: #faf5ff;
   --primary-100: #f3e8ff;
   --primary-200: #e9d5ff;
@@ -552,7 +552,7 @@
 }
 
 /* 31. Crimson Vampire */
-[data-theme-palette="crimson-vampire"] {
+:is(html, :root)[data-theme-palette="crimson-vampire"] {
   --primary-50: #fff1f2;
   --primary-100: #ffe4e6;
   --primary-200: #fecdd3;
@@ -572,7 +572,7 @@
 }
 
 /* 32. Deep Forest */
-[data-theme-palette="deep-forest"] {
+:is(html, :root)[data-theme-palette="deep-forest"] {
   --primary-50: #f0fdf4;
   --primary-100: #dcfce7;
   --primary-200: #bbf7d0;
@@ -592,7 +592,7 @@
 }
 
 /* 33. Space Cadet */
-[data-theme-palette="space-cadet"] {
+:is(html, :root)[data-theme-palette="space-cadet"] {
   --primary-50: #eef2ff;
   --primary-100: #e0e7ff;
   --primary-200: #c7d2fe;
@@ -612,7 +612,7 @@
 }
 
 /* 34. Monochrome Noir */
-[data-theme-palette="monochrome-noir"] {
+:is(html, :root)[data-theme-palette="monochrome-noir"] {
   --primary-50: #f9fafb;
   --primary-100: #f3f4f6;
   --primary-200: #e5e7eb;
@@ -632,7 +632,7 @@
 }
 
 /* 35. Amethyst Dark */
-[data-theme-palette="amethyst-dark"] {
+:is(html, :root)[data-theme-palette="amethyst-dark"] {
   --primary-50: #f5f3ff;
   --primary-100: #ede9fe;
   --primary-200: #ddd6fe;
@@ -652,7 +652,7 @@
 }
 
 /* 36. Aurora Borealis */
-[data-theme-palette="aurora-borealis"] {
+:is(html, :root)[data-theme-palette="aurora-borealis"] {
   --primary-50: #f0fdfa;
   --primary-100: #ccfbf1;
   --primary-200: #99f6e4;
@@ -672,7 +672,7 @@
 }
 
 /* 37. Obsidian Gold */
-[data-theme-palette="obsidian-gold"] {
+:is(html, :root)[data-theme-palette="obsidian-gold"] {
   --primary-50: #fffbeb;
   --primary-100: #fef3c7;
   --primary-200: #fde68a;
@@ -692,7 +692,7 @@
 }
 
 /* 38. Twilight Slate */
-[data-theme-palette="twilight-slate"] {
+:is(html, :root)[data-theme-palette="twilight-slate"] {
   --primary-50: #f8fafc;
   --primary-100: #f1f5f9;
   --primary-200: #e2e8f0;
@@ -712,7 +712,7 @@
 }
 
 /* 39. Toxic Green */
-[data-theme-palette="toxic-green"] {
+:is(html, :root)[data-theme-palette="toxic-green"] {
   --primary-50: #f7fee7;
   --primary-100: #ecfccb;
   --primary-200: #d9f99d;
@@ -732,7 +732,7 @@
 }
 
 /* 40. Carbon Graphite */
-[data-theme-palette="carbon-graphite"] {
+:is(html, :root)[data-theme-palette="carbon-graphite"] {
   --primary-50: #fafafa;
   --primary-100: #f4f4f5;
   --primary-200: #e4e4e7;
@@ -754,26 +754,36 @@
 /* ==========================================================================
    THEME SYNCHRONIZATION: CARDS, CHARTS, AND SURFACE SHADOWS
    ========================================================================== */
-[data-theme-palette] {
+:is(html, :root)[data-theme-palette] {
   --chart-primary: var(--primary-500);
   --chart-primary-light: var(--primary-300);
   --chart-brand: var(--neutral-brand-color);
 }
 
 /* Dark mode theme surface & border inheritance */
-html.dark[data-theme-palette],
+:is(html, :root).dark[data-theme-palette],
 .dark [data-theme-palette],
-[data-theme-palette].dark {
+[data-theme-palette].dark,
+:is(html, :root)[data-theme="dark"][data-theme-palette] {
+  --background-gray-secondary_alt_2: var(--background-50, #09090b);
   --card-background: var(--background-100, #171718);
-  --card-surface-area: var(--background-50, #0f0f0f);
+  --card-surface-area: var(--background-soft-50, #0f0f0f);
   --card-border: var(--border-color-base-50, #27272a);
+  --card-surface-border: var(--border-color-base-50, #27272a);
+  --border-secondary: var(--border-color-base-50, #27272a);
+  --border-secondary-alt: var(--border-color-base-50, #3f3f46);
 }
 
 /* Light mode theme surface & border inheritance */
-html:not(.dark)[data-theme-palette],
-[data-theme-palette]:not(.dark) {
+:is(html, :root):not(.dark)[data-theme-palette],
+[data-theme-palette]:not(.dark),
+:is(html, :root)[data-theme="light"][data-theme-palette] {
+  --background-gray-secondary_alt_2: #f4f4f5;
   --card-background: #ffffff;
   --card-surface-area: #fcfcfd;
   --card-border: #e5e7eb;
+  --card-surface-border: #e5e7eb;
+  --border-secondary: #e4e4e7;
+  --border-secondary-alt: #e4e4e7;
 }
 

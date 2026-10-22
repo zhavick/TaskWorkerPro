@@ -49,17 +49,23 @@ export function UserProfileButton() {
   });
 
   React.useEffect(() => {
-    try {
-      const stored = localStorage.getItem("user_profile");
-      if (stored) {
-        const u = JSON.parse(stored);
-        setCurrentUser({
-          name: u.fullName || "Pengguna",
-          email: u.email || "user@trackerkerja.com",
-          avatarUrl: u.profilePictureUrl || "/images/user/jhon-smith.png",
-        });
-      }
-    } catch {}
+    const loadProfile = () => {
+      try {
+        const stored = localStorage.getItem("user_profile");
+        if (stored) {
+          const u = JSON.parse(stored);
+          setCurrentUser({
+            name: u.fullName || "Pengguna",
+            email: u.email || "user@trackerkerja.com",
+            avatarUrl: u.profilePictureUrl || "/images/user/jhon-smith.png",
+          });
+        }
+      } catch {}
+    };
+
+    loadProfile();
+    window.addEventListener("profile-updated", loadProfile);
+    return () => window.removeEventListener("profile-updated", loadProfile);
   }, []);
 
   const handleLogout = () => {

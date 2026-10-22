@@ -180,10 +180,10 @@ public class AppDbContext : DbContext
             IsCurrentUserAdmin || CurrentCompanyId == null || t.CompanyId == null || t.CompanyId == CurrentCompanyId);
 
         modelBuilder.Entity<Project>().HasQueryFilter(p =>
-            IsCurrentUserAdmin || CurrentCompanyId == null || p.CompanyId == CurrentCompanyId);
+            IsCurrentUserAdmin || CurrentCompanyId == null || p.CompanyId == null || p.CompanyId == CurrentCompanyId);
 
         modelBuilder.Entity<WorkNote>().HasQueryFilter(n =>
-            IsCurrentUserAdmin || CurrentCompanyId == null || n.CompanyId == CurrentCompanyId);
+            IsCurrentUserAdmin || CurrentCompanyId == null || n.CompanyId == null || n.CompanyId == CurrentCompanyId);
 
         modelBuilder.Entity<Announcement>().HasQueryFilter(a =>
             IsCurrentUserAdmin || a.CompanyId == null || CurrentCompanyId == null || a.CompanyId == CurrentCompanyId);
