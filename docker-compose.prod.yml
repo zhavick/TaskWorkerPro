@@ -11,8 +11,9 @@ services:
       POSTGRES_USER: tracker_admin
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD wajib diisi di .env}
       PGDATA: /var/lib/postgresql/data/pgdata
-    ports:
-      - "127.0.0.1:5432:5432"
+    # Sengaja tanpa "ports": backend mengakses lewat jaringan Docker (Host=postgres),
+    # dan port 5432 di host bisa bentrok dengan PostgreSQL bawaan aaPanel.
+    # Akses manual: docker exec -it trackerkerja_postgres psql -U tracker_admin -d trackerkerja_db
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./database/init:/docker-entrypoint-initdb.d:ro
