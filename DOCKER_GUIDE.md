@@ -152,3 +152,42 @@ Untuk memulihkan ruang penyimpanan disk pasca pembersihan data skala besar (Purg
    Authorization: Bearer <TOKEN_ADMIN>
    ```
 Sistem secara otomatis mengeksekusi instruksi `VACUUM ANALYZE` pada PostgreSQL atau `VACUUM` pada SQLite dan merekam ruang penyimpanan yang berhasil dioptimalkan.
+
+---
+
+## 7. Deploy Produksi di VPS (Nginx / aaPanel)
+
+Gunakan `docker-compose.prod.yml`: semua port hanya di-bind ke `127.0.0.1`, secret dibaca dari `.env`, dan frontend di-build dengan `NEXT_PUBLIC_API_BASE_URL=/api` sehingga browser memanggil backend lewat domain/IP yang sama.
+
+### 7.1 Menjalankan
+```bash
+git checkout modern && git pull
+cp .env.example .env        # isi APP_URL, POSTGRES_PASSWORD, JWT_SECRET (openssl rand -hex 24)
+docker compose -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml ps
+```
+> `POSTGRES_PASSWORD` hanya dipakai saat volume `pgdata` pertama kali dibuat. Jika volume lama sudah ada, password lama tetap berlaku.
+
+### 7.2 Routing Nginx
+| Path | Tujuan | Catatan |
+|:---|:---|:---|
+| `/` | `http://127.0.0.1:5000` | Frontend Next.js (`FRONTEND_PORT`) |
+| `/api` | `http://127.0.0.1:5008` | REST API |
+| `/hubs` | `http://127.0.0.1:5008` | SignalR, butuh header WebSocket |
+| `/uploads` | `http://127.0.0.1:5008` | Berkas unggahan |
+
+Di aaPanel: **Site → Reverse proxy**, buat satu proxy per baris tabel di atas (Target URL tanpa `/` di akhir, Sent Domain `$host`). Lalu di tab **Config** tambahkan di dalam blok `server { }`:
+```nginx
+    client_max_body_size 50m;
+    # Opsional: tutup endpoint sinkronisasi jika fitur sync antar instance tidak dipakai
+    if ($uri ~* "^/api/sync") { return 403; }
+```
+Untuk proxy `/hubs` pastikan terdapat:
+```nginx
+proxy_http_version 1.1;
+proxy_set_header Upgrade $http_upgrade;
+proxy_set_header Connection "upgrade";
+```
+
+### 7.3 Sinkronisasi Antar Instance
+Endpoint `/api/sync/*` yang bisa diakses tanpa login hanya menerima `SYNC_API_KEY` dari `.env` atau kunci di tabel `SystemSettings`. Kunci lama yang pernah ter-commit (`TK-SYNC-...` dan `TRACKERKERJA_SYNC_SECRET_DEFAULT_2026`) selalu ditolak. Kosongkan `SYNC_API_KEY` untuk menonaktifkan akses sync via API key.

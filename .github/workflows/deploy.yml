@@ -1,0 +1,46 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches: [deploy]
+  workflow_dispatch:
+
+# Jangan jalankan dua deploy bersamaan; deploy berikutnya menunggu yang sedang berjalan
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Backend tests
+        run: dotnet test backend/tests/TrackerKerja.Tests/TrackerKerja.Tests.csproj
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Deploy via SSH
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_APP_DIR: ${{ secrets.VPS_APP_DIR }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -p "${VPS_PORT:-22}" "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+          # Update kode dulu, baru jalankan script versi terbaru
+          ssh -p "${VPS_PORT:-22}" "$VPS_USER@$VPS_HOST" \
+            "set -e; cd '$VPS_APP_DIR'; git fetch origin deploy; git reset --hard origin/deploy; bash scripts/deploy.sh"
