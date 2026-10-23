@@ -165,6 +165,7 @@ public class AuthController : ControllerBase
         var isAdmin = user.Id == "usr-superadmin" 
             || isUserRoleAdmin
             || user.Email?.Equals("admin@trackerkerja.local", StringComparison.OrdinalIgnoreCase) == true
+            || user.Email?.Equals("admin@trackerkerja.com", StringComparison.OrdinalIgnoreCase) == true
             || user.JobTitle.Contains("Admin", StringComparison.OrdinalIgnoreCase)
             || user.JobTitle.Contains("Architect", StringComparison.OrdinalIgnoreCase);
         var roles = new List<string> { isAdmin ? "Administrator" : "Member" };

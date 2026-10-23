@@ -153,6 +153,31 @@ export default function TaskStudioPage() {
     },
   });
 
+  const parsePriority = (val: any): number => {
+    if (typeof val === "number" && !isNaN(val)) return Math.max(0, Math.min(3, val));
+    if (!val) return 1;
+    const s = String(val).trim().toLowerCase();
+    if (s === "0" || s.includes("low") || s.includes("rendah")) return 0;
+    if (s === "1" || s.includes("medium") || s.includes("sedang") || s.includes("med")) return 1;
+    if (s === "2" || s.includes("high") || s.includes("tinggi")) return 2;
+    if (s === "3" || s.includes("critical") || s.includes("kritis") || s.includes("crit") || s.includes("urgent")) return 3;
+    const num = Number(val);
+    return isNaN(num) ? 1 : Math.max(0, Math.min(3, num));
+  };
+
+  const parseStatus = (val: any): number => {
+    if (typeof val === "number" && !isNaN(val)) return Math.max(0, Math.min(4, val));
+    if (!val) return 0;
+    const s = String(val).trim().toLowerCase();
+    if (s === "0" || s.includes("todo") || s.includes("to do") || s.includes("siap")) return 0;
+    if (s === "1" || s.includes("inprogress") || s.includes("in progress") || s.includes("kerja") || s.includes("jalan")) return 1;
+    if (s === "2" || s.includes("done") || s.includes("selesai")) return 2;
+    if (s === "3" || s.includes("overdue") || s.includes("lewat") || s.includes("terlambat")) return 3;
+    if (s === "4" || s.includes("review") || s.includes("tinjau")) return 4;
+    const num = Number(val);
+    return isNaN(num) ? 0 : Math.max(0, Math.min(4, num));
+  };
+
   const resolvePriorityValue = (p: any, idx: number) => {
     const n = (p.name || "").toLowerCase();
     if (n.includes("rendah") || n.includes("low")) return 0;
@@ -191,17 +216,17 @@ export default function TaskStudioPage() {
       const t = detailData.task;
       setTitle(t.title || "");
       setDescription(t.description || "");
-      setPriority(t.priority ?? 1);
-      setStatus(t.status ?? 0);
-      setProgress(t.progress ?? 0);
+      setPriority(parsePriority(t.priority));
+      setStatus(parseStatus(t.status));
+      setProgress(typeof t.progress === "number" ? t.progress : 0);
       setMilestone(t.milestone || "");
       setObstacle(t.obstacle || "");
       setSolution(t.solution || "");
-      setProjectId(t.projectId || undefined);
-      setCategoryId(t.categoryId || undefined);
+      setProjectId(t.projectId ? Number(t.projectId) : undefined);
+      setCategoryId(t.categoryId ? Number(t.categoryId) : undefined);
       setAssignedToUserId(t.assignedToUserId || "");
-      setStartDate(t.startDate ? t.startDate.split("T")[0] : "");
-      setDueDate(t.dueDate ? t.dueDate.split("T")[0] : "");
+      setStartDate(t.startDate ? String(t.startDate).split("T")[0] : "");
+      setDueDate(t.dueDate ? String(t.dueDate).split("T")[0] : "");
     }
   }, [detailData]);
 
@@ -259,11 +284,25 @@ export default function TaskStudioPage() {
 
   // Past month completed task protection (User Request #5)
   // If task status === 2 (Done), and its dueDate or createdAt is before the 1st of the current month, deletion is locked!
+  const taskStatusNum = parseStatus(task?.status);
   const isPastMonthDone = Boolean(
-    task?.status === 2 &&
+    taskStatusNum === 2 &&
       (task?.dueDate || task?.createdAt) &&
       new Date(task.dueDate || task.createdAt) < new Date(new Date().getFullYear(), new Date().getMonth(), 1)
   );
+
+  // Helper to extract descriptive server validation message
+  const extractErrorMessage = (err: any, fallback: string) => {
+    return (
+      err.response?.data?.message ||
+      (err.response?.data?.errors
+        ? Object.values(err.response.data.errors).flat().join(", ")
+        : null) ||
+      err.response?.data?.title ||
+      err.message ||
+      fallback
+    );
+  };
 
   // Unified Save Mutation (FSD 5.5 & 5.21)
   const unifiedSaveMutation = useMutation({
@@ -278,9 +317,9 @@ export default function TaskStudioPage() {
       const payload: any = {
         title: title.trim(),
         description: description.trim() || title.trim(),
-        priority: Number(priority),
-        status: Number(status),
-        progress: Number(progress),
+        priority: parsePriority(priority),
+        status: parseStatus(status),
+        progress: Math.max(0, Math.min(100, Number(progress) || 0)),
         milestone: milestone || null,
         obstacle: obstacle.trim() || null,
         solution: solution.trim() || null,
@@ -289,7 +328,7 @@ export default function TaskStudioPage() {
         assignedToUserId: assignedToUserId || null,
         startDate: formatIsoOrNull(startDate),
         dueDate: formatIsoOrNull(dueDate),
-        logManualSession,
+        logManualSession: Boolean(logManualSession),
       };
 
       if (logManualSession && manualStartTime && manualEndTime) {
@@ -311,17 +350,18 @@ export default function TaskStudioPage() {
       queryClient.invalidateQueries({ queryKey: ["dashboardStats"] });
     },
     onError: (err: any) => {
-      toast.error(err.response?.data?.message || err.message || "Gagal menyimpan perubahan tugas");
+      toast.error(extractErrorMessage(err, "Gagal menyimpan perubahan tugas"));
     },
   });
 
   // Toggle Subtask Status Mutation
   const toggleSubtaskMutation = useMutation({
-    mutationFn: async ({ subtaskId, currentStatus }: { subtaskId: number; currentStatus: number }) => {
+    mutationFn: async ({ subtaskId, currentStatus }: { subtaskId: number; currentStatus: any }) => {
       if (!canEdit) {
         throw new Error("Hanya pembuat tugas atau Administrator yang dapat mengubah sub-tugas ini.");
       }
-      const nextStatus = currentStatus === 2 ? 0 : 2;
+      const curNum = parseStatus(currentStatus);
+      const nextStatus = curNum === 2 ? 0 : 2;
       const res = await apiClient.patch(`/tasks/${subtaskId}/status`, { status: nextStatus });
       return res.data;
     },
@@ -332,7 +372,7 @@ export default function TaskStudioPage() {
       queryClient.invalidateQueries({ queryKey: ["kanbanTasks"] });
     },
     onError: (err: any) => {
-      toast.error(err.response?.data?.message || err.message || "Gagal mengubah status sub-tugas");
+      toast.error(extractErrorMessage(err, "Gagal mengubah status sub-tugas"));
     },
   });
 
@@ -353,7 +393,7 @@ export default function TaskStudioPage() {
       setSubtaskTitle("");
       queryClient.invalidateQueries({ queryKey: ["taskDetail", taskId] });
     },
-    onError: (err: any) => toast.error(err.response?.data?.message || err.message || "Gagal menambah sub-tugas"),
+    onError: (err: any) => toast.error(extractErrorMessage(err, "Gagal menambah sub-tugas")),
   });
 
   // Delete Task Mutation
@@ -372,7 +412,7 @@ export default function TaskStudioPage() {
       toast.success("Tugas berhasil dihapus.");
       router.push("/tasks");
     },
-    onError: (err: any) => toast.error(err.response?.data?.message || err.message || "Gagal menghapus tugas"),
+    onError: (err: any) => toast.error(extractErrorMessage(err, "Gagal menghapus tugas")),
   });
 
   if (isLoading) {
@@ -948,32 +988,35 @@ export default function TaskStudioPage() {
               <div className="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-xs dark:border-gray-800 dark:bg-gray-900">
                 <div className="flex items-center justify-between">
                   <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider dark:text-gray-400">
-                    Checklist Sub-Tugas ({subtasks.filter((s: any) => s.status === 2).length}/{subtasks.length})
+                    Checklist Sub-Tugas ({subtasks.filter((s: any) => parseStatus(s.status) === 2).length}/{subtasks.length})
                   </h4>
                   <span className="text-[10px] text-gray-400">{canEdit ? "Klik untuk centang" : "Hanya lihat"}</span>
                 </div>
 
                 <div className="mt-3 space-y-2">
-                  {subtasks.map((st: any) => (
-                    <div
-                      key={st.id}
-                      onClick={() => canEdit && toggleSubtaskMutation.mutate({ subtaskId: st.id, currentStatus: st.status })}
-                      className={`flex items-center gap-2 rounded-lg p-2 text-xs text-gray-700 dark:text-gray-300 select-none ${
-                        canEdit
-                          ? "hover:bg-gray-50 dark:hover:bg-gray-800/60 cursor-pointer transition"
-                          : "opacity-80 cursor-default"
-                      }`}
-                    >
-                      {st.status === 2 ? (
-                        <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
-                      ) : (
-                        <Circle className="h-4 w-4 shrink-0 text-gray-300 hover:text-gray-400" />
-                      )}
-                      <span className={`flex-1 truncate ${st.status === 2 ? "line-through text-gray-400 dark:text-gray-500" : "font-medium"}`}>
-                        {st.title}
-                      </span>
-                    </div>
-                  ))}
+                  {subtasks.map((st: any) => {
+                    const isDone = parseStatus(st.status) === 2;
+                    return (
+                      <div
+                        key={st.id}
+                        onClick={() => canEdit && toggleSubtaskMutation.mutate({ subtaskId: st.id, currentStatus: st.status })}
+                        className={`flex items-center gap-2 rounded-lg p-2 text-xs text-gray-700 dark:text-gray-300 select-none ${
+                          canEdit
+                            ? "hover:bg-gray-50 dark:hover:bg-gray-800/60 cursor-pointer transition"
+                            : "opacity-80 cursor-default"
+                        }`}
+                      >
+                        {isDone ? (
+                          <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
+                        ) : (
+                          <Circle className="h-4 w-4 shrink-0 text-gray-300 hover:text-gray-400" />
+                        )}
+                        <span className={`flex-1 truncate ${isDone ? "line-through text-gray-400 dark:text-gray-500" : "font-medium"}`}>
+                          {st.title}
+                        </span>
+                      </div>
+                    );
+                  })}
 
                   <div className="mt-3 flex gap-2 pt-2 border-t border-gray-100 dark:border-gray-800">
                     <Input
