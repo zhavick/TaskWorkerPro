@@ -28,6 +28,7 @@ Desktop.ini
 
 ## Database Local Mounts
 pgdata/
+backups/
 scratch/
 
 ## Uploaded Files (ignore uploaded files, keep directory structure via .gitkeep)
