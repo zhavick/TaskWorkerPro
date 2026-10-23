@@ -560,6 +560,88 @@ public class TasksControllerTests
         result!.StatusCode.Should().Be(400);
     }
 
+    [Fact]
+    public void Test_JsonSerialization_And_Deserialization()
+    {
+        var options = new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web);
+        options.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+        options.Converters.Add(new TrackerKerja.Infrastructure.Converters.NullableDateTimeOffsetJsonConverter());
+        options.Converters.Add(new TrackerKerja.Infrastructure.Converters.DateTimeOffsetJsonConverter());
+
+        // 1. Check what task DTO serializes enum to:
+        var taskDto = new TaskItemDto(
+            1, "Title", "Desc", Domain.Enums.TaskPriority.Medium, Domain.Enums.TaskStatus.InProgress,
+            50, null, null, null, null, null, null, null, null, null, null, null, null,
+            0, 0, 0, null, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null, null
+        );
+        var jsonOutput = System.Text.Json.JsonSerializer.Serialize(taskDto, options);
+        // Does it contain "Medium" or 1?
+        jsonOutput.Should().Contain("\"priority\":\"Medium\"");
+        jsonOutput.Should().Contain("\"status\":\"InProgress\"");
+
+        // 2. Check deserializing JSON with numbers:
+        var validJsonWithNumbers = "{\"title\":\"Test\",\"description\":\"Desc\",\"priority\":1,\"status\":0,\"progress\":0,\"logManualSession\":false}";
+        var req1 = System.Text.Json.JsonSerializer.Deserialize<UnifiedSaveTaskRequest>(validJsonWithNumbers, options);
+        req1.Should().NotBeNull();
+        req1!.Priority.Should().Be(Domain.Enums.TaskPriority.Medium);
+        req1.Status.Should().Be(Domain.Enums.TaskStatus.Todo);
+
+        // 3. Check deserializing JSON with null priority & status (e.g. from frontend JS Number("Medium") => NaN => null):
+        var jsonWithNulls = "{\"title\":\"Test\",\"description\":\"Desc\",\"priority\":null,\"status\":null,\"progress\":0,\"logManualSession\":false}";
+        var reqNulls = System.Text.Json.JsonSerializer.Deserialize<UnifiedSaveTaskRequest>(jsonWithNulls, options);
+        reqNulls.Should().NotBeNull();
+        reqNulls!.Priority.Should().BeNull();
+        reqNulls.Status.Should().BeNull();
+
+        // 4. Check deserializing JSON with strings:
+        var jsonWithStrings = "{\"title\":\"Test\",\"description\":\"Desc\",\"priority\":\"High\",\"status\":\"Done\",\"progress\":100,\"logManualSession\":false}";
+        var reqStrings = System.Text.Json.JsonSerializer.Deserialize<UnifiedSaveTaskRequest>(jsonWithStrings, options);
+        reqStrings.Should().NotBeNull();
+        reqStrings!.Priority.Should().Be(Domain.Enums.TaskPriority.High);
+        reqStrings.Status.Should().Be(Domain.Enums.TaskStatus.Done);
+
+        // 5. Check deserializing JSON when priority and status are omitted:
+        var jsonOmitted = "{\"title\":\"Test\",\"description\":\"Desc\",\"progress\":10}";
+        var reqOmitted = System.Text.Json.JsonSerializer.Deserialize<UnifiedSaveTaskRequest>(jsonOmitted, options);
+        reqOmitted.Should().NotBeNull();
+        reqOmitted!.Priority.Should().Be(Domain.Enums.TaskPriority.Medium); // Default
+        reqOmitted.Status.Should().Be(Domain.Enums.TaskStatus.Todo); // Default
+    }
+
+    [Fact]
+    public async Task UnifiedSave_WithNullPriorityAndStatus_PreservesExistingValues()
+    {
+        // Arrange
+        var controller = new TasksController(_context, _tenantService);
+        var existingTask = await _context.Tasks.FindAsync(10);
+        existingTask.Should().NotBeNull();
+        var origPriority = existingTask!.Priority;
+        var origStatus = existingTask.Status;
+
+        var request = new UnifiedSaveTaskRequest(
+            "Tugas 10 Judul Baru",
+            "Desc Baru",
+            null, // null Priority
+            null, // null Status
+            75,
+            null, null, null, 1, null, "user-1", null, null, false, null, null, null
+        );
+
+        // Act
+        var result = await controller.UnifiedSave(10, request) as OkObjectResult;
+
+        // Assert: 200 OK
+        result.Should().NotBeNull();
+        result!.StatusCode.Should().Be(200);
+
+        // Verify task updated title/progress but preserved priority & status
+        var updatedTask = await _context.Tasks.FindAsync(10);
+        updatedTask!.Title.Should().Be("Tugas 10 Judul Baru");
+        updatedTask.Progress.Should().Be(75);
+        updatedTask.Priority.Should().Be(origPriority);
+        updatedTask.Status.Should().Be(origStatus);
+    }
+
     private class FakeTenantService : ICurrentTenantService
     {
         public FakeTenantService(int? companyId, string? companyCode, string? userId, bool isAdmin)
