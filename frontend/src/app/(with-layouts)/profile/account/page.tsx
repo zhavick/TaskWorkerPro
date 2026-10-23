@@ -69,8 +69,8 @@ export default function AccountPage() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 2 * 1024 * 1024) {
-      toast.error("Ukuran file foto profil maksimal 2MB.");
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Ukuran file foto profil maksimal 5MB.");
       return;
     }
 
@@ -79,7 +79,11 @@ export default function AccountPage() {
 
     setIsUploadingAvatar(true);
     try {
-      const res = await apiClient.post("/profile/avatar", formData);
+      const res = await apiClient.post("/profile/avatar", formData, {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+      });
       const newUrl = res.data?.url;
       if (newUrl) {
         setCurrentAvatarUrl(newUrl);
@@ -140,8 +144,8 @@ export default function AccountPage() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error("Ukuran file banner cover maksimal 5MB.");
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error("Ukuran file banner cover maksimal 10MB.");
       return;
     }
 
@@ -150,7 +154,11 @@ export default function AccountPage() {
 
     setIsUploadingCover(true);
     try {
-      const res = await apiClient.post("/profile/cover", formData);
+      const res = await apiClient.post("/profile/cover", formData, {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+      });
       const newUrl = res.data?.url;
       toast.success(res.data?.message || "Banner sampul berhasil diperbarui!");
       setIsCustomCover(true);

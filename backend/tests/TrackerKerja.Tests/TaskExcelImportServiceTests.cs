@@ -1458,7 +1458,59 @@ public class TaskExcelImportServiceTests
         Assert.Equal(project.Id, task.ProjectId);
         Assert.Equal(user.Id, task.AssignedToUserId);
     }
+
+    [Fact]
+    public async Task PreviewAndCommit_WithCatatanColumn_ShouldMigrateNotesWhenTaskNotesEmpty()
+    {
+        using var context = CreateInMemoryContext();
+        var service = new TaskExcelImportService(context);
+
+        // Pre-create a task that has NO notes yet
+        var existingTask = new WorkTask
+        {
+            Id = 501,
+            Title = "Task Butuh Catatan Migrasi",
+            CompanyId = 1,
+            ProjectId = 10,
+            AssignedToUserId = "user-budi",
+            Status = TrackerKerja.Domain.Enums.TaskStatus.InProgress
+        };
+        context.Tasks.Add(existingTask);
+        await context.SaveChangesAsync();
+
+        using var wb = new XLWorkbook();
+        var ws = wb.Worksheets.Add("Tasks");
+        ws.Cell(1, 1).Value = "Kode Tugas";
+        ws.Cell(1, 2).Value = "Judul Tugas (*)";
+        ws.Cell(1, 3).Value = "Deskripsi";
+        ws.Cell(1, 4).Value = "Proyek";
+        ws.Cell(1, 5).Value = "Catatan";
+
+        ws.Cell(2, 1).Value = "T-501";
+        ws.Cell(2, 2).Value = "Task Butuh Catatan Migrasi";
+        ws.Cell(2, 3).Value = "Deskripsi tugas";
+        ws.Cell(2, 4).Value = "Website Redesign";
+        ws.Cell(2, 5).Value = "<p>Catatan penting dari sistem lama yang dipindahkan</p>";
+
+        using var ms = new MemoryStream();
+        wb.SaveAs(ms);
+        ms.Position = 0;
+
+        var preview = await service.PreviewImportAsync(ms, "catatan_test.xlsx", 1);
+        Assert.Single(preview.Rows);
+        Assert.Equal("<p>Catatan penting dari sistem lama yang dipindahkan</p>", preview.Rows[0].Notes);
+
+        var commitReq = new TaskImportCommitRequest(null, null, null, preview.Rows);
+        var commitRes = await service.CommitImportAsync(commitReq, 1);
+        Assert.Equal(1, commitRes.TotalImported);
+
+        // Verify that WorkNote was automatically created for this task with the imported note content
+        var note = await context.Notes.FirstOrDefaultAsync(n => n.TaskId == 501);
+        Assert.NotNull(note);
+        Assert.Contains("Catatan penting dari sistem lama yang dipindahkan", note.ContentHtml);
+    }
 }
+
 
 
 

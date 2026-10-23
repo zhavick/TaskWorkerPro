@@ -88,13 +88,31 @@ public class ProfileController : ControllerBase
         // Update avatar if explicitly provided (allow explicit clearing with empty string)
         if (request.ProfilePictureUrl != null)
         {
-            user.ProfilePictureUrl = string.IsNullOrWhiteSpace(request.ProfilePictureUrl) ? null : request.ProfilePictureUrl.Trim();
+            var trimmed = request.ProfilePictureUrl.Trim();
+            if (trimmed.StartsWith("data:image/", StringComparison.OrdinalIgnoreCase))
+            {
+                var safe = SanitizeUserNameForFolder(user.UserName ?? user.Email ?? user.Id);
+                user.ProfilePictureUrl = await TrySaveBase64ImageAsync(trimmed, safe, "avatar", "avatar");
+            }
+            else
+            {
+                user.ProfilePictureUrl = string.IsNullOrWhiteSpace(trimmed) ? null : trimmed;
+            }
         }
 
         // Update cover if explicitly provided (allow explicit clearing with empty string)
         if (request.CoverPictureUrl != null)
         {
-            user.CoverPictureUrl = string.IsNullOrWhiteSpace(request.CoverPictureUrl) ? null : request.CoverPictureUrl.Trim();
+            var trimmed = request.CoverPictureUrl.Trim();
+            if (trimmed.StartsWith("data:image/", StringComparison.OrdinalIgnoreCase))
+            {
+                var safe = SanitizeUserNameForFolder(user.UserName ?? user.Email ?? user.Id);
+                user.CoverPictureUrl = await TrySaveBase64ImageAsync(trimmed, safe, "cover", "cover");
+            }
+            else
+            {
+                user.CoverPictureUrl = string.IsNullOrWhiteSpace(trimmed) ? null : trimmed;
+            }
         }
 
         user.ConcurrencyStamp = Guid.NewGuid().ToString();
@@ -126,7 +144,6 @@ public class ProfileController : ControllerBase
     }
 
     [HttpPost("avatar")]
-    [Consumes("multipart/form-data")]
     public async Task<IActionResult> UploadAvatar(IFormFile? file)
     {
         var userId = _tenantService.UserId;
@@ -136,7 +153,7 @@ public class ProfileController : ControllerBase
         {
             if (Request.HasFormContentType && Request.Form.Files.Count > 0)
             {
-                file = Request.Form.Files["file"] ?? Request.Form.Files.FirstOrDefault();
+                file = Request.Form.Files["file"] ?? Request.Form.Files["avatar"] ?? Request.Form.Files.FirstOrDefault();
             }
         }
 
@@ -145,14 +162,14 @@ public class ProfileController : ControllerBase
             return BadRequest(new { success = false, message = "File gambar avatar tidak ditemukan." });
         }
 
-        // Validasi ukuran max 2MB
-        if (file.Length > 2 * 1024 * 1024)
+        // Validasi ukuran max 5MB
+        if (file.Length > 5 * 1024 * 1024)
         {
-            return BadRequest(new { success = false, message = "Ukuran file avatar maksimal 2MB." });
+            return BadRequest(new { success = false, message = "Ukuran file avatar maksimal 5MB." });
         }
 
         // Validasi ekstensi
-        var allowedExts = new[] { ".png", ".jpg", ".jpeg", ".webp" };
+        var allowedExts = new[] { ".png", ".jpg", ".jpeg", ".webp", ".gif" };
         var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
         if (!allowedExts.Contains(ext))
         {
@@ -163,58 +180,8 @@ public class ProfileController : ControllerBase
         if (user == null) return NotFound();
 
         var safeUserName = SanitizeUserNameForFolder(user.UserName ?? user.Email ?? user.Id);
-        var fileName = $"{safeUserName}_avatar_{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}{ext}";
+        var relativeUrl = await SaveUserMediaFileAsync(file, safeUserName, "avatar", "avatar");
 
-        // 1. Simpan di backend wwwroot/uploads/users/{safeUserName}/avatar/
-        var rootPath = _environment?.WebRootPath ?? Path.Combine(_environment?.ContentRootPath ?? Directory.GetCurrentDirectory(), "wwwroot");
-        var avatarsDir = Path.Combine(rootPath, "uploads", "users", safeUserName, "avatar");
-        Directory.CreateDirectory(avatarsDir);
-        var filePath = Path.Combine(avatarsDir, fileName);
-
-        using (var stream = new FileStream(filePath, FileMode.Create))
-        {
-            await file.CopyToAsync(stream);
-        }
-
-        // 2. Simpan juga di backend ContentRootPath/uploads/users/{safeUserName}/avatar/
-        try
-        {
-            var contentUploadDir = Path.Combine(_environment?.ContentRootPath ?? Directory.GetCurrentDirectory(), "uploads", "users", safeUserName, "avatar");
-            Directory.CreateDirectory(contentUploadDir);
-            var contentFilePath = Path.Combine(contentUploadDir, fileName);
-            if (!System.IO.File.Exists(contentFilePath))
-            {
-                System.IO.File.Copy(filePath, contentFilePath, true);
-            }
-        }
-        catch { /* ignore */ }
-
-        // 3. Simpan juga di folder frontend/public/uploads/users/{safeUserName}/avatar/
-        var candidateFrontendDirs = new[]
-        {
-            Path.GetFullPath(Path.Combine(_environment?.ContentRootPath ?? Directory.GetCurrentDirectory(), "..", "..", "..", "frontend", "public", "uploads", "users", safeUserName, "avatar")),
-            Path.GetFullPath(Path.Combine(_environment?.ContentRootPath ?? Directory.GetCurrentDirectory(), "..", "..", "frontend", "public", "uploads", "users", safeUserName, "avatar")),
-            Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "frontend", "public", "uploads", "users", safeUserName, "avatar")),
-            Path.Combine(@"c:\TEMP\VSCODE\TrackerKerjaModern\frontend\public\uploads\users", safeUserName, "avatar")
-        };
-
-        foreach (var dir in candidateFrontendDirs)
-        {
-            try
-            {
-                var parentDir = Directory.GetParent(dir)?.FullName;
-                if (parentDir != null && (Directory.Exists(parentDir) || parentDir.Contains("frontend")))
-                {
-                    Directory.CreateDirectory(dir);
-                    var fPath = Path.Combine(dir, fileName);
-                    System.IO.File.Copy(filePath, fPath, true);
-                    break;
-                }
-            }
-            catch { /* fallback */ }
-        }
-
-        var relativeUrl = $"/uploads/users/{safeUserName}/avatar/{fileName}";
         user.ProfilePictureUrl = relativeUrl;
         user.ConcurrencyStamp = Guid.NewGuid().ToString();
         await _context.SaveChangesAsync();
@@ -228,7 +195,6 @@ public class ProfileController : ControllerBase
     }
 
     [HttpPost("cover")]
-    [Consumes("multipart/form-data")]
     public async Task<IActionResult> UploadCover(IFormFile? file)
     {
         var userId = _tenantService.UserId;
@@ -238,7 +204,7 @@ public class ProfileController : ControllerBase
         {
             if (Request.HasFormContentType && Request.Form.Files.Count > 0)
             {
-                file = Request.Form.Files["file"] ?? Request.Form.Files.FirstOrDefault();
+                file = Request.Form.Files["file"] ?? Request.Form.Files["cover"] ?? Request.Form.Files.FirstOrDefault();
             }
         }
 
@@ -247,14 +213,14 @@ public class ProfileController : ControllerBase
             return BadRequest(new { success = false, message = "File gambar cover tidak ditemukan." });
         }
 
-        // Validasi ukuran max 5MB
-        if (file.Length > 5 * 1024 * 1024)
+        // Validasi ukuran max 10MB
+        if (file.Length > 10 * 1024 * 1024)
         {
-            return BadRequest(new { success = false, message = "Ukuran file banner cover maksimal 5MB." });
+            return BadRequest(new { success = false, message = "Ukuran file banner cover maksimal 10MB." });
         }
 
         // Validasi ekstensi
-        var allowedExts = new[] { ".png", ".jpg", ".jpeg", ".webp" };
+        var allowedExts = new[] { ".png", ".jpg", ".jpeg", ".webp", ".gif" };
         var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
         if (!allowedExts.Contains(ext))
         {
@@ -265,58 +231,8 @@ public class ProfileController : ControllerBase
         if (user == null) return NotFound();
 
         var safeUserName = SanitizeUserNameForFolder(user.UserName ?? user.Email ?? user.Id);
-        var fileName = $"{safeUserName}_cover_{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}{ext}";
+        var relativeUrl = await SaveUserMediaFileAsync(file, safeUserName, "cover", "cover");
 
-        // 1. Simpan di backend wwwroot/uploads/users/{safeUserName}/cover/
-        var rootPath = _environment?.WebRootPath ?? Path.Combine(_environment?.ContentRootPath ?? Directory.GetCurrentDirectory(), "wwwroot");
-        var coversDir = Path.Combine(rootPath, "uploads", "users", safeUserName, "cover");
-        Directory.CreateDirectory(coversDir);
-        var filePath = Path.Combine(coversDir, fileName);
-
-        using (var stream = new FileStream(filePath, FileMode.Create))
-        {
-            await file.CopyToAsync(stream);
-        }
-
-        // 2. Simpan juga di backend ContentRootPath/uploads/users/{safeUserName}/cover/
-        try
-        {
-            var contentUploadDir = Path.Combine(_environment?.ContentRootPath ?? Directory.GetCurrentDirectory(), "uploads", "users", safeUserName, "cover");
-            Directory.CreateDirectory(contentUploadDir);
-            var contentFilePath = Path.Combine(contentUploadDir, fileName);
-            if (!System.IO.File.Exists(contentFilePath))
-            {
-                System.IO.File.Copy(filePath, contentFilePath, true);
-            }
-        }
-        catch { /* ignore */ }
-
-        // 3. Simpan juga di folder frontend/public/uploads/users/{safeUserName}/cover/
-        var candidateFrontendDirs = new[]
-        {
-            Path.GetFullPath(Path.Combine(_environment?.ContentRootPath ?? Directory.GetCurrentDirectory(), "..", "..", "..", "frontend", "public", "uploads", "users", safeUserName, "cover")),
-            Path.GetFullPath(Path.Combine(_environment?.ContentRootPath ?? Directory.GetCurrentDirectory(), "..", "..", "frontend", "public", "uploads", "users", safeUserName, "cover")),
-            Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "frontend", "public", "uploads", "users", safeUserName, "cover")),
-            Path.Combine(@"c:\TEMP\VSCODE\TrackerKerjaModern\frontend\public\uploads\users", safeUserName, "cover")
-        };
-
-        foreach (var dir in candidateFrontendDirs)
-        {
-            try
-            {
-                var parentDir = Directory.GetParent(dir)?.FullName;
-                if (parentDir != null && (Directory.Exists(parentDir) || parentDir.Contains("frontend")))
-                {
-                    Directory.CreateDirectory(dir);
-                    var fPath = Path.Combine(dir, fileName);
-                    System.IO.File.Copy(filePath, fPath, true);
-                    break;
-                }
-            }
-            catch { /* fallback */ }
-        }
-
-        var relativeUrl = $"/uploads/users/{safeUserName}/cover/{fileName}";
         user.CoverPictureUrl = relativeUrl;
         user.ConcurrencyStamp = Guid.NewGuid().ToString();
         await _context.SaveChangesAsync();
@@ -327,6 +243,118 @@ public class ProfileController : ControllerBase
             message = "Banner sampul profil berhasil diperbarui.",
             url = relativeUrl
         });
+    }
+
+    private async Task<string> SaveUserMediaFileAsync(IFormFile file, string safeUserName, string subFolder, string prefix)
+    {
+        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+        if (string.IsNullOrEmpty(ext)) ext = ".png";
+        var fileName = $"{safeUserName}_{prefix}_{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}{ext}";
+
+        var contentRoot = _environment?.ContentRootPath ?? Directory.GetCurrentDirectory();
+
+        // 1. Backend ContentRootPath/uploads/... (served by StaticFiles in Program.cs)
+        var primaryUploadDir = Path.Combine(contentRoot, "uploads", "users", safeUserName, subFolder);
+        Directory.CreateDirectory(primaryUploadDir);
+        var primaryFilePath = Path.Combine(primaryUploadDir, fileName);
+
+        using (var stream = new FileStream(primaryFilePath, FileMode.Create))
+        {
+            await file.CopyToAsync(stream);
+        }
+
+        // 2. Backend wwwroot/uploads/...
+        try
+        {
+            var wwwrootDir = Path.Combine(_environment?.WebRootPath ?? Path.Combine(contentRoot, "wwwroot"), "uploads", "users", safeUserName, subFolder);
+            Directory.CreateDirectory(wwwrootDir);
+            var wwwrootFile = Path.Combine(wwwrootDir, fileName);
+            if (!System.IO.File.Exists(wwwrootFile))
+            {
+                System.IO.File.Copy(primaryFilePath, wwwrootFile, true);
+            }
+        }
+        catch { /* ignore */ }
+
+        // 3. Frontend public/uploads/...
+        var candidateFrontendDirs = new[]
+        {
+            @"c:\TEMP\VSCODE\TrackerKerjaModern\frontend\public\uploads\users",
+            Path.GetFullPath(Path.Combine(contentRoot, "..", "..", "..", "frontend", "public", "uploads", "users")),
+            Path.GetFullPath(Path.Combine(contentRoot, "..", "..", "frontend", "public", "uploads", "users")),
+            Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "frontend", "public", "uploads", "users"))
+        };
+
+        foreach (var baseDir in candidateFrontendDirs)
+        {
+            try
+            {
+                if (Directory.Exists(baseDir) || Directory.Exists(Path.GetDirectoryName(baseDir) ?? ""))
+                {
+                    var targetDir = Path.Combine(baseDir, safeUserName, subFolder);
+                    Directory.CreateDirectory(targetDir);
+                    var targetFile = Path.Combine(targetDir, fileName);
+                    System.IO.File.Copy(primaryFilePath, targetFile, true);
+                    break;
+                }
+            }
+            catch { /* ignore */ }
+        }
+
+        return $"/uploads/users/{safeUserName}/{subFolder}/{fileName}";
+    }
+
+    private async Task<string?> TrySaveBase64ImageAsync(string? dataUrl, string safeUserName, string subFolder, string prefix)
+    {
+        if (string.IsNullOrWhiteSpace(dataUrl) || !dataUrl.StartsWith("data:image/", StringComparison.OrdinalIgnoreCase))
+        {
+            return dataUrl;
+        }
+
+        try
+        {
+            var parts = dataUrl.Split(',');
+            if (parts.Length < 2) return dataUrl;
+
+            var meta = parts[0];
+            var ext = ".png";
+            if (meta.Contains("jpeg") || meta.Contains("jpg")) ext = ".jpg";
+            else if (meta.Contains("webp")) ext = ".webp";
+            else if (meta.Contains("gif")) ext = ".gif";
+
+            var bytes = Convert.FromBase64String(parts[1]);
+            var fileName = $"{safeUserName}_{prefix}_{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}{ext}";
+
+            var contentRoot = _environment?.ContentRootPath ?? Directory.GetCurrentDirectory();
+            var primaryUploadDir = Path.Combine(contentRoot, "uploads", "users", safeUserName, subFolder);
+            Directory.CreateDirectory(primaryUploadDir);
+            var primaryFilePath = Path.Combine(primaryUploadDir, fileName);
+            await System.IO.File.WriteAllBytesAsync(primaryFilePath, bytes);
+
+            // Copy to wwwroot
+            try
+            {
+                var wwwrootDir = Path.Combine(_environment?.WebRootPath ?? Path.Combine(contentRoot, "wwwroot"), "uploads", "users", safeUserName, subFolder);
+                Directory.CreateDirectory(wwwrootDir);
+                System.IO.File.Copy(primaryFilePath, Path.Combine(wwwrootDir, fileName), true);
+            }
+            catch { }
+
+            // Copy to frontend/public
+            try
+            {
+                var feDir = Path.Combine(@"c:\TEMP\VSCODE\TrackerKerjaModern\frontend\public\uploads\users", safeUserName, subFolder);
+                Directory.CreateDirectory(feDir);
+                System.IO.File.Copy(primaryFilePath, Path.Combine(feDir, fileName), true);
+            }
+            catch { }
+
+            return $"/uploads/users/{safeUserName}/{subFolder}/{fileName}";
+        }
+        catch
+        {
+            return dataUrl;
+        }
     }
 
     private static string SanitizeUserNameForFolder(string? raw)

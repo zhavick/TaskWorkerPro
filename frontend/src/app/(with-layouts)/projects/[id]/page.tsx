@@ -227,9 +227,6 @@ export default function ProjectStudioDetailPage() {
   // Update Project Mutation
   const updateProjectMutation = useMutation({
     mutationFn: async () => {
-      if (!isAdmin) {
-        throw new Error("Hanya Administrator yang memiliki akses untuk mengedit data proyek.");
-      }
       const payload = {
         name: name.trim(),
         description: description.trim(),

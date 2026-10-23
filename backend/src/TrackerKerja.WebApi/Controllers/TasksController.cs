@@ -163,13 +163,15 @@ public class TasksController : ControllerBase
         [FromQuery] string? search = null,
         [FromQuery] string? filter = null,
         [FromQuery] string? assignedToUserId = null,
+        [FromQuery] int? categoryId = null,
+        [FromQuery] string? milestone = null,
         [FromQuery] int? month = null,
         [FromQuery] int? year = null,
         [FromQuery] DateTimeOffset? doneStartDate = null,
         [FromQuery] DateTimeOffset? doneEndDate = null,
         [FromQuery] DateTimeOffset? startDate = null,
         [FromQuery] DateTimeOffset? endDate = null,
-        [FromQuery] bool includeSubtasks = true)
+        [FromQuery] bool includeSubtasks = false)
     {
         var query = _context.Tasks
             .Include(t => t.Project)
@@ -197,6 +199,8 @@ public class TasksController : ControllerBase
 
         if (projectId.HasValue) query = query.Where(t => t.ProjectId == projectId.Value);
         if (priority.HasValue) query = query.Where(t => t.Priority == priority.Value);
+        if (categoryId.HasValue) query = query.Where(t => t.CategoryId == categoryId.Value);
+        if (!string.IsNullOrWhiteSpace(milestone)) query = query.Where(t => t.Milestone == milestone);
 
         if (!string.IsNullOrWhiteSpace(search))
         {
@@ -205,16 +209,14 @@ public class TasksController : ControllerBase
                                      (t.Description != null && t.Description.ToLower().Contains(s)));
         }
 
-        // Done status filter: "done dapat di tampilkan hanya pada pada bulan aktif secara default, dan dapat di select berdasarkan rentang waktu"
-        // Todo, InProgress, and Overdue tasks are active work items and must always match grid data without being hidden.
+        // Done status filter: Only filter by date if explicitly requested (month, custom range, or dates)
         DateTimeOffset? rangeStart = doneStartDate ?? startDate;
         DateTimeOffset? rangeEnd = doneEndDate ?? endDate;
 
-        if (!rangeStart.HasValue && !rangeEnd.HasValue && month != 0)
+        if (month.HasValue && month.Value >= 1 && month.Value <= 12)
         {
-            var targetMonth = (month.HasValue && month.Value >= 1 && month.Value <= 12) ? month.Value : DateTime.UtcNow.Month;
             var targetYear = (year.HasValue && year.Value >= 2000 && year.Value <= 2100) ? year.Value : DateTime.UtcNow.Year;
-            rangeStart = new DateTimeOffset(targetYear, targetMonth, 1, 0, 0, 0, TimeSpan.Zero);
+            rangeStart = new DateTimeOffset(targetYear, month.Value, 1, 0, 0, 0, TimeSpan.Zero);
             rangeEnd = rangeStart.Value.AddMonths(1).AddTicks(-1);
         }
 
@@ -223,7 +225,7 @@ public class TasksController : ControllerBase
             var rStart = rangeStart ?? DateTimeOffset.MinValue;
             var rEnd = rangeEnd ?? DateTimeOffset.MaxValue;
 
-            // Filter Done tasks to the selected period/range, while keeping active tasks (Todo, InProgress, Overdue) visible
+            // Filter Done tasks to the selected period/range, while keeping active tasks (Todo, InProgress, Review, Overdue) visible
             query = query.Where(t =>
                 t.Status != Domain.Enums.TaskStatus.Done ||
                 (t.DueDate.HasValue && t.DueDate.Value >= rStart && t.DueDate.Value <= rEnd) ||

@@ -182,8 +182,8 @@ export default function KanbanPage() {
   const [activeMonth, setActiveMonth] = useState<number>(() => new Date().getMonth() + 1); // 1-12
   const [activeYear, setActiveYear] = useState<number>(() => new Date().getFullYear());
 
-  // Done Column Scope: "month" (default: Bulan Aktif), "range" (Rentang Waktu kustom), "all" (Semua Waktu)
-  const [doneFilterMode, setDoneFilterMode] = useState<"month" | "range" | "all">("month");
+  // Done Column Scope: "all" (default: Semua Waktu - konsisten dengan Data Grid), "month" (Bulan Aktif), "range" (Rentang Waktu kustom)
+  const [doneFilterMode, setDoneFilterMode] = useState<"month" | "range" | "all">("all");
   const [doneStartDate, setDoneStartDate] = useState<string>("");
   const [doneEndDate, setDoneEndDate] = useState<string>("");
 
@@ -331,8 +331,6 @@ export default function KanbanPage() {
           const endIso = new Date(doneEndDate + "T23:59:59.999").toISOString();
           params.append("doneEndDate", endIso);
         }
-      } else if (doneFilterMode === "all") {
-        params.append("month", "0");
       }
 
       const res = await apiClient.get(`/tasks/kanban?${params.toString()}`);

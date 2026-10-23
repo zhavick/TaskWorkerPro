@@ -55,10 +55,6 @@ export default function ProjectsPage() {
   const [editDeadline, setEditDeadline] = useState("");
 
   const handleOpenEditModal = (p: any) => {
-    if (!isAdmin) {
-      toast.error("Hanya Administrator yang memiliki hak akses untuk mengedit proyek.");
-      return;
-    }
     setEditingProject(p);
     setEditName(p.name || "");
     setEditDescription(p.description || "");
@@ -122,9 +118,6 @@ export default function ProjectsPage() {
   // 3b. Update Project Mutation
   const updateProjectMutation = useMutation({
     mutationFn: async () => {
-      if (!isAdmin) {
-        throw new Error("Hanya Administrator yang dapat memperbarui data proyek.");
-      }
       if (!editingProject) return;
       const res = await apiClient.put(`/projects/${editingProject.id}`, {
         name: editName.trim(),

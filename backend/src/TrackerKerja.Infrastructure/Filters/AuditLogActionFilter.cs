@@ -27,14 +27,13 @@ public class AuditLogActionFilter : IAsyncActionFilter
     private readonly AppDbContext? _directContext;
     private readonly ILogger<AuditLogActionFilter> _logger;
 
-    [ActivatorUtilitiesConstructor]
     public AuditLogActionFilter(IServiceScopeFactory scopeFactory, ILogger<AuditLogActionFilter> logger)
     {
         _scopeFactory = scopeFactory;
         _logger = logger;
     }
 
-    public AuditLogActionFilter(AppDbContext directContext, ILogger<AuditLogActionFilter> logger)
+    internal AuditLogActionFilter(AppDbContext directContext, ILogger<AuditLogActionFilter> logger)
     {
         _directContext = directContext;
         _logger = logger;

@@ -251,7 +251,7 @@ export default function RewardStorePage() {
   }, [adminClaims]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 px-2 py-4 lg:px-6">
       {/* Header & Breadcrumbs */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>

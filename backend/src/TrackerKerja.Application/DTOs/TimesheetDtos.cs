@@ -16,6 +16,11 @@ public record StartTimerRequest(
     string? Notes
 );
 
+public record StopTimerRequest(
+    string? Notes,
+    DateTimeOffset? StopTime
+);
+
 public record ManualSessionRequest(
     int TaskId,
     DateTimeOffset StartTime,

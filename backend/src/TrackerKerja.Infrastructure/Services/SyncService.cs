@@ -1605,6 +1605,13 @@ public class SyncService : ISyncService
         await _context.SaveChangesAsync();
 
         // 5. Merge Tasks
+        var allLocalTasks = await _context.Tasks.IgnoreQueryFilters().ToListAsync();
+        var taskIdLookup = new Dictionary<int, int>();
+        foreach (var lt in allLocalTasks)
+        {
+            taskIdLookup[lt.Id] = lt.Id;
+        }
+
         foreach (var t in data.Tasks)
         {
             var resolvedCompanyId = t.CompanyId.HasValue && companyIdLookup.TryGetValue(t.CompanyId.Value, out var tcId)
@@ -1619,10 +1626,27 @@ public class SyncService : ISyncService
             var resolvedParentTaskId = parentExists ? t.ParentTaskId : null;
 
             var existing = await _context.Tasks.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.Id == t.Id);
+            if (existing == null && !string.IsNullOrWhiteSpace(t.Title))
+            {
+                existing = await _context.Tasks.IgnoreQueryFilters()
+                    .FirstOrDefaultAsync(x => x.Title.ToLower() == t.Title.ToLower() && (!t.ProjectId.HasValue || x.ProjectId == t.ProjectId));
+            }
+
             if (existing != null)
             {
+                taskIdLookup[t.Id] = existing.Id;
+
                 existing.Title = t.Title;
-                existing.Description = t.Description;
+                // Jika deskripsi/notes tugas di sistem lokal masih kosong, perbarui dari sistem lama
+                if (IsContentEmpty(existing.Description) && !IsContentEmpty(t.Description))
+                {
+                    existing.Description = t.Description;
+                }
+                else if (!string.IsNullOrWhiteSpace(t.Description))
+                {
+                    existing.Description = t.Description;
+                }
+
                 existing.Priority = t.Priority;
                 existing.Status = t.Status;
                 existing.Progress = t.Progress;
@@ -1641,7 +1665,7 @@ public class SyncService : ISyncService
             }
             else
             {
-                _context.Tasks.Add(new WorkTask
+                var newTask = new WorkTask
                 {
                     Id = t.Id,
                     Title = t.Title,
@@ -1662,7 +1686,10 @@ public class SyncService : ISyncService
                     DueDate = t.DueDate,
                     CreatedAt = t.CreatedAt,
                     UpdatedAt = t.UpdatedAt
-                });
+                };
+                _context.Tasks.Add(newTask);
+                await _context.SaveChangesAsync();
+                taskIdLookup[t.Id] = newTask.Id;
             }
             totalMerged++;
         }
@@ -1675,8 +1702,8 @@ public class SyncService : ISyncService
                 ? uid
                 : (defaultFallbackUserId ?? s.UserId);
 
-            // Verify task exists or fallback to existing task
-            var targetTaskId = s.TaskId;
+            // Verify task exists or fallback to existing task via taskIdLookup
+            var targetTaskId = taskIdLookup.TryGetValue(s.TaskId, out var mappedSid) ? mappedSid : s.TaskId;
             var taskExists = await _context.Tasks.IgnoreQueryFilters().AnyAsync(x => x.Id == targetTaskId);
             if (!taskExists)
             {
@@ -1701,7 +1728,15 @@ public class SyncService : ISyncService
                 existing.StartTime = s.StartTime;
                 existing.EndTime = s.EndTime;
                 existing.Duration = s.Duration;
-                existing.Notes = s.Notes;
+                // Jika notes pada session masih kosong, perbarui dan pindahkan dari sistem lama
+                if (string.IsNullOrWhiteSpace(existing.Notes) && !string.IsNullOrWhiteSpace(s.Notes))
+                {
+                    existing.Notes = s.Notes;
+                }
+                else if (!string.IsNullOrWhiteSpace(s.Notes))
+                {
+                    existing.Notes = s.Notes;
+                }
             }
             else
             {
@@ -1747,7 +1782,15 @@ public class SyncService : ISyncService
                 existing.ClockOut = a.ClockOut;
                 existing.TotalHours = a.TotalHours;
                 existing.LeaveReason = a.LeaveReason;
-                existing.Notes = a.Notes;
+                // Jika notes pada data presensi masih kosong, perbarui dan pindahkan dari sistem lama
+                if (string.IsNullOrWhiteSpace(existing.Notes) && !string.IsNullOrWhiteSpace(a.Notes))
+                {
+                    existing.Notes = a.Notes;
+                }
+                else if (!string.IsNullOrWhiteSpace(a.Notes))
+                {
+                    existing.Notes = a.Notes;
+                }
                 existing.UpdatedAt = a.UpdatedAt;
             }
             else
@@ -1774,46 +1817,131 @@ public class SyncService : ISyncService
         }
         await _context.SaveChangesAsync();
 
-        // 8. Merge Notes
+        // 8. Merge Notes (Catatan Kerja)
+        var noteIdLookup = new Dictionary<int, int>();
         foreach (var n in data.Notes)
         {
             var resolvedCompanyId = n.CompanyId.HasValue && companyIdLookup.TryGetValue(n.CompanyId.Value, out var ncId)
                 ? ncId
-                : (n.CompanyId ?? defaultCompanyId);
+                : n.CompanyId;
+
+            if (resolvedCompanyId.HasValue && !await _context.Companies.IgnoreQueryFilters().AnyAsync(c => c.Id == resolvedCompanyId.Value))
+            {
+                resolvedCompanyId = defaultCompanyId;
+            }
 
             var resolvedAuthorId = (!string.IsNullOrEmpty(n.AuthorUserId) && userLookup.TryGetValue(n.AuthorUserId, out var nUid))
                 ? nUid
-                : (defaultFallbackUserId ?? n.AuthorUserId);
+                : n.AuthorUserId;
 
+            if (!string.IsNullOrEmpty(resolvedAuthorId))
+            {
+                var authorExists = await _context.Users.IgnoreQueryFilters().AnyAsync(u => u.Id == resolvedAuthorId);
+                if (!authorExists)
+                {
+                    resolvedAuthorId = defaultFallbackUserId;
+                    if (!string.IsNullOrEmpty(resolvedAuthorId) && !await _context.Users.IgnoreQueryFilters().AnyAsync(u => u.Id == resolvedAuthorId))
+                    {
+                        resolvedAuthorId = null;
+                    }
+                }
+            }
+
+            int? resolvedTaskId = null;
+            if (n.TaskId.HasValue)
+            {
+                if (taskIdLookup.TryGetValue(n.TaskId.Value, out var mappedTid))
+                {
+                    resolvedTaskId = mappedTid;
+                }
+                else if (await _context.Tasks.IgnoreQueryFilters().AnyAsync(x => x.Id == n.TaskId.Value))
+                {
+                    resolvedTaskId = n.TaskId.Value;
+                }
+            }
+
+            // 1. Cari catatan berdasarkan ID
             var existing = await _context.Notes.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.Id == n.Id);
+
+            // 2. Jika tidak ditemukan berdasarkan ID, cari berdasarkan TaskId dan Title serupa
+            if (existing == null && resolvedTaskId.HasValue && !string.IsNullOrWhiteSpace(n.Title))
+            {
+                existing = await _context.Notes.IgnoreQueryFilters()
+                    .FirstOrDefaultAsync(x => x.TaskId == resolvedTaskId.Value && x.Title.ToLower() == n.Title.Trim().ToLower());
+            }
+
+            // 3. Jika tidak ditemukan, cari berdasarkan Title dan Company
+            if (existing == null && !string.IsNullOrWhiteSpace(n.Title))
+            {
+                existing = await _context.Notes.IgnoreQueryFilters()
+                    .FirstOrDefaultAsync(x => x.Title.ToLower() == n.Title.Trim().ToLower() && (!resolvedCompanyId.HasValue || x.CompanyId == resolvedCompanyId));
+            }
+
+            // 4. Jika masih belum ditemukan dan catatan lama terasosiasi dengan task tertentu,
+            // periksa apakah tugas tersebut memiliki catatan di sistem lokal yang masih kosong kontennya
+            if (existing == null && resolvedTaskId.HasValue)
+            {
+                var taskNotes = await _context.Notes.IgnoreQueryFilters().Where(x => x.TaskId == resolvedTaskId.Value).ToListAsync();
+                existing = taskNotes.FirstOrDefault(x => IsContentEmpty(x.ContentHtml));
+            }
+
             if (existing != null)
             {
-                existing.Title = n.Title;
-                existing.ContentHtml = n.ContentHtml;
-                existing.Category = n.Category;
-                existing.Color = n.Color;
+                noteIdLookup[n.Id] = existing.Id;
+
+                var isLocalContentEmpty = IsContentEmpty(existing.ContentHtml);
+                var hasRemoteContent = !IsContentEmpty(n.ContentHtml);
+
+                // PERSYARATAN: Jika notes di sistem lokal masih kosong, dan sinkronisasi menemukan data tersebut,
+                // maka pindahkan/perbarui isi data catatan dari sistem lama
+                if (isLocalContentEmpty && hasRemoteContent)
+                {
+                    existing.ContentHtml = n.ContentHtml!;
+                    if (string.IsNullOrWhiteSpace(existing.Title) && !string.IsNullOrWhiteSpace(n.Title))
+                    {
+                        existing.Title = n.Title;
+                    }
+                }
+                else if (hasRemoteContent)
+                {
+                    existing.ContentHtml = n.ContentHtml!;
+                }
+
+                if (!string.IsNullOrWhiteSpace(n.Title)) existing.Title = n.Title;
+                if (!string.IsNullOrWhiteSpace(n.Category)) existing.Category = n.Category;
+                if (!string.IsNullOrWhiteSpace(n.Color)) existing.Color = n.Color;
                 existing.IsPinned = n.IsPinned;
                 existing.AuthorUserId = resolvedAuthorId;
-                existing.TaskId = n.TaskId;
-                existing.CompanyId = resolvedCompanyId;
-                existing.UpdatedAt = n.UpdatedAt;
+                if (resolvedTaskId.HasValue) existing.TaskId = resolvedTaskId;
+                if (resolvedCompanyId.HasValue) existing.CompanyId = resolvedCompanyId;
+                existing.UpdatedAt = n.UpdatedAt != default ? n.UpdatedAt : DateTimeOffset.UtcNow;
             }
             else
             {
-                _context.Notes.Add(new WorkNote
+                // Catatan baru dari sistem lama yang belum ada di sistem lokal
+                var idTaken = await _context.Notes.IgnoreQueryFilters().AnyAsync(x => x.Id == n.Id);
+                var newNote = new WorkNote
                 {
-                    Id = n.Id,
-                    Title = n.Title,
-                    ContentHtml = n.ContentHtml,
-                    Category = n.Category,
-                    Color = n.Color,
+                    Title = !string.IsNullOrWhiteSpace(n.Title) ? n.Title : "Catatan",
+                    ContentHtml = n.ContentHtml ?? string.Empty,
+                    Category = string.IsNullOrWhiteSpace(n.Category) ? "General" : n.Category,
+                    Color = string.IsNullOrWhiteSpace(n.Color) ? "#6366F1" : n.Color,
                     IsPinned = n.IsPinned,
                     AuthorUserId = resolvedAuthorId,
-                    TaskId = n.TaskId,
+                    TaskId = resolvedTaskId,
                     CompanyId = resolvedCompanyId,
-                    CreatedAt = n.CreatedAt,
-                    UpdatedAt = n.UpdatedAt
-                });
+                    CreatedAt = n.CreatedAt != default ? n.CreatedAt : DateTimeOffset.UtcNow,
+                    UpdatedAt = n.UpdatedAt != default ? n.UpdatedAt : DateTimeOffset.UtcNow
+                };
+
+                if (!idTaken)
+                {
+                    newNote.Id = n.Id;
+                }
+
+                _context.Notes.Add(newNote);
+                await _context.SaveChangesAsync();
+                noteIdLookup[n.Id] = newNote.Id;
             }
             totalMerged++;
         }
@@ -1822,38 +1950,81 @@ public class SyncService : ISyncService
         // 9. Merge NoteAttachments
         foreach (var att in data.NoteAttachments)
         {
+            var targetNoteId = noteIdLookup.TryGetValue(att.NoteId, out var mappedNid) ? mappedNid : att.NoteId;
+            var targetNoteExists = await _context.Notes.IgnoreQueryFilters().AnyAsync(x => x.Id == targetNoteId);
+            if (!targetNoteExists)
+            {
+                // Auto-create placeholder note so relational FK constraints are never violated and attachments are preserved
+                var placeholderNote = new WorkNote
+                {
+                    Id = targetNoteId,
+                    Title = $"Catatan #{targetNoteId}",
+                    ContentHtml = string.Empty,
+                    Category = "General",
+                    Color = "#6366F1",
+                    CreatedAt = DateTimeOffset.UtcNow,
+                    UpdatedAt = DateTimeOffset.UtcNow
+                };
+                _context.Notes.Add(placeholderNote);
+                await _context.SaveChangesAsync();
+            }
+
+            var resolvedUploaderId = (!string.IsNullOrEmpty(att.UploadedByUserId) && userLookup.TryGetValue(att.UploadedByUserId, out var uploaderUid))
+                ? uploaderUid
+                : att.UploadedByUserId;
+
+            if (!string.IsNullOrEmpty(resolvedUploaderId))
+            {
+                var uploaderExists = await _context.Users.IgnoreQueryFilters().AnyAsync(u => u.Id == resolvedUploaderId);
+                if (!uploaderExists)
+                {
+                    resolvedUploaderId = defaultFallbackUserId;
+                    if (!string.IsNullOrEmpty(resolvedUploaderId) && !await _context.Users.IgnoreQueryFilters().AnyAsync(u => u.Id == resolvedUploaderId))
+                    {
+                        resolvedUploaderId = null;
+                    }
+                }
+            }
+
             var normalizedFilePath = att.FilePath;
             if (string.IsNullOrWhiteSpace(normalizedFilePath) || Path.IsPathRooted(normalizedFilePath) || normalizedFilePath.Contains('\\'))
             {
-                normalizedFilePath = $"/uploads/notes/{att.NoteId}/{att.FileName}";
+                normalizedFilePath = $"/uploads/notes/{targetNoteId}/{att.FileName}";
             }
 
             var existing = await _context.NoteAttachments.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.Id == att.Id);
             if (existing != null)
             {
-                existing.NoteId = att.NoteId;
+                existing.NoteId = targetNoteId;
                 existing.FileName = att.FileName;
                 existing.FilePath = normalizedFilePath;
                 existing.FileSize = att.FileSize;
                 existing.ContentType = att.ContentType;
                 existing.FileExtension = att.FileExtension;
-                existing.UploadedByUserId = att.UploadedByUserId;
-                existing.UploadedAt = att.UploadedAt;
+                existing.UploadedByUserId = resolvedUploaderId;
+                existing.UploadedAt = att.UploadedAt != default ? att.UploadedAt : DateTimeOffset.UtcNow;
             }
             else
             {
-                _context.NoteAttachments.Add(new NoteAttachment
+                var attIdTaken = await _context.NoteAttachments.IgnoreQueryFilters().AnyAsync(x => x.Id == att.Id);
+                var newAtt = new NoteAttachment
                 {
-                    Id = att.Id,
-                    NoteId = att.NoteId,
+                    NoteId = targetNoteId,
                     FileName = att.FileName,
                     FilePath = normalizedFilePath,
                     FileSize = att.FileSize,
                     ContentType = att.ContentType,
                     FileExtension = att.FileExtension,
-                    UploadedByUserId = att.UploadedByUserId,
-                    UploadedAt = att.UploadedAt
-                });
+                    UploadedByUserId = resolvedUploaderId,
+                    UploadedAt = att.UploadedAt != default ? att.UploadedAt : DateTimeOffset.UtcNow
+                };
+
+                if (!attIdTaken)
+                {
+                    newAtt.Id = att.Id;
+                }
+
+                _context.NoteAttachments.Add(newAtt);
             }
             totalMerged++;
         }
@@ -2611,10 +2782,10 @@ public class SyncService : ISyncService
 
         if (isPostgres)
         {
-            // Convert SQLite 'INSERT OR REPLACE INTO <table> (<columns>) VALUES (<values>);' to PostgreSQL UPSERT
+            // Convert SQLite 'INSERT [OR REPLACE / OR IGNORE] INTO <table> (<columns>) VALUES (<values>);' to PostgreSQL UPSERT
             var match = System.Text.RegularExpressions.Regex.Match(
                 stmt,
-                @"^INSERT\s+OR\s+REPLACE\s+INTO\s+[""`]?([a-zA-Z0-9_]+)[""`]?\s*\((.*?)\)\s*VALUES\s*\((.*?)\)\s*;?$",
+                @"^INSERT\s+(?:OR\s+REPLACE\s+|OR\s+IGNORE\s+)?INTO\s+[""`]?([a-zA-Z0-9_]+)[""`]?\s*\((.*?)\)\s*VALUES\s*\((.*?)\)\s*;?$",
                 System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Singleline);
 
             if (match.Success)
@@ -2943,4 +3114,25 @@ public class SyncService : ISyncService
             _logger?.LogWarning(ex, "MirrorExtractedFile encountered an error for {RelPath}", relPath);
         }
     }
+
+    private static bool IsContentEmpty(string? content)
+    {
+        if (string.IsNullOrWhiteSpace(content)) return true;
+        var trimmed = content.Trim();
+        if (trimmed.Equals("<p></p>", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Equals("<p><br></p>", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Equals("<p><br/></p>", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Equals("<p>&nbsp;</p>", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Equals("<div></div>", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Equals("<div><br></div>", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Equals("<br>", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Equals("<br/>", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+        var stripped = System.Text.RegularExpressions.Regex.Replace(trimmed, "<.*?>", string.Empty);
+        stripped = stripped.Replace("&nbsp;", " ").Trim();
+        return string.IsNullOrWhiteSpace(stripped);
+    }
 }
+

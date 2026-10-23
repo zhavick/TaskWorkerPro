@@ -606,6 +606,146 @@ public class SyncServiceTests : IDisposable
         }
     }
 
+    [Fact]
+    public async Task ProcessReceivedPayloadAsync_WhenNotesAreEmpty_ShouldMigrateAndPopulateFromOldSystem()
+    {
+        // Arrange
+        // 1. Task lokal dengan deskripsi kosong
+        _context.Tasks.Add(new WorkTask
+        {
+            Id = 5501,
+            Title = "Implementasi Integrasi Pembayaran",
+            Description = ""
+        });
+
+        // 2. Catatan lokal dengan ID 7701 tetapi konten masih kosong (<p></p>)
+        _context.Notes.Add(new WorkNote
+        {
+            Id = 7701,
+            Title = "Catatan Integrasi Pembayaran",
+            ContentHtml = "<p></p>",
+            TaskId = 5501
+        });
+
+        // 3. Sesi & Presensi lokal dengan Notes kosong
+        _context.Sessions.Add(new WorkSession
+        {
+            Id = 8801,
+            TaskId = 5501,
+            UserId = "user-1",
+            StartTime = DateTimeOffset.UtcNow.AddHours(-1),
+            Duration = 3600,
+            Notes = ""
+        });
+        _context.Attendances.Add(new Attendance
+        {
+            Id = 9901,
+            UserId = "user-1",
+            Date = DateOnly.FromDateTime(DateTime.UtcNow),
+            Notes = null
+        });
+        await _context.SaveChangesAsync();
+
+        // Payload dari sistem lama (berisi data catatan yang lengkap)
+        var payload = new SyncPayload
+        {
+            Manifest = new SyncManifest
+            {
+                SourceInstance = "SistemLama-Host",
+                EntityCount = 4
+            },
+            Data = new SyncDatabaseData
+            {
+                Tasks = new List<TaskSyncDto>
+                {
+                    new()
+                    {
+                        Id = 5501,
+                        Title = "Implementasi Integrasi Pembayaran",
+                        Description = "Deskripsi teknis lengkap diekspor dari sistem lama."
+                    }
+                },
+                Notes = new List<WorkNoteSyncDto>
+                {
+                    // Note 7701: Memperbarui note lokal yang kontennya masih kosong
+                    new()
+                    {
+                        Id = 7701,
+                        Title = "Catatan Integrasi Pembayaran",
+                        ContentHtml = "<p>Data rahasia payment gateway berhasil dipindahkan dari sistem lama.</p>",
+                        Category = "Technical",
+                        Color = "#ef4444",
+                        TaskId = 5501
+                    },
+                    // Note 7702: Catatan baru dari sistem lama yang sebelumnya belum ada di lokal
+                    new()
+                    {
+                        Id = 7702,
+                        Title = "Arsitektur Settlement ESPay",
+                        ContentHtml = "<p>Detail arsitektur settlement H+1 dari sistem lama.</p>",
+                        Category = "Meeting",
+                        Color = "#6366F1",
+                        TaskId = 5501
+                    }
+                },
+                Sessions = new List<SessionSyncDto>
+                {
+                    new()
+                    {
+                        Id = 8801,
+                        TaskId = 5501,
+                        UserId = "user-1",
+                        StartTime = DateTimeOffset.UtcNow.AddHours(-1),
+                        Duration = 3600,
+                        Notes = "Catatan sesi lembur ditransfer dari sistem lama"
+                    }
+                },
+                Attendances = new List<AttendanceSyncDto>
+                {
+                    new()
+                    {
+                        Id = 9901,
+                        UserId = "user-1",
+                        Date = DateOnly.FromDateTime(DateTime.UtcNow),
+                        Notes = "Catatan presensi WFO dari sistem lama"
+                    }
+                }
+            }
+        };
+
+        // Act
+        var result = await _syncService.ProcessReceivedPayloadAsync(payload, "admin-tester");
+
+        // Assert
+        Assert.True(result.Success);
+
+        // 1. Catatan 7701 yang tadinya kosong harus ter-update dari sistem lama
+        var updatedNote = await _context.Notes.FindAsync(7701);
+        Assert.NotNull(updatedNote);
+        Assert.Contains("Data rahasia payment gateway berhasil dipindahkan dari sistem lama", updatedNote.ContentHtml);
+        Assert.Equal("Technical", updatedNote.Category);
+
+        // 2. Catatan 7702 baru dari sistem lama harus ter-create di lokal dan terhubung ke task 5501
+        var newNote = await _context.Notes.FindAsync(7702);
+        Assert.NotNull(newNote);
+        Assert.Contains("Detail arsitektur settlement H+1 dari sistem lama", newNote.ContentHtml);
+        Assert.Equal(5501, newNote.TaskId);
+
+        // 3. Deskripsi task lokal yang tadinya kosong harus terisi
+        var updatedTask = await _context.Tasks.FindAsync(5501);
+        Assert.NotNull(updatedTask);
+        Assert.Equal("Deskripsi teknis lengkap diekspor dari sistem lama.", updatedTask.Description);
+
+        // 4. Session & Attendance notes yang tadinya kosong harus terisi
+        var updatedSession = await _context.Sessions.FindAsync(8801);
+        Assert.NotNull(updatedSession);
+        Assert.Equal("Catatan sesi lembur ditransfer dari sistem lama", updatedSession.Notes);
+
+        var updatedAttendance = await _context.Attendances.FindAsync(9901);
+        Assert.NotNull(updatedAttendance);
+        Assert.Equal("Catatan presensi WFO dari sistem lama", updatedAttendance.Notes);
+    }
+
     private class FakeTenantService : ICurrentTenantService
     {
         public FakeTenantService(int? companyId, string? companyCode, string? userId, bool isAdmin)

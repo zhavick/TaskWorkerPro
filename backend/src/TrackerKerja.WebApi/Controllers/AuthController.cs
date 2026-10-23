@@ -232,9 +232,16 @@ public class AuthController : ControllerBase
 
         // Tandai sudah dipakai (Rotasi Token)
         tokenRecord.IsUsed = true;
-
         var user = tokenRecord.User;
-        var roles = new List<string> { user.JobTitle.Contains("Admin", StringComparison.OrdinalIgnoreCase) ? "Administrator" : "Member" };
+
+        var isUserRoleAdmin = await _context.UserRoles.AnyAsync(ur => ur.UserId == user.Id && (ur.RoleId == "r-admin" || _context.Roles.Any(r => r.Id == ur.RoleId && (r.Name == "Administrator" || r.Name == "Admin" || r.Name == "SuperAdmin"))));
+        var isAdmin = user.Id == "usr-superadmin" 
+            || isUserRoleAdmin
+            || user.Email?.Equals("admin@trackerkerja.local", StringComparison.OrdinalIgnoreCase) == true
+            || user.Email?.Equals("admin@trackerkerja.com", StringComparison.OrdinalIgnoreCase) == true
+            || user.JobTitle.Contains("Admin", StringComparison.OrdinalIgnoreCase)
+            || user.JobTitle.Contains("Architect", StringComparison.OrdinalIgnoreCase);
+        var roles = new List<string> { isAdmin ? "Administrator" : "Member" };
         var newAccessToken = _jwtService.GenerateAccessToken(user, roles, user.Company?.Code);
         var newRefreshToken = _jwtService.GenerateRefreshToken();
         var newJwtId = _jwtService.GetJwtIdFromToken(newAccessToken);

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import Link from "next/link";
 import {
   HelpCircle,
   X,
@@ -18,6 +19,7 @@ import {
   Command,
   Laptop,
   Check,
+  ExternalLink,
 } from "lucide-react";
 import { Button } from "@/components/tailgrids/core/button";
 import { cn } from "@/utils/cn";
@@ -68,14 +70,24 @@ export function UserGuideModal({
             </div>
           </div>
 
-          <button
-            id="closeUserGuideModalBtn"
-            onClick={handleClose}
-            aria-label="Tutup Panduan"
-            className="rounded-full p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-gray-200 transition-colors"
-          >
-            <X className="h-5 w-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <Link
+              href="/guide"
+              onClick={handleClose}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 dark:text-indigo-300 border border-indigo-200/50 dark:border-indigo-800/40 transition-colors"
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+              Buka Dokumen Lengkap
+            </Link>
+            <button
+              id="closeUserGuideModalBtn"
+              onClick={handleClose}
+              aria-label="Tutup Panduan"
+              className="rounded-full p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-gray-200 transition-colors"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
         </div>
 
         {/* Tab Navigator */}

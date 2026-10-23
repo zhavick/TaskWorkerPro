@@ -277,11 +277,37 @@ public class ProjectsController : ControllerBase
         return Ok(new { success = true, data = dto });
     }
 
+    private async Task<bool> IsUserAuthorizedForProjectAdminAsync(string? userId)
+    {
+        if (_tenantService.IsAdmin) return true;
+        if (string.IsNullOrEmpty(userId)) return false;
+
+        var isDbAdmin = await _context.UserRoles.AnyAsync(ur => ur.UserId == userId && (ur.RoleId == "r-admin" || _context.Roles.Any(r => r.Id == ur.RoleId && (r.Name == "Administrator" || r.Name == "Admin" || r.Name == "SuperAdmin"))));
+        if (isDbAdmin) return true;
+
+        var user = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId);
+        if (user != null)
+        {
+            if (user.Id == "usr-superadmin" ||
+                user.Email?.Equals("admin@trackerkerja.local", StringComparison.OrdinalIgnoreCase) == true ||
+                user.Email?.Equals("admin@trackerkerja.com", StringComparison.OrdinalIgnoreCase) == true ||
+                user.JobTitle.Contains("Admin", StringComparison.OrdinalIgnoreCase) ||
+                user.JobTitle.Contains("Architect", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     [HttpPost]
-    [Authorize(Roles = "Administrator")]
+    [Authorize]
     public async Task<IActionResult> CreateProject([FromBody] CreateProjectRequest request)
     {
-        if (!_tenantService.IsAdmin)
+        var currentUserId = _tenantService.UserId;
+        var isAuthorized = await IsUserAuthorizedForProjectAdminAsync(currentUserId);
+        if (!isAuthorized)
         {
             return StatusCode(403, new { success = false, message = "Hanya Administrator yang berwenang menambahkan proyek baru." });
         }
@@ -308,16 +334,18 @@ public class ProjectsController : ControllerBase
     }
 
     [HttpPut("{id}")]
-    [Authorize(Roles = "Administrator")]
+    [Authorize]
     public async Task<IActionResult> UpdateProject(int id, [FromBody] UpdateProjectRequest request)
     {
-        if (!_tenantService.IsAdmin)
-        {
-            return StatusCode(403, new { success = false, message = "Hanya Administrator yang berwenang mengubah data proyek." });
-        }
-
+        var currentUserId = _tenantService.UserId;
         var project = await _context.Projects.FirstOrDefaultAsync(p => p.Id == id);
         if (project == null) return NotFound(new { success = false, message = "Proyek tidak ditemukan." });
+
+        var isAuthorized = await IsUserAuthorizedForProjectAdminAsync(currentUserId) || (currentUserId != null && project.ProjectManagerId == currentUserId);
+        if (!isAuthorized)
+        {
+            return StatusCode(403, new { success = false, message = "Hanya Administrator atau Project Manager yang berwenang mengubah data proyek." });
+        }
 
         project.Name = request.Name.Trim();
         project.Description = request.Description;
@@ -335,10 +363,12 @@ public class ProjectsController : ControllerBase
     }
 
     [HttpDelete("{id}")]
-    [Authorize(Roles = "Administrator")]
+    [Authorize]
     public async Task<IActionResult> DeleteProject(int id)
     {
-        if (!_tenantService.IsAdmin)
+        var currentUserId = _tenantService.UserId;
+        var isAuthorized = await IsUserAuthorizedForProjectAdminAsync(currentUserId);
+        if (!isAuthorized)
         {
             return StatusCode(403, new { success = false, message = "Hanya Administrator yang berwenang menghapus proyek." });
         }
