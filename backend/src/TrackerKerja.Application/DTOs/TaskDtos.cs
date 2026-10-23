@@ -63,56 +63,56 @@ public record TaskDetailDto(
 
 public record CreateTaskRequest(
     string Title,
-    string? Description,
-    TaskPriority Priority,
-    Domain.Enums.TaskStatus Status,
-    int Progress,
-    string? Milestone,
-    string? Obstacle,
-    string? Solution,
-    int? ProjectId,
-    int? CategoryId,
-    string? AssignedToUserId,
-    int? ParentTaskId,
-    DateTimeOffset? StartDate,
-    DateTimeOffset? DueDate
+    string? Description = null,
+    TaskPriority Priority = TaskPriority.Medium,
+    Domain.Enums.TaskStatus Status = Domain.Enums.TaskStatus.Todo,
+    int Progress = 0,
+    string? Milestone = null,
+    string? Obstacle = null,
+    string? Solution = null,
+    int? ProjectId = null,
+    int? CategoryId = null,
+    string? AssignedToUserId = null,
+    int? ParentTaskId = null,
+    DateTimeOffset? StartDate = null,
+    DateTimeOffset? DueDate = null
 );
 
 public record UpdateTaskRequest(
     string Title,
     string? Description,
-    TaskPriority Priority,
-    Domain.Enums.TaskStatus Status,
-    int Progress,
-    string? Milestone,
-    string? Obstacle,
-    string? Solution,
-    int? ProjectId,
-    int? CategoryId,
-    string? AssignedToUserId,
-    DateTimeOffset? StartDate,
-    DateTimeOffset? DueDate
+    TaskPriority? Priority = TaskPriority.Medium,
+    Domain.Enums.TaskStatus? Status = Domain.Enums.TaskStatus.Todo,
+    int Progress = 0,
+    string? Milestone = null,
+    string? Obstacle = null,
+    string? Solution = null,
+    int? ProjectId = null,
+    int? CategoryId = null,
+    string? AssignedToUserId = null,
+    DateTimeOffset? StartDate = null,
+    DateTimeOffset? DueDate = null
 );
 
 public record UnifiedSaveTaskRequest(
     string Title,
     string? Description,
-    TaskPriority Priority,
-    Domain.Enums.TaskStatus Status,
-    int Progress,
-    string? Milestone,
-    string? Obstacle,
-    string? Solution,
-    int? ProjectId,
-    int? CategoryId,
-    string? AssignedToUserId,
-    DateTimeOffset? StartDate,
-    DateTimeOffset? DueDate,
+    TaskPriority? Priority = TaskPriority.Medium,
+    Domain.Enums.TaskStatus? Status = Domain.Enums.TaskStatus.Todo,
+    int Progress = 0,
+    string? Milestone = null,
+    string? Obstacle = null,
+    string? Solution = null,
+    int? ProjectId = null,
+    int? CategoryId = null,
+    string? AssignedToUserId = null,
+    DateTimeOffset? StartDate = null,
+    DateTimeOffset? DueDate = null,
     // Optional Manual Work Session Parameter
-    bool LogManualSession,
-    DateTimeOffset? ManualSessionStartTime,
-    DateTimeOffset? ManualSessionEndTime,
-    string? ManualSessionNotes
+    bool LogManualSession = false,
+    DateTimeOffset? ManualSessionStartTime = null,
+    DateTimeOffset? ManualSessionEndTime = null,
+    string? ManualSessionNotes = null
 );
 
 public record UpdateTaskStatusRequest(

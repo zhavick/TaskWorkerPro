@@ -399,8 +399,8 @@ public class TasksController : ControllerBase
 
         task.Title = request.Title.Trim();
         task.Description = !string.IsNullOrWhiteSpace(request.Description) ? request.Description.Trim() : request.Title.Trim();
-        task.Priority = request.Priority;
-        task.Status = request.Status;
+        if (request.Priority.HasValue) task.Priority = request.Priority.Value;
+        if (request.Status.HasValue) task.Status = request.Status.Value;
         task.Progress = Math.Clamp(request.Progress, 0, 100);
         task.Milestone = request.Milestone;
         task.Obstacle = request.Obstacle;
@@ -461,8 +461,8 @@ public class TasksController : ControllerBase
                 // 1. Update task properties
                 task.Title = request.Title.Trim();
                 task.Description = !string.IsNullOrWhiteSpace(request.Description) ? request.Description.Trim() : request.Title.Trim();
-                task.Priority = request.Priority;
-                task.Status = request.Status;
+                if (request.Priority.HasValue) task.Priority = request.Priority.Value;
+                if (request.Status.HasValue) task.Status = request.Status.Value;
                 task.Progress = Math.Clamp(request.Progress, 0, 100);
                 task.Milestone = request.Milestone;
                 task.Obstacle = request.Obstacle;
@@ -524,7 +524,7 @@ public class TasksController : ControllerBase
                         );
                     }
 
-                    if (request.Status == Domain.Enums.TaskStatus.Done && previousStatus != Domain.Enums.TaskStatus.Done &&
+                    if ((request.Status ?? task.Status) == Domain.Enums.TaskStatus.Done && previousStatus != Domain.Enums.TaskStatus.Done &&
                         !string.IsNullOrEmpty(task.AssignedToUserId) && task.AssignedToUserId != _tenantService.UserId)
                     {
                         await _notificationService.SendNotificationAsync(
