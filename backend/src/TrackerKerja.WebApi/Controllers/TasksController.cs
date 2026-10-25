@@ -351,12 +351,12 @@ public class TasksController : ControllerBase
             Priority = request.Priority,
             Status = request.Status,
             Progress = Math.Clamp(request.Progress, 0, 100),
-            Milestone = request.Milestone,
-            Obstacle = request.Obstacle,
-            Solution = request.Solution,
+            Milestone = string.IsNullOrWhiteSpace(request.Milestone) ? null : request.Milestone.Trim(),
+            Obstacle = string.IsNullOrWhiteSpace(request.Obstacle) ? null : request.Obstacle.Trim(),
+            Solution = string.IsNullOrWhiteSpace(request.Solution) ? null : request.Solution.Trim(),
             ProjectId = request.ProjectId,
             CategoryId = request.CategoryId,
-            AssignedToUserId = request.AssignedToUserId,
+            AssignedToUserId = string.IsNullOrWhiteSpace(request.AssignedToUserId) ? null : request.AssignedToUserId.Trim(),
             CreatedByUserId = _tenantService.UserId,
             ParentTaskId = request.ParentTaskId,
             CompanyId = _tenantService.CompanyId ?? 1,
@@ -383,7 +383,7 @@ public class TasksController : ControllerBase
             );
         }
 
-        return Ok(new { success = true, message = "Tugas berhasil dibuat.", data = task });
+        return Ok(new { success = true, message = "Tugas berhasil dibuat.", data = MapToItemDto(task) });
     }
 
     [HttpPut("{id:int}")]
@@ -404,12 +404,12 @@ public class TasksController : ControllerBase
         if (request.Priority.HasValue) task.Priority = request.Priority.Value;
         if (request.Status.HasValue) task.Status = request.Status.Value;
         task.Progress = Math.Clamp(request.Progress, 0, 100);
-        task.Milestone = request.Milestone;
-        task.Obstacle = request.Obstacle;
-        task.Solution = request.Solution;
+        task.Milestone = string.IsNullOrWhiteSpace(request.Milestone) ? null : request.Milestone.Trim();
+        task.Obstacle = string.IsNullOrWhiteSpace(request.Obstacle) ? null : request.Obstacle.Trim();
+        task.Solution = string.IsNullOrWhiteSpace(request.Solution) ? null : request.Solution.Trim();
         task.ProjectId = request.ProjectId;
         task.CategoryId = request.CategoryId;
-        task.AssignedToUserId = request.AssignedToUserId;
+        task.AssignedToUserId = string.IsNullOrWhiteSpace(request.AssignedToUserId) ? null : request.AssignedToUserId.Trim();
         task.StartDate = request.StartDate;
         task.DueDate = request.DueDate;
         task.UpdatedAt = DateTimeOffset.UtcNow;
@@ -435,7 +435,7 @@ public class TasksController : ControllerBase
             );
         }
 
-        return Ok(new { success = true, message = "Tugas berhasil diperbarui.", data = task });
+        return Ok(new { success = true, message = "Tugas berhasil diperbarui.", data = MapToItemDto(task) });
     }
 
     [HttpPut("{id:int}/unified-save")]
@@ -466,12 +466,12 @@ public class TasksController : ControllerBase
                 if (request.Priority.HasValue) task.Priority = request.Priority.Value;
                 if (request.Status.HasValue) task.Status = request.Status.Value;
                 task.Progress = Math.Clamp(request.Progress, 0, 100);
-                task.Milestone = request.Milestone;
-                task.Obstacle = request.Obstacle;
-                task.Solution = request.Solution;
+                task.Milestone = string.IsNullOrWhiteSpace(request.Milestone) ? null : request.Milestone.Trim();
+                task.Obstacle = string.IsNullOrWhiteSpace(request.Obstacle) ? null : request.Obstacle.Trim();
+                task.Solution = string.IsNullOrWhiteSpace(request.Solution) ? null : request.Solution.Trim();
                 task.ProjectId = request.ProjectId;
                 task.CategoryId = request.CategoryId;
-                task.AssignedToUserId = request.AssignedToUserId;
+                task.AssignedToUserId = string.IsNullOrWhiteSpace(request.AssignedToUserId) ? null : request.AssignedToUserId.Trim();
                 task.StartDate = request.StartDate;
                 task.DueDate = request.DueDate;
                 task.UpdatedAt = DateTimeOffset.UtcNow;
@@ -486,7 +486,7 @@ public class TasksController : ControllerBase
                     var duration = (long)(request.ManualSessionEndTime.Value - request.ManualSessionStartTime.Value).TotalSeconds;
                     if (duration > 0)
                     {
-                        var sessionUserId = _tenantService.UserId ?? task.AssignedToUserId ?? task.CreatedByUserId;
+                        var sessionUserId = _tenantService.UserId ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? task.AssignedToUserId ?? task.CreatedByUserId;
                         if (!string.IsNullOrEmpty(sessionUserId))
                         {
                             var session = new WorkSession
@@ -823,7 +823,7 @@ public class TasksController : ControllerBase
             Priority = request.Priority,
             Status = Domain.Enums.TaskStatus.Todo,
             Progress = 0,
-            AssignedToUserId = request.AssignedToUserId,
+            AssignedToUserId = string.IsNullOrWhiteSpace(request.AssignedToUserId) ? null : request.AssignedToUserId.Trim(),
             DueDate = request.DueDate,
             CreatedAt = DateTimeOffset.UtcNow,
             UpdatedAt = DateTimeOffset.UtcNow
@@ -832,7 +832,19 @@ public class TasksController : ControllerBase
         _context.Tasks.Add(subtask);
         await _context.SaveChangesAsync();
 
-        return Ok(new { success = true, message = "Sub-tugas berhasil ditambahkan.", data = subtask });
+        var subtaskDto = new SubtaskDto(
+            subtask.Id,
+            subtask.Title,
+            subtask.Status,
+            subtask.Priority,
+            subtask.Progress,
+            subtask.AssignedToUserId,
+            null,
+            subtask.DueDate,
+            subtask.CreatedAt
+        );
+
+        return Ok(new { success = true, message = "Sub-tugas berhasil ditambahkan.", data = subtaskDto });
     }
 
     [HttpGet("import/template")]

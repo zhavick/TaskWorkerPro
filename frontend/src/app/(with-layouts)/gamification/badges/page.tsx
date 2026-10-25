@@ -33,6 +33,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/tailgrids/core/button";
 import { Input } from "@/components/tailgrids/core/input";
+import { BadgeIcon } from "@/components/common/BadgeIcon";
 import {
   Dialog,
   DialogContent,
@@ -388,7 +389,7 @@ export default function BadgesGalleryPage() {
             Galeri &amp; Manajemen Lencana Prestasi
           </h1>
           <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-            Pencapaian produktivitas tim dengan Master Badges resmi, poin permanen, dan verifikasi admin.
+            Raih pencapaian produktivitas tim dengan Master Badges resmi, poin permanen, dan verifikasi admin.
           </p>
         </div>
 
@@ -683,7 +684,7 @@ export default function BadgesGalleryPage() {
                             backgroundColor: isUnlocked ? badge.color || "#6366F1" : "#9CA3AF",
                           }}
                         >
-                          <Award className="h-6 w-6" />
+                          <BadgeIcon name={badge.icon} className="h-6 w-6" />
                         </div>
 
                         <div className="flex flex-col items-end gap-1">

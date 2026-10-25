@@ -22,6 +22,7 @@ import { Button } from "@/components/tailgrids/core/button";
 import { Input } from "@/components/tailgrids/core/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/tailgrids/core/dialog";
 import { toast } from "sonner";
+import { BadgeIcon } from "@/components/common/BadgeIcon";
 
 export default function GamificationPage() {
   const queryClient = useQueryClient();
@@ -310,7 +311,7 @@ export default function GamificationPage() {
                 className="flex h-14 w-14 items-center justify-center rounded-2xl font-bold text-white shadow-md mb-3"
                 style={{ backgroundColor: b.color || "#10B981" }}
               >
-                <Award className="h-7 w-7" />
+                <BadgeIcon name={b.icon} className="h-7 w-7" />
               </div>
               <h4 className="font-bold text-xs text-gray-900 dark:text-white leading-tight">
                 {b.name}

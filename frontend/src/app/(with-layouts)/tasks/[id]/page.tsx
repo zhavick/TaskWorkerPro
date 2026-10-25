@@ -45,6 +45,7 @@ const MILESTONE_OPTIONS = [
   "Maintenance",
 ];
 
+
 export default function TaskStudioPage() {
   const params = useParams();
   const router = useRouter();
@@ -218,7 +219,7 @@ export default function TaskStudioPage() {
       setDescription(t.description || "");
       setPriority(parsePriority(t.priority));
       setStatus(parseStatus(t.status));
-      setProgress(typeof t.progress === "number" ? t.progress : 0);
+      setProgress(Math.max(0, Math.min(100, Number(t.progress) || 0)));
       setMilestone(t.milestone || "");
       setObstacle(t.obstacle || "");
       setSolution(t.solution || "");
