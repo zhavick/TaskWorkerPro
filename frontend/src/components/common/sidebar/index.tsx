@@ -29,15 +29,15 @@ export default function Sidebar({
     const pathname = usePathname();
     const { theme } = useTheme();
     const { appName } = useAppSettings();
-    const { isAdmin } = useCurrentUser();
+    const { isAdmin, isPurgeAdmin } = useCurrentUser();
 
-    // Filter navigation sections & items based on RBAC role (Admin vs Regular Member)
+    // Filter navigation sections & items based on RBAC role (Admin vs Regular Member vs DataPurgeAdmin)
     const filteredNavData = useMemo(() => {
         return NAV_DATA.map((section) => ({
             ...section,
-            items: section.items.filter((item: any) => !item.adminOnly || isAdmin),
+            items: section.items.filter((item: any) => !item.adminOnly || isAdmin || (item.url === '/configuration' && isPurgeAdmin)),
         })).filter((section) => section.items.length > 0);
-    }, [isAdmin]);
+    }, [isAdmin, isPurgeAdmin]);
 
     // Compute which group should be open based on the current route
     const activeGroupKey = useMemo(

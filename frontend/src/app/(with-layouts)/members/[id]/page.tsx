@@ -41,13 +41,14 @@ import {
   getInitials,
   AVATAR_COLORS,
 } from "../../profile/profile-constants";
+import { parseTaskStatus, TASK_STATUS_LABELS } from "@/utils/task-status";
 
 interface MemberTask {
   id: number;
   title: string;
   description?: string | null;
-  status: string;
-  priority: string;
+  status: string | number;
+  priority: string | number;
   progress: number;
   projectId?: number | null;
   projectName?: string | null;
@@ -126,6 +127,8 @@ export default function MemberSpecialProfilePage() {
   // Edit Modal State
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editFullName, setEditFullName] = useState("");
+  const [editEmail, setEditEmail] = useState("");
+  const [editRole, setEditRole] = useState<"Member" | "DataPurgeAdmin" | "Administrator">("Member");
   const [editJobTitle, setEditJobTitle] = useState("");
   const [editPhoneNumber, setEditPhoneNumber] = useState("");
   const [editAvatarColor, setEditAvatarColor] = useState("#6366F1");
@@ -163,9 +166,13 @@ export default function MemberSpecialProfilePage() {
     mutationFn: async () => {
       const res = await apiClient.put(`/members/${memberId}`, {
         fullName: editFullName.trim(),
+        email: isAdmin ? editEmail.trim() || undefined : undefined,
         jobTitle: editJobTitle.trim(),
         phoneNumber: editPhoneNumber.trim() || null,
         avatarColor: editAvatarColor,
+        role: isAdmin && memberId !== "usr-superadmin" ? editRole : undefined,
+        canPurgeData:
+          isAdmin && memberId !== "usr-superadmin" ? editRole === "DataPurgeAdmin" : undefined,
       });
       return res.data;
     },
@@ -201,6 +208,14 @@ export default function MemberSpecialProfilePage() {
   const openEditModal = () => {
     if (memberData) {
       setEditFullName(memberData.fullName);
+      setEditEmail(memberData.email);
+      if (memberData.roles?.includes("Administrator") || memberData.id === "usr-superadmin") {
+        setEditRole("Administrator");
+      } else if (memberData.roles?.includes("DataPurgeAdmin")) {
+        setEditRole("DataPurgeAdmin");
+      } else {
+        setEditRole("Member");
+      }
       setEditJobTitle(memberData.jobTitle);
       setEditPhoneNumber(memberData.phoneNumber || "");
       setEditAvatarColor(memberData.avatarColor || "#6366F1");
@@ -224,8 +239,12 @@ export default function MemberSpecialProfilePage() {
       const matchesSearch =
         t.title.toLowerCase().includes(taskSearch.toLowerCase()) ||
         (t.projectName && t.projectName.toLowerCase().includes(taskSearch.toLowerCase()));
+      const stNum = parseTaskStatus(t.status);
       const matchesStatus =
-        taskFilterStatus === "all" || t.status === taskFilterStatus;
+        taskFilterStatus === "all" ||
+        (taskFilterStatus === "Done" && stNum === 2) ||
+        (taskFilterStatus === "InProgress" && stNum === 1) ||
+        (taskFilterStatus === "Todo" && stNum === 0);
       return matchesSearch && matchesStatus;
     });
   }, [memberData?.tasks, taskSearch, taskFilterStatus]);
@@ -366,6 +385,12 @@ export default function MemberSpecialProfilePage() {
                       Administrator
                     </span>
                   )}
+                  {memberData.roles?.includes("DataPurgeAdmin") &&
+                    !memberData.roles?.includes("Administrator") && (
+                      <span className="rounded-full bg-amber-100 border border-amber-500/30 px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:bg-amber-950/60 dark:text-amber-300">
+                        Admin Pembersihan Data
+                      </span>
+                    )}
                 </div>
 
                 <p className="text-sm font-semibold text-gray-600 dark:text-gray-300">
@@ -622,21 +647,25 @@ export default function MemberSpecialProfilePage() {
                       <span className="text-[10px] text-gray-400 font-semibold">Umum</span>
                     )}
 
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                        t.status === "Done"
-                          ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
-                          : t.status === "InProgress"
-                          ? "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300"
-                          : "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300"
-                      }`}
-                    >
-                      {t.status === "Done"
-                        ? "Selesai"
-                        : t.status === "InProgress"
-                        ? "In Progress"
-                        : "Todo"}
-                    </span>
+                    {(() => {
+                      const stNum = parseTaskStatus(t.status);
+                      const stInfo = TASK_STATUS_LABELS[stNum] || TASK_STATUS_LABELS[0];
+                      return (
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                            stNum === 2
+                              ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+                              : stNum === 1
+                              ? "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300"
+                              : stNum === 3
+                              ? "bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300"
+                              : "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300"
+                          }`}
+                        >
+                          {stInfo.label}
+                        </span>
+                      );
+                    })()}
                   </div>
 
                   <h3 className="font-bold text-sm text-gray-900 dark:text-white line-clamp-2 leading-snug">
@@ -666,7 +695,7 @@ export default function MemberSpecialProfilePage() {
                   <div className="h-1.5 w-full rounded-full bg-gray-100 overflow-hidden dark:bg-gray-800">
                     <div
                       className={`h-full rounded-full transition-all duration-300 ${
-                        t.status === "Done" ? "bg-emerald-500" : "bg-indigo-600"
+                        parseTaskStatus(t.status) === 2 ? "bg-emerald-500" : "bg-indigo-600"
                       }`}
                       style={{ width: `${t.progress}%` }}
                     />
@@ -949,6 +978,40 @@ export default function MemberSpecialProfilePage() {
                 className="text-xs"
               />
             </div>
+
+            {isAdmin && (
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                  Email *
+                </label>
+                <Input
+                  type="email"
+                  value={editEmail}
+                  onChange={(e) => setEditEmail(e.target.value)}
+                  required
+                  className="text-xs"
+                />
+              </div>
+            )}
+
+            {isAdmin && memberId !== "usr-superadmin" && (
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                  Hak Akses
+                </label>
+                <select
+                  value={editRole}
+                  onChange={(e) =>
+                    setEditRole(e.target.value as "Member" | "DataPurgeAdmin" | "Administrator")
+                  }
+                  className="w-full text-xs rounded-xl border border-gray-300 bg-white p-2.5 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                >
+                  <option value="Member">Pengguna Biasa (Member)</option>
+                  <option value="DataPurgeAdmin">Admin Pembersihan Data (terbatas cleaning & purging)</option>
+                  <option value="Administrator">Administrator Penuh</option>
+                </select>
+              </div>
+            )}
 
             <div className="space-y-1">
               <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">

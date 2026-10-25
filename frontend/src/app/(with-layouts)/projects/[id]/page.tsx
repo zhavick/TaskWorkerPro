@@ -44,6 +44,7 @@ import {
 } from "@/components/tailgrids/core/dialog";
 import { toast } from "sonner";
 import Link from "next/link";
+import { parseTaskStatus } from "@/utils/task-status";
 
 const COLOR_PRESETS = [
   "#6366F1", // Indigo
@@ -94,8 +95,9 @@ function getPriorityBadge(priority: number) {
   }
 }
 
-function getStatusBadge(status: number) {
-  switch (status) {
+function getStatusBadge(status: any) {
+  const sNum = parseTaskStatus(status);
+  switch (sNum) {
     case 2:
       return (
         <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-bold text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
@@ -112,6 +114,12 @@ function getStatusBadge(status: number) {
       return (
         <span className="inline-flex items-center gap-1 rounded-full bg-rose-500/10 px-2.5 py-0.5 text-[11px] font-bold text-rose-600 dark:text-rose-400 border border-rose-500/20">
           <AlertCircle className="h-3 w-3" /> Overdue
+        </span>
+      );
+    case 4:
+      return (
+        <span className="inline-flex items-center gap-1 rounded-full bg-purple-500/10 px-2.5 py-0.5 text-[11px] font-bold text-purple-600 dark:text-purple-400 border border-purple-500/20">
+          Review
         </span>
       );
     default:
@@ -318,10 +326,12 @@ export default function ProjectStudioDetailPage() {
           t.assignedToUserName.toLowerCase().includes(taskSearch.toLowerCase()));
 
       let matchesStatus = true;
-      if (statusFilter === "todo") matchesStatus = t.status === 0;
-      else if (statusFilter === "inprogress") matchesStatus = t.status === 1;
-      else if (statusFilter === "done") matchesStatus = t.status === 2;
-      else if (statusFilter === "overdue") matchesStatus = t.status === 3;
+      const sNum = parseTaskStatus(t.status);
+      if (statusFilter === "todo") matchesStatus = sNum === 0;
+      else if (statusFilter === "inprogress") matchesStatus = sNum === 1;
+      else if (statusFilter === "done") matchesStatus = sNum === 2;
+      else if (statusFilter === "overdue") matchesStatus = sNum === 3;
+      else if (statusFilter === "review") matchesStatus = sNum === 4;
 
       return matchesSearch && matchesStatus;
     });

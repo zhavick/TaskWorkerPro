@@ -39,6 +39,7 @@ public class ProfileController : ControllerBase
         if (user == null) return NotFound(new { success = false, message = "Profil tidak ditemukan." });
 
         var isUserRoleAdmin = await _context.UserRoles.AnyAsync(ur => ur.UserId == user.Id && (ur.RoleId == "r-admin" || _context.Roles.Any(r => r.Id == ur.RoleId && r.Name == "Administrator")));
+        var isPurgeRole = await _context.UserRoles.AnyAsync(ur => ur.UserId == user.Id && (ur.RoleId == "r-purge-admin" || _context.Roles.Any(r => r.Id == ur.RoleId && r.Name == "DataPurgeAdmin")));
         var isAdmin = _tenantService.IsAdmin
             || user.Id == "usr-superadmin"
             || isUserRoleAdmin
@@ -46,7 +47,10 @@ public class ProfileController : ControllerBase
             || user.JobTitle.Contains("Admin", StringComparison.OrdinalIgnoreCase)
             || user.JobTitle.Contains("Architect", StringComparison.OrdinalIgnoreCase);
 
-        var roles = new List<string> { isAdmin ? "Administrator" : "Member" };
+        var roles = new List<string>();
+        if (isAdmin) roles.Add("Administrator");
+        if (isPurgeRole && !isAdmin) roles.Add("DataPurgeAdmin");
+        if (roles.Count == 0) roles.Add("Member");
 
         var profile = new UserProfileDto(
             user.Id,

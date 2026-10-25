@@ -397,6 +397,14 @@ public class SyncService : ISyncService
 
         try
         {
+            // Jalur utama: dump SQL (SQLite/PostgreSQL/generik) dibaca per-INSERT berdasarkan NAMA kolom lalu
+            // digabung lewat pipeline merge yang sama dengan sinkronisasi API (relasi, catatan, lampiran, dsb).
+            var parsedDump = SqlDumpImportParser.Parse(sqlContent);
+            if (parsedDump.RecognizedRows > 0)
+            {
+                return await ImportParsedDumpAsync(parsedDump, sqlContent, triggeredByUserId);
+            }
+
             var isPostgres = _context.Database.ProviderName?.Contains("Npgsql", StringComparison.OrdinalIgnoreCase) == true
                           || _context.Database.ProviderName?.Contains("Postgre", StringComparison.OrdinalIgnoreCase) == true;
 
@@ -468,6 +476,7 @@ public class SyncService : ISyncService
         catch (Exception ex)
         {
             _logger?.LogError(ex, "Failed to import SQL script");
+            _context.ChangeTracker.Clear();
             _context.SyncHistories.Add(new SyncHistory
             {
                 Direction = SyncDirection.ImportSql,
@@ -485,6 +494,121 @@ public class SyncService : ISyncService
                 Status = SyncStatus.Failed
             };
         }
+    }
+
+    private async Task<SyncOperationResult> ImportParsedDumpAsync(SqlDumpParseResult parsed, string sqlContent, string? triggeredByUserId)
+    {
+        var merged = 0;
+        var rolesLinked = 0;
+
+        if (_context.Database.IsRelational())
+        {
+            // Execution strategy wajib karena koneksi Npgsql memakai EnableRetryOnFailure
+            var strategy = _context.Database.CreateExecutionStrategy();
+            await strategy.ExecuteAsync(async () =>
+            {
+                _context.ChangeTracker.Clear();
+                await using var transaction = await _context.Database.BeginTransactionAsync();
+                try
+                {
+                    merged = await MergeDatabaseDataAsync(parsed.Data);
+                    rolesLinked = await MergeUserRolesAsync(parsed.UserRoles);
+                    await transaction.CommitAsync();
+                }
+                catch
+                {
+                    await transaction.RollbackAsync();
+                    _context.ChangeTracker.Clear();
+                    throw;
+                }
+            });
+        }
+        else
+        {
+            merged = await MergeDatabaseDataAsync(parsed.Data);
+            rolesLinked = await MergeUserRolesAsync(parsed.UserRoles);
+        }
+
+        var details = parsed.TableCounts
+            .OrderBy(kv => kv.Key)
+            .Select(kv => $"{kv.Key}: {kv.Value} baris")
+            .ToList();
+        if (parsed.IgnoredTables.Count > 0)
+        {
+            details.Add($"Tabel dilewati (log/riwayat): {string.Join(", ", parsed.IgnoredTables.OrderBy(x => x))}");
+        }
+
+        var total = merged + rolesLinked;
+        var noteCount = parsed.TableCounts.GetValueOrDefault("Notes");
+        var attachmentCount = parsed.TableCounts.GetValueOrDefault("NoteAttachments");
+
+        _context.SyncHistories.Add(new SyncHistory
+        {
+            Direction = SyncDirection.ImportSql,
+            Status = SyncStatus.Success,
+            TargetHost = "Local SQL Script Import",
+            TotalRecordsSynced = total,
+            FileSizeBytes = Encoding.UTF8.GetByteCount(sqlContent),
+            SummaryJson = JsonSerializer.Serialize(new
+            {
+                RecordsMerged = merged,
+                RolesLinked = rolesLinked,
+                Notes = noteCount,
+                NoteAttachments = attachmentCount,
+                Tables = parsed.TableCounts
+            }),
+            TriggeredByUserId = triggeredByUserId
+        });
+        await _context.SaveChangesAsync();
+
+        return new SyncOperationResult
+        {
+            Success = true,
+            Message = $"Berhasil mengimpor dump SQL: {total} rekod digabungkan ({noteCount} catatan, {attachmentCount} lampiran catatan).",
+            RecordsProcessed = total,
+            FileSizeBytes = Encoding.UTF8.GetByteCount(sqlContent),
+            Status = SyncStatus.Success,
+            Details = details
+        };
+    }
+
+    /// <summary>
+    /// Menghubungkan peran dari dump (mis. "Admin"/"User") ke peran lokal berdasarkan nama.
+    /// Hanya menambah hubungan yang belum ada; tidak pernah mencabut peran yang sudah ada.
+    /// </summary>
+    private async Task<int> MergeUserRolesAsync(IReadOnlyList<(string UserId, string RoleName)> pairs)
+    {
+        if (pairs.Count == 0) return 0;
+
+        static string CanonicalRole(string name) => name.Trim().ToLowerInvariant() switch
+        {
+            "admin" or "administrator" => "Administrator",
+            "superadmin" => "SuperAdmin",
+            "user" or "member" => "Member",
+            "datapurgeadmin" or "cleanupadmin" => "DataPurgeAdmin",
+            _ => name.Trim()
+        };
+
+        var localRoles = await _context.Roles.ToListAsync();
+        var linked = 0;
+
+        foreach (var (userId, roleName) in pairs)
+        {
+            var canonical = CanonicalRole(roleName);
+            var role = localRoles.FirstOrDefault(r => string.Equals(r.Name, canonical, StringComparison.OrdinalIgnoreCase));
+            if (role == null) continue;
+
+            if (!await _context.Users.IgnoreQueryFilters().AnyAsync(u => u.Id == userId)) continue;
+
+            var exists = await _context.UserRoles.AnyAsync(ur => ur.UserId == userId && ur.RoleId == role.Id);
+            if (exists) continue;
+
+            _context.UserRoles.Add(new AppUserRole { UserId = userId, RoleId = role.Id });
+            linked++;
+        }
+
+        if (linked > 0) await _context.SaveChangesAsync();
+        return linked;
     }
 
     public async Task<SyncPayload> PrepareSyncPayloadAsync(bool includeFiles)

@@ -746,6 +746,50 @@ public class SyncServiceTests : IDisposable
         Assert.Equal("Catatan presensi WFO dari sistem lama", updatedAttendance.Notes);
     }
 
+    [Fact]
+    public async Task ImportSqlScriptAsync_SampleSourceDb_ShouldImportNotesAndAttachmentsSuccessfully()
+    {
+        var dir = AppContext.BaseDirectory;
+        string? sampleSqlPath = null;
+        for (int i = 0; i < 8 && dir != null; i++)
+        {
+            var candidate = Path.Combine(dir, "Sample Source DB", "TrackerKerja_Sync_20261023_234611.sql");
+            if (File.Exists(candidate))
+            {
+                sampleSqlPath = candidate;
+                break;
+            }
+            dir = Directory.GetParent(dir)?.FullName;
+        }
+
+        Assert.True(sampleSqlPath != null && File.Exists(sampleSqlPath), "Sample SQL file must exist");
+
+        var sqlContent = await File.ReadAllTextAsync(sampleSqlPath!);
+        var result = await _syncService.ImportSqlScriptAsync(sqlContent, "admin-sample-test");
+
+        Assert.True(result.Success, result.Message);
+        Assert.True(result.RecordsProcessed > 0);
+
+        var notes = await _context.Notes.IgnoreQueryFilters().ToListAsync();
+        Assert.NotEmpty(notes);
+        Assert.True(notes.Count >= 40, $"Expected >= 40 notes, but got {notes.Count}");
+
+        var attachments = await _context.NoteAttachments.IgnoreQueryFilters().ToListAsync();
+        Assert.NotEmpty(attachments);
+        Assert.True(attachments.Count >= 50, $"Expected >= 50 attachments, but got {attachments.Count}");
+
+        // Verify specific sample note
+        var sampleNote = notes.FirstOrDefault(n => n.Id == 9);
+        Assert.NotNull(sampleNote);
+        Assert.Equal("Sharing knowledge alur proses TCES - TICS", sampleNote.Title);
+        Assert.Contains("Sharing knowledge alur proses TCES - TICS", sampleNote.ContentHtml);
+
+        // Verify attachment connected to note 9
+        var sampleAtt = attachments.FirstOrDefault(a => a.NoteId == 9);
+        Assert.NotNull(sampleAtt);
+        Assert.Contains(".pdf", sampleAtt.FileName);
+    }
+
     private class FakeTenantService : ICurrentTenantService
     {
         public FakeTenantService(int? companyId, string? companyCode, string? userId, bool isAdmin)

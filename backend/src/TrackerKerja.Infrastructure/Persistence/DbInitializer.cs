@@ -21,6 +21,7 @@ public static class DbInitializer
                         IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'tasks') THEN 
                             ALTER TABLE tasks ALTER COLUMN title TYPE VARCHAR(500);
                             ALTER TABLE tasks ADD COLUMN IF NOT EXISTS tags VARCHAR(200);
+                            ALTER TABLE tasks ADD COLUMN IF NOT EXISTS created_by_user_id VARCHAR(450);
                         END IF;
 
                         IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'projects') THEN 
@@ -127,6 +128,22 @@ public static class DbInitializer
                         triggered_by_user_id TEXT
                     );
                     CREATE INDEX IF NOT EXISTS ix_sync_histories_created_at ON sync_histories(created_at DESC);
+
+                    CREATE TABLE IF NOT EXISTS user_notifications (
+                        id SERIAL PRIMARY KEY,
+                        user_id VARCHAR(450) NOT NULL REFERENCES asp_net_users(id) ON DELETE CASCADE,
+                        company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+                        title VARCHAR(500) NOT NULL,
+                        message TEXT NOT NULL,
+                        category VARCHAR(50) NOT NULL DEFAULT 'Task',
+                        action_url VARCHAR(500),
+                        is_read BOOLEAN NOT NULL DEFAULT FALSE,
+                        read_at TIMESTAMPTZ,
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        created_by_user_id VARCHAR(450) REFERENCES asp_net_users(id) ON DELETE SET NULL
+                    );
+                    CREATE INDEX IF NOT EXISTS ix_user_notifications_user_id ON user_notifications(user_id);
+                    CREATE INDEX IF NOT EXISTS ix_user_notifications_created_at ON user_notifications(created_at DESC);
                 ");
             }
             catch
@@ -181,6 +198,19 @@ public static class DbInitializer
         {
             adminUser.PasswordHash = PasswordHasher.HashPassword("AdminSecurePassword2026!");
             adminUser.IsApproved = true;
+            await context.SaveChangesAsync();
+        }
+
+        // Pastikan Role Khusus: DataPurgeAdmin (Pembersihan & Purging Data)
+        var purgeAdminRole = await context.Roles.FirstOrDefaultAsync(r => r.Id == "r-purge-admin" || r.Name == "DataPurgeAdmin");
+        if (purgeAdminRole == null)
+        {
+            context.Roles.Add(new AppRole
+            {
+                Id = "r-purge-admin",
+                Name = "DataPurgeAdmin",
+                NormalizedName = "DATAPURGEADMIN"
+            });
             await context.SaveChangesAsync();
         }
 

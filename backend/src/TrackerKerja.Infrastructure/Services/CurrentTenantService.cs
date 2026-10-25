@@ -43,4 +43,20 @@ public class CurrentTenantService : ICurrentTenantService
             return false;
         }
     }
+
+    public bool IsPurgeAdmin
+    {
+        get
+        {
+            if (IsAdmin) return true;
+            var user = _httpContextAccessor.HttpContext?.User;
+            if (user == null) return false;
+            if (user.IsInRole("DataPurgeAdmin") || user.IsInRole("CleanupAdmin"))
+                return true;
+            var roleClaim = user.FindFirst(ClaimTypes.Role)?.Value;
+            if (!string.IsNullOrEmpty(roleClaim) && (roleClaim.Equals("DataPurgeAdmin", StringComparison.OrdinalIgnoreCase) || roleClaim.Equals("CleanupAdmin", StringComparison.OrdinalIgnoreCase)))
+                return true;
+            return false;
+        }
+    }
 }

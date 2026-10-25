@@ -11,7 +11,7 @@ namespace TrackerKerja.WebApi.Controllers;
 [ApiController]
 [Route("api/settings")]
 [Route("api/configuration")]
-[Authorize(Roles = "Administrator,SuperAdmin,Admin")]
+[Authorize(Roles = "Administrator,SuperAdmin,Admin,DataPurgeAdmin")]
 public class SettingsController : ControllerBase
 {
     private readonly AppDbContext _context;
@@ -39,6 +39,7 @@ public class SettingsController : ControllerBase
     }
 
     [HttpPut("batch")]
+    [Authorize(Roles = "Administrator,SuperAdmin,Admin")]
     public async Task<IActionResult> BatchUpdateSettings([FromBody] BatchUpdateSettingsRequest request)
     {
         foreach (var (key, value) in request.Settings)
@@ -65,6 +66,7 @@ public class SettingsController : ControllerBase
     }
 
     [HttpPost("test-smtp")]
+    [Authorize(Roles = "Administrator,SuperAdmin,Admin")]
     public IActionResult TestSmtp()
     {
         return Ok(new { success = true, message = "Koneksi SMTP berhasil diverifikasi." });

@@ -28,6 +28,7 @@ import {
 import { Button } from "@/components/tailgrids/core/button";
 import { toast } from "sonner";
 import Link from "next/link";
+import { parseTaskStatus } from "@/utils/task-status";
 import {
   ResponsiveContainer,
   AreaChart,
@@ -154,11 +155,11 @@ export default function DashboardPage() {
   // Consolidate data from stats or fallbacks
   const taskStats = statsData?.tasks || {
     total: tasks.length,
-    inProgress: tasks.filter((t: any) => t.status === 1).length,
-    done: tasks.filter((t: any) => t.status === 2).length,
-    todo: tasks.filter((t: any) => t.status === 0).length,
-    overdue: tasks.filter((t: any) => t.status === 3).length,
-    completionRate: tasks.length > 0 ? Math.round((tasks.filter((t: any) => t.status === 2).length / tasks.length) * 100) : 0,
+    inProgress: tasks.filter((t: any) => parseTaskStatus(t.status) === 1).length,
+    done: tasks.filter((t: any) => parseTaskStatus(t.status) === 2).length,
+    todo: tasks.filter((t: any) => parseTaskStatus(t.status) === 0).length,
+    overdue: tasks.filter((t: any) => parseTaskStatus(t.status) === 3).length,
+    completionRate: tasks.length > 0 ? Math.round((tasks.filter((t: any) => parseTaskStatus(t.status) === 2).length / tasks.length) * 100) : 0,
   };
 
   const workHours = statsData?.workHours || {
@@ -235,7 +236,7 @@ export default function DashboardPage() {
   // Prepare fallback distribution data
   const projectDistribution = distributionData?.byProject || projects.slice(0, 5).map((p, idx) => {
     const pTasks = tasks.filter((t: any) => t.projectId === p.id);
-    const pDone = pTasks.filter((t: any) => t.status === 2).length;
+    const pDone = pTasks.filter((t: any) => parseTaskStatus(t.status) === 2).length;
     const colors = ["#6366F1", "#3B82F6", "#10B981", "#F59E0B", "#8B5CF6", "#EC4899"];
     return {
       name: p.name,

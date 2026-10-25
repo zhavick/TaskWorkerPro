@@ -60,6 +60,7 @@ import {
 } from "@/components/tailgrids/core/dialog";
 import { toast } from "sonner";
 import { AdminGuard } from "@/components/guards/AdminGuard";
+import { useCurrentUser } from "@/hooks/use-current-user";
 import {
   SyncProgressModal,
   SyncOperationType,
@@ -80,9 +81,18 @@ const COLOR_PRESETS = [
 
 export default function ConfigurationPage() {
   const queryClient = useQueryClient();
+  const { isAdmin, isPurgeAdmin } = useCurrentUser();
+  const isPurgeOnly = isPurgeAdmin && !isAdmin;
+
   const [activeTab, setActiveTab] = useState<
     "general" | "security" | "smtp" | "audit" | "master" | "sync" | "maintenance"
   >("general");
+
+  useEffect(() => {
+    if (isPurgeOnly) {
+      setActiveTab("maintenance");
+    }
+  }, [isPurgeOnly]);
 
   // Data Maintenance & Purge States
   const [purgeConfirmationOpen, setPurgeConfirmationOpen] = useState(false);
@@ -1047,7 +1057,7 @@ export default function ConfigurationPage() {
   };
 
   return (
-    <AdminGuard>
+    <AdminGuard allowPurgeAdmin={true}>
       <div className="space-y-6 px-2 py-4 lg:px-6">
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -1060,7 +1070,7 @@ export default function ConfigurationPage() {
           </p>
         </div>
 
-        {activeTab !== "master" && activeTab !== "sync" && activeTab !== "maintenance" && (
+        {!isPurgeOnly && activeTab !== "master" && activeTab !== "sync" && activeTab !== "maintenance" && (
           <Button
             onClick={() => saveMutation.mutate()}
             disabled={saveMutation.isPending}
@@ -1072,79 +1082,98 @@ export default function ConfigurationPage() {
         )}
       </div>
 
-      {/* 7 Tabs Navigation */}
+      {/* Restricted Mode Notice for DataPurgeAdmin */}
+      {isPurgeOnly && (
+        <div className="flex items-start gap-3 rounded-2xl border border-amber-300 bg-amber-50/80 p-4 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200 shadow-2xs">
+          <ShieldAlert className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
+          <div className="space-y-1">
+            <span className="font-extrabold block text-sm">
+              Mode Akses Terbatas: Administrator Pembersihan Data (Data Purge Administrator)
+            </span>
+            <p className="text-xs text-amber-800 dark:text-amber-300 leading-relaxed">
+              Anda diberikan hak akses setingkat administrator yang <strong>dibatasi khusus untuk urusan cleaning, purging data operasional, dan pemeliharaan basis data (VACUUM)</strong>. Modul konfigurasi umum, keamanan sistem, SMTP, dan master data tidak tersedia untuk peran ini demi menjaga stabilitas sistem.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Tabs Navigation */}
       <div className="flex flex-wrap gap-2 border-b border-gray-200/80 pb-2 dark:border-gray-800">
-        <button
-          onClick={() => setActiveTab("general")}
-          className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition ${
-            activeTab === "general"
-              ? "bg-indigo-600 text-white shadow-xs"
-              : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300"
-          }`}
-        >
-          <Settings className="h-4 w-4" />
-          Umum (General)
-        </button>
+        {!isPurgeOnly ? (
+          <>
+            <button
+              onClick={() => setActiveTab("general")}
+              className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition ${
+                activeTab === "general"
+                  ? "bg-indigo-600 text-white shadow-xs"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300"
+              }`}
+            >
+              <Settings className="h-4 w-4" />
+              Umum (General)
+            </button>
 
-        <button
-          onClick={() => setActiveTab("security")}
-          className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition ${
-            activeTab === "security"
-              ? "bg-indigo-600 text-white shadow-xs"
-              : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300"
-          }`}
-        >
-          <Shield className="h-4 w-4" />
-          Keamanan & Sesi
-        </button>
+            <button
+              onClick={() => setActiveTab("security")}
+              className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition ${
+                activeTab === "security"
+                  ? "bg-indigo-600 text-white shadow-xs"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300"
+              }`}
+            >
+              <Shield className="h-4 w-4" />
+              Keamanan & Sesi
+            </button>
 
-        <button
-          onClick={() => setActiveTab("smtp")}
-          className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition ${
-            activeTab === "smtp"
-              ? "bg-indigo-600 text-white shadow-xs"
-              : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300"
-          }`}
-        >
-          <Mail className="h-4 w-4" />
-          Notifikasi Email (SMTP)
-        </button>
+            <button
+              onClick={() => setActiveTab("smtp")}
+              className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition ${
+                activeTab === "smtp"
+                  ? "bg-indigo-600 text-white shadow-xs"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300"
+              }`}
+            >
+              <Mail className="h-4 w-4" />
+              Notifikasi Email (SMTP)
+            </button>
 
-        <button
-          onClick={() => setActiveTab("audit")}
-          className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition ${
-            activeTab === "audit"
-              ? "bg-indigo-600 text-white shadow-xs"
-              : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300"
-          }`}
-        >
-          <FileText className="h-4 w-4" />
-          Jejak Audit (Audit Trail)
-        </button>
+            <button
+              onClick={() => setActiveTab("audit")}
+              className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition ${
+                activeTab === "audit"
+                  ? "bg-indigo-600 text-white shadow-xs"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300"
+              }`}
+            >
+              <FileText className="h-4 w-4" />
+              Jejak Audit (Audit Trail)
+            </button>
 
-        <button
-          onClick={() => setActiveTab("master")}
-          className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition ${
-            activeTab === "master"
-              ? "bg-indigo-600 text-white shadow-xs"
-              : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300"
-          }`}
-        >
-          <Layers className="h-4 w-4" />
-          Master Data & SDLC
-        </button>
+            <button
+              onClick={() => setActiveTab("master")}
+              className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition ${
+                activeTab === "master"
+                  ? "bg-indigo-600 text-white shadow-xs"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300"
+              }`}
+            >
+              <Layers className="h-4 w-4" />
+              Master Data & SDLC
+            </button>
 
-        <button
-          onClick={() => setActiveTab("sync")}
-          className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition ${
-            activeTab === "sync"
-              ? "bg-indigo-600 text-white shadow-xs"
-              : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300"
-          }`}
-        >
-          <RefreshCw className="h-4 w-4" />
-          Sinkronisasi Host Induk
-        </button>
+            <button
+              onClick={() => setActiveTab("sync")}
+              className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition ${
+                activeTab === "sync"
+                  ? "bg-indigo-600 text-white shadow-xs"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300"
+              }`}
+            >
+              <RefreshCw className="h-4 w-4" />
+              Sinkronisasi Host Induk
+            </button>
+          </>
+        ) : null}
 
         <button
           onClick={() => setActiveTab("maintenance")}

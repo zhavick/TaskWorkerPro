@@ -37,7 +37,8 @@ public record MemberListItemDto(
     double TotalHours = 0.0,
     string? PhoneNumber = null,
     List<string>? Projects = null,
-    string? CoverPictureUrl = null
+    string? CoverPictureUrl = null,
+    bool CanPurgeData = false
 );
 
 public record UpdateMemberRequest(
@@ -45,7 +46,10 @@ public record UpdateMemberRequest(
     string JobTitle,
     string? PhoneNumber = null,
     string? AvatarColor = null,
-    int? CompanyId = null
+    int? CompanyId = null,
+    string? Email = null,
+    string? Role = null,
+    bool? CanPurgeData = null
 );
 
 public record CompanyMemberGroupDto(

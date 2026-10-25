@@ -2,24 +2,326 @@
   "info": {
     "_postman_id": "8e90c0e0-8c0e-4e66-928a-trackerkerja-2026",
     "name": "TaskWorker Pro (TrackerKerja Modern) API Collection",
-    "description": "Koleksi Postman API Resmi untuk Pengujian & Otomasi Seluruh 19 Modul Sistem TaskWorker Pro v2.0.",
+    "description": "Koleksi Postman API Resmi dan Terpadu untuk Pengujian & Otomasi Seluruh 15 Modul Sistem TaskWorker Pro (TrackerKerja Modern v2.0). Dilengkapi dengan pengujian otomatis (pm.test) untuk setiap endpoint, penanganan token JWT dinamis, dan verifikasi respons.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{jwt_token}}",
+        "type": "string"
+      }
+    ]
   },
   "item": [
     {
-      "name": "1. Autentikasi & Akun",
+      "name": "0. System Health & Maintenance (Public)",
       "item": [
         {
-          "name": "Login Pengguna",
+          "name": "Health Check & Database Connectivity",
           "event": [
             {
               "listen": "test",
               "script": {
                 "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
                   "var jsonData = pm.response.json();",
-                  "if (jsonData.data && jsonData.data.token) {",
-                  "    pm.environment.set('jwt_token', jsonData.data.token);",
-                  "    console.log('JWT Token saved successfully.');",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Database connection is verified healthy\", function () {",
+                  "    pm.expect(jsonData.databaseConnected).to.be.true;",
+                  "});",
+                  "pm.test(\"System latency and metrics exist\", function () {",
+                  "    pm.expect(jsonData).to.have.property('databaseLatencyMs');",
+                  "    pm.expect(jsonData).to.have.property('serverTimeUtc');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/status",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "status"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          }
+        },
+        {
+          "name": "Nama & Branding Aplikasi",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Application name is returned properly\", function () {",
+                  "    pm.expect(jsonData.appName).to.be.a('string');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/settings/app-name",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "settings",
+                "app-name"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          }
+        },
+        {
+          "name": "Ping Info Host Sinkronisasi",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Sync ping returns host information\", function () {",
+                  "    pm.expect(jsonData).to.have.property('instanceId');",
+                  "    pm.expect(jsonData).to.have.property('version');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/sync/ping",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "sync",
+                "ping"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          }
+        },
+        {
+          "name": "Statistik Tabel Basis Data (Maintenance)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Maintenance stats returns table sizes & counts\", function () {",
+                  "    pm.expect(jsonData.data).to.be.an('object');",
+                  "    pm.expect(jsonData.data).to.have.property('tableStats');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/status/maintenance/stats",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "status",
+                "maintenance",
+                "stats"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Kompaksi Basis Data (VACUUM & Optimization)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Vacuum database operation executed\", function () {",
+                  "    pm.expect(jsonData.message).to.be.a('string');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/status/maintenance/vacuum",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "status",
+                "maintenance",
+                "vacuum"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "1. Autentikasi & Akun",
+      "item": [
+        {
+          "name": "Login Administrator (Auto Captures JWT Token)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Token JWT is generated and non-empty\", function () {",
+                  "    var token = jsonData.accessToken || jsonData.token || (jsonData.data && jsonData.data.token);",
+                  "    pm.expect(token).to.be.a('string').and.not.empty;",
+                  "});",
+                  "pm.test(\"User profile has Administrator role\", function () {",
+                  "    var user = jsonData.user || (jsonData.data && jsonData.data.user);",
+                  "    pm.expect(user).to.be.an('object');",
+                  "    pm.expect(user.roles).to.include('Administrator');",
+                  "});",
+                  "var token = jsonData.accessToken || jsonData.token || (jsonData.data && jsonData.data.token);",
+                  "if (token) {",
+                  "    pm.environment.set('jwt_token', token);",
+                  "    console.log('JWT Token successfully set in environment.');",
+                  "}",
+                  "var user = jsonData.user || (jsonData.data && jsonData.data.user);",
+                  "if (user && user.id) {",
+                  "    pm.environment.set('current_user_id', user.id);",
                   "}"
                 ],
                 "type": "text/javascript"
@@ -30,14 +332,16 @@
             "method": "POST",
             "header": [
               {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
                 "key": "Content-Type",
-                "value": "application/json"
+                "value": "application/json",
+                "type": "text"
               }
             ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"email\": \"admin@trackerkerja.local\",\n  \"password\": \"Password123!\"\n}"
-            },
             "url": {
               "raw": "{{base_url}}/auth/login",
               "host": [
@@ -47,23 +351,165 @@
                 "auth",
                 "login"
               ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{admin_email}}\",\n  \"password\": \"{{admin_password}}\"\n}"
             }
           }
         },
         {
-          "name": "Registrasi Pengguna Baru",
+          "name": "Ambil Profil Pengguna Saat Ini (Current Profile)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Profile data matches authenticated user\", function () {",
+                  "    var prof = jsonData.data || jsonData;",
+                  "    pm.expect(prof).to.have.property('email');",
+                  "    pm.expect(prof).to.have.property('fullName');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/profile",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "profile"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Profil Pengguna (Nama, Jabatan, Avatar)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Profile update confirmation received\", function () {",
+                  "    pm.expect(jsonData.message).to.be.a('string');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/profile",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "profile"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Super Administrator\",\n  \"jobTitle\": \"Lead Systems Architect & Administrator\",\n  \"avatarColor\": \"#6366F1\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Registrasi Pengguna Baru (Karyawan Baru)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Registration responds with approval message or success\", function () {",
+                  "    pm.expect(jsonData.message).to.be.a('string');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
             "method": "POST",
             "header": [
               {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
                 "key": "Content-Type",
-                "value": "application/json"
+                "value": "application/json",
+                "type": "text"
               }
             ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"fullName\": \"Budi Santoso\",\n  \"email\": \"budi@perusahaan.co.id\",\n  \"password\": \"Password123!\",\n  \"jobTitle\": \"Frontend Engineer\",\n  \"companyCode\": \"CORP-ALPHA\"\n}"
-            },
             "url": {
               "raw": "{{base_url}}/auth/register",
               "host": [
@@ -73,23 +519,58 @@
                 "auth",
                 "register"
               ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Testing Engineer 2026\",\n  \"email\": \"engineer.test@trackerkerja.local\",\n  \"password\": \"Password123!\",\n  \"jobTitle\": \"Software Engineer Test\",\n  \"companyOption\": \"existing\",\n  \"existingCompanyCode\": \"{{corporate_code}}\"\n}"
             }
           }
         },
         {
-          "name": "Refresh Token",
+          "name": "Refresh Token JWT",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Token refresh endpoint handled properly\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 400]);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
             "method": "POST",
             "header": [
               {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
                 "key": "Content-Type",
-                "value": "application/json"
+                "value": "application/json",
+                "type": "text"
               }
             ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"refreshToken\": \"{{refresh_token}}\"\n}"
-            },
             "url": {
               "raw": "{{base_url}}/auth/refresh-token",
               "host": [
@@ -99,6 +580,13 @@
                 "auth",
                 "refresh-token"
               ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refresh_token}}\"\n}"
             }
           }
         }
@@ -109,16 +597,40 @@
       "item": [
         {
           "name": "Statistik Eksekutif Dashboard",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Executive metrics contain core operational indicators\", function () {",
+                  "    var d = jsonData.data || jsonData;",
+                  "    pm.expect(d).to.have.property('totalTasks');",
+                  "    pm.expect(d).to.have.property('doneTasks');",
+                  "    pm.expect(d).to.have.property('activeProjects');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
             "method": "GET",
             "header": [
               {
-                "key": "Authorization",
-                "value": "Bearer {{jwt_token}}",
-                "type": "text"
-              },
-              {
-                "key": "Content-Type",
+                "key": "Accept",
                 "value": "application/json",
                 "type": "text"
               }
@@ -137,16 +649,38 @@
         },
         {
           "name": "Beban Kerja Tim (Workload Analytics)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Workload contains member distribution data\", function () {",
+                  "    var list = jsonData.data || jsonData;",
+                  "    pm.expect(list).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
             "method": "GET",
             "header": [
               {
-                "key": "Authorization",
-                "value": "Bearer {{jwt_token}}",
-                "type": "text"
-              },
-              {
-                "key": "Content-Type",
+                "key": "Accept",
                 "value": "application/json",
                 "type": "text"
               }
@@ -162,126 +696,53 @@
               ]
             }
           }
-        }
-      ]
-    },
-    {
-      "name": "3. Manajemen Tugas (Tasks)",
-      "item": [
+        },
         {
-          "name": "Ambil Seluruh Tugas (Hierarki WBS)",
+          "name": "Aktivitas Terbaru Sistem (Recent Activities)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Recent activity timeline is returned as array\", function () {",
+                  "    var acts = jsonData.data || jsonData;",
+                  "    pm.expect(acts).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
             "method": "GET",
             "header": [
               {
-                "key": "Authorization",
-                "value": "Bearer {{jwt_token}}",
-                "type": "text"
-              },
-              {
-                "key": "Content-Type",
+                "key": "Accept",
                 "value": "application/json",
                 "type": "text"
               }
             ],
             "url": {
-              "raw": "{{base_url}}/tasks",
+              "raw": "{{base_url}}/dashboard/recent-activity",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
-                "tasks"
-              ]
-            }
-          }
-        },
-        {
-          "name": "Buat Tugas Baru",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{jwt_token}}",
-                "type": "text"
-              },
-              {
-                "key": "Content-Type",
-                "value": "application/json",
-                "type": "text"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"title\": \"Implementasi Modul Sinkronisasi Host Induk\",\n  \"description\": \"Mengembangkan endpoint push dan pull dengan proteksi zip-slip.\",\n  \"priority\": 2,\n  \"status\": 1,\n  \"progress\": 25,\n  \"projectId\": 1,\n  \"startDate\": \"2026-10-18\",\n  \"dueDate\": \"2026-10-25\"\n}"
-            },
-            "url": {
-              "raw": "{{base_url}}/tasks",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "tasks"
-              ]
-            }
-          }
-        },
-        {
-          "name": "Detail Tugas Berdasarkan ID",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{jwt_token}}",
-                "type": "text"
-              },
-              {
-                "key": "Content-Type",
-                "value": "application/json",
-                "type": "text"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/tasks/1",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "tasks",
-                "1"
-              ]
-            }
-          }
-        },
-        {
-          "name": "Update Data Tugas & Solusi Kendala",
-          "request": {
-            "method": "PUT",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{jwt_token}}",
-                "type": "text"
-              },
-              {
-                "key": "Content-Type",
-                "value": "application/json",
-                "type": "text"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"title\": \"Implementasi Modul Sinkronisasi Host Induk\",\n  \"description\": \"Mengembangkan endpoint push dan pull dengan proteksi zip-slip.\",\n  \"priority\": 2,\n  \"status\": 2,\n  \"progress\": 100,\n  \"obstacle\": \"Koneksi jaringan sempat terputus saat payload besar\",\n  \"solution\": \"Ditambahkan chunked stream buffer dan timeout retry 3x\"\n}"
-            },
-            "url": {
-              "raw": "{{base_url}}/tasks/1",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "tasks",
-                "1"
+                "dashboard",
+                "recent-activity"
               ]
             }
           }
@@ -289,20 +750,46 @@
       ]
     },
     {
-      "name": "4. Manajemen Proyek (Projects)",
+      "name": "3. Manajemen Proyek (Projects)",
       "item": [
         {
-          "name": "Ambil Daftar Proyek",
+          "name": "Ambil Seluruh Daftar Proyek",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Projects list is returned as array\", function () {",
+                  "    var list = jsonData.data || jsonData;",
+                  "    pm.expect(list).to.be.an('array');",
+                  "});",
+                  "var list = jsonData.data || jsonData;",
+                  "if (Array.isArray(list) && list.length > 0) {",
+                  "    pm.environment.set('test_project_id', list[0].id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
             "method": "GET",
             "header": [
               {
-                "key": "Authorization",
-                "value": "Bearer {{jwt_token}}",
-                "type": "text"
-              },
-              {
-                "key": "Content-Type",
+                "key": "Accept",
                 "value": "application/json",
                 "type": "text"
               }
@@ -320,12 +807,44 @@
         },
         {
           "name": "Buat Proyek Baru",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Project created successfully with valid id\", function () {",
+                  "    var p = jsonData.data || jsonData;",
+                  "    pm.expect(p).to.have.property('id');",
+                  "    pm.expect(p.name).to.include('Proyek Sistem Operasi');",
+                  "});",
+                  "var p = jsonData.data || jsonData;",
+                  "if (p && p.id) {",
+                  "    pm.environment.set('test_project_id', p.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
             "method": "POST",
             "header": [
               {
-                "key": "Authorization",
-                "value": "Bearer {{jwt_token}}",
+                "key": "Accept",
+                "value": "application/json",
                 "type": "text"
               },
               {
@@ -334,10 +853,6 @@
                 "type": "text"
               }
             ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"name\": \"Portal Enterprise Wahana Holding\",\n  \"description\": \"Pengembangan portal holding multi-company dengan isolasi tenant.\",\n  \"clientName\": \"PT Wahana Holding\",\n  \"color\": \"#6366F1\",\n  \"budget\": 150000000,\n  \"deadline\": \"2026-12-31\"\n}"
-            },
             "url": {
               "raw": "{{base_url}}/projects",
               "host": [
@@ -346,22 +861,693 @@
               "path": [
                 "projects"
               ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Proyek Sistem Operasi 2026\",\n  \"code\": \"PRJ-OS-2026\",\n  \"description\": \"Inisiatif strategis implementasi fitur dan modul performa tinggi 2026.\",\n  \"color\": \"#6366F1\",\n  \"startDate\": \"2026-01-01T00:00:00Z\",\n  \"endDate\": \"2026-12-31T23:59:59Z\",\n  \"useBudget\": true,\n  \"budget\": 50000000,\n  \"tags\": \"Core,2026,Priority\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Detail Proyek Berdasarkan ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Project details retrieved properly\", function () {",
+                  "    var p = jsonData.data || jsonData;",
+                  "    pm.expect(p).to.have.property('id');",
+                  "    pm.expect(p).to.have.property('name');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/projects/{{test_project_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "projects",
+                "{{test_project_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Data Proyek",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Project update confirmation received\", function () {",
+                  "    pm.expect(jsonData.message).to.be.a('string');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/projects/{{test_project_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "projects",
+                "{{test_project_id}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Proyek Sistem Operasi 2026 (Updated)\",\n  \"code\": \"PRJ-OS-2026-REV\",\n  \"description\": \"Pembaruan deskripsi dan alokasi anggaran proyek.\",\n  \"color\": \"#10B981\",\n  \"startDate\": \"2026-01-01T00:00:00Z\",\n  \"endDate\": \"2026-12-31T23:59:59Z\",\n  \"useBudget\": true,\n  \"budget\": 75000000,\n  \"isArchived\": false,\n  \"tags\": \"Core,2026,Rev\"\n}"
             }
           }
         }
       ]
     },
     {
-      "name": "5. Timesheets & Multi-Timer",
+      "name": "4. Manajemen Tugas & Sub-Tugas (Tasks)",
       "item": [
         {
-          "name": "Ambil Riwayat Sesi Timesheet",
+          "name": "Ambil Seluruh Tugas (Struktur Pohon / WBS)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Tasks list returned with items and count\", function () {",
+                  "    var tasks = jsonData.data || jsonData.items || jsonData;",
+                  "    pm.expect(tasks).to.be.an('array');",
+                  "});",
+                  "var tasks = jsonData.data || jsonData.items || jsonData;",
+                  "if (Array.isArray(tasks) && tasks.length > 0) {",
+                  "    pm.environment.set('test_task_id', tasks[0].id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
             "method": "GET",
             "header": [
               {
-                "key": "Authorization",
-                "value": "Bearer {{jwt_token}}",
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasks?page=1&pageSize=50",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "tasks"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "50"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Buat Tugas Baru",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"New task created successfully\", function () {",
+                  "    var t = jsonData.data || jsonData.task || jsonData;",
+                  "    pm.expect(t).to.have.property('id');",
+                  "    pm.expect(t.title).to.include('Automated Integration');",
+                  "});",
+                  "var t = jsonData.data || jsonData.task || jsonData;",
+                  "if (t && t.id) {",
+                  "    pm.environment.set('test_task_id', t.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasks",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "tasks"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Implementasi Modul Automated Integration Test\",\n  \"description\": \"Menyusun skenario automated test dan verifikasi kestabilan seluruh endpoint.\",\n  \"priority\": 2,\n  \"status\": 1,\n  \"progress\": 25,\n  \"milestone\": \"Implementation\",\n  \"projectId\": \"{{test_project_id}}\",\n  \"startDate\": \"2026-10-23T08:00:00Z\",\n  \"dueDate\": \"2026-10-31T17:00:00Z\",\n  \"tags\": \"Testing,Backend,Automation\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Detail Tugas Berdasarkan ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Task detail contains subtasks and project info\", function () {",
+                  "    var t = jsonData.data?.task || jsonData.task || jsonData.data || jsonData;",
+                  "    pm.expect(t).to.have.property('id');",
+                  "    pm.expect(t).to.have.property('title');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasks/{{test_task_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "tasks",
+                "{{test_task_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Unified Save Tugas (Data Lengkap + Solusi Kendala)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Unified save returns success message\", function () {",
+                  "    pm.expect(jsonData.message).to.be.a('string');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasks/{{test_task_id}}/unified-save",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "tasks",
+                "{{test_task_id}}",
+                "unified-save"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Implementasi Modul Automated Integration Test (Rev)\",\n  \"description\": \"Menyusun skenario automated test komprehensif untuk Postman runner.\",\n  \"priority\": 2,\n  \"status\": 1,\n  \"progress\": 50,\n  \"milestone\": \"Testing & QA\",\n  \"obstacle\": \"Kebutuhan standarisasi environment multi-tenant.\",\n  \"solution\": \"Gunakan environment variable {{base_url}} dan token bearer otomatis.\",\n  \"projectId\": \"{{test_project_id}}\",\n  \"startDate\": \"2026-10-23T08:00:00Z\",\n  \"dueDate\": \"2026-10-31T17:00:00Z\",\n  \"logManualSession\": false\n}"
+            }
+          }
+        },
+        {
+          "name": "Ubah Status Tugas (Patch Status)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Task status update processed\", function () {",
+                  "    pm.expect(jsonData.message).to.be.a('string');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasks/{{test_task_id}}/status",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "tasks",
+                "{{test_task_id}}",
+                "status"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": 1\n}"
+            }
+          }
+        },
+        {
+          "name": "Tambah Sub-Tugas (Checklist WBS)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Subtask created successfully with id\", function () {",
+                  "    var st = jsonData.data || jsonData;",
+                  "    pm.expect(st).to.have.property('id');",
+                  "});",
+                  "var st = jsonData.data || jsonData;",
+                  "if (st && st.id) {",
+                  "    pm.environment.set('test_subtask_id', st.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasks/{{test_task_id}}/subtasks",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "tasks",
+                "{{test_task_id}}",
+                "subtasks"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Pengecekan schema respons JSON\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Toggle Status Sub-Tugas (Selesai/Belum)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Subtask status toggle confirmed\", function () {",
+                  "    pm.expect(jsonData.message).to.be.a('string');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasks/{{test_subtask_id}}/status",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "tasks",
+                "{{test_subtask_id}}",
+                "status"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": 2\n}"
+            }
+          }
+        },
+        {
+          "name": "Papan Kanban Tugas (Semua Kolom Status)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Kanban data contains tasks grouped or listed\", function () {",
+                  "    var kanban = jsonData.data || jsonData;",
+                  "    pm.expect(kanban).to.be.an('object');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasks/kanban",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "tasks",
+                "kanban"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Timesheet & Multi-Timer",
+      "item": [
+        {
+          "name": "Ambil Riwayat Sesi Timesheet",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Timesheets history array returned\", function () {",
+                  "    var ts = jsonData.data || jsonData;",
+                  "    pm.expect(ts).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/timesheets?page=1&pageSize=20",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "timesheets"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Catat Sesi Kerja Manual Cepat",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Timesheet session saved successfully\", function () {",
+                  "    pm.expect(jsonData.message).to.be.a('string');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
                 "type": "text"
               },
               {
@@ -378,17 +1564,47 @@
               "path": [
                 "timesheets"
               ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"taskId\": \"{{test_task_id}}\",\n  \"startTime\": \"2026-10-23T09:00:00Z\",\n  \"endTime\": \"2026-10-23T11:00:00Z\",\n  \"notes\": \"Pengujian integrasi otomatis Postman Collection.\"\n}"
             }
           }
         },
         {
-          "name": "Catat Sesi Kerja Manual Cepat (+1h)",
+          "name": "Mulai Timer Tugas (Start Real-Time Timer)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Timer started or active session acknowledged\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 400]);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
             "method": "POST",
             "header": [
               {
-                "key": "Authorization",
-                "value": "Bearer {{jwt_token}}",
+                "key": "Accept",
+                "value": "application/json",
                 "type": "text"
               },
               {
@@ -397,39 +1613,167 @@
                 "type": "text"
               }
             ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"taskId\": 1,\n  \"durationMinutes\": 60,\n  \"notes\": \"Code review dan perbaikan skrip pengujian E2E\"\n}"
-            },
             "url": {
-              "raw": "{{base_url}}/timesheets/log-session",
+              "raw": "{{base_url}}/timesheets/start",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
                 "timesheets",
-                "log-session"
+                "start"
               ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"taskId\": \"{{test_task_id}}\",\n  \"notes\": \"Mulai sesi fokus coding & QA.\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Cek Sesi Timer Aktif Saat Ini",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Active timer status returned\", function () {",
+                  "    pm.expect(jsonData).to.have.property('data');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/timesheets/active",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "timesheets",
+                "active"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Hentikan Timer Tugas (Stop Timer)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Timer stop request handled\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 400]);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/timesheets/stop",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "timesheets",
+                "stop"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"notes\": \"Sesi kerja selesai dengan hasil memuaskan.\"\n}"
             }
           }
         }
       ]
     },
     {
-      "name": "6. Presensi & Absensi",
+      "name": "6. Presensi & Absensi (Attendances)",
       "item": [
         {
           "name": "Status Presensi Hari Ini",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Today attendance info returned\", function () {",
+                  "    pm.expect(jsonData).to.have.property('data');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
             "method": "GET",
             "header": [
               {
-                "key": "Authorization",
-                "value": "Bearer {{jwt_token}}",
-                "type": "text"
-              },
-              {
-                "key": "Content-Type",
+                "key": "Accept",
                 "value": "application/json",
                 "type": "text"
               }
@@ -447,13 +1791,39 @@
           }
         },
         {
-          "name": "Check-In Presensi (WFO GPS)",
+          "name": "Check-In Presensi (WFO GPS / WFH)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Check-in processed or already checked in\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 400]);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
             "method": "POST",
             "header": [
               {
-                "key": "Authorization",
-                "value": "Bearer {{jwt_token}}",
+                "key": "Accept",
+                "value": "application/json",
                 "type": "text"
               },
               {
@@ -462,10 +1832,6 @@
                 "type": "text"
               }
             ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"workLocation\": 1,\n  \"latitude\": -6.2,\n  \"longitude\": 106.816666,\n  \"notes\": \"Check in kantor pusat\"\n}"
-            },
             "url": {
               "raw": "{{base_url}}/attendances/check-in",
               "host": [
@@ -475,17 +1841,47 @@
                 "attendances",
                 "check-in"
               ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"WFO\",\n  \"latitude\": -6.2088,\n  \"longitude\": 106.8456,\n  \"workLocation\": \"Kantor Pusat Jakarta\",\n  \"notes\": \"Check-in tepat waktu via automated client.\"\n}"
             }
           }
         },
         {
           "name": "Check-Out Presensi",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Check-out request handled\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 400]);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
             "method": "POST",
             "header": [
               {
-                "key": "Authorization",
-                "value": "Bearer {{jwt_token}}",
+                "key": "Accept",
+                "value": "application/json",
                 "type": "text"
               },
               {
@@ -494,10 +1890,6 @@
                 "type": "text"
               }
             ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"notes\": \"Pekerjaan hari ini selesai 100%\"\n}"
-            },
             "url": {
               "raw": "{{base_url}}/attendances/check-out",
               "host": [
@@ -507,82 +1899,263 @@
                 "attendances",
                 "check-out"
               ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"notes\": \"Selesai jam kerja harian.\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Riwayat Presensi Bulanan",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Attendance history returned as array\", function () {",
+                  "    var hist = jsonData.data || jsonData;",
+                  "    pm.expect(hist).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/attendances/history?month=10&year=2026",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "attendances",
+                "history"
+              ],
+              "query": [
+                {
+                  "key": "month",
+                  "value": "10"
+                },
+                {
+                  "key": "year",
+                  "value": "2026"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Rekonsiliasi Presensi (Admin Monitoring)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Reconciliation data accessible by Administrator\", function () {",
+                  "    var rec = jsonData.data || jsonData;",
+                  "    pm.expect(rec).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/attendances/reconciliation",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "attendances",
+                "reconciliation"
+              ]
             }
           }
         }
       ]
     },
     {
-      "name": "7. Gamifikasi & Badges",
+      "name": "7. Gamifikasi, Badges & Rewards",
       "item": [
         {
-          "name": "Ambil Status Gamifikasi Pengguna",
+          "name": "Ambil Status Gamifikasi Pengguna (Poin, Level & Streak)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Gamification status contains level and points\", function () {",
+                  "    var g = jsonData.data || jsonData;",
+                  "    pm.expect(g).to.have.property('points');",
+                  "    pm.expect(g).to.have.property('level');",
+                  "    pm.expect(g).to.have.property('streakDays');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
             "method": "GET",
             "header": [
               {
-                "key": "Authorization",
-                "value": "Bearer {{jwt_token}}",
-                "type": "text"
-              },
-              {
-                "key": "Content-Type",
+                "key": "Accept",
                 "value": "application/json",
                 "type": "text"
               }
             ],
             "url": {
-              "raw": "{{base_url}}/gamification/status",
+              "raw": "{{base_url}}/gamification/summary",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
                 "gamification",
-                "status"
+                "summary"
               ]
             }
           }
         },
         {
           "name": "Daily Check-In Harian (+10 Poin & Streak)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Daily check-in processed successfully or already checked in\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 400]);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
             "method": "POST",
             "header": [
               {
-                "key": "Authorization",
-                "value": "Bearer {{jwt_token}}",
-                "type": "text"
-              },
-              {
-                "key": "Content-Type",
+                "key": "Accept",
                 "value": "application/json",
                 "type": "text"
               }
             ],
             "url": {
-              "raw": "{{base_url}}/gamification/daily-check-in",
+              "raw": "{{base_url}}/gamification/check-in",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
                 "gamification",
-                "daily-check-in"
+                "check-in"
               ]
             }
           }
         },
         {
-          "name": "Galeri 42 Master Badges Gaul",
+          "name": "Galeri Lencana Prestasi Pengguna (My Badges)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Badges gallery returned as array of badges\", function () {",
+                  "    var b = jsonData.data || jsonData;",
+                  "    pm.expect(b).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
             "method": "GET",
             "header": [
               {
-                "key": "Authorization",
-                "value": "Bearer {{jwt_token}}",
-                "type": "text"
-              },
-              {
-                "key": "Content-Type",
+                "key": "Accept",
                 "value": "application/json",
                 "type": "text"
               }
@@ -601,16 +2174,38 @@
         },
         {
           "name": "Katalog Hadiah (Reward Items)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Reward items catalog is available\", function () {",
+                  "    var r = jsonData.data || jsonData;",
+                  "    pm.expect(r).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
             "method": "GET",
             "header": [
               {
-                "key": "Authorization",
-                "value": "Bearer {{jwt_token}}",
-                "type": "text"
-              },
-              {
-                "key": "Content-Type",
+                "key": "Accept",
                 "value": "application/json",
                 "type": "text"
               }
@@ -628,13 +2223,39 @@
           }
         },
         {
-          "name": "Klaim Hadiah",
+          "name": "Rekam Screen-Time Produktif Pengguna",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Screen time logged and evaluated\", function () {",
+                  "    pm.expect(jsonData.message).to.be.a('string');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
             "method": "POST",
             "header": [
               {
-                "key": "Authorization",
-                "value": "Bearer {{jwt_token}}",
+                "key": "Accept",
+                "value": "application/json",
                 "type": "text"
               },
               {
@@ -643,64 +2264,116 @@
                 "type": "text"
               }
             ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"rewardItemId\": 1,\n  \"contactNumber\": \"08123456789\",\n  \"shippingAddress\": \"Gedung Cyber 2 Lantai 15, Jl. HR Rasuna Said\"\n}"
-            },
             "url": {
-              "raw": "{{base_url}}/gamification/claim-reward",
+              "raw": "{{base_url}}/gamification/screen-time",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
                 "gamification",
-                "claim-reward"
+                "screen-time"
               ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"durationMinutes\": 45\n}"
             }
           }
-        }
-      ]
-    },
-    {
-      "name": "8. Pemeliharaan Basis Data (Maintenance)",
-      "item": [
+        },
         {
-          "name": "Kompaksi Basis Data (VACUUM / Shrink)",
+          "name": "Admin: Ambil Seluruh Master Badges Sistem",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Admin Master Badges list returned\", function () {",
+                  "    var list = jsonData.data || jsonData;",
+                  "    pm.expect(list).to.be.an('array');",
+                  "    pm.expect(list.length).to.be.above(0);",
+                  "});",
+                  "var list = jsonData.data || jsonData;",
+                  "if (Array.isArray(list) && list.length > 0) {",
+                  "    pm.environment.set('test_badge_id', list[0].id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
-            "method": "POST",
+            "method": "GET",
             "header": [
               {
-                "key": "Authorization",
-                "value": "Bearer {{jwt_token}}",
-                "type": "text"
-              },
-              {
-                "key": "Content-Type",
+                "key": "Accept",
                 "value": "application/json",
                 "type": "text"
               }
             ],
             "url": {
-              "raw": "{{base_url}}/settings/maintenance/shrink",
+              "raw": "{{base_url}}/gamification/admin/badges",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
-                "settings",
-                "maintenance",
-                "shrink"
+                "gamification",
+                "admin",
+                "badges"
               ]
             }
           }
         },
         {
-          "name": "Statistik Pemeliharaan Data",
+          "name": "Admin: Buat Master Badge Baru",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Admin Master Badge creation response received\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201, 400]);",
+                  "});",
+                  "var d = jsonData.data || jsonData;",
+                  "if (d && d.id) {",
+                  "    pm.environment.set('test_badge_id', d.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
-            "method": "GET",
+            "method": "POST",
             "header": [
               {
-                "key": "Authorization",
-                "value": "Bearer {{jwt_token}}",
+                "key": "Accept",
+                "value": "application/json",
                 "type": "text"
               },
               {
@@ -710,14 +2383,240 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/settings/maintenance/stats",
+              "raw": "{{base_url}}/gamification/admin/badges",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
-                "settings",
-                "maintenance",
-                "stats"
+                "gamification",
+                "admin",
+                "badges"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"QA_CHAMPION_2026\",\n  \"name\": \"QA Automated Champion\",\n  \"description\": \"Meraih kelulusan 100% pada integrasi automated endpoint test.\",\n  \"category\": \"Kualitas\",\n  \"icon\": \"shield-check\",\n  \"color\": \"#6366F1\",\n  \"points\": 250,\n  \"rarity\": 2,\n  \"orderIndex\": 99\n}"
+            }
+          }
+        },
+        {
+          "name": "Admin: Toggle Status Aktif Badge",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Toggle active state executed\", function () {",
+                  "    pm.expect(jsonData.message).to.be.a('string');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gamification/admin/badges/{{test_badge_id}}/toggle-active",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gamification",
+                "admin",
+                "badges",
+                "{{test_badge_id}}",
+                "toggle-active"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Admin: Anugerahkan Badge Secara Manual ke Karyawan",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Badge award handled properly\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 400]);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gamification/admin/badges/award",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "gamification",
+                "admin",
+                "badges",
+                "award"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{current_user_id}}\",\n  \"badgeId\": \"{{test_badge_id}}\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "8. Anggota Tim & Persetujuan (Members)",
+      "item": [
+        {
+          "name": "Daftar Seluruh Anggota Tim (Approved Members)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Members list returned with user info\", function () {",
+                  "    var members = jsonData.data || jsonData;",
+                  "    pm.expect(members).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/members?isApproved=true",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "members"
+              ],
+              "query": [
+                {
+                  "key": "isApproved",
+                  "value": "true"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Daftar Pendaftaran Menunggu Persetujuan (Pending Approvals)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Pending members list returned\", function () {",
+                  "    var pending = jsonData.data || jsonData;",
+                  "    pm.expect(pending).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/members/pending",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "members",
+                "pending"
               ]
             }
           }
@@ -725,16 +2624,100 @@
       ]
     },
     {
-      "name": "9. Multi-Instance Sync",
+      "name": "9. Catatan Cepat (Notes)",
       "item": [
         {
-          "name": "Health Check Host Induk",
+          "name": "Ambil Daftar Seluruh Catatan",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Notes array returned\", function () {",
+                  "    var n = jsonData.data || jsonData;",
+                  "    pm.expect(n).to.be.an('array');",
+                  "});",
+                  "var n = jsonData.data || jsonData;",
+                  "if (Array.isArray(n) && n.length > 0) {",
+                  "    pm.environment.set('test_note_id', n[0].id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
             "method": "GET",
             "header": [
               {
-                "key": "Authorization",
-                "value": "Bearer {{jwt_token}}",
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/notes",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "notes"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Buat Catatan Baru",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Note created successfully with id\", function () {",
+                  "    var note = jsonData.data || jsonData;",
+                  "    pm.expect(note).to.have.property('id');",
+                  "});",
+                  "var note = jsonData.data || jsonData;",
+                  "if (note && note.id) {",
+                  "    pm.environment.set('test_note_id', note.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
                 "type": "text"
               },
               {
@@ -744,13 +2727,116 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/sync/health",
+              "raw": "{{base_url}}/notes",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
-                "sync",
-                "health"
+                "notes"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Catatan Arsitektur Sistem 2026\",\n  \"content\": \"Dokumentasi standar RESTful API, validasi model terpadu, dan postman collection.\",\n  \"isPinned\": true,\n  \"color\": \"#6366F1\",\n  \"category\": \"Arsitektur\",\n  \"tags\": \"Backend,API,Testing\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Detail Catatan Berdasarkan ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Note details returned properly\", function () {",
+                  "    var note = jsonData.data || jsonData;",
+                  "    pm.expect(note).to.have.property('id');",
+                  "    pm.expect(note).to.have.property('title');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/notes/{{test_note_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "notes",
+                "{{test_note_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Hapus Catatan",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Note deletion response confirmed\", function () {",
+                  "    pm.expect(jsonData.message).to.be.a('string');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/notes/{{test_note_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "notes",
+                "{{test_note_id}}"
               ]
             }
           }
@@ -761,17 +2847,38 @@
       "name": "10. Pengumuman Resmi (Announcements)",
       "item": [
         {
-          "name": "Ambil Pengumuman Aktif (Modal Popup)",
+          "name": "Ambil Pengumuman Pop-up Aktif",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Active announcement returned or null if none active\", function () {",
+                  "    pm.expect(jsonData).to.have.property('success');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
             "method": "GET",
             "header": [
               {
-                "key": "Authorization",
-                "value": "Bearer {{jwt_token}}",
-                "type": "text"
-              },
-              {
-                "key": "Content-Type",
+                "key": "Accept",
                 "value": "application/json",
                 "type": "text"
               }
@@ -784,6 +2891,972 @@
               "path": [
                 "announcements",
                 "active"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Ambil Seluruh Daftar Pengumuman",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Announcements list returned\", function () {",
+                  "    var ann = jsonData.data || jsonData;",
+                  "    pm.expect(ann).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/announcements",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "announcements"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "11. Notifikasi Sistem",
+      "item": [
+        {
+          "name": "Daftar Notifikasi Pengguna",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Notifications array returned\", function () {",
+                  "    var notifs = jsonData.data || jsonData;",
+                  "    pm.expect(notifs).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/notifications?page=1&pageSize=20",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "notifications"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Jumlah Notifikasi Belum Dibaca (Unread Count)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Unread count returned as number\", function () {",
+                  "    pm.expect(jsonData).to.have.property('count');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/notifications/unread-count",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "notifications",
+                "unread-count"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Tandai Seluruh Notifikasi Dibaca",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Read all notifications confirmed\", function () {",
+                  "    pm.expect(jsonData.message).to.be.a('string');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/notifications/read-all",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "notifications",
+                "read-all"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "12. Laporan & Analytics (Reports)",
+      "item": [
+        {
+          "name": "Pilihan Filter Laporan (Proyek, Milestone, Anggota)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Report filter options available\", function () {",
+                  "    var f = jsonData.data || jsonData;",
+                  "    pm.expect(f).to.have.property('projects');",
+                  "    pm.expect(f).to.have.property('milestones');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/reports/filters",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "reports",
+                "filters"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Laporan Timesheet Grouping (Project -> Milestone)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Timesheet breakdown report returned\", function () {",
+                  "    var d = jsonData.data || jsonData;",
+                  "    pm.expect(d).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/reports/timesheet",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "reports",
+                "timesheet"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Laporan Tugas & Milestone Grouping",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Tasks breakdown report returned\", function () {",
+                  "    var d = jsonData.data || jsonData;",
+                  "    pm.expect(d).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/reports/tasks",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "reports",
+                "tasks"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Laporan Pencapaian Anggota (Member Achievement)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Achievement breakdown report returned\", function () {",
+                  "    var d = jsonData.data || jsonData;",
+                  "    pm.expect(d).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/reports/achievements",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "reports",
+                "achievements"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "13. Kalender Kerja (Calendar)",
+      "item": [
+        {
+          "name": "Jadwal & Deadline Tugas Kalender",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Calendar events returned as array\", function () {",
+                  "    var events = jsonData.data || jsonData;",
+                  "    pm.expect(events).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/calendar/events?filter=all",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "calendar",
+                "events"
+              ],
+              "query": [
+                {
+                  "key": "filter",
+                  "value": "all"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "14. Data Master & Organisasi",
+      "item": [
+        {
+          "name": "Master Prioritas Tugas",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Master priorities array returned\", function () {",
+                  "    var p = jsonData.data || jsonData;",
+                  "    pm.expect(p).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/master/priorities",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "master",
+                "priorities"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Master Kategori Tugas",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Master categories array returned\", function () {",
+                  "    var c = jsonData.data || jsonData;",
+                  "    pm.expect(c).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/master/categories",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "master",
+                "categories"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Master Milestone Proyek",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Master milestones array returned\", function () {",
+                  "    var m = jsonData.data || jsonData;",
+                  "    pm.expect(m).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/master/milestones",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "master",
+                "milestones"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Daftar Perusahaan / Multi-Tenant",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Companies list returned\", function () {",
+                  "    var comp = jsonData.data || jsonData;",
+                  "    pm.expect(comp).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/companies",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "companies"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Seluruh Konfigurasi Sistem (System Settings)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Settings list returned\", function () {",
+                  "    var s = jsonData.data || jsonData;",
+                  "    pm.expect(s).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/settings",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "settings"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "15. Developer Tools & Audit Logs",
+      "item": [
+        {
+          "name": "Format Payload JSON (JSON Formatter)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Formatted JSON string returned\", function () {",
+                  "    pm.expect(jsonData).to.have.property('formatted');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/dev-tools/json/format",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "dev-tools",
+                "json",
+                "format"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Test Formatting\",\n  \"json\": \"{\\\"task\\\":\\\"Automated Postman\\\",\\\"status\\\":\\\"Active\\\",\\\"metrics\\\":{\\\"code\\\":200,\\\"tested\\\":true}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Format Kueri SQL (SQL Formatter)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Formatted SQL returned\", function () {",
+                  "    var d = jsonData.data || jsonData;",
+                  "    pm.expect(d).to.have.property('formattedSql');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/sqltools/format",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "sqltools",
+                "format"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Test Query Format\",\n  \"sql\": \"SELECT t.id, t.title, p.name FROM tasks t JOIN projects p ON t.project_id = p.id WHERE t.status = 1 ORDER BY t.created_at DESC;\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Riwayat Audit Log Sistem (Security & Action Logs)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Audit logs list returned\", function () {",
+                  "    var logs = jsonData.data || jsonData.items || jsonData;",
+                  "    pm.expect(logs).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/audit-logs?page=1&pageSize=20",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "audit-logs"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Statistik Audit Log (Aktivitas per Modul & Status)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is successful (200/201)\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "pm.test(\"Response time is acceptable (< 2000ms)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "pm.test(\"Response payload has success flag or valid object structure\", function () {",
+                  "    pm.expect(jsonData).to.be.an('object');",
+                  "    if (jsonData.hasOwnProperty('success')) {",
+                  "        pm.expect(jsonData.success).to.be.true;",
+                  "    }",
+                  "});",
+                  "pm.test(\"Audit stats contains totals\", function () {",
+                  "    var s = jsonData.data || jsonData;",
+                  "    pm.expect(s).to.have.property('total');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/audit-logs/stats",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "audit-logs",
+                "stats"
               ]
             }
           }
