@@ -162,10 +162,17 @@ public class TimesheetsController : ControllerBase
 
         var duration = Math.Max(1, (long)(endTimeUtc - startTimeUtc).TotalSeconds);
 
+        // If logged by admin for a specific task, attribute the session to the task's assigned user if present
+        var sessionUserId = currentUserId;
+        if (_tenantService.IsAdmin && !string.IsNullOrEmpty(task.AssignedToUserId))
+        {
+            sessionUserId = task.AssignedToUserId;
+        }
+
         var session = new WorkSession
         {
             TaskId = task.Id,
-            UserId = currentUserId,
+            UserId = sessionUserId,
             StartTime = startTimeUtc,
             EndTime = endTimeUtc,
             Duration = duration,

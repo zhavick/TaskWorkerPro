@@ -306,6 +306,56 @@ export default function DashboardPage() {
     return taskStats.total;
   }, [distributionData?.totalTasks, hasPieData, currentPieData, taskStats.total]);
 
+  const memberProjectData = useMemo(() => {
+    if (distributionData?.byMemberProject && distributionData.byMemberProject.length > 0) {
+      return distributionData.byMemberProject;
+    }
+    return memberChartData.map((m: any) => {
+      const row: Record<string, any> = {
+        name: m.name,
+        userId: m.userId,
+        total: m.value || (m.doneCount || 0) + (m.inProgressCount || 0),
+      };
+      if (m.projectBreakdown && Array.isArray(m.projectBreakdown)) {
+        m.projectBreakdown.forEach((p: any) => {
+          row[p.projectName] = p.count;
+        });
+      } else if (m.projects && Array.isArray(m.projects)) {
+        const share = Math.max(1, Math.floor((m.value || 1) / m.projects.length));
+        m.projects.forEach((proj: string) => {
+          row[proj] = share;
+        });
+      }
+      return row;
+    });
+  }, [distributionData?.byMemberProject, memberChartData]);
+
+  const topProjectsList = useMemo(() => {
+    if (distributionData?.topProjects && distributionData.topProjects.length > 0) {
+      return distributionData.topProjects;
+    }
+    const set = new Set<string>();
+    memberProjectData.forEach((row: any) => {
+      Object.keys(row).forEach((k) => {
+        if (k !== "name" && k !== "userId" && k !== "total" && k !== "Proyek Lainnya" && k !== "Tanpa Proyek") {
+          set.add(k);
+        }
+      });
+    });
+    return Array.from(set).slice(0, 6);
+  }, [distributionData?.topProjects, memberProjectData]);
+
+  const projectBarColors = [
+    "#6366F1", "#10B981", "#F59E0B", "#EC4899", "#3B82F6", "#8B5CF6", "#06B6D4", "#14B8A6"
+  ];
+
+  const integrity = statsData?.integrity || {
+    tasksWithoutProjectCount: 0,
+    tasksWithoutProjectSample: [],
+    emptyProjectsCount: 0,
+    emptyProjectsSample: [],
+  };
+
   return (
     <div className="space-y-6 px-2 py-4 lg:px-6">
       {/* 1. Header Section with Welcome & Quick Actions */}
@@ -429,6 +479,82 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+
+      {/* 2.5 Informasi Penting Integritas Operasional: Task Tanpa Proyek & Proyek Kosong */}
+      {(integrity.tasksWithoutProjectCount > 0 || integrity.emptyProjectsCount > 0) && (
+        <div className="rounded-2xl border border-amber-300 bg-amber-50/70 p-4 shadow-xs dark:border-amber-900/60 dark:bg-amber-950/30">
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500 text-white shadow-xs">
+              <AlertTriangle className="h-5 w-5" />
+            </div>
+            <div className="flex-1">
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                <h4 className="text-sm font-bold text-amber-950 dark:text-amber-200">
+                  Perhatian Penting: Ketidaksesuaian Struktur Tugas &amp; Proyek
+                </h4>
+                <span className="text-[11px] font-semibold text-amber-700 dark:text-amber-400">
+                  Audit Integritas Data Real-Time
+                </span>
+              </div>
+              <p className="mt-0.5 text-xs text-amber-900/80 dark:text-amber-300/80">
+                Ditemukan entitas kerja yang belum terorganisir sempurna dan berpotensi menghambat visibilitas laporan:
+              </p>
+
+              <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {/* Notice 1: Task Tanpa Proyek */}
+                {integrity.tasksWithoutProjectCount > 0 ? (
+                  <div className="rounded-xl border border-amber-200/90 bg-white/90 p-3 shadow-2xs dark:border-amber-800/60 dark:bg-gray-900/90">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-rose-100 text-[11px] font-black text-rose-600 dark:bg-rose-950/80 dark:text-rose-400">
+                          {integrity.tasksWithoutProjectCount}
+                        </span>
+                        <span className="text-xs font-bold text-gray-900 dark:text-white">
+                          Tugas Tanpa Asosiasi Proyek
+                        </span>
+                      </div>
+                      <Link
+                        href="/tasks"
+                        className="flex items-center gap-1 text-[11px] font-bold text-primary-600 hover:underline dark:text-primary-400"
+                      >
+                        Buka Tugas <ArrowUpRight className="h-3 w-3" />
+                      </Link>
+                    </div>
+                    <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                      Tugas ini berdiri sendiri tanpa repositori/proyek induk, sehingga jam kerja dan progresnya tidak teragregasi di burn rate proyek.
+                    </p>
+                  </div>
+                ) : null}
+
+                {/* Notice 2: Proyek Kosong Tanpa Task */}
+                {integrity.emptyProjectsCount > 0 ? (
+                  <div className="rounded-xl border border-amber-200/90 bg-white/90 p-3 shadow-2xs dark:border-amber-800/60 dark:bg-gray-900/90">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-amber-100 text-[11px] font-black text-amber-600 dark:bg-amber-950/80 dark:text-amber-400">
+                          {integrity.emptyProjectsCount}
+                        </span>
+                        <span className="text-xs font-bold text-gray-900 dark:text-white">
+                          Proyek Kosong Tanpa Tugas
+                        </span>
+                      </div>
+                      <Link
+                        href="/projects"
+                        className="flex items-center gap-1 text-[11px] font-bold text-primary-600 hover:underline dark:text-primary-400"
+                      >
+                        Kelola Proyek <ArrowUpRight className="h-3 w-3" />
+                      </Link>
+                    </div>
+                    <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                      Proyek telah dibuat namun belum memiliki rincian tugas operasional aktif yang ditugaskan ke anggota tim.
+                    </p>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 3. 5 Personal Metric Cards (FSD Bagian 5.20.7 & USER_GUIDE Bagian 2.1) */}
       <div id="tour-metrics" data-tour="tour-metrics" className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
@@ -939,6 +1065,88 @@ export default function DashboardPage() {
                 </div>
               );
             })}
+          </div>
+        </div>
+
+        {/* Divider & Chart 2: Alokasi Beban Kerja Berdasarkan Proyek */}
+        <div className="mt-8 border-t border-card-border pt-6">
+          <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-2">
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary-500/10 text-primary-500">
+                <Briefcase className="h-4 w-4" />
+              </div>
+              <div>
+                <h4 className="text-sm font-bold text-text-primary">
+                  Distribusi Tugas Anggota Tim Berdasarkan Proyek
+                </h4>
+                <p className="text-[11px] text-text-secondary">
+                  Proporsi pembagian tugas tiap anggota tim di masing-masing repositori &amp; proyek aktif
+                </p>
+              </div>
+            </div>
+            <span className="text-[11px] font-semibold text-text-secondary">
+              Stacked Workload per Proyek
+            </span>
+          </div>
+
+          <div className="h-72 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={memberProjectData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--card-border, #E5E7EB)" opacity={0.6} />
+                <XAxis dataKey="name" tickLine={false} axisLine={false} fontSize={12} stroke="var(--text-secondary, #9CA3AF)" />
+                <YAxis tickLine={false} axisLine={false} fontSize={12} stroke="var(--text-secondary, #9CA3AF)" allowDecimals={false} />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: "var(--card-background, #ffffff)",
+                    borderColor: "var(--card-border, #e5e7eb)",
+                    borderWidth: "1px",
+                    borderStyle: "solid",
+                    borderRadius: "0.75rem",
+                    color: "var(--text-primary, #111827)",
+                    fontSize: "12px",
+                    boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1)",
+                  }}
+                  itemStyle={{ color: "var(--text-primary, #111827)" }}
+                  labelStyle={{ color: "var(--text-secondary, #6b7280)", fontWeight: 600 }}
+                  formatter={(val: any, name: any) => [`${val} Tugas`, name]}
+                />
+                <Legend
+                  wrapperStyle={{ paddingTop: "12px", fontSize: "12px" }}
+                  formatter={(value) => <span className="text-text-secondary font-medium">{value}</span>}
+                />
+                {topProjectsList.map((proj: string, idx: number) => (
+                  <Bar
+                    key={proj}
+                    dataKey={proj}
+                    name={proj}
+                    stackId="workloadProject"
+                    fill={projectBarColors[idx % projectBarColors.length]}
+                    radius={[0, 0, 0, 0]}
+                    maxBarSize={36}
+                  />
+                ))}
+                {memberProjectData.some((r: any) => (r["Proyek Lainnya"] || 0) > 0) && (
+                  <Bar
+                    dataKey="Proyek Lainnya"
+                    name="Proyek Lainnya"
+                    stackId="workloadProject"
+                    fill="#8B5CF6"
+                    radius={[0, 0, 0, 0]}
+                    maxBarSize={36}
+                  />
+                )}
+                {memberProjectData.some((r: any) => (r["Tanpa Proyek"] || 0) > 0) && (
+                  <Bar
+                    dataKey="Tanpa Proyek"
+                    name="Tanpa Proyek"
+                    stackId="workloadProject"
+                    fill="#94A3B8"
+                    radius={[4, 4, 0, 0]}
+                    maxBarSize={36}
+                  />
+                )}
+              </BarChart>
+            </ResponsiveContainer>
           </div>
         </div>
       </div>

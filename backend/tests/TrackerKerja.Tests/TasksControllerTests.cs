@@ -210,6 +210,51 @@ public class TasksControllerTests
     }
 
     [Fact]
+    public async Task UnifiedSave_WhenAdminEditsTaskOfAnotherUser_ManualSessionShouldBeAttributedToAssignedUser()
+    {
+        // Arrange: Admin logged in, editing a task assigned to member-budi
+        var adminTenant = new FakeTenantService(10, "WCH", "admin-super-id", true);
+        var controller = new TasksController(_context, adminTenant);
+        var startTime = DateTimeOffset.UtcNow.AddHours(-1);
+        var endTime = DateTimeOffset.UtcNow;
+
+        var request = new UnifiedSaveTaskRequest(
+            "Tugas Budi Diperbarui Admin",
+            "Admin menambahkan jam kerja untuk Budi",
+            TaskPriority.High,
+            Domain.Enums.TaskStatus.InProgress,
+            80,
+            null,
+            null,
+            null,
+            1,
+            null,
+            "member-budi",
+            DateTimeOffset.UtcNow,
+            DateTimeOffset.UtcNow.AddDays(2),
+            true, // LogManualSession
+            startTime,
+            endTime,
+            "1 jam sesi kerja diinput oleh admin untuk Budi"
+        );
+
+        // Act
+        var result = await controller.UnifiedSave(10, request) as OkObjectResult;
+
+        // Assert
+        result.Should().NotBeNull();
+        result!.StatusCode.Should().Be(200);
+
+        var latestSession = await _context.Sessions
+            .Where(s => s.TaskId == 10 && s.Notes == "1 jam sesi kerja diinput oleh admin untuk Budi")
+            .FirstOrDefaultAsync();
+
+        latestSession.Should().NotBeNull();
+        latestSession!.UserId.Should().Be("member-budi");
+        latestSession.UserId.Should().NotBe("admin-super-id");
+    }
+
+    [Fact]
     public async Task UpdateStatus_WhenDone_ShouldSetProgressTo100()
     {
         // Arrange

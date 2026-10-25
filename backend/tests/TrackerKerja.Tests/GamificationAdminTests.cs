@@ -194,4 +194,73 @@ public class GamificationAdminTests
         var revokedBadge = await _context.UserBadges.FirstOrDefaultAsync(ub => ub.UserId == "user-staf" && ub.BadgeId == 101);
         revokedBadge.Should().BeNull();
     }
+
+    [Fact]
+    public async Task Admin_ResetPoints_ForSingleUser_ShouldRemoveOnlyThatUsersGamificationData()
+    {
+        // Arrange
+        var controller = new GamificationController(_context, _tenantService);
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+
+        _context.DailyCheckIns.AddRange(
+            new DailyCheckIn { UserId = "user-staf", CheckInDate = today, PointsEarned = 10, StreakDay = 5 },
+            new DailyCheckIn { UserId = "admin-1", CheckInDate = today, PointsEarned = 10, StreakDay = 3 }
+        );
+        _context.UserBadges.AddRange(
+            new UserBadge { UserId = "user-staf", BadgeId = 101 },
+            new UserBadge { UserId = "admin-1", BadgeId = 101 }
+        );
+        _context.RewardClaims.Add(new RewardClaim { UserId = "user-staf", RewardItemId = 1, PointsSpent = 100 });
+        await _context.SaveChangesAsync();
+
+        var request = new ResetGamificationPointsRequest("user-staf", ResetCheckIns: true, ResetBadges: true, ResetClaims: true);
+
+        // Act
+        var result = await controller.ResetGamificationPoints(request) as OkObjectResult;
+
+        // Assert
+        result.Should().NotBeNull();
+        result!.StatusCode.Should().Be(200);
+
+        // user-staf data should be wiped
+        var stafCheckIns = await _context.DailyCheckIns.Where(c => c.UserId == "user-staf").ToListAsync();
+        stafCheckIns.Should().BeEmpty();
+
+        var stafBadges = await _context.UserBadges.Where(b => b.UserId == "user-staf").ToListAsync();
+        stafBadges.Should().BeEmpty();
+
+        var stafClaims = await _context.RewardClaims.Where(c => c.UserId == "user-staf").ToListAsync();
+        stafClaims.Should().BeEmpty();
+
+        // admin-1 data should still exist untouched
+        var adminCheckIns = await _context.DailyCheckIns.Where(c => c.UserId == "admin-1").ToListAsync();
+        adminCheckIns.Should().HaveCount(1);
+    }
+
+    [Fact]
+    public async Task Admin_ResetPoints_ForAllUsers_ShouldRemoveAllGamificationData()
+    {
+        // Arrange
+        var controller = new GamificationController(_context, _tenantService);
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+
+        _context.DailyCheckIns.AddRange(
+            new DailyCheckIn { UserId = "user-staf", CheckInDate = today, PointsEarned = 10, StreakDay = 2 },
+            new DailyCheckIn { UserId = "admin-1", CheckInDate = today, PointsEarned = 10, StreakDay = 1 }
+        );
+        await _context.SaveChangesAsync();
+
+        var request = new ResetGamificationPointsRequest(UserId: "all", ResetCheckIns: true, ResetBadges: false, ResetClaims: false);
+
+        // Act
+        var result = await controller.ResetGamificationPoints(request) as OkObjectResult;
+
+        // Assert
+        result.Should().NotBeNull();
+        result!.StatusCode.Should().Be(200);
+
+        var allCheckIns = await _context.DailyCheckIns.ToListAsync();
+        allCheckIns.Should().BeEmpty();
+    }
 }
+

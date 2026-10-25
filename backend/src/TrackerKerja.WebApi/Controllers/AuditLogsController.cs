@@ -105,7 +105,7 @@ public class AuditLogsController : ControllerBase
             .Take(pageSize)
             .Select(a => new AuditLogDto(
                 a.Id, a.UserId, a.UserEmail, a.UserName, a.ControllerName, a.ActionName,
-                a.HttpMethod, a.Path, a.StatusCode, a.DurationMs, a.Timestamp, a.Details
+                a.HttpMethod, a.Path, a.StatusCode, a.DurationMs, a.Timestamp, a.Details, a.IpAddress
             ))
             .ToListAsync();
 
@@ -198,7 +198,7 @@ public class AuditLogsController : ControllerBase
             .Take(30)
             .Select(a => new AuditLogDto(
                 a.Id, a.UserId, a.UserEmail, a.UserName, a.ControllerName, a.ActionName,
-                a.HttpMethod, a.Path, a.StatusCode, a.DurationMs, a.Timestamp, a.Details
+                a.HttpMethod, a.Path, a.StatusCode, a.DurationMs, a.Timestamp, a.Details, a.IpAddress
             ))
             .ToListAsync();
 
@@ -221,7 +221,7 @@ public class AuditLogsController : ControllerBase
             .Take(30)
             .Select(a => new AuditLogDto(
                 a.Id, a.UserId, a.UserEmail, a.UserName, a.ControllerName, a.ActionName,
-                a.HttpMethod, a.Path, a.StatusCode, a.DurationMs, a.Timestamp, a.Details
+                a.HttpMethod, a.Path, a.StatusCode, a.DurationMs, a.Timestamp, a.Details, a.IpAddress
             ))
             .ToListAsync();
 
@@ -244,7 +244,7 @@ public class AuditLogsController : ControllerBase
             .Take(30)
             .Select(a => new AuditLogDto(
                 a.Id, a.UserId, a.UserEmail, a.UserName, a.ControllerName, a.ActionName,
-                a.HttpMethod, a.Path, a.StatusCode, a.DurationMs, a.Timestamp, a.Details
+                a.HttpMethod, a.Path, a.StatusCode, a.DurationMs, a.Timestamp, a.Details, a.IpAddress
             ))
             .ToListAsync();
 

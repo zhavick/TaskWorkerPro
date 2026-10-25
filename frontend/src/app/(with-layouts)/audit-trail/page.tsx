@@ -46,6 +46,7 @@ export interface AuditLogItem {
   durationMs: number;
   timestamp: string;
   details?: string | null;
+  ipAddress?: string | null;
 }
 
 export interface AuditLogSummary {
@@ -743,7 +744,7 @@ export default function AuditTrailPage() {
                     <div className="flex justify-between">
                       <span className="text-text-secondary font-sans">Alamat IP:</span>
                       <span className="font-semibold text-text-primary">
-                        {detailsInfo.ipAddress || "127.0.0.1"}
+                        {selectedLog.ipAddress || detailsInfo.ipAddress || "-"}
                       </span>
                     </div>
                     <div className="flex justify-between">

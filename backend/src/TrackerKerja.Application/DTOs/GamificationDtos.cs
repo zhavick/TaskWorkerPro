@@ -141,3 +141,11 @@ public record CreateOrUpdateMasterBadgeRequest(
     int OrderIndex = 0
 );
 
+public record ResetGamificationPointsRequest(
+    string? UserId = null,
+    bool ResetCheckIns = true,
+    bool ResetBadges = true,
+    bool ResetClaims = true
+);
+
+

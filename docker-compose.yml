@@ -43,6 +43,7 @@ services:
       - "5008:5008"
     volumes:
       - backend_uploads:/app/uploads
+      - ./Sample Source DB:/app/seed-data:ro
     networks:
       - tracker_network
 

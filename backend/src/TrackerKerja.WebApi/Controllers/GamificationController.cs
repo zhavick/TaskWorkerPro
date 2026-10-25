@@ -966,6 +966,109 @@ public class GamificationController : ControllerBase
         });
     }
 
+    [HttpPost("admin/reset-points")]
+    [Authorize(Roles = "Administrator,SuperAdmin")]
+    public async Task<IActionResult> ResetGamificationPoints([FromBody] ResetGamificationPointsRequest? request)
+    {
+        if (!await IsUserAdminAsync())
+        {
+            return StatusCode(403, new { success = false, message = "Akses ditolak: Hanya Administrator yang diizinkan." });
+        }
+
+        var req = request ?? new ResetGamificationPointsRequest();
+        var companyId = _tenantService.CompanyId;
+        var isAllUsers = string.IsNullOrWhiteSpace(req.UserId) || req.UserId.Equals("all", StringComparison.OrdinalIgnoreCase);
+
+        List<string> targetUserIds;
+        string targetDescription;
+
+        if (isAllUsers)
+        {
+            var usersQuery = _context.Users.AsQueryable();
+            if (companyId.HasValue)
+            {
+                usersQuery = usersQuery.Where(u => u.CompanyId == companyId.Value);
+            }
+            targetUserIds = await usersQuery.Select(u => u.Id).ToListAsync();
+            targetDescription = $"seluruh pengguna ({targetUserIds.Count} akun)";
+        }
+        else
+        {
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == req.UserId);
+            if (user == null)
+            {
+                return NotFound(new { success = false, message = "Pengguna tidak ditemukan." });
+            }
+            targetUserIds = new List<string> { user.Id };
+            targetDescription = $"pengguna '{user.FullName}'";
+        }
+
+        int checkInsDeleted = 0;
+        int badgesDeleted = 0;
+        int claimsDeleted = 0;
+
+        if (req.ResetCheckIns && targetUserIds.Count > 0)
+        {
+            var checkIns = await _context.DailyCheckIns
+                .Where(c => targetUserIds.Contains(c.UserId))
+                .ToListAsync();
+            checkInsDeleted = checkIns.Count;
+            if (checkInsDeleted > 0)
+            {
+                _context.DailyCheckIns.RemoveRange(checkIns);
+            }
+        }
+
+        if (req.ResetBadges && targetUserIds.Count > 0)
+        {
+            var userBadges = await _context.UserBadges
+                .Where(b => targetUserIds.Contains(b.UserId))
+                .ToListAsync();
+            badgesDeleted = userBadges.Count;
+            if (badgesDeleted > 0)
+            {
+                _context.UserBadges.RemoveRange(userBadges);
+            }
+
+            var snapshots = await _context.UserBadgeSnapshots
+                .Where(s => targetUserIds.Contains(s.UserId))
+                .ToListAsync();
+            if (snapshots.Count > 0)
+            {
+                _context.UserBadgeSnapshots.RemoveRange(snapshots);
+            }
+        }
+
+        if (req.ResetClaims && targetUserIds.Count > 0)
+        {
+            var claims = await _context.RewardClaims
+                .Where(c => targetUserIds.Contains(c.UserId))
+                .ToListAsync();
+            claimsDeleted = claims.Count;
+            if (claimsDeleted > 0)
+            {
+                _context.RewardClaims.RemoveRange(claims);
+            }
+        }
+
+        await _context.SaveChangesAsync();
+
+        return Ok(new
+        {
+            success = true,
+            message = $"Berhasil mereset poin dan progres gamifikasi untuk {targetDescription}.",
+            details = new
+            {
+                target = targetDescription,
+                isAllUsers,
+                userId = req.UserId,
+                deletedCheckIns = checkInsDeleted,
+                deletedBadges = badgesDeleted,
+                deletedClaims = claimsDeleted
+            }
+        });
+    }
+
     private async Task<bool> IsUserAdminAsync()
     {
         if (_tenantService.IsAdmin) return true;

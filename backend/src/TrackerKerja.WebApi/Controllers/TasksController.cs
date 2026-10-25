@@ -486,7 +486,11 @@ public class TasksController : ControllerBase
                     var duration = (long)(request.ManualSessionEndTime.Value - request.ManualSessionStartTime.Value).TotalSeconds;
                     if (duration > 0)
                     {
-                        var sessionUserId = _tenantService.UserId ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? task.AssignedToUserId ?? task.CreatedByUserId;
+                        // When adding work session during task edit, attribute to the task's assigned user (or creator), NOT the admin editor
+                        var sessionUserId = !string.IsNullOrEmpty(task.AssignedToUserId)
+                            ? task.AssignedToUserId
+                            : (!string.IsNullOrEmpty(task.CreatedByUserId) ? task.CreatedByUserId : (_tenantService.UserId ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value));
+
                         if (!string.IsNullOrEmpty(sessionUserId))
                         {
                             var session = new WorkSession

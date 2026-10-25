@@ -1,4 +1,6 @@
 using Microsoft.EntityFrameworkCore;
+using TrackerKerja.Application.Common.Interfaces;
+using TrackerKerja.Application.DTOs;
 using TrackerKerja.Domain.Entities;
 using TrackerKerja.Domain.Enums;
 using TrackerKerja.Infrastructure.Services;
@@ -7,7 +9,7 @@ namespace TrackerKerja.Infrastructure.Persistence;
 
 public static class DbInitializer
 {
-    public static async Task SeedAsync(AppDbContext context)
+    public static async Task SeedAsync(AppDbContext context, ITaskExcelImportService? excelImportService = null)
     {
         // 0. Pastikan Skema Tabel Terpasang & Termigrasi (PostgreSQL)
         if (context.Database.IsRelational())
@@ -403,6 +405,117 @@ public static class DbInitializer
             };
 
             context.Categories.AddRange(defaultCategories);
+            await context.SaveChangesAsync();
+        }
+
+        // 9. Inisialisasi Otomatis Data Tugas dari Task Tracker v2.xlsx Jika Tabel Kosong
+        await AutoSeedTaskTrackerExcelAsync(context, excelImportService);
+
+        // 10. Inisialisasi Otomatis Presensi Kehadiran Anggota (1 Agustus 2026 s/d 25 Oktober 2026)
+        await AutoSeedAttendancesAsync(context);
+    }
+
+    private static async Task AutoSeedTaskTrackerExcelAsync(AppDbContext context, ITaskExcelImportService? excelImportService)
+    {
+        if (await context.Tasks.AnyAsync()) return;
+
+        var candidatePaths = new[]
+        {
+            "/app/seed-data/Task Tracker v2.xlsx",
+            Path.Combine(AppContext.BaseDirectory, "seed-data/Task Tracker v2.xlsx"),
+            Path.Combine(Directory.GetCurrentDirectory(), "Sample Source DB/Task Tracker v2.xlsx"),
+            Path.Combine(AppContext.BaseDirectory, "../../../../../Sample Source DB/Task Tracker v2.xlsx"),
+            Path.Combine(AppContext.BaseDirectory, "../../../../Sample Source DB/Task Tracker v2.xlsx"),
+            "/Users/mac/Projects/2026/taskpro/TaskWorkerPro/Sample Source DB/Task Tracker v2.xlsx"
+        };
+
+        string? foundPath = candidatePaths.FirstOrDefault(File.Exists);
+        if (foundPath == null) return;
+
+        try
+        {
+            var service = excelImportService ?? new TaskExcelImportService(context);
+            using var fileStream = File.OpenRead(foundPath);
+            var preview = await service.PreviewImportAsync(fileStream, Path.GetFileName(foundPath), companyId: 1);
+
+            var commitReq = new TaskImportCommitRequest(
+                DefaultProjectId: null,
+                BulkAssignUserId: null,
+                SelectedRowIndexes: null,
+                Rows: preview.Rows,
+                AutoCreateMissingUsers: true,
+                DefaultJobTitle: "Staff Pelaksana",
+                DefaultPassword: "TrackerKerja2026!",
+                EmailDomain: "elistec.com",
+                AutoApproveNewUsers: true
+            );
+
+            await service.CommitImportAsync(commitReq, companyId: 1);
+        }
+        catch
+        {
+            // Abaikan kesalahan auto-import jika file rusak atau tidak diizinkan agar startup tetap berjalan
+        }
+    }
+
+    private static async Task AutoSeedAttendancesAsync(AppDbContext context)
+    {
+        if (await context.Attendances.AnyAsync()) return;
+
+        // Ambil seluruh user anggota tim di perusahaan (kecuali user pending)
+        var users = await context.Users
+            .Where(u => u.Id != "usr-pending" && (u.CompanyId == 1 || u.CompanyId == null))
+            .ToListAsync();
+
+        if (!users.Any()) return;
+
+        var startDate = new DateOnly(2026, 8, 1);
+        var endDate = new DateOnly(2026, 10, 25);
+        var rand = new Random(42);
+        var attendances = new List<Attendance>();
+
+        for (var cur = startDate; cur <= endDate; cur = cur.AddDays(1))
+        {
+            if (cur.DayOfWeek == DayOfWeek.Saturday || cur.DayOfWeek == DayOfWeek.Sunday)
+            {
+                continue;
+            }
+
+            foreach (var user in users)
+            {
+                int inTotalSec = (7 * 3600) + (30 * 60) + (rand.Next(0, 61) * 60) + rand.Next(0, 60);
+                var inTime = new TimeOnly(inTotalSec / 3600, (inTotalSec % 3600) / 60, inTotalSec % 60);
+
+                int outTotalSec = (17 * 3600) + (rand.Next(0, 56) * 60) + rand.Next(0, 60);
+                var outTime = new TimeOnly(outTotalSec / 3600, (outTotalSec % 3600) / 60, outTotalSec % 60);
+
+                var clockIn = new DateTimeOffset(cur.Year, cur.Month, cur.Day, inTime.Hour, inTime.Minute, inTime.Second, TimeSpan.FromHours(7));
+                var clockOut = new DateTimeOffset(cur.Year, cur.Month, cur.Day, outTime.Hour, outTime.Minute, outTime.Second, TimeSpan.FromHours(7));
+
+                var totalHours = Math.Round((clockOut - clockIn).TotalHours, 2);
+                var workLocation = rand.NextDouble() < 0.70 ? WorkLocation.WFO : WorkLocation.WFH;
+                var locLabel = workLocation == WorkLocation.WFO ? "WFO Kantor Pusat" : "WFH Reguler";
+
+                attendances.Add(new Attendance
+                {
+                    UserId = user.Id,
+                    Date = cur,
+                    Type = AttendanceType.Present,
+                    WorkLocation = workLocation,
+                    ClockIn = clockIn,
+                    ClockOut = clockOut,
+                    TotalHours = totalHours,
+                    Notes = $"Presensi kerja reguler {locLabel}",
+                    Status = 1,
+                    CreatedAt = clockIn,
+                    UpdatedAt = clockOut
+                });
+            }
+        }
+
+        if (attendances.Any())
+        {
+            context.Attendances.AddRange(attendances);
             await context.SaveChangesAsync();
         }
     }

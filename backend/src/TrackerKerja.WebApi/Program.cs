@@ -153,6 +153,12 @@ builder.Services.AddSwaggerGen(c =>
 
 var app = builder.Build();
 
+// Enable Forwarded Headers for reverse proxies, cloud ingress & client IP forwarding
+app.UseForwardedHeaders(new ForwardedHeadersOptions
+{
+    ForwardedHeaders = Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedFor | Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedProto
+});
+
 // 7. HTTP Pipeline
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 
@@ -197,9 +203,10 @@ app.MapHub<NotificationHub>("/hubs/notifications");
 using (var scope = app.Services.CreateScope())
 {
     var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    var excelImportService = scope.ServiceProvider.GetService<ITaskExcelImportService>();
     try
     {
-        await DbInitializer.SeedAsync(context);
+        await DbInitializer.SeedAsync(context, excelImportService);
     }
     catch (Exception ex)
     {

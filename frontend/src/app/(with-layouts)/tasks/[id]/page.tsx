@@ -592,6 +592,15 @@ export default function TaskStudioPage() {
                     <p className="text-[11px] text-gray-500 dark:text-gray-400">
                       Simpan perubahan data tugas dan log sesi jam kerja sekaligus dalam 1 request atomik.
                     </p>
+                    <p className="mt-1 text-[11px] font-semibold text-indigo-700 dark:text-indigo-300">
+                      ✓ Jam kerja sesi manual akan dicatatkan atas nama:{" "}
+                      <span className="font-bold underline">
+                        {members.find((m: any) => m.id === assignedToUserId)?.fullName ||
+                         members.find((m: any) => m.id === assignedToUserId)?.name ||
+                         task?.assignedToUserName ||
+                         "Pengguna yang ditugaskan"}
+                      </span>
+                    </p>
                   </div>
                 </div>
 
