@@ -194,6 +194,7 @@ public class SyncController : ControllerBase
     }
 
     [HttpGet("history")]
+    [HttpGet("summary")]
     [Authorize]
     public async Task<IActionResult> GetHistory([FromQuery] int limit = 30)
     {

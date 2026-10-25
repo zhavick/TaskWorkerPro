@@ -836,6 +836,7 @@ public class TasksController : ControllerBase
     }
 
     [HttpGet("import/template")]
+    [HttpGet("export/template")]
     [Authorize]
     public IActionResult DownloadTemplate([FromQuery] string format = "standard")
     {
@@ -844,6 +845,13 @@ public class TasksController : ControllerBase
             ? "Template_Import_Tugas_ARMS.xlsx"
             : "Template_Import_Tugas_Standar.xlsx";
         return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
+    }
+
+    [HttpGet("export/arms-template")]
+    [Authorize]
+    public IActionResult DownloadArmsTemplate()
+    {
+        return DownloadTemplate("arms");
     }
 
     [HttpPost("import/preview")]

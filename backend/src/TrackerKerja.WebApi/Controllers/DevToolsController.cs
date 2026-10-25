@@ -10,6 +10,7 @@ namespace TrackerKerja.WebApi.Controllers;
 
 [ApiController]
 [Route("api/dev-tools")]
+[Route("api/devtools")]
 [Route("api/jsontools")]
 [Authorize]
 public class DevToolsController : ControllerBase

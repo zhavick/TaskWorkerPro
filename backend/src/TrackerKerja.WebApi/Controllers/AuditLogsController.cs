@@ -131,7 +131,8 @@ public class AuditLogsController : ControllerBase
 
         var totalLogs = await query.CountAsync();
 
-        var todayUtc = DateTimeOffset.UtcNow.Date;
+        var nowUtc = DateTimeOffset.UtcNow;
+        var todayUtc = new DateTimeOffset(nowUtc.Year, nowUtc.Month, nowUtc.Day, 0, 0, 0, TimeSpan.Zero);
         var todayCount = await query
             .CountAsync(a => a.Timestamp >= todayUtc);
 
