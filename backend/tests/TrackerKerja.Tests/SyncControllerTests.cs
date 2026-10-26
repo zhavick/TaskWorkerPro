@@ -102,6 +102,40 @@ public class SyncControllerTests : IDisposable
         Assert.True(opResult.Success);
     }
 
+    [Theory]
+    [InlineData("TK-SYNC-VUBKJ5PNX3PHI1WX")]
+    [InlineData("TK-SYNC-TNEBGVH4EEVMPCQ9")]
+    [InlineData("TRACKERKERJA_SYNC_SECRET_DEFAULT_2026")]
+    public async Task ExportSql_WithLeakedLegacyKey_ShouldReturnUnauthorized(string leakedKey)
+    {
+        // Kunci lama tetap ditolak walaupun tersimpan di SystemSettings
+        _context.SystemSettings.Add(new SystemSetting { Key = "HostSync_ApiKey", Value = leakedKey });
+        await _context.SaveChangesAsync();
+
+        var controller = new SyncController(_syncService, _normalTenantService, _configuration, _context);
+        var httpContext = new DefaultHttpContext();
+        httpContext.Request.Headers["X-Sync-ApiKey"] = leakedKey;
+        controller.ControllerContext = new ControllerContext { HttpContext = httpContext };
+
+        var result = await controller.ExportSql();
+
+        Assert.IsType<UnauthorizedObjectResult>(result);
+    }
+
+    [Fact]
+    public async Task ExportSql_WithoutConfiguredKey_ShouldRejectAnyKey()
+    {
+        var emptyConfig = new ConfigurationBuilder().Build();
+        var controller = new SyncController(_syncService, _normalTenantService, emptyConfig);
+        var httpContext = new DefaultHttpContext();
+        httpContext.Request.Headers["X-Sync-ApiKey"] = "ANY-KEY";
+        controller.ControllerContext = new ControllerContext { HttpContext = httpContext };
+
+        var result = await controller.ExportSql();
+
+        Assert.IsType<UnauthorizedObjectResult>(result);
+    }
+
     [Fact]
     public async Task ExportPackage_WithValidKey_ShouldReturnZipFile()
     {

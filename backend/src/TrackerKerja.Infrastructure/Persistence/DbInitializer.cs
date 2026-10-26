@@ -152,6 +152,33 @@ public static class DbInitializer
             {
                 // Ignore DDL errors if unsupported or already managed
             }
+
+            // Tabel notifikasi tidak ada di database/init, dibuat terpisah agar tidak ikut gagal bila DDL di atas error
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(@"
+                    CREATE TABLE IF NOT EXISTS user_notifications (
+                        id SERIAL PRIMARY KEY,
+                        user_id VARCHAR(450) NOT NULL REFERENCES asp_net_users(id) ON DELETE CASCADE,
+                        company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+                        title TEXT NOT NULL,
+                        message TEXT NOT NULL,
+                        category TEXT NOT NULL DEFAULT 'Task',
+                        action_url TEXT,
+                        is_read BOOLEAN NOT NULL DEFAULT FALSE,
+                        read_at TIMESTAMPTZ,
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        created_by_user_id VARCHAR(450) REFERENCES asp_net_users(id) ON DELETE SET NULL
+                    );
+                    CREATE INDEX IF NOT EXISTS ix_user_notifications_user_id ON user_notifications(user_id);
+                    CREATE INDEX IF NOT EXISTS ix_user_notifications_company_id ON user_notifications(company_id);
+                    CREATE INDEX IF NOT EXISTS ix_user_notifications_created_by_user_id ON user_notifications(created_by_user_id);
+                ");
+            }
+            catch
+            {
+                // Ignore DDL errors if unsupported or already managed
+            }
         }
 
         // 1. Pastikan Perusahaan Default (HQ Tenant)
