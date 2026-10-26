@@ -30,7 +30,26 @@ import {
   Layers,
   Sparkles,
   Lock,
+  BarChart3,
+  PieChart as PieChartIcon,
+  FolderKanban,
+  ChevronDown,
+  ChevronUp,
+  CalendarDays,
 } from "lucide-react";
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip as RechartsTooltip,
+  Legend,
+  PieChart,
+  Pie,
+  Cell,
+} from "recharts";
 import { Button } from "@/components/tailgrids/core/button";
 import { Input } from "@/components/tailgrids/core/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/tailgrids/core/dialog";
@@ -50,7 +69,7 @@ import {
 const priorityLabels = TASK_PRIORITY_LABELS;
 const statusLabels = TASK_STATUS_LABELS;
 
-type SortField = "title" | "project" | "priority" | "status" | "progress" | "dueDate" | "createdAt";
+type SortField = "title" | "project" | "priority" | "status" | "progress" | "dueDate" | "createdAt" | "today";
 
 export default function TasksListPage() {
   const queryClient = useQueryClient();
@@ -61,14 +80,19 @@ export default function TasksListPage() {
   const [priorityFilter, setPriorityFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [projectFilter, setProjectFilter] = useState<string>("all");
+  const [dateFilter, setDateFilter] = useState<string>("all");
+
+  // Chart state (Tampilan grafik terbagi berdasarkan nama proyek)
+  const [chartView, setChartView] = useState<"bar" | "pie">("bar");
+  const [isChartCollapsed, setIsChartCollapsed] = useState(false);
 
   // Paging state: 20, 50, 100, 200
   const [page, setPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(20);
 
-  // Sorting state
-  const [sortBy, setSortBy] = useState<SortField>("createdAt");
-  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
+  // Sorting state: Default ke "today" agar tugas hari ini / sekarang langsung berada di atas
+  const [sortBy, setSortBy] = useState<SortField>("today");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
 
   // Selection state (Checklist multiple)
   const [selectedTaskIds, setSelectedTaskIds] = useState<number[]>([]);
@@ -82,7 +106,22 @@ export default function TasksListPage() {
   const [bulkPriorityModalOpen, setBulkPriorityModalOpen] = useState(false);
   const [bulkDeleteModalOpen, setBulkDeleteModalOpen] = useState(false);
 
-  // 1. Tasks Query with Paging, Sorting, and Filters
+  // 1a. Project Chart Query (Distribusi Tugas per Nama Proyek)
+  const { data: projectChartRaw, isLoading: loadingProjectChart } = useQuery<{
+    data: any[];
+    totalProjects: number;
+    totalTasks: number;
+  }>({
+    queryKey: ["tasksProjectChart"],
+    queryFn: async () => {
+      const res = await apiClient.get("/tasks/project-chart");
+      return res.data;
+    },
+  });
+
+  const projectChartData = projectChartRaw?.data || [];
+
+  // 1b. Tasks Query with Paging, Sorting, and Filters
   const { data: tasksResponse, isLoading, isPlaceholderData } = useQuery<{
     data: any[];
     totalCount: number;
@@ -96,6 +135,7 @@ export default function TasksListPage() {
       priorityFilter,
       statusFilter,
       projectFilter,
+      dateFilter,
       page,
       pageSize,
       sortBy,
@@ -107,6 +147,7 @@ export default function TasksListPage() {
       if (priorityFilter !== "all") params.append("priority", priorityFilter);
       if (statusFilter !== "all") params.append("status", statusFilter);
       if (projectFilter !== "all") params.append("projectId", projectFilter);
+      if (dateFilter !== "all") params.append("dateFilter", dateFilter);
       params.append("page", String(page));
       params.append("pageSize", String(pageSize));
       params.append("sortBy", sortBy);
@@ -195,6 +236,70 @@ export default function TasksListPage() {
     if (s.isDoneState || n.includes("done") || n.includes("selesai")) return 2;
     if (n.includes("overdue") || n.includes("lewat") || n.includes("terlambat")) return 3;
     return (s.orderIndex ?? (idx + 1)) - 1;
+  };
+
+  const PROJECT_PIE_COLORS = [
+    "#3B82F6", "#10B981", "#6366F1", "#F59E0B", "#EC4899",
+    "#8B5CF6", "#06B6D4", "#F43F5E", "#14B8A6", "#84CC16"
+  ];
+
+  const isTodayTask = (t: any) => {
+    if (!t) return false;
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    const dueStr = t.dueDate ? new Date(t.dueDate).toISOString().slice(0, 10) : "";
+    const startStr = t.startDate ? new Date(t.startDate).toISOString().slice(0, 10) : "";
+    const createdStr = t.createdAt ? new Date(t.createdAt).toISOString().slice(0, 10) : "";
+    return dueStr === todayStr || startStr === todayStr || createdStr === todayStr;
+  };
+
+  const CustomProjectTooltip = ({ active, payload, label }: any) => {
+    if (!active || !payload || !payload.length) return null;
+    const item = payload[0]?.payload;
+    return (
+      <div className="rounded-xl border border-gray-200/80 bg-white/95 p-3.5 shadow-xl backdrop-blur-md dark:border-gray-800 dark:bg-gray-900/95 text-xs space-y-2 min-w-[210px]">
+        <div className="flex items-center gap-2 border-b border-gray-100 pb-1.5 dark:border-gray-800">
+          <span
+            className="size-2.5 rounded-full"
+            style={{ backgroundColor: item?.projectColor || "#6366F1" }}
+          />
+          <span className="font-bold text-gray-900 dark:text-white truncate">
+            {label || item?.projectName}
+          </span>
+        </div>
+        <div className="space-y-1 text-[11px]">
+          <div className="flex justify-between items-center text-emerald-600 dark:text-emerald-400 font-semibold">
+            <span>Selesai (Done):</span>
+            <span>{item?.doneTasks || 0} Tugas</span>
+          </div>
+          <div className="flex justify-between items-center text-blue-600 dark:text-blue-400 font-semibold">
+            <span>Dalam Proses:</span>
+            <span>{item?.inProgressTasks || 0} Tugas</span>
+          </div>
+          <div className="flex justify-between items-center text-indigo-600 dark:text-indigo-400 font-semibold">
+            <span>To Do:</span>
+            <span>{item?.todoTasks || 0} Tugas</span>
+          </div>
+          {(item?.overdueTasks || 0) > 0 && (
+            <div className="flex justify-between items-center text-rose-600 dark:text-rose-400 font-semibold">
+              <span>Terlambat:</span>
+              <span>{item?.overdueTasks} Tugas</span>
+            </div>
+          )}
+          <div className="pt-1.5 border-t border-gray-100 dark:border-gray-800 flex justify-between items-center font-bold text-gray-800 dark:text-gray-200">
+            <span>Total Tugas:</span>
+            <span>{item?.totalTasks || 0}</span>
+          </div>
+          <div className="flex justify-between items-center text-[10px] text-gray-500">
+            <span>Tingkat Selesai:</span>
+            <span className="font-semibold text-emerald-600">{item?.completionRate || 0}%</span>
+          </div>
+        </div>
+        <p className="text-[10px] italic text-indigo-500 dark:text-indigo-400 pt-1 text-center border-t border-dashed border-gray-200 dark:border-gray-800">
+          Klik bar untuk memfilter daftar tugas
+        </p>
+      </div>
+    );
   };
 
   // Handle Header Master Checkbox indeterminate state
@@ -327,13 +432,15 @@ export default function TasksListPage() {
     search.trim() !== "" ||
     priorityFilter !== "all" ||
     statusFilter !== "all" ||
-    projectFilter !== "all";
+    projectFilter !== "all" ||
+    dateFilter !== "all";
 
   const handleResetFilters = () => {
     setSearch("");
     setPriorityFilter("all");
     setStatusFilter("all");
     setProjectFilter("all");
+    setDateFilter("all");
     setPage(1);
   };
 
@@ -395,6 +502,290 @@ export default function TasksListPage() {
             Tugas Baru
           </Button>
         </div>
+      </div>
+
+      {/* 2. Chart Distribusi Tugas Terbagi Berdasarkan Nama Proyek */}
+      <div className="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-xs dark:border-gray-800 dark:bg-gray-900 transition-all">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-gray-100 pb-3 dark:border-gray-800">
+          <div className="flex items-center gap-2.5">
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-400 border border-indigo-200/60 dark:border-indigo-800/60 shadow-2xs">
+              <FolderKanban className="size-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-base font-bold text-gray-900 dark:text-white">
+                  Distribusi Tugas Berdasarkan Nama Proyek
+                </h2>
+                <span className="rounded-full bg-indigo-100/80 px-2 py-0.5 text-[10px] font-bold text-indigo-700 dark:bg-indigo-950/80 dark:text-indigo-300">
+                  {projectChartData.length} Proyek
+                </span>
+              </div>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Visualisasi komparasi sebaran beban kerja, status penyelesaian (Done, In Progress, To Do), dan rasio progres per proyek.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {/* View Switcher: Bar vs Pie */}
+            <div className="flex items-center rounded-xl border border-gray-200 bg-gray-50/80 p-0.5 dark:border-gray-800 dark:bg-gray-800/60">
+              <button
+                type="button"
+                onClick={() => setChartView("bar")}
+                className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
+                  chartView === "bar"
+                    ? "bg-white text-indigo-600 shadow-xs dark:bg-gray-700 dark:text-white"
+                    : "text-gray-500 hover:text-gray-800 dark:text-gray-400"
+                }`}
+              >
+                <BarChart3 className="size-3.5" />
+                Batang (Bar)
+              </button>
+              <button
+                type="button"
+                onClick={() => setChartView("pie")}
+                className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
+                  chartView === "pie"
+                    ? "bg-white text-indigo-600 shadow-xs dark:bg-gray-700 dark:text-white"
+                    : "text-gray-500 hover:text-gray-800 dark:text-gray-400"
+                }`}
+              >
+                <PieChartIcon className="size-3.5" />
+                Donat (Pie)
+              </button>
+            </div>
+
+            {/* Collapse / Expand Toggle */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setIsChartCollapsed(!isChartCollapsed)}
+              className="h-8 gap-1 text-xs text-gray-500 hover:text-gray-800 dark:text-gray-400"
+              title={isChartCollapsed ? "Tampilkan Grafik" : "Sembunyikan Grafik"}
+            >
+              {isChartCollapsed ? (
+                <>
+                  <ChevronDown className="size-3.5" />
+                  Buka Grafik
+                </>
+              ) : (
+                <>
+                  <ChevronUp className="size-3.5" />
+                  Tutup Grafik
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+
+        {!isChartCollapsed && (
+          <div className="pt-4">
+            {loadingProjectChart ? (
+              <div className="flex h-56 items-center justify-center text-xs text-gray-400">
+                Memuat data grafik proyek...
+              </div>
+            ) : projectChartData.length === 0 ? (
+              <div className="flex h-44 flex-col items-center justify-center gap-1 text-xs text-gray-400">
+                <FolderKanban className="size-6 text-gray-300 dark:text-gray-600" />
+                <span>Belum ada data proyek atau tugas tercatat</span>
+              </div>
+            ) : chartView === "bar" ? (
+              <div>
+                <div className="h-64 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart
+                      data={projectChartData}
+                      margin={{ top: 10, right: 10, left: -15, bottom: 25 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border, #e5e7eb)" opacity={0.5} />
+                      <XAxis
+                        dataKey="projectName"
+                        tick={{ fontSize: 11, fill: "var(--foreground, #6b7280)" }}
+                        interval={0}
+                        angle={-15}
+                        textAnchor="end"
+                        height={40}
+                      />
+                      <YAxis
+                        allowDecimals={false}
+                        tick={{ fontSize: 11, fill: "var(--foreground, #6b7280)" }}
+                      />
+                      <RechartsTooltip content={<CustomProjectTooltip />} />
+                      <Legend
+                        verticalAlign="top"
+                        align="right"
+                        iconType="circle"
+                        wrapperStyle={{ fontSize: "11px", paddingBottom: "10px" }}
+                      />
+                      <Bar
+                        name="Selesai (Done)"
+                        dataKey="doneTasks"
+                        stackId="a"
+                        fill="#10B981"
+                        radius={[0, 0, 0, 0]}
+                        onClick={(data: any) => {
+                          const item = data?.payload || data;
+                          if (item?.projectId) {
+                            setProjectFilter(String(item.projectId));
+                            setPage(1);
+                            toast.info(`Memfilter tugas untuk proyek: ${item.projectName}`);
+                          }
+                        }}
+                        className="cursor-pointer"
+                      />
+                      <Bar
+                        name="Dalam Proses"
+                        dataKey="inProgressTasks"
+                        stackId="a"
+                        fill="#3B82F6"
+                        radius={[0, 0, 0, 0]}
+                        onClick={(data: any) => {
+                          const item = data?.payload || data;
+                          if (item?.projectId) {
+                            setProjectFilter(String(item.projectId));
+                            setPage(1);
+                            toast.info(`Memfilter tugas untuk proyek: ${item.projectName}`);
+                          }
+                        }}
+                        className="cursor-pointer"
+                      />
+                      <Bar
+                        name="To Do"
+                        dataKey="todoTasks"
+                        stackId="a"
+                        fill="#6366F1"
+                        radius={[4, 4, 0, 0]}
+                        onClick={(data: any) => {
+                          const item = data?.payload || data;
+                          if (item?.projectId) {
+                            setProjectFilter(String(item.projectId));
+                            setPage(1);
+                            toast.info(`Memfilter tugas untuk proyek: ${item.projectName}`);
+                          }
+                        }}
+                        className="cursor-pointer"
+                      />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+
+                {/* Subtitle / Tip Interaktif */}
+                <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-gray-500 dark:text-gray-400 px-1">
+                  <span className="italic">
+                    Tip: Klik batang proyek mana saja pada grafik untuk langsung menyaring daftar tugas di bawah.
+                  </span>
+                  {projectFilter !== "all" && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setProjectFilter("all");
+                        setPage(1);
+                      }}
+                      className="font-bold text-indigo-600 hover:underline dark:text-indigo-400"
+                    >
+                      &times; Hapus Filter Proyek Aktif
+                    </button>
+                  )}
+                </div>
+              </div>
+            ) : (
+              /* Donut View */
+              <div className="grid grid-cols-1 md:grid-cols-12 items-center gap-6">
+                <div className="relative h-60 md:col-span-5 flex items-center justify-center">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <RechartsTooltip content={<CustomProjectTooltip />} />
+                      <Pie
+                        data={projectChartData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={60}
+                        outerRadius={88}
+                        paddingAngle={3}
+                        dataKey="totalTasks"
+                        nameKey="projectName"
+                        stroke="none"
+                        onClick={(entry: any) => {
+                          const item = entry?.payload || entry;
+                          if (item?.projectId) {
+                            setProjectFilter(String(item.projectId));
+                            setPage(1);
+                            toast.info(`Memfilter tugas untuk proyek: ${item.projectName}`);
+                          }
+                        }}
+                        className="cursor-pointer"
+                      >
+                        {projectChartData.map((entry: any, index: number) => (
+                          <Cell
+                            key={`cell-${index}`}
+                            fill={entry.projectColor || PROJECT_PIE_COLORS[index % PROJECT_PIE_COLORS.length]}
+                          />
+                        ))}
+                      </Pie>
+                    </PieChart>
+                  </ResponsiveContainer>
+                  {/* Center Text inside Donut */}
+                  <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
+                    <span className="text-2xl font-black text-gray-900 dark:text-white">
+                      {projectChartRaw?.totalTasks ?? totalCount}
+                    </span>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500">
+                      Total Tugas
+                    </span>
+                  </div>
+                </div>
+
+                {/* Project Breakdown List in Donut View */}
+                <div className="md:col-span-7 max-h-60 overflow-y-auto space-y-2 pr-1">
+                  {projectChartData.map((p: any, idx: number) => {
+                    const color = p.projectColor || PROJECT_PIE_COLORS[idx % PROJECT_PIE_COLORS.length];
+                    const isSelected = projectFilter === String(p.projectId);
+                    return (
+                      <div
+                        key={p.projectId || p.projectName}
+                        onClick={() => {
+                          if (p.projectId) {
+                            setProjectFilter(isSelected ? "all" : String(p.projectId));
+                            setPage(1);
+                          }
+                        }}
+                        className={`flex items-center justify-between p-2.5 rounded-xl border transition cursor-pointer ${
+                          isSelected
+                            ? "border-indigo-500 bg-indigo-50/60 dark:bg-indigo-950/40"
+                            : "border-gray-200/70 hover:border-indigo-300 bg-gray-50/50 hover:bg-gray-50 dark:border-gray-800 dark:bg-gray-800/40"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5 truncate pr-2">
+                          <span
+                            className="size-3 shrink-0 rounded-full"
+                            style={{ backgroundColor: color }}
+                          />
+                          <div className="truncate">
+                            <span className="font-bold text-xs text-gray-900 dark:text-white truncate block">
+                              {p.projectName}
+                            </span>
+                            <span className="text-[10px] text-gray-500">
+                              {p.doneTasks} Selesai &bull; {p.inProgressTasks} Berjalan &bull; {p.todoTasks} To Do
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="shrink-0 text-right">
+                          <span className="font-mono text-xs font-bold text-gray-900 dark:text-white">
+                            {p.totalTasks} Tugas
+                          </span>
+                          <span className="block text-[10px] font-semibold text-emerald-600">
+                            {p.completionRate}% Selesai
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Filter & Search Bar */}
@@ -520,85 +911,141 @@ export default function TasksListPage() {
           </div>
         </div>
 
-        {/* Priority Quick Filter Chips */}
-        <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-gray-100 dark:border-gray-800">
-          <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400 mr-1">
-            Filter Cepat Prioritas:
-          </span>
-          <button
-            type="button"
-            onClick={() => {
-              setPriorityFilter("all");
-              setPage(1);
-            }}
-            className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold transition ${
-              priorityFilter === "all"
-                ? "bg-gray-900 text-white dark:bg-white dark:text-gray-900"
-                : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300"
-            }`}
-          >
-            Semua
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setPriorityFilter("0");
-              setPage(1);
-            }}
-            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold transition ${
-              priorityFilter === "0"
-                ? "bg-emerald-600 text-white"
-                : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:text-emerald-300"
-            }`}
-          >
-            <span className="size-1.5 rounded-full bg-emerald-400" />
-            Rendah
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setPriorityFilter("1");
-              setPage(1);
-            }}
-            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold transition ${
-              priorityFilter === "1"
-                ? "bg-blue-600 text-white"
-                : "bg-blue-50 text-blue-700 hover:bg-blue-100 dark:bg-blue-950/60 dark:text-blue-300"
-            }`}
-          >
-            <span className="size-1.5 rounded-full bg-blue-400" />
-            Sedang
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setPriorityFilter("2");
-              setPage(1);
-            }}
-            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold transition ${
-              priorityFilter === "2"
-                ? "bg-amber-600 text-white"
-                : "bg-amber-50 text-amber-700 hover:bg-amber-100 dark:bg-amber-950/60 dark:text-amber-300"
-            }`}
-          >
-            <span className="size-1.5 rounded-full bg-amber-400" />
-            Tinggi
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setPriorityFilter("3");
-              setPage(1);
-            }}
-            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold transition ${
-              priorityFilter === "3"
-                ? "bg-rose-600 text-white"
-                : "bg-rose-50 text-rose-700 hover:bg-rose-100 dark:bg-rose-950/60 dark:text-rose-300"
-            }`}
-          >
-            <span className="size-1.5 rounded-full bg-rose-400" />
-            Kritis
-          </button>
+        {/* Quick Filter Chips: Tanggal & Prioritas */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pt-2 border-t border-gray-100 dark:border-gray-800">
+          {/* Tanggal Filter Chips */}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-[11px] font-semibold text-gray-600 dark:text-gray-300 mr-1 flex items-center gap-1">
+              <CalendarDays className="size-3.5 text-indigo-500" />
+              Filter Tanggal:
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                setDateFilter("all");
+                setPage(1);
+              }}
+              className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold transition ${
+                dateFilter === "all"
+                  ? "bg-gray-900 text-white dark:bg-white dark:text-gray-900 shadow-2xs"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300"
+              }`}
+            >
+              Semua Tanggal
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setDateFilter("today");
+                setSortBy("today");
+                setSortOrder("asc");
+                setPage(1);
+              }}
+              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold transition ${
+                dateFilter === "today"
+                  ? "bg-emerald-600 text-white shadow-xs ring-2 ring-emerald-500/30"
+                  : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/60"
+              }`}
+            >
+              <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              Hari Ini / Sekarang
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setDateFilter("this-week");
+                setPage(1);
+              }}
+              className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold transition ${
+                dateFilter === "this-week"
+                  ? "bg-indigo-600 text-white shadow-xs"
+                  : "bg-indigo-50 text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800/60"
+              }`}
+            >
+              Minggu Ini
+            </button>
+          </div>
+
+          {/* Priority Quick Filter Chips */}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400 mr-1">
+              Prioritas:
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                setPriorityFilter("all");
+                setPage(1);
+              }}
+              className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold transition ${
+                priorityFilter === "all"
+                  ? "bg-gray-900 text-white dark:bg-white dark:text-gray-900"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300"
+              }`}
+            >
+              Semua
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setPriorityFilter("0");
+                setPage(1);
+              }}
+              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold transition ${
+                priorityFilter === "0"
+                  ? "bg-emerald-600 text-white"
+                  : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:text-emerald-300"
+              }`}
+            >
+              <span className="size-1.5 rounded-full bg-emerald-400" />
+              Rendah
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setPriorityFilter("1");
+                setPage(1);
+              }}
+              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold transition ${
+                priorityFilter === "1"
+                  ? "bg-blue-600 text-white"
+                  : "bg-blue-50 text-blue-700 hover:bg-blue-100 dark:bg-blue-950/60 dark:text-blue-300"
+              }`}
+            >
+              <span className="size-1.5 rounded-full bg-blue-400" />
+              Sedang
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setPriorityFilter("2");
+                setPage(1);
+              }}
+              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold transition ${
+                priorityFilter === "2"
+                  ? "bg-amber-500 text-white"
+                  : "bg-amber-50 text-amber-700 hover:bg-amber-100 dark:bg-amber-950/60 dark:text-amber-300"
+              }`}
+            >
+              <span className="size-1.5 rounded-full bg-amber-400" />
+              Tinggi
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setPriorityFilter("3");
+                setPage(1);
+              }}
+              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold transition ${
+                priorityFilter === "3"
+                  ? "bg-rose-600 text-white"
+                  : "bg-rose-50 text-rose-700 hover:bg-rose-100 dark:bg-rose-950/60 dark:text-rose-300"
+              }`}
+            >
+              <span className="size-1.5 rounded-full bg-rose-400" />
+              Kritis
+            </button>
+          </div>
         </div>
       </div>
 
@@ -746,14 +1193,32 @@ export default function TasksListPage() {
                   Ditugaskan Kepada
                 </th>
 
-                {/* Tenggat Waktu */}
+                {/* Tenggat Waktu / Tanggal */}
                 <th
-                  onClick={() => handleSort("dueDate")}
+                  onClick={() => {
+                    if (sortBy === "today") {
+                      setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"));
+                    } else {
+                      setSortBy("today");
+                      setSortOrder("asc");
+                    }
+                    setPage(1);
+                  }}
                   className="group cursor-pointer px-4 py-3.5 font-bold text-gray-700 hover:text-indigo-600 dark:text-gray-300 dark:hover:text-indigo-400 select-none"
+                  title="Klik untuk mengurutkan berdasarkan tanggal hari ini / sekarang"
                 >
                   <div className="inline-flex items-center">
-                    Tenggat
-                    {renderSortIcon("dueDate")}
+                    Tenggat / Tanggal
+                    {sortBy === "today" ? (
+                      <span className="ml-1.5 inline-flex items-center gap-1 rounded-md bg-emerald-100 px-1.5 py-0.5 text-[9px] font-extrabold text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border border-emerald-300/60 dark:border-emerald-700/60 shadow-2xs">
+                        <span className="size-1 rounded-full bg-emerald-500 animate-pulse" />
+                        Hari Ini {sortOrder === "asc" ? "↑" : "↓"}
+                      </span>
+                    ) : sortBy === "dueDate" ? (
+                      renderSortIcon("dueDate")
+                    ) : (
+                      <ArrowUpDown className="ml-1.5 h-3.5 w-3.5 opacity-40 group-hover:opacity-100" />
+                    )}
                   </div>
                 </th>
 
@@ -903,30 +1368,42 @@ export default function TasksListPage() {
                       )}
                     </td>
 
-                    {/* Tenggat */}
+                    {/* Tenggat / Tanggal */}
                     <td className="px-4 py-3.5">
-                      {t.dueDate ? (
-                        <span
-                          className={`font-mono text-[11px] ${
-                            isOverdue
-                              ? "font-bold text-rose-600 dark:text-rose-400"
-                              : "text-gray-500 dark:text-gray-400"
-                          }`}
-                        >
-                          {new Date(t.dueDate).toLocaleDateString("id-ID", {
-                            day: "2-digit",
-                            month: "short",
-                            year: "numeric",
-                          })}
-                          {isOverdue && (
-                            <span className="ml-1 text-[9px] uppercase font-bold text-rose-500">
-                              (Lewat)
+                      <div className="flex flex-col gap-1">
+                        {isTodayTask(t) && (
+                          <div>
+                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-extrabold text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border border-emerald-300/60 dark:border-emerald-700/60 shadow-2xs">
+                              <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                              Hari Ini
                             </span>
-                          )}
-                        </span>
-                      ) : (
-                        <span className="text-gray-400 text-xs">-</span>
-                      )}
+                          </div>
+                        )}
+                        {t.dueDate ? (
+                          <span
+                            className={`font-mono text-[11px] ${
+                              isOverdue
+                                ? "font-bold text-rose-600 dark:text-rose-400"
+                                : "text-gray-500 dark:text-gray-400"
+                            }`}
+                          >
+                            {new Date(t.dueDate).toLocaleDateString("id-ID", {
+                              day: "2-digit",
+                              month: "short",
+                              year: "numeric",
+                            })}
+                            {isOverdue && (
+                              <span className="ml-1 text-[9px] uppercase font-bold text-rose-500">
+                                (Lewat)
+                              </span>
+                            )}
+                          </span>
+                        ) : (
+                          <span className="text-gray-400 text-xs">
+                            {t.startDate ? `Mulai: ${new Date(t.startDate).toLocaleDateString("id-ID", { day: "2-digit", month: "short" })}` : "-"}
+                          </span>
+                        )}
+                      </div>
                     </td>
 
                     {/* Aksi */}

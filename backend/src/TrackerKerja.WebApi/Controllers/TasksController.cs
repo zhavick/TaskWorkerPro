@@ -51,6 +51,7 @@ public class TasksController : ControllerBase
         [FromQuery] bool? allHierarchies = null,
         [FromQuery] string? sortBy = null,
         [FromQuery] string? sortOrder = null,
+        [FromQuery] string? dateFilter = null,
         [FromQuery] int? page = null,
         [FromQuery] int? pageSize = null)
     {
@@ -110,7 +111,34 @@ public class TasksController : ControllerBase
                                      (t.Project != null && t.Project.Name.ToLower().Contains(searchLower)));
         }
 
-        // Column Sorting
+        if (!string.IsNullOrWhiteSpace(dateFilter))
+        {
+            var df = dateFilter.Trim().ToLower();
+            var nowFilter = DateTimeOffset.UtcNow;
+            var tStart = new DateTimeOffset(nowFilter.Year, nowFilter.Month, nowFilter.Day, 0, 0, 0, TimeSpan.Zero);
+            var tEnd = tStart.AddDays(1).AddTicks(-1);
+
+            if (df == "today" || df == "hari-ini")
+            {
+                query = query.Where(t => (t.DueDate.HasValue && t.DueDate.Value >= tStart && t.DueDate.Value <= tEnd) ||
+                                         (t.StartDate.HasValue && t.StartDate.Value >= tStart && t.StartDate.Value <= tEnd) ||
+                                         (t.CreatedAt >= tStart && t.CreatedAt <= tEnd));
+            }
+            else if (df == "this-week" || df == "minggu-ini")
+            {
+                var diff = (int)tStart.DayOfWeek == 0 ? 6 : (int)tStart.DayOfWeek - 1;
+                var weekStart = tStart.AddDays(-diff);
+                var weekEnd = weekStart.AddDays(7).AddTicks(-1);
+                query = query.Where(t => (t.DueDate.HasValue && t.DueDate.Value >= weekStart && t.DueDate.Value <= weekEnd) ||
+                                         (t.StartDate.HasValue && t.StartDate.Value >= weekStart && t.StartDate.Value <= weekEnd));
+            }
+        }
+
+        // Column Sorting: Prioritaskan pengurutan berdasarkan tanggal hari ini / sekarang
+        var nowUtc = DateTimeOffset.UtcNow;
+        var todayStart = new DateTimeOffset(nowUtc.Year, nowUtc.Month, nowUtc.Day, 0, 0, 0, TimeSpan.Zero);
+        var todayEnd = todayStart.AddDays(1).AddTicks(-1);
+
         var isAsc = string.Equals(sortOrder, "asc", StringComparison.OrdinalIgnoreCase);
         query = (sortBy?.ToLower()) switch
         {
@@ -119,6 +147,18 @@ public class TasksController : ControllerBase
             "priority" => isAsc ? query.OrderBy(t => t.Priority) : query.OrderByDescending(t => t.Priority),
             "status" => isAsc ? query.OrderBy(t => t.Status) : query.OrderByDescending(t => t.Status),
             "progress" => isAsc ? query.OrderBy(t => t.Progress) : query.OrderByDescending(t => t.Progress),
+            "today" or "now" or "currentdate" =>
+                isAsc
+                    ? query.OrderBy(t => (t.DueDate.HasValue && t.DueDate.Value >= todayStart && t.DueDate.Value <= todayEnd) ? 0 :
+                                         (t.StartDate.HasValue && t.StartDate.Value >= todayStart && t.StartDate.Value <= todayEnd) ? 0 :
+                                         (t.DueDate.HasValue && t.DueDate.Value > todayEnd) ? 1 :
+                                         (t.DueDate.HasValue && t.DueDate.Value < todayStart) ? 2 : 3)
+                           .ThenBy(t => t.DueDate ?? t.CreatedAt)
+                    : query.OrderBy(t => (t.DueDate.HasValue && t.DueDate.Value >= todayStart && t.DueDate.Value <= todayEnd) ? 0 :
+                                         (t.StartDate.HasValue && t.StartDate.Value >= todayStart && t.StartDate.Value <= todayEnd) ? 0 :
+                                         (t.DueDate.HasValue && t.DueDate.Value > todayEnd) ? 1 :
+                                         (t.DueDate.HasValue && t.DueDate.Value < todayStart) ? 2 : 3)
+                           .ThenByDescending(t => t.DueDate ?? t.CreatedAt),
             "duedate" => isAsc ? query.OrderBy(t => t.DueDate) : query.OrderByDescending(t => t.DueDate),
             _ => isAsc ? query.OrderBy(t => t.CreatedAt) : query.OrderByDescending(t => t.CreatedAt)
         };
@@ -291,6 +331,68 @@ public class TasksController : ControllerBase
                 done,
                 overdue
             }
+        });
+    }
+
+    [HttpGet("project-chart")]
+    public async Task<IActionResult> GetProjectChart([FromQuery] string? filter = null)
+    {
+        var query = _context.Tasks
+            .Include(t => t.Project)
+            .AsNoTracking()
+            .AsQueryable();
+
+        // RBAC / Multi-tenant scoping
+        if (string.Equals(filter, "mine", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(_tenantService.UserId))
+        {
+            query = query.Where(t => t.AssignedToUserId == _tenantService.UserId);
+        }
+        else if (!_tenantService.IsAdmin && _tenantService.CompanyId.HasValue)
+        {
+            query = query.Where(t => t.CompanyId == _tenantService.CompanyId.Value ||
+                                     (t.Project != null && t.Project.CompanyId == _tenantService.CompanyId.Value));
+        }
+
+        var allTasks = await query.ToListAsync();
+        var now = DateTimeOffset.UtcNow;
+
+        var projectChart = allTasks
+            .GroupBy(t => t.Project != null ? t.Project.Name : "Tanpa Proyek")
+            .Select(g =>
+            {
+                var sample = g.First();
+                var total = g.Count();
+                var done = g.Count(t => t.Status == Domain.Enums.TaskStatus.Done);
+                var inProgress = g.Count(t => t.Status == Domain.Enums.TaskStatus.InProgress);
+                var todo = g.Count(t => t.Status == Domain.Enums.TaskStatus.Todo);
+                var review = g.Count(t => t.Status == Domain.Enums.TaskStatus.Review);
+                var overdue = g.Count(t => t.Status == Domain.Enums.TaskStatus.Overdue ||
+                                           (t.DueDate.HasValue && t.DueDate.Value < now && t.Status != Domain.Enums.TaskStatus.Done));
+                var completionRate = total > 0 ? Math.Round((double)done / total * 100, 1) : 0.0;
+
+                return new
+                {
+                    projectId = sample.ProjectId,
+                    projectName = g.Key,
+                    projectColor = sample.Project?.Color ?? "#6366F1",
+                    totalTasks = total,
+                    doneTasks = done,
+                    inProgressTasks = inProgress,
+                    todoTasks = todo,
+                    reviewTasks = review,
+                    overdueTasks = overdue,
+                    completionRate
+                };
+            })
+            .OrderByDescending(p => p.totalTasks)
+            .ToList();
+
+        return Ok(new
+        {
+            success = true,
+            data = projectChart,
+            totalProjects = projectChart.Count,
+            totalTasks = allTasks.Count
         });
     }
 
