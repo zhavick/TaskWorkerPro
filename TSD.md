@@ -2,11 +2,11 @@
 # WORK TRACKER PRO (TRACKERKERJA MODERN)
 
 > **Dokumen Spesifikasi Teknis: Arsitektur Pengambilan Data, Controller, API Endpoint, Layanan Backend, Desain Basis Data Relasional, dan Otomasi Deployment**  
-> **Versi Sistem:** v4.0 Full-Width Studio Layout, Projects REST API, Docker Automation, Calendar Scheduling, System Status & Resilient Task Update Edition  
+> **Versi Sistem:** v4.1 Interactive Project Charts, Today-First Task Sorting, Audit Trail CRUD Analytics, Standardized Gamification & Admin-Exclusion Edition  
 > **Target Framework:** Next.js 16 (React 19, TypeScript), .NET 8.0 (C# 12 Web API), Entity Framework Core 8  
 > **Mesin Basis Data:** PostgreSQL 16 & SQLite 3 (Write-Ahead Logging / WAL Mode)  
 > **Status Dokumen:** Approved & Published  
-> **Tanggal Rilis:** 23 Oktober 2026  
+> **Tanggal Rilis:** 26 Oktober 2026  
 
 ---
 
@@ -60,11 +60,11 @@
 | Properti Dokumen | Rincian Teknis |
 | :--- | :--- |
 | **Nama Dokumen** | Technical Specification Document (TSD) Work Tracker Pro (TrackerKerja Modern) |
-| **Kode Dokumen** | TSD-WTP-3.9-202610 |
-| **Versi Aplikasi** | v3.9 Full-Width Studio Layout, Projects REST API, Docker Automation & Enterprise QA Testing Edition |
+| **Kode Dokumen** | TSD-WTP-4.1-202610 |
+| **Versi Aplikasi** | v4.1 Interactive Project Charts, Today-First Task Sorting, Audit Trail CRUD Analytics, Standardized Gamification & Admin-Exclusion Edition |
 | **Arsitek Sistem** | Senior Systems & Software Engineering Team |
 | **Klasifikasi Akses** | Internal Development Team, Technical Leads, DevOps, & DB Administrator |
-| **Tanggal Pembaruan** | 17 Oktober 2026 |
+| **Tanggal Pembaruan** | 26 Oktober 2026 |
 
 ---
 
@@ -177,7 +177,8 @@ Pada bagian ini dijabarkan secara rinci modul per modul mengenai:
 | **MVC** | `GET /Task/Kanban` | `TaskController` | `Task<IActionResult> Kanban(...)` | Merender papan kanban visual dikelompokkan per status |
 | **MVC** | `GET /Task/Obstacles` | `TaskController` | `Task<IActionResult> Obstacles(...)` | Merender daftar tugas yang memiliki kendala & solusi |
 | **MVC** | `GET /Task/GridData` | `TaskController` | `Task<IActionResult> GridData(...)` | Endpoint AJAX data JSON untuk tabel dinamis tanpa reload |
-| **API** | `GET /api/tasks` | `TasksApiController` | `Task<IActionResult> GetAll(...)` | Mengambil data tugas terpaginasi format `PagedResult<TaskResponseDto>` |
+| **API** | `GET /api/tasks` | `TasksApiController` | `Task<IActionResult> GetAll(...)` | Mengambil data tugas terpaginasi format `PagedResult<TaskResponseDto>` dengan opsi `sortBy=today` & `dateFilter` |
+| **API** | `GET /api/tasks/project-chart` | `TasksApiController` | `Task<IActionResult> GetProjectTaskChart()` | Mengambil agregasi tugas per proyek berdasarkan status (Done, InProgress, Todo, Overdue) untuk Stacked Bar & Donut |
 | **API** | `GET /api/tasks/{id}` | `TasksApiController` | `Task<IActionResult> GetById(int id)` | Mengambil detail lengkap tugas berdasarkan ID |
 | **API** | `GET /api/tasks/summary` | `TasksApiController` | `Task<IActionResult> GetSummary(...)` | Rekapitulasi metrik tugas (Total, Selesai, InProgress, Terlambat) |
 | **API** | `GET /api/tasks/kanban` | `TasksApiController` | `Task<IActionResult> GetKanbanTasks(...)` | Mengambil kumpulan tugas terformat per kolom Kanban |
@@ -185,7 +186,7 @@ Pada bagian ini dijabarkan secara rinci modul per modul mengenai:
 
 #### B. Rincian Teknis Prosedur Pengambilan Data
 
-##### 1. `TasksApiController.GetAll(...)`
+##### 1. `TasksApiController.GetAll(...)` & Algoritma Today-First Sorting
 ```csharp
 [HttpGet]
 [ProducesResponseType(typeof(ApiResponse<PagedResult<TaskResponseDto>>), StatusCodes.Status200OK)]
@@ -202,10 +203,13 @@ public async Task<IActionResult> GetAll(
     [FromQuery] DateTime? endDate,
     [FromQuery] string? periodField,
     [FromQuery] int? companyId,
+    [FromQuery] string? sortBy = "today",
+    [FromQuery] string? sortOrder = "asc",
+    [FromQuery] string? dateFilter = null,
     [FromQuery] int page = 1,
     [FromQuery] int pageSize = 10)
 ```
-- **Alur Kueri LINQ ke Database:**
+- **Alur Kueri LINQ ke Database & Pengurutan Berbasis Hari Ini:**
   ```csharp
   var query = _db.Tasks
       .Include(t => t.Project)
@@ -235,14 +239,83 @@ public async Task<IActionResult> GetAll(
   if (!string.IsNullOrWhiteSpace(milestone)) query = query.Where(t => t.Milestone == milestone);
   if (parentTaskId.HasValue) query = query.Where(t => t.ParentTaskId == parentTaskId.Value);
 
+  // Quick Date Filter (today / this-week)
+  var today = DateTime.Today;
+  if (dateFilter?.ToLower() == "today")
+  {
+      query = query.Where(t => t.DueDate.Date == today || 
+          (t.StartDate.HasValue && t.StartDate.Value.Date <= today && t.DueDate.Date >= today));
+  }
+  else if (dateFilter?.ToLower() == "this-week")
+  {
+      var startOfWeek = today.AddDays(-(int)today.DayOfWeek + (int)DayOfWeek.Monday);
+      var endOfWeek = startOfWeek.AddDays(6);
+      query = query.Where(t => t.DueDate.Date >= startOfWeek && t.DueDate.Date <= endOfWeek);
+  }
+
+  // Today-First Sorting (Tier 0: Due today or active today; Tier 1: Others ordered by DueDate)
+  if (sortBy?.ToLower() is "today" or "now" or "currentdate")
+  {
+      query = query
+          .OrderBy(t => (t.DueDate.Date == today || (t.StartDate.HasValue && t.StartDate.Value.Date <= today && t.DueDate.Date >= today)) ? 0 : 1)
+          .ThenBy(t => t.DueDate);
+  }
+  else
+  {
+      query = query.OrderByDescending(t => t.CreatedAt);
+  }
+
   // Pagination Execution
   var totalItems = await query.CountAsync();
   var items = await query
-      .OrderByDescending(t => t.CreatedAt)
       .Skip((page - 1) * pageSize)
       .Take(pageSize)
       .Select(t => TaskResponseDto.FromEntity(t))
       .ToListAsync();
+  ```
+
+##### 2. `TasksApiController.GetProjectTaskChart()` (Endpoint Agregasi Distribusi Proyek)
+```csharp
+[HttpGet("project-chart")]
+[ProducesResponseType(typeof(ApiResponse<List<ProjectTaskChartDto>>), StatusCodes.Status200OK)]
+public async Task<IActionResult> GetProjectTaskChart([FromQuery] int? companyId)
+{
+    var today = DateTime.Today;
+    var query = _db.Tasks.AsNoTracking().AsQueryable();
+
+    // Multi-tenant isolation
+    if (!isAdmin && currentUser != null)
+        query = query.Where(t => t.CompanyId == userCompanyId || (t.Project != null && t.Project.CompanyId == userCompanyId));
+
+    var grouped = await query
+        .GroupBy(t => new { 
+            ProjectId = t.ProjectId ?? 0, 
+            ProjectName = t.Project != null ? t.Project.Name : "Tugas Tanpa Proyek" 
+        })
+        .Select(g => new ProjectTaskChartDto
+        {
+            ProjectId = g.Key.ProjectId,
+            ProjectName = g.Key.ProjectName,
+            TotalTasks = g.Count(),
+            DoneCount = g.Count(x => x.Status == ModelTaskStatus.Done),
+            InProgressCount = g.Count(x => x.Status == ModelTaskStatus.InProgress),
+            TodoCount = g.Count(x => x.Status == ModelTaskStatus.Todo),
+            OverdueCount = g.Count(x => x.Status != ModelTaskStatus.Done && x.DueDate.Date < today)
+        })
+        .OrderByDescending(x => x.TotalTasks)
+        .ToListAsync();
+
+    return Ok(ApiResponse<List<ProjectTaskChartDto>>.SuccessResponse(grouped));
+}
+```
+- **Integrasi Recharts Frontend (`/tasks`)**:
+  - Komponen `<ResponsiveContainer>` merender `<BarChart>` (mode `stacked-bar`) dengan 4 lapis bar bertumpuk (`stackId="a"`):
+    - Done: fill `#10b981` (Emerald)
+    - In Progress: fill `#3b82f6` (Blue)
+    - To Do: fill `#f59e0b` (Amber)
+    - Overdue: fill `#ef4444` (Rose)
+  - Alternatif mode `<PieChart>` (mode `donut`) dengan `<Pie innerRadius={60} outerRadius={90}>`.
+  - Event `onClick` pada Bar/Pie mengekstrak `payload.projectId` dan menjalankan callback filter tabel `setProjectFilter(projectId)`.
   ```
 - **Format Output JSON:**
   ```json
@@ -451,6 +524,30 @@ var sessions = await _db.Sessions
     .AsNoTracking()
     .ToListAsync();
 ```
+
+#### C. Visualisasi Analitik Beban Kerja Karyawan (`/reports`)
+Pada antarmuka laporan timesheet Next.js (`frontend/src/app/(with-layouts)/reports/page.tsx`), ditambahkan diagram batang Recharts terintegrasi di atas ringkasan tabel:
+- **Agregasi Data Sisi Klien**:
+  ```typescript
+  // Mengelompokkan total jam kerja per pengguna dalam rentang tanggal filter
+  const userHoursMap = new Map<string, { name: string; hours: number }>();
+  sessions.forEach((s) => {
+    const userName = s.userName || s.userEmail || "Tanpa Nama";
+    const existing = userHoursMap.get(userName) || { name: userName, hours: 0 };
+    existing.hours += (s.durationSeconds || 0) / 3600;
+    userHoursMap.set(userName, existing);
+  });
+  const userChartData = Array.from(userHoursMap.values()).map(u => ({
+    name: u.name,
+    totalHours: Number(u.hours.toFixed(1))
+  }));
+  ```
+- **Komponen Visualisasi Recharts**:
+  - Merender `<ResponsiveContainer height={260}>` dengan `<BarChart data={userChartData}>`.
+  - Sumbu X: Nama pengguna/anggota (`dataKey="name"`).
+  - Sumbu Y: Akumulasi jam kerja (`dataKey="totalHours"`).
+  - Warna Batang: Biru Indigo (`#3b82f6` / `#6366f1`) dengan sudut melengkung atas (`radius={[4, 4, 0, 0]}`).
+  - Tooltip: Format kustom menampilkan durasi jam desimal dan label jam kerja.
 
 ---
 
@@ -668,6 +765,10 @@ await _db.SaveChangesAsync();
    - `HomeController` menyuntikkan `IGamificationService` untuk memuat `DailyCheckInStatusDto` dan `GamificationUserPointsDto`.
    - Grid metrik personal dashboard ditingkatkan menjadi 5 kartu (`Total Tasks`, `In Progress`, `Done`, `Today Work Hours`, dan `Daily Check-In & Streak`).
    - Kartu metrik ke-5 dan spanduk pengingat di atas metrik memicu `performDashboardCheckIn()` via AJAX `POST /Gamification/CheckIn` dengan proteksi token antiforgery dan efek visual confetti tanpa memuat ulang halaman.
+7. **Standardisasi Antarmuka & Navigasi Terpadu Frontend (`gamification-nav.tsx`)**:
+   - Komponen bersama `frontend/src/components/gamification/gamification-nav.tsx` menyatukan tata letak visual di ketiga sub-halaman: `/gamification` (Ringkasan & Peringkat), `/gamification/badges` (Koleksi Lencana), dan `/gamification/rewards` (Katalog Hadiah).
+   - Menghadirkan *Hero Banner Glassmorphic* dengan efek glowing border, judul kontekstual, deskripsi, serta tab navigasi horizontal interaktif.
+   - Mengintegrasikan 4 Kartu Metrik KPI Standar (`Saldo Poin`, `Peringkat/Level`, `Streak Hari`, `Total Badge Diraih`) yang tersinkronisasi lintas sub-halaman untuk pengalaman pengguna yang kohesif.
 
 ---
 
@@ -698,15 +799,73 @@ Mengambil template dari tabel `EmailTemplates` berdasarkan `EventCode`, lalu mel
 | **MVC** | `GET /AuditTrail/Index` | `AuditTrailController` | `Task<IActionResult> Index(...)` | Antarmuka audit trail dengan filter aksi & tanggal |
 | **MVC** | `GET /AuditTrail/Details/{id}` | `AuditTrailController` | `Task<IActionResult> Details(int id)` | Mengambil rincian detail aktivitas log audit untuk popup modal |
 | **API** | `GET /api/audittrail` | `AuditTrailApiController` | `Task<IActionResult> GetAll(...)` | Mengambil data log audit berpaginasi |
+| **API** | `GET /api/audit-logs/crud-chart` | `AuditLogsController` | `Task<IActionResult> GetCrudChartData(days)` | Mengambil tren aktivitas CRUD harian & ringkasan untuk grafik garis |
 | **API** | `GET /api/audittrail/summary` | `AuditTrailApiController` | `Task<IActionResult> GetSummary()` | Rekapitulasi aktivitas berdasarkan HTTP Method |
 | **API** | `DELETE /api/audittrail/cleanup`| `AuditTrailApiController` | `Task<IActionResult> Cleanup(...)` | Pembersihan log lama (> 90 hari) oleh Admin |
 
-#### B. Intersepsi Otomatis Melalui `AuditLogActionFilter` & Popup Modal Detail
+#### B. Intersepsi Otomatis Melalui `AuditLogActionFilter`, Popup Modal Detail & CRUD Line Chart
 1. Setiap request HTTP yang mengubah data (`POST`, `PUT`, `DELETE`, `PATCH`) secara otomatis diintersepsi oleh filter `AuditLogActionFilter.cs`:
    - Mencatat `UserId`, `UserEmail`, `ControllerName`, `ActionName`, `HttpMethod`, `Path`, `QueryString`, `IpAddress`, `StatusCode`, `DurationMs`, dan `Timestamp`.
    - Disimpan secara asinkron ke tabel `AuditLogs`.
 2. **Modal Detail Aktivitas (`AuditTrailDetailsModal`)**:
    - Menampilkan modal popup interaktif berisi metadata lengkap audit: ID Log, Pelaku (User & Email), Alamat IP, Endpoint Path, HTTP Status Code, Durasi Pemrosesan (ms), Tanggal & Jam, serta blok rincian perubahan data/parameter request terformat rapi.
+3. **Endpoint Tren CRUD & Visualisasi Line Chart (`GET /api/audit-logs/crud-chart`)**:
+   - **Parameter Request**: `days` (integer, otomatis dibatasi pada rentang 1 s.d. 90 hari, default `7`).
+   - **Logika Klasifikasi CRUD (`AuditLogsController.GetCrudChartData`)**:
+     ```csharp
+     // Create: Operasi penambahan data baru
+     bool isCreate = action.Contains("CREATE") || action.Contains("ADD") || 
+                     action.Contains("INSERT") || action.Contains("REGISTER") || method == "POST";
+
+     // Read: Operasi pengambilan atau unduhan data
+     bool isRead = action.Contains("READ") || action.Contains("GET") || 
+                   action.Contains("VIEW") || action.Contains("FETCH") || 
+                   action.Contains("EXPORT") || action.Contains("DOWNLOAD") || method == "GET";
+
+     // Update: Operasi modifikasi atau persetujuan
+     bool isUpdate = action.Contains("UPDATE") || action.Contains("EDIT") || 
+                     action.Contains("MODIFY") || action.Contains("PATCH") || 
+                     action.Contains("APPROVE") || action.Contains("REJECT") || 
+                     action.Contains("RESET") || method == "PUT" || method == "PATCH";
+
+     // Delete: Operasi penghapusan data
+     bool isDelete = action.Contains("DELETE") || action.Contains("REMOVE") || 
+                     action.Contains("PURGE") || action.Contains("DESTROY") || method == "DELETE";
+     ```
+   - **Skema Output Data JSON**:
+     ```json
+     {
+       "success": true,
+       "message": "Data chart audit CRUD berhasil diambil.",
+       "data": {
+         "points": [
+           {
+             "date": "2026-10-26",
+             "createCount": 14,
+             "readCount": 85,
+             "updateCount": 22,
+             "deleteCount": 2,
+             "totalCount": 123
+           }
+         ],
+         "summary": {
+           "totalCreate": 48,
+           "totalRead": 420,
+           "totalUpdate": 95,
+           "totalDelete": 6,
+           "totalOperations": 569
+         }
+       }
+     }
+     ```
+   - **Integrasi Recharts Frontend (`/audit-trail`)**:
+     - Merender komponen `<ResponsiveContainer height={300}>` dengan `<LineChart data={chartPoints}>`.
+     - 4 Garis Multi-Series bertipe `monotone` dengan stroke width 2px dan titik dot interaktif:
+       - Create: Stroke `#10b981` (Emerald Green)
+       - Read: Stroke `#0284c7` (Sky Blue)
+       - Update: Stroke `#f59e0b` (Amber Orange)
+       - Delete: Stroke `#ef4444` (Rose Red)
+     - Dilengkapi tombol pemilih rentang waktu dinamis (7 Hari, 14 Hari, 30 Hari Terakhir) yang memicu refetch data seketika tanpa reload halaman.
 
 ---
 
@@ -775,8 +934,35 @@ Antarmuka Konfigurasi Sistem (`Views/Configuration/Index.cshtml`) dirancang ergo
 | :--- | :--- | :--- | :--- | :--- |
 | **MVC** | `GET /Home/Index` | `HomeController` | `Task<IActionResult> Index(...)` | Merender dashboard utama dengan ringkasan metrik |
 | **API** | `GET /api/dashboard/stats` | `DashboardApiController` | `Task<IActionResult> GetStats(...)` | Agregasi total tugas, proyek, jam kerja, anggota |
-| **API** | `GET /api/dashboard/productivity`| `DashboardApiController`| `Task<IActionResult> GetProductivityChart(...)`| Mengambil tren jam kerja harian/mingguan (Chart.js) |
+| **API** | `GET /api/dashboard/productivity`| `DashboardApiController`| `Task<IActionResult> GetProductivityChart(...)`| Mengambil tren jam kerja harian/mingguan (Eksklusi Admin) |
+| **API** | `GET /api/dashboard/distribution`| `DashboardApiController`| `Task<IActionResult> GetDistribution(...)`| Mengambil distribusi tugas per status dan beban tim (Eksklusi Admin) |
 | **API** | `GET /api/dashboard/activities`| `DashboardApiController` | `Task<IActionResult> GetRecentActivities(...)`| Feed aktivitas terbaru dari sesi dan tugas |
+
+#### B. Logika Eksklusi Administrator dari Grafik Produktivitas & Distribusi Beban Tim
+Untuk menyajikan data analitik operasional yang objektif dan mencerminkan kapasitas kerja tim yang sebenarnya, backend dan frontend menerapkan aturan filter eksklusi ketat untuk peran Administrator:
+1. **Penyaringan pada `DashboardController.cs`**:
+   - **`GetProductivityChart`**:
+     ```csharp
+     // Hanya menyertakan jam kerja dari pengguna non-administrator
+     var operationalUserIds = await _db.Users
+         .Where(u => u.Role != "Administrator" && u.Role != "Admin")
+         .Select(u => u.Id)
+         .ToListAsync();
+
+     var sessionsQuery = _db.Sessions
+         .Where(s => operationalUserIds.Contains(s.UserId) && s.StartTime >= startDate && s.StartTime <= endDate);
+     ```
+   - **`GetDistribution`**:
+     - Diagram pembagian tugas dan utilisasi anggota tim mengecualikan akun yang memiliki `Role == "Administrator"` atau `Role == "Admin"`.
+2. **Penyaringan pada Komponen Frontend Next.js (`frontend/src/app/(with-layouts)/dashboard/page.tsx`)**:
+   - Fungsi helper `isAdministrator(user)` digunakan untuk memvalidasi peran:
+     ```typescript
+     const isAdministrator = (role?: string) => {
+       const r = (role || "").toLowerCase();
+       return r === "administrator" || r === "admin";
+     };
+     ```
+   - Bagian leaderboard produktivitas anggota tim dan visualisasi perbandingan beban kerja secara otomatis menyaring keluar akun Administrator dari daftar chart, sehingga fokus analisis manajerial tetap tertuju pada tim operasional teknis.
 
 ---
 
