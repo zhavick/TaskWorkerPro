@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "@/services/api/client";
 import { toast } from "sonner";
 import Link from "next/link";
+import { GamificationNav } from "../_components/gamification-nav";
 import {
   Gift,
   Award,
@@ -252,76 +253,12 @@ export default function RewardStorePage() {
 
   return (
     <div className="space-y-6 px-2 py-4 lg:px-6">
-      {/* Header & Breadcrumbs */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <div className="flex items-center gap-2 text-xs font-semibold text-gray-500 dark:text-gray-400">
-            <Link href="/gamification" className="hover:text-indigo-600 dark:hover:text-indigo-400">
-              Gamifikasi
-            </Link>
-            <ChevronRight className="h-3.5 w-3.5" />
-            <span className="text-gray-900 dark:text-white">Reward Store</span>
-          </div>
-          <h1 className="mt-1 text-2xl font-black tracking-tight text-gray-900 dark:text-white sm:text-3xl">
-            Toko Penukaran Hadiah (Reward Store)
-          </h1>
-          <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-            Tukarkan saldo poin produktivitas Anda dengan voucher e-wallet, pulsa, kopi, dan merchandise.
-          </p>
-        </div>
-
-        {/* Subpage Switcher Tabs */}
-        <div className="flex items-center gap-1.5 rounded-xl border border-gray-200/80 bg-white p-1 shadow-xs dark:border-gray-800 dark:bg-gray-900">
-          <Link
-            href="/gamification"
-            className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
-          >
-            <Flame className="h-3.5 w-3.5 text-amber-500" />
-            Status &amp; Streak
-          </Link>
-          <Link
-            href="/gamification/badges"
-            className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
-          >
-            <Award className="h-3.5 w-3.5 text-indigo-500" />
-            Lencana Prestasi
-          </Link>
-          <div className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-xs">
-            <Gift className="h-3.5 w-3.5" />
-            Reward Store
-          </div>
-        </div>
-      </div>
-
-      {/* Saldo Poin & Valuasi Rupiah Banner */}
-      <div className="relative overflow-hidden rounded-3xl border border-emerald-200 bg-gradient-to-r from-emerald-600 via-teal-600 to-indigo-700 p-6 text-white shadow-lg shadow-emerald-900/10 dark:border-emerald-900/50">
-        <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-white/10 blur-3xl pointer-events-none" />
-
-        <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-4">
-            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-white/15 backdrop-blur-md shadow-inner text-amber-300">
-              <Coins className="h-8 w-8" />
-            </div>
-            <div>
-              <span className="text-xs font-semibold uppercase tracking-wider text-emerald-100">
-                Saldo Poin Aktif Anda
-              </span>
-              <div className="mt-1 flex items-baseline gap-2">
-                <span className="text-3xl font-black sm:text-4xl">
-                  {currentPoints.toLocaleString("id-ID")}
-                </span>
-                <span className="text-sm font-bold text-emerald-200">Poin</span>
-                <span className="rounded-full bg-white/20 px-2.5 py-0.5 text-xs font-bold text-white backdrop-blur-md">
-                  ≈ Rp {rupiahValue.toLocaleString("id-ID")}
-                </span>
-              </div>
-              <p className="mt-1 text-xs text-emerald-100/80">
-                Nilai tukar resmi: 1 Poin = Rp 100. Poin diperoleh dari check-in absensi &amp; lencana prestasi.
-              </p>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
+      {/* Unified Module Navigation & Header */}
+      <GamificationNav
+        title="Toko Penukaran Hadiah (Reward Store)"
+        subtitle="Tukarkan saldo poin produktivitas Anda dengan voucher e-wallet, pulsa, kopi, dan merchandise resmi."
+        action={
+          <div className="flex items-center gap-2">
             <Button
               variant="outline"
               size="sm"
@@ -329,13 +266,121 @@ export default function RewardStorePage() {
                 refetchStatus();
                 refetchRewards();
                 refetchMyClaims();
+                if (isAdmin) {
+                  refetchAdminRewards();
+                  refetchAdminClaims();
+                }
               }}
-              className="border-white/30 bg-white/10 text-xs font-semibold text-white hover:bg-white/20 backdrop-blur-md"
+              className="gap-1.5 text-xs font-semibold"
             >
               <RefreshCw className="h-3.5 w-3.5" />
               Segarkan
             </Button>
+            {isAdmin && (
+              <Button
+                size="sm"
+                onClick={() => {
+                  setRewardFormMode("create");
+                  setEditingRewardId(null);
+                  setRewardForm({
+                    name: "",
+                    description: "",
+                    category: "Voucher",
+                    pointCost: 100,
+                    stock: 10,
+                    icon: "gift",
+                    color: "indigo",
+                    isActive: true,
+                    isMonthlyMilestoneReward: false,
+                    orderIndex: 0,
+                  });
+                  setRewardModalOpen(true);
+                }}
+                className="gap-1.5 bg-emerald-600 text-xs font-semibold text-white hover:bg-emerald-700"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Tambah Hadiah Baru
+              </Button>
+            )}
           </div>
+        }
+      />
+
+      {/* 4 Standardized KPI Metric Cards */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {/* Card 1: Saldo Poin */}
+        <div className="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-xs dark:border-gray-800 dark:bg-gray-900">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">
+              Saldo Poin Aktif
+            </span>
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-amber-50 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400">
+              <Coins className="h-4 w-4" />
+            </div>
+          </div>
+          <div className="mt-2 text-2xl font-black text-amber-600 dark:text-amber-400">
+            {currentPoints.toLocaleString("id-ID")}{" "}
+            <span className="text-xs font-bold text-gray-400">PTS</span>
+          </div>
+          <span className="text-[11px] text-gray-500 dark:text-gray-400">
+            Poin tersedia untuk ditukarkan
+          </span>
+        </div>
+
+        {/* Card 2: Valuasi Rupiah */}
+        <div className="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-xs dark:border-gray-800 dark:bg-gray-900">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">
+              Estimasi Nilai Rupiah
+            </span>
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400">
+              <Wallet className="h-4 w-4" />
+            </div>
+          </div>
+          <div className="mt-2 text-2xl font-black text-emerald-600 dark:text-emerald-400">
+            Rp {rupiahValue.toLocaleString("id-ID")}
+          </div>
+          <span className="text-[11px] text-gray-500 dark:text-gray-400">
+            Kurs resmi: 1 Poin = Rp 100
+          </span>
+        </div>
+
+        {/* Card 3: Katalog Hadiah */}
+        <div className="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-xs dark:border-gray-800 dark:bg-gray-900">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">
+              Katalog Hadiah
+            </span>
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-400">
+              <ShoppingBag className="h-4 w-4" />
+            </div>
+          </div>
+          <div className="mt-2 text-2xl font-black text-indigo-600 dark:text-indigo-400">
+            {rewards.length}{" "}
+            <span className="text-xs font-bold text-gray-400">Item</span>
+          </div>
+          <span className="text-[11px] text-gray-500 dark:text-gray-400">
+            Voucher, pulsa, kopi, &amp; merchandise
+          </span>
+        </div>
+
+        {/* Card 4: Riwayat Klaim */}
+        <div className="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-xs dark:border-gray-800 dark:bg-gray-900">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">
+              Riwayat Klaim Anda
+            </span>
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-purple-50 text-purple-600 dark:bg-purple-950/60 dark:text-purple-400">
+              <Clock className="h-4 w-4" />
+            </div>
+          </div>
+          <div className="mt-2 text-2xl font-black text-purple-600 dark:text-purple-400">
+            {myClaims.length}{" "}
+            <span className="text-xs font-bold text-gray-400">Pengajuan</span>
+          </div>
+          <span className="text-[11px] text-gray-500 dark:text-gray-400">
+            {pendingClaimsCount > 0 ? `${pendingClaimsCount} pengajuan tim pending` : "Semua transaksi tersimpan"}
+          </span>
         </div>
       </div>
 

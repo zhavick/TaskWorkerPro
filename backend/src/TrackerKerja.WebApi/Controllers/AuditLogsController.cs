@@ -182,6 +182,56 @@ public class AuditLogsController : ControllerBase
         return Ok(new { success = true, data = summary });
     }
 
+    [HttpGet("crud-chart")]
+    public async Task<IActionResult> GetAuditLogCrudChart([FromQuery] int days = 7)
+    {
+        if (days <= 0) days = 7;
+        if (days > 90) days = 90;
+
+        var nowUtc = DateTimeOffset.UtcNow;
+        var todayStart = new DateTimeOffset(nowUtc.Year, nowUtc.Month, nowUtc.Day, 0, 0, 0, TimeSpan.Zero);
+        var startDate = todayStart.AddDays(-(days - 1));
+
+        var logs = await _context.AuditLogs
+            .AsNoTracking()
+            .Where(a => a.Timestamp >= startDate)
+            .Select(a => new { a.Timestamp, a.HttpMethod })
+            .ToListAsync();
+
+        var indonesianMonths = new[] { "Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des" };
+
+        var trendPoints = new List<object>();
+        for (int i = 0; i < days; i++)
+        {
+            var dayStart = startDate.AddDays(i);
+            var dayEnd = dayStart.AddDays(1);
+
+            var dayLogs = logs.Where(l => l.Timestamp >= dayStart && l.Timestamp < dayEnd).ToList();
+
+            int createCount = dayLogs.Count(l => string.Equals(l.HttpMethod, "POST", StringComparison.OrdinalIgnoreCase));
+            int readCount = dayLogs.Count(l => string.Equals(l.HttpMethod, "GET", StringComparison.OrdinalIgnoreCase));
+            int updateCount = dayLogs.Count(l => string.Equals(l.HttpMethod, "PUT", StringComparison.OrdinalIgnoreCase) ||
+                                                 string.Equals(l.HttpMethod, "PATCH", StringComparison.OrdinalIgnoreCase));
+            int deleteCount = dayLogs.Count(l => string.Equals(l.HttpMethod, "DELETE", StringComparison.OrdinalIgnoreCase));
+
+            var label = $"{dayStart.Day} {indonesianMonths[dayStart.Month - 1]}";
+            var dateIso = dayStart.ToString("yyyy-MM-dd");
+
+            trendPoints.Add(new
+            {
+                date = dateIso,
+                label,
+                create = createCount,
+                read = readCount,
+                update = updateCount,
+                delete = deleteCount,
+                total = createCount + readCount + updateCount + deleteCount
+            });
+        }
+
+        return Ok(new { success = true, data = trendPoints });
+    }
+
     [HttpGet("task/{taskId}")]
     public async Task<IActionResult> GetTaskAuditTimeline(int taskId)
     {

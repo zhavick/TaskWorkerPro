@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "@/services/api/client";
 import { toast } from "sonner";
 import Link from "next/link";
+import { GamificationNav } from "../_components/gamification-nav";
 import {
   Award,
   Flame,
@@ -375,46 +376,11 @@ export default function BadgesGalleryPage() {
 
   return (
     <div className="space-y-6 px-2 py-4 lg:px-6">
-      {/* Top Header & Breadcrumbs */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <div className="flex items-center gap-2 text-xs font-semibold text-gray-500 dark:text-gray-400">
-            <Link href="/gamification" className="hover:text-indigo-600 dark:hover:text-indigo-400">
-              Gamifikasi
-            </Link>
-            <ChevronRight className="h-3.5 w-3.5" />
-            <span className="text-gray-900 dark:text-white">Lencana Prestasi</span>
-          </div>
-          <h1 className="mt-1 text-2xl font-black tracking-tight text-gray-900 dark:text-white sm:text-3xl">
-            Galeri &amp; Manajemen Lencana Prestasi
-          </h1>
-          <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-            Raih pencapaian produktivitas tim dengan Master Badges resmi, poin permanen, dan verifikasi admin.
-          </p>
-        </div>
-
-        {/* Subpage Switcher Tabs */}
-        <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-gray-200/80 bg-white p-1 shadow-xs dark:border-gray-800 dark:bg-gray-900">
-          <Link
-            href="/gamification"
-            className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
-          >
-            <Flame className="h-3.5 w-3.5 text-amber-500" />
-            Status &amp; Streak
-          </Link>
-          <div className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-xs">
-            <Award className="h-3.5 w-3.5" />
-            Lencana Prestasi
-          </div>
-          <Link
-            href="/gamification/rewards"
-            className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
-          >
-            <Gift className="h-3.5 w-3.5 text-emerald-500" />
-            Reward Store
-          </Link>
-        </div>
-      </div>
+      {/* Unified Module Navigation & Header */}
+      <GamificationNav
+        title="Galeri Lencana Prestasi"
+        subtitle="Raih pencapaian produktivitas tim dengan Master Badges resmi, poin permanen, dan verifikasi admin."
+      />
 
       {/* Metric Cards Banner */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">

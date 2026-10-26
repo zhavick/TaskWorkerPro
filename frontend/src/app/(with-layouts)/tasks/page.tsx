@@ -347,7 +347,7 @@ export default function TasksListPage() {
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-extrabold tracking-tight text-gray-900 dark:text-white">
-              Daftar Tugas Operasional
+              Daftar Tugas
             </h1>
             <span className="rounded-full bg-indigo-50 px-2.5 py-0.5 text-xs font-bold text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-400 border border-indigo-200/60 dark:border-indigo-800/60">
               {totalCount} Total

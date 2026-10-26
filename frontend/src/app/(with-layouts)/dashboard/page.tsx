@@ -254,35 +254,59 @@ export default function DashboardPage() {
     { name: "Overdue", value: taskStats.overdue, color: "#EF4444" },
   ];
 
-  const memberDistribution = distributionData?.byMember || [];
+  // Filter helper: Administrator tidak ditampilkan pada chart dashboard
+  const isAdministrator = (m: any) => {
+    if (!m) return false;
+    const title = (m.jobTitle || "").toLowerCase();
+    const name = (m.name || "").toLowerCase();
+    const uname = (m.userName || "").toLowerCase();
+    const uid = (m.userId || "").toLowerCase();
+    const role = (m.role || "").toLowerCase();
+    return (
+      title.includes("admin") ||
+      name.includes("administrator") ||
+      name === "admin" ||
+      name.startsWith("admin ") ||
+      uname === "admin" ||
+      uid.includes("admin") ||
+      role.includes("admin")
+    );
+  };
 
-  const memberChartData =
-    memberDistribution.length > 0
-      ? memberDistribution
-      : [
-          {
-            userId: "user-admin-1",
-            name: "Admin Modern",
-            jobTitle: "Engineering Director",
-            color: "var(--primary-500, #3758f9)",
-            value: 5,
-            doneCount: 3,
-            inProgressCount: 2,
-            percentage: 38.5,
-            projects: ["Migrasi Core Banking Cloud"],
-          },
-          {
-            userId: "user-member-1",
-            name: "Budi Santoso",
-            jobTitle: "Senior Fullstack Developer",
-            color: "var(--neutral-brand-color, #10B981)",
-            value: 8,
-            doneCount: 6,
-            inProgressCount: 2,
-            percentage: 61.5,
-            projects: ["Sistem Presensi Geofencing AI"],
-          },
-        ];
+  const rawMemberDistribution = distributionData?.byMember || [];
+  const memberDistribution = useMemo(() => {
+    return rawMemberDistribution.filter((m: any) => !isAdministrator(m));
+  }, [rawMemberDistribution]);
+
+  const defaultMemberChartData = [
+    {
+      userId: "user-member-2",
+      name: "Siti Rahma",
+      jobTitle: "QA Lead Engineer",
+      color: "#EC4899",
+      value: 7,
+      doneCount: 5,
+      inProgressCount: 2,
+      percentage: 46.7,
+      projects: ["Migrasi Core Banking Cloud"],
+    },
+    {
+      userId: "user-member-1",
+      name: "Budi Santoso",
+      jobTitle: "Senior Fullstack Developer",
+      color: "var(--neutral-brand-color, #10B981)",
+      value: 8,
+      doneCount: 6,
+      inProgressCount: 2,
+      percentage: 53.3,
+      projects: ["Sistem Presensi Geofencing AI"],
+    },
+  ];
+
+  const memberChartData = useMemo(() => {
+    const list = memberDistribution.length > 0 ? memberDistribution : defaultMemberChartData;
+    return list.filter((m: any) => !isAdministrator(m));
+  }, [memberDistribution]);
 
   const currentPieData =
     activeDistributionTab === "project"
@@ -297,6 +321,9 @@ export default function DashboardPage() {
     : [{ name: "Belum Ada Data", value: 1, color: "#94A3B8" }];
 
   const doughnutTotalTasks = useMemo(() => {
+    if (activeDistributionTab === "member") {
+      return memberDistribution.reduce((acc: number, d: any) => acc + (d.value || 0), 0);
+    }
     if (distributionData?.totalTasks !== undefined && distributionData?.totalTasks !== null) {
       return distributionData.totalTasks;
     }
@@ -304,11 +331,11 @@ export default function DashboardPage() {
       return currentPieData.reduce((acc: number, d: any) => acc + (d.value || 0), 0);
     }
     return taskStats.total;
-  }, [distributionData?.totalTasks, hasPieData, currentPieData, taskStats.total]);
+  }, [activeDistributionTab, memberDistribution, distributionData?.totalTasks, hasPieData, currentPieData, taskStats.total]);
 
   const memberProjectData = useMemo(() => {
     if (distributionData?.byMemberProject && distributionData.byMemberProject.length > 0) {
-      return distributionData.byMemberProject;
+      return distributionData.byMemberProject.filter((m: any) => !isAdministrator(m));
     }
     return memberChartData.map((m: any) => {
       const row: Record<string, any> = {

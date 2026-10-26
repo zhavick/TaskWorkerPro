@@ -25,7 +25,18 @@ import {
   Layers,
   ArrowUpDown,
   Calendar,
+  TrendingUp,
 } from "lucide-react";
+import {
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+} from "recharts";
 import { Button } from "@/components/tailgrids/core/button";
 import { Input } from "@/components/tailgrids/core/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/tailgrids/core/dialog";
@@ -63,6 +74,53 @@ export interface AuditLogSummary {
   }>;
 }
 
+function CustomCrudTooltip({ active, payload }: any) {
+  if (active && payload && payload.length) {
+    const data = payload[0].payload;
+    return (
+      <div className="rounded-xl border border-gray-200/80 bg-white/95 p-3 shadow-lg backdrop-blur-md dark:border-gray-800 dark:bg-gray-900/95">
+        <div className="font-bold text-xs text-gray-900 dark:text-white border-b border-gray-100 dark:border-gray-800 pb-1.5 mb-2 flex items-center justify-between gap-4">
+          <span>{data.label} ({data.date})</span>
+          <span className="rounded-md bg-gray-100 px-1.5 py-0.5 text-[10px] font-extrabold text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+            Total: {data.total}
+          </span>
+        </div>
+        <div className="space-y-1 text-xs">
+          <div className="flex items-center justify-between gap-3 text-emerald-600 dark:text-emerald-400 font-semibold">
+            <span className="flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full bg-emerald-500" />
+              Create (POST)
+            </span>
+            <span className="font-mono">{data.create}</span>
+          </div>
+          <div className="flex items-center justify-between gap-3 text-sky-600 dark:text-sky-400 font-semibold">
+            <span className="flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full bg-sky-500" />
+              Read (GET)
+            </span>
+            <span className="font-mono">{data.read}</span>
+          </div>
+          <div className="flex items-center justify-between gap-3 text-amber-600 dark:text-amber-400 font-semibold">
+            <span className="flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full bg-amber-500" />
+              Update (PUT/PATCH)
+            </span>
+            <span className="font-mono">{data.update}</span>
+          </div>
+          <div className="flex items-center justify-between gap-3 text-rose-600 dark:text-rose-400 font-semibold">
+            <span className="flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full bg-rose-500" />
+              Delete (DELETE)
+            </span>
+            <span className="font-mono">{data.delete}</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  return null;
+}
+
 export default function AuditTrailPage() {
   const queryClient = useQueryClient();
   const { isAdmin } = useCurrentUser();
@@ -83,6 +141,28 @@ export default function AuditTrailPage() {
   // Cleanup Dialog State
   const [cleanupOpen, setCleanupOpen] = useState(false);
   const [retentionDays, setRetentionDays] = useState(90);
+
+  // CRUD Trends Chart State & Query
+  const [chartDays, setChartDays] = useState<number>(7);
+  const { data: crudChartData = [], isLoading: loadingChart } = useQuery<Array<{
+    date: string;
+    label: string;
+    create: number;
+    read: number;
+    update: number;
+    delete: number;
+    total: number;
+  }>>({
+    queryKey: ["auditLogsCrudChart", chartDays],
+    queryFn: async () => {
+      try {
+        const res = await apiClient.get(`/audit-logs/crud-chart?days=${chartDays}`);
+        return res.data.data || [];
+      } catch {
+        return [];
+      }
+    },
+  });
 
   // Calculate StartDate filter
   const getStartDateParam = () => {
@@ -358,6 +438,110 @@ export default function AuditTrailPage() {
             {loadingSummary ? "..." : summary?.errorCount.toLocaleString() ?? 0}
           </div>
           <span className="text-[11px] text-rose-500 font-medium">Status HTTP 4xx / 5xx</span>
+        </div>
+      </div>
+
+      {/* 2b. Trend Line Chart: CRUD Activity History */}
+      <div className="rounded-2xl border border-card-border bg-card-background p-5 shadow-xs">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pb-4 border-b border-gray-100 dark:border-gray-800">
+          <div>
+            <div className="flex items-center gap-2">
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 dark:bg-indigo-950/80 dark:text-indigo-400">
+                <TrendingUp className="h-4 w-4" />
+              </div>
+              <h2 className="text-sm font-bold text-gray-900 dark:text-white">
+                Tren Mutasi Log Audit (CRUD Activity Trend)
+              </h2>
+            </div>
+            <p className="mt-0.5 text-xs text-text-secondary">
+              Distribusi operasi harian Create (POST), Read (GET), Update (PUT/PATCH), dan Delete (DELETE).
+            </p>
+          </div>
+
+          <div className="flex items-center gap-1.5 rounded-xl border border-gray-200/80 bg-gray-50/50 p-1 dark:border-gray-800 dark:bg-gray-900">
+            {[
+              { label: "7 Hari", days: 7 },
+              { label: "14 Hari", days: 14 },
+              { label: "30 Hari", days: 30 },
+            ].map((item) => (
+              <button
+                key={item.days}
+                type="button"
+                onClick={() => setChartDays(item.days)}
+                className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
+                  chartDays === item.days
+                    ? "bg-white text-indigo-600 shadow-xs dark:bg-gray-800 dark:text-indigo-400"
+                    : "text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Line Chart Canvas */}
+        <div className="mt-4 h-72 w-full">
+          {loadingChart ? (
+            <div className="flex h-full items-center justify-center text-xs text-text-secondary">
+              Memuat visualisasi tren CRUD...
+            </div>
+          ) : crudChartData.length === 0 ? (
+            <div className="flex h-full items-center justify-center text-xs text-text-secondary">
+              Belum ada data aktivitas CRUD dalam rentang waktu ini.
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={crudChartData} margin={{ top: 15, right: 20, left: -10, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-color, #E2E8F0)" opacity={0.6} />
+                <XAxis dataKey="label" stroke="#94A3B8" fontSize={11} tickLine={false} axisLine={false} />
+                <YAxis stroke="#94A3B8" fontSize={11} tickLine={false} axisLine={false} allowDecimals={false} />
+                <Tooltip content={<CustomCrudTooltip />} />
+                <Legend
+                  verticalAlign="top"
+                  align="right"
+                  iconType="circle"
+                  wrapperStyle={{ paddingBottom: "12px", fontSize: "11px" }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="create"
+                  name="Create (POST)"
+                  stroke="#10B981"
+                  strokeWidth={2.5}
+                  dot={{ r: 3, fill: "#10B981" }}
+                  activeDot={{ r: 5 }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="read"
+                  name="Read (GET)"
+                  stroke="#0EA5E9"
+                  strokeWidth={2.5}
+                  dot={{ r: 3, fill: "#0EA5E9" }}
+                  activeDot={{ r: 5 }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="update"
+                  name="Update (PUT/PATCH)"
+                  stroke="#F59E0B"
+                  strokeWidth={2.5}
+                  dot={{ r: 3, fill: "#F59E0B" }}
+                  activeDot={{ r: 5 }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="delete"
+                  name="Delete (DELETE)"
+                  stroke="#EF4444"
+                  strokeWidth={2.5}
+                  dot={{ r: 3, fill: "#EF4444" }}
+                  activeDot={{ r: 5 }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
         </div>
       </div>
 

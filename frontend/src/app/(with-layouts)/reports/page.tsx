@@ -18,6 +18,16 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/tailgrids/core/button";
 import { toast } from "sonner";
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid,
+  Cell,
+} from "recharts";
 
 type ReportTab = "timesheet" | "tasks" | "members";
 
@@ -98,6 +108,37 @@ function MilestoneBar({ name, children }: { name: string; children: React.ReactN
   );
 }
 
+const USER_BAR_COLORS = [
+  "#6366F1",
+  "#10B981",
+  "#3B82F6",
+  "#F59E0B",
+  "#EC4899",
+  "#8B5CF6",
+  "#06B6D4",
+  "#F43F5E",
+  "#14B8A6",
+  "#84CC16",
+];
+
+function CustomTimesheetBarTooltip({ active, payload }: any) {
+  if (active && payload && payload.length) {
+    const data = payload[0].payload;
+    return (
+      <div className="rounded-xl border border-gray-200/80 bg-white/95 p-3 shadow-lg backdrop-blur-md dark:border-gray-800 dark:bg-gray-900/95">
+        <div className="font-bold text-xs text-gray-900 dark:text-white border-b border-gray-100 dark:border-gray-800 pb-1.5 mb-1.5 flex items-center justify-between gap-3">
+          <span>{data.name}</span>
+          <span className="text-[10px] text-gray-400 font-mono">{data.sessions} sesi</span>
+        </div>
+        <div className="text-xs font-semibold text-indigo-600 dark:text-indigo-400">
+          Total: <span className="font-mono font-black">{fmtH(data.hours)}</span>
+        </div>
+      </div>
+    );
+  }
+  return null;
+}
+
 export default function ReportsPage() {
   const [tab, setTab] = useState<ReportTab>("timesheet");
   const [startDate, setStartDate] = useState("");
@@ -164,6 +205,38 @@ export default function ReportsPage() {
 
   const projects: any[] = report?.projects ?? [];
   const empty = !isLoading && tab !== "members" && projects.length === 0;
+
+  const userTimesheetChartData = useMemo(() => {
+    if (!report?.projects || tab !== "timesheet") return [];
+    const userMap: Record<string, { userId: string; name: string; hours: number; sessions: number }> = {};
+
+    report.projects.forEach((p: any) => {
+      p.milestones?.forEach((m: any) => {
+        m.tasks?.forEach((t: any) => {
+          t.members?.forEach((mem: any) => {
+            const key = mem.userId || mem.userName || "unknown";
+            if (!userMap[key]) {
+              userMap[key] = {
+                userId: mem.userId,
+                name: mem.userName || "Anggota",
+                hours: 0,
+                sessions: 0,
+              };
+            }
+            userMap[key].hours += mem.hours || 0;
+            userMap[key].sessions += 1;
+          });
+        });
+      });
+    });
+
+    return Object.values(userMap)
+      .map((u) => ({
+        ...u,
+        hours: Math.round(u.hours * 100) / 100,
+      }))
+      .sort((a, b) => b.hours - a.hours);
+  }, [report?.projects, tab]);
 
   return (
     <div className="space-y-6 px-2 py-4 lg:px-6">
@@ -264,6 +337,60 @@ export default function ReportsPage() {
             <KpiCard label="Total Sesi" value={report.totalSessions} />
             <KpiCard label="Tugas Dikerjakan" value={report.totalTasks} />
           </div>
+
+          {/* Chart Distribusi Jam Kerja Berdasarkan Nama Pengguna */}
+          {userTimesheetChartData.length > 0 && (
+            <div className="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-xs dark:border-gray-800 dark:bg-gray-900">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between pb-4 border-b border-gray-100 dark:border-gray-800">
+                <div>
+                  <h3 className="flex items-center gap-2 text-sm font-bold text-gray-900 dark:text-white">
+                    <Users className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                    Distribusi Jam Kerja Timesheet per Nama Pengguna
+                  </h3>
+                  <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    Akumulasi jam kerja pada pengerjaan tugas operasional berdasarkan masing-masing anggota tim.
+                  </p>
+                </div>
+                <span className="rounded-full bg-indigo-50 px-2.5 py-0.5 text-xs font-bold text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-400 border border-indigo-200/60 dark:border-indigo-800/60 self-start sm:self-auto">
+                  {userTimesheetChartData.length} Pengguna
+                </span>
+              </div>
+
+              <div className="mt-4 h-64 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={userTimesheetChartData} margin={{ top: 10, right: 15, left: -15, bottom: 25 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-color, #E2E8F0)" opacity={0.6} />
+                    <XAxis
+                      dataKey="name"
+                      stroke="#94A3B8"
+                      fontSize={11}
+                      tickLine={false}
+                      axisLine={false}
+                      interval={0}
+                      angle={-20}
+                      textAnchor="end"
+                    />
+                    <YAxis
+                      stroke="#94A3B8"
+                      fontSize={11}
+                      tickLine={false}
+                      axisLine={false}
+                      unit=" j"
+                    />
+                    <Tooltip content={<CustomTimesheetBarTooltip />} />
+                    <Bar dataKey="hours" name="Jam Kerja" radius={[6, 6, 0, 0]}>
+                      {userTimesheetChartData.map((entry, index) => (
+                        <Cell
+                          key={`cell-${entry.userId || index}`}
+                          fill={USER_BAR_COLORS[index % USER_BAR_COLORS.length]}
+                        />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          )}
 
           <div className="overflow-hidden rounded-2xl border border-gray-200/80 bg-white shadow-xs dark:border-gray-800 dark:bg-gray-900">
             {projects.map((p) => {

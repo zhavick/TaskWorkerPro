@@ -204,9 +204,29 @@ public class DashboardController : ControllerBase
             .AsNoTracking()
             .Where(s => s.StartTime >= startDate);
 
+        var adminUserIds = await _context.UserRoles
+            .AsNoTracking()
+            .Where(ur => ur.RoleId == "r-admin" || _context.Roles.Any(r => r.Id == ur.RoleId && (r.Name == "Administrator" || r.Name == "Admin" || r.Name == "SuperAdmin")))
+            .Select(ur => ur.UserId)
+            .ToListAsync();
+
+        var adminDirectUsers = await _context.Users
+            .AsNoTracking()
+            .Where(u => (u.UserName != null && (u.UserName.ToLower() == "admin" || u.UserName.ToLower() == "administrator")) ||
+                        (u.Email != null && u.Email.ToLower().Contains("admin@")) ||
+                        (u.JobTitle != null && u.JobTitle.ToLower().Contains("administrator")))
+            .Select(u => u.Id)
+            .ToListAsync();
+        adminUserIds.AddRange(adminDirectUsers);
+
         if (!isAdmin && !string.IsNullOrEmpty(currentUserId))
         {
             sessionsQuery = sessionsQuery.Where(s => s.UserId == currentUserId);
+        }
+        else
+        {
+            // Administrator tidak diikutsertakan dalam chart
+            sessionsQuery = sessionsQuery.Where(s => !adminUserIds.Contains(s.UserId));
         }
 
         var sessions = await sessionsQuery.ToListAsync();
@@ -219,6 +239,11 @@ public class DashboardController : ControllerBase
         if (!isAdmin && !string.IsNullOrEmpty(currentUserId))
         {
             tasksQuery = tasksQuery.Where(t => t.AssignedToUserId == currentUserId);
+        }
+        else
+        {
+            // Administrator tidak diikutsertakan dalam chart
+            tasksQuery = tasksQuery.Where(t => t.AssignedToUserId == null || !adminUserIds.Contains(t.AssignedToUserId));
         }
 
         var doneTasks = await tasksQuery.ToListAsync();
@@ -343,7 +368,22 @@ public class DashboardController : ControllerBase
         }
         var companyUsers = await usersQuery.ToListAsync();
 
-        var byMember = companyUsers
+        var adminRoleUserIds = await _context.UserRoles
+            .AsNoTracking()
+            .Where(ur => ur.RoleId == "r-admin" || _context.Roles.Any(r => r.Id == ur.RoleId && (r.Name == "Administrator" || r.Name == "Admin" || r.Name == "SuperAdmin")))
+            .Select(ur => ur.UserId)
+            .ToListAsync();
+
+        // Administrator tidak diikutsertakan dalam chart dashboard
+        var nonAdminUsers = companyUsers.Where(u =>
+            !adminRoleUserIds.Contains(u.Id) &&
+            !(u.UserName != null && (u.UserName.Equals("admin", StringComparison.OrdinalIgnoreCase) || u.UserName.Equals("administrator", StringComparison.OrdinalIgnoreCase))) &&
+            !(u.Email != null && u.Email.Contains("admin@", StringComparison.OrdinalIgnoreCase)) &&
+            !(u.JobTitle != null && (u.JobTitle.Contains("Administrator", StringComparison.OrdinalIgnoreCase) || u.JobTitle.Contains("Admin", StringComparison.OrdinalIgnoreCase))) &&
+            !(u.FullName != null && (u.FullName.Contains("Administrator", StringComparison.OrdinalIgnoreCase) || u.FullName.StartsWith("Admin ", StringComparison.OrdinalIgnoreCase)))
+        ).ToList();
+
+        var byMember = nonAdminUsers
             .Select((u, idx) =>
             {
                 var userTasks = allTasks.Where(t => t.AssignedToUserId == u.Id).ToList();
@@ -441,7 +481,7 @@ public class DashboardController : ControllerBase
             .Select(g => g.Key)
             .ToList();
 
-        var byMemberProject = companyUsers
+        var byMemberProject = nonAdminUsers
             .Where(u => allTasks.Any(t => t.AssignedToUserId == u.Id))
             .Select(u =>
             {
