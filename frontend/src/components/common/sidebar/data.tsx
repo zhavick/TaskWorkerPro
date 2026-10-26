@@ -16,6 +16,7 @@ import {
   User,
   ShieldCheck,
   BarChart3,
+  HelpCircle,
 } from "lucide-react";
 
 export const NAV_DATA = [
@@ -79,6 +80,12 @@ export const NAV_DATA = [
         title: "Pusat Notifikasi",
         icon: <Bell className="h-5 w-5" />,
         url: "/notifications",
+        items: [],
+      },
+      {
+        title: "Panduan Pengguna",
+        icon: <HelpCircle className="h-5 w-5" />,
+        url: "/guide",
         items: [],
       },
     ],

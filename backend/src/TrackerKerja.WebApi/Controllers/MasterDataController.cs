@@ -10,6 +10,7 @@ namespace TrackerKerja.WebApi.Controllers;
 [ApiController]
 [Route("api/master")]
 [Route("api/masterdata")]
+[Route("api/master-data")]
 public class MasterDataController : ControllerBase
 {
     private readonly AppDbContext _context;
@@ -340,5 +341,17 @@ public class MasterDataController : ControllerBase
         _context.Categories.Remove(category);
         await _context.SaveChangesAsync();
         return Ok(new { success = true, message = "Kategori berhasil dihapus" });
+    }
+
+    [HttpGet("job-titles")]
+    public async Task<IActionResult> GetJobTitles()
+    {
+        var titles = await _context.Users
+            .AsNoTracking()
+            .Where(u => !string.IsNullOrEmpty(u.JobTitle))
+            .Select(u => u.JobTitle!)
+            .Distinct()
+            .ToListAsync();
+        return Ok(new { success = true, data = titles });
     }
 }

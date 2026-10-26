@@ -60,6 +60,7 @@ import {
 } from "@/components/tailgrids/core/dialog";
 import { toast } from "sonner";
 import { AdminGuard } from "@/components/guards/AdminGuard";
+import { useCurrentUser } from "@/hooks/use-current-user";
 import {
   SyncProgressModal,
   SyncOperationType,
@@ -80,9 +81,18 @@ const COLOR_PRESETS = [
 
 export default function ConfigurationPage() {
   const queryClient = useQueryClient();
+  const { isAdmin, isPurgeAdmin } = useCurrentUser();
+  const isPurgeOnly = isPurgeAdmin && !isAdmin;
+
   const [activeTab, setActiveTab] = useState<
     "general" | "security" | "smtp" | "audit" | "master" | "sync" | "maintenance"
   >("general");
+
+  useEffect(() => {
+    if (isPurgeOnly) {
+      setActiveTab("maintenance");
+    }
+  }, [isPurgeOnly]);
 
   // Data Maintenance & Purge States
   const [purgeConfirmationOpen, setPurgeConfirmationOpen] = useState(false);
@@ -898,6 +908,49 @@ export default function ConfigurationPage() {
     },
   });
 
+  // Gamification Reset State & Mutation
+  const [gamificationResetUser, setGamificationResetUser] = useState<string>("all");
+  const [gamificationResetOptions, setGamificationResetOptions] = useState({
+    resetCheckIns: true,
+    resetBadges: true,
+    resetClaims: true,
+  });
+  const [gamificationConfirmModalOpen, setGamificationConfirmModalOpen] = useState(false);
+  const [gamificationConfirmKeyword, setGamificationConfirmKeyword] = useState("");
+
+  const { data: configMembers = [] } = useQuery<any[]>({
+    queryKey: ["configMembersList"],
+    queryFn: async () => {
+      const res = await apiClient.get("/members");
+      return res.data?.data || [];
+    },
+    enabled: activeTab === "maintenance",
+  });
+
+  const resetGamificationMutation = useMutation({
+    mutationFn: async () => {
+      const payload = {
+        userId: gamificationResetUser === "all" ? null : gamificationResetUser,
+        resetCheckIns: gamificationResetOptions.resetCheckIns,
+        resetBadges: gamificationResetOptions.resetBadges,
+        resetClaims: gamificationResetOptions.resetClaims,
+      };
+      const res = await apiClient.post("/gamification/admin/reset-points", payload);
+      return res.data;
+    },
+    onSuccess: (data: any) => {
+      toast.success(data?.message || "Poin dan progres gamifikasi berhasil di-reset.");
+      setGamificationConfirmModalOpen(false);
+      setGamificationConfirmKeyword("");
+      refetchMaintenanceStats();
+      queryClient.invalidateQueries({ queryKey: ["gamificationStatus"] });
+      queryClient.invalidateQueries({ queryKey: ["gamificationLeaderboard"] });
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || "Gagal mereset poin gamifikasi");
+    },
+  });
+
   const handleFieldChange = (key: string, value: string) => {
     setSettings((prev) => ({ ...prev, [key]: value }));
   };
@@ -1047,7 +1100,7 @@ export default function ConfigurationPage() {
   };
 
   return (
-    <AdminGuard>
+    <AdminGuard allowPurgeAdmin={true}>
       <div className="space-y-6 px-2 py-4 lg:px-6">
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -1060,7 +1113,7 @@ export default function ConfigurationPage() {
           </p>
         </div>
 
-        {activeTab !== "master" && activeTab !== "sync" && activeTab !== "maintenance" && (
+        {!isPurgeOnly && activeTab !== "master" && activeTab !== "sync" && activeTab !== "maintenance" && (
           <Button
             onClick={() => saveMutation.mutate()}
             disabled={saveMutation.isPending}
@@ -1072,79 +1125,98 @@ export default function ConfigurationPage() {
         )}
       </div>
 
-      {/* 7 Tabs Navigation */}
+      {/* Restricted Mode Notice for DataPurgeAdmin */}
+      {isPurgeOnly && (
+        <div className="flex items-start gap-3 rounded-2xl border border-amber-300 bg-amber-50/80 p-4 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200 shadow-2xs">
+          <ShieldAlert className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
+          <div className="space-y-1">
+            <span className="font-extrabold block text-sm">
+              Mode Akses Terbatas: Administrator Pembersihan Data (Data Purge Administrator)
+            </span>
+            <p className="text-xs text-amber-800 dark:text-amber-300 leading-relaxed">
+              Anda diberikan hak akses setingkat administrator yang <strong>dibatasi khusus untuk urusan cleaning, purging data operasional, dan pemeliharaan basis data (VACUUM)</strong>. Modul konfigurasi umum, keamanan sistem, SMTP, dan master data tidak tersedia untuk peran ini demi menjaga stabilitas sistem.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Tabs Navigation */}
       <div className="flex flex-wrap gap-2 border-b border-gray-200/80 pb-2 dark:border-gray-800">
-        <button
-          onClick={() => setActiveTab("general")}
-          className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition ${
-            activeTab === "general"
-              ? "bg-indigo-600 text-white shadow-xs"
-              : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300"
-          }`}
-        >
-          <Settings className="h-4 w-4" />
-          Umum (General)
-        </button>
+        {!isPurgeOnly ? (
+          <>
+            <button
+              onClick={() => setActiveTab("general")}
+              className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition ${
+                activeTab === "general"
+                  ? "bg-indigo-600 text-white shadow-xs"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300"
+              }`}
+            >
+              <Settings className="h-4 w-4" />
+              Umum (General)
+            </button>
 
-        <button
-          onClick={() => setActiveTab("security")}
-          className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition ${
-            activeTab === "security"
-              ? "bg-indigo-600 text-white shadow-xs"
-              : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300"
-          }`}
-        >
-          <Shield className="h-4 w-4" />
-          Keamanan & Sesi
-        </button>
+            <button
+              onClick={() => setActiveTab("security")}
+              className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition ${
+                activeTab === "security"
+                  ? "bg-indigo-600 text-white shadow-xs"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300"
+              }`}
+            >
+              <Shield className="h-4 w-4" />
+              Keamanan & Sesi
+            </button>
 
-        <button
-          onClick={() => setActiveTab("smtp")}
-          className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition ${
-            activeTab === "smtp"
-              ? "bg-indigo-600 text-white shadow-xs"
-              : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300"
-          }`}
-        >
-          <Mail className="h-4 w-4" />
-          Notifikasi Email (SMTP)
-        </button>
+            <button
+              onClick={() => setActiveTab("smtp")}
+              className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition ${
+                activeTab === "smtp"
+                  ? "bg-indigo-600 text-white shadow-xs"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300"
+              }`}
+            >
+              <Mail className="h-4 w-4" />
+              Notifikasi Email (SMTP)
+            </button>
 
-        <button
-          onClick={() => setActiveTab("audit")}
-          className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition ${
-            activeTab === "audit"
-              ? "bg-indigo-600 text-white shadow-xs"
-              : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300"
-          }`}
-        >
-          <FileText className="h-4 w-4" />
-          Jejak Audit (Audit Trail)
-        </button>
+            <button
+              onClick={() => setActiveTab("audit")}
+              className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition ${
+                activeTab === "audit"
+                  ? "bg-indigo-600 text-white shadow-xs"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300"
+              }`}
+            >
+              <FileText className="h-4 w-4" />
+              Jejak Audit (Audit Trail)
+            </button>
 
-        <button
-          onClick={() => setActiveTab("master")}
-          className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition ${
-            activeTab === "master"
-              ? "bg-indigo-600 text-white shadow-xs"
-              : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300"
-          }`}
-        >
-          <Layers className="h-4 w-4" />
-          Master Data & SDLC
-        </button>
+            <button
+              onClick={() => setActiveTab("master")}
+              className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition ${
+                activeTab === "master"
+                  ? "bg-indigo-600 text-white shadow-xs"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300"
+              }`}
+            >
+              <Layers className="h-4 w-4" />
+              Master Data & SDLC
+            </button>
 
-        <button
-          onClick={() => setActiveTab("sync")}
-          className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition ${
-            activeTab === "sync"
-              ? "bg-indigo-600 text-white shadow-xs"
-              : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300"
-          }`}
-        >
-          <RefreshCw className="h-4 w-4" />
-          Sinkronisasi Host Induk
-        </button>
+            <button
+              onClick={() => setActiveTab("sync")}
+              className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition ${
+                activeTab === "sync"
+                  ? "bg-indigo-600 text-white shadow-xs"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300"
+              }`}
+            >
+              <RefreshCw className="h-4 w-4" />
+              Sinkronisasi Host Induk
+            </button>
+          </>
+        ) : null}
 
         <button
           onClick={() => setActiveTab("maintenance")}
@@ -3073,6 +3145,132 @@ export default function ConfigurationPage() {
               </div>
             )}
           </div>
+
+          {/* Bagian 5: Reset Poin & Progres Gamifikasi (Per Pengguna atau Keseluruhan) */}
+          <div className="rounded-2xl border border-pink-200 bg-white p-6 shadow-xs dark:border-pink-950 dark:bg-gray-900">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-gray-100 pb-4 dark:border-gray-800">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-pink-50 text-pink-600 dark:bg-pink-950 dark:text-pink-400">
+                  <Sparkles className="h-5 w-5" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-gray-900 dark:text-white">
+                    Bagian 5: Reset Poin &amp; Progres Gamifikasi
+                  </h4>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Mereset poin check-in, rangkaian streak harian, lencana penghargaan, dan histori klaim reward
+                  </p>
+                </div>
+              </div>
+
+              <span className="rounded-full bg-pink-100 px-3 py-1 text-xs font-semibold text-pink-700 dark:bg-pink-950 dark:text-pink-300 self-start sm:self-auto">
+                {maintenanceStats?.totalGamificationRecords ?? 0} Rekod Gamifikasi
+              </span>
+            </div>
+
+            <div className="mt-4 grid grid-cols-1 gap-6 lg:grid-cols-2">
+              {/* Kolom Kiri: Pemilihan Target Pengguna */}
+              <div className="space-y-3">
+                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300">
+                  Target Pengguna yang Di-reset *
+                </label>
+                <div>
+                  <select
+                    value={gamificationResetUser}
+                    onChange={(e) => setGamificationResetUser(e.target.value)}
+                    className="w-full rounded-xl border border-gray-200 bg-gray-50/60 p-2.5 text-xs font-medium text-gray-900 focus:border-pink-500 focus:ring-pink-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+                  >
+                    <option value="all">★ Seluruh Anggota Tim (Semua Pengguna Non-Admin &amp; Staf)</option>
+                    {configMembers.map((member: any) => (
+                      <option key={member.id} value={member.id}>
+                        {member.fullName || member.name || member.userName} ({member.email}) - {member.jobTitle || "Anggota Tim"}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                  {gamificationResetUser === "all"
+                    ? "Poin, streak, dan progres gamifikasi seluruh anggota tim di perusahaan akan dikembalikan ke kondisi awal (0)."
+                    : `Hanya progres gamifikasi untuk anggota tim terpilih yang akan di-reset.`}
+                </p>
+              </div>
+
+              {/* Kolom Kanan: Opsi Data yang Direset */}
+              <div className="space-y-2">
+                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300">
+                  Komponen Gamifikasi yang Direset
+                </label>
+
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2.5 rounded-xl border border-gray-100 p-2.5 text-xs text-gray-700 hover:bg-gray-50 dark:border-gray-800 dark:text-gray-300 dark:hover:bg-gray-800/40 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={gamificationResetOptions.resetCheckIns}
+                      onChange={(e) =>
+                        setGamificationResetOptions({ ...gamificationResetOptions, resetCheckIns: e.target.checked })
+                      }
+                      className="h-4 w-4 rounded border-gray-300 text-pink-600 focus:ring-pink-500"
+                    />
+                    <div>
+                      <span className="font-semibold">Reset Check-In Harian &amp; Streak</span>
+                      <p className="text-[10px] text-gray-400">Poin bulanan kembali ke 0 dan rantai streak harian kembali ke 0.</p>
+                    </div>
+                  </label>
+
+                  <label className="flex items-center gap-2.5 rounded-xl border border-gray-100 p-2.5 text-xs text-gray-700 hover:bg-gray-50 dark:border-gray-800 dark:text-gray-300 dark:hover:bg-gray-800/40 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={gamificationResetOptions.resetBadges}
+                      onChange={(e) =>
+                        setGamificationResetOptions({ ...gamificationResetOptions, resetBadges: e.target.checked })
+                      }
+                      className="h-4 w-4 rounded border-gray-300 text-pink-600 focus:ring-pink-500"
+                    />
+                    <div>
+                      <span className="font-semibold">Reset Lencana Penghargaan (Badges)</span>
+                      <p className="text-[10px] text-gray-400">Mencabut badge yang telah diperoleh dan snapshot capaian terkait.</p>
+                    </div>
+                  </label>
+
+                  <label className="flex items-center gap-2.5 rounded-xl border border-gray-100 p-2.5 text-xs text-gray-700 hover:bg-gray-50 dark:border-gray-800 dark:text-gray-300 dark:hover:bg-gray-800/40 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={gamificationResetOptions.resetClaims}
+                      onChange={(e) =>
+                        setGamificationResetOptions({ ...gamificationResetOptions, resetClaims: e.target.checked })
+                      }
+                      className="h-4 w-4 rounded border-gray-300 text-pink-600 focus:ring-pink-500"
+                    />
+                    <div>
+                      <span className="font-semibold">Reset Riwayat Klaim Reward</span>
+                      <p className="text-[10px] text-gray-400">Mengosongkan histori klaim reward voucher &amp; item yang pernah ditukarkan.</p>
+                    </div>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-t border-gray-100 pt-4 dark:border-gray-800">
+              <span className="text-xs text-gray-500 dark:text-gray-400">
+                Peringatan: Reset progres gamifikasi tidak dapat dibatalkan.
+              </span>
+              <Button
+                onClick={() => {
+                  setGamificationConfirmKeyword("");
+                  setGamificationConfirmModalOpen(true);
+                }}
+                disabled={
+                  !gamificationResetOptions.resetCheckIns &&
+                  !gamificationResetOptions.resetBadges &&
+                  !gamificationResetOptions.resetClaims
+                }
+                className="gap-2 bg-pink-600 text-white hover:bg-pink-700 shadow-md shadow-pink-600/20"
+              >
+                <Sparkles className="h-4 w-4" />
+                Reset Poin Gamifikasi Sekarang
+              </Button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -3777,6 +3975,81 @@ export default function ConfigurationPage() {
                   <>
                     <Trash2 className="h-3.5 w-3.5" />
                     {purgeMode === "all" ? "Eksekusi Reset Total" : "Eksekusi Pembersihan"}
+                  </>
+                )}
+              </Button>
+            </div>
+          </DialogBody>
+        </DialogContent>
+      </Dialog>
+
+      {/* ======================================================== */}
+      {/* DIALOG 7: KONFIRMASI RESET GAMIFIKASI */}
+      {/* ======================================================== */}
+      <Dialog isOpen={gamificationConfirmModalOpen} onOpenChange={setGamificationConfirmModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-pink-600">
+              <Sparkles className="h-5 w-5" />
+              Konfirmasi Reset Poin Gamifikasi
+            </DialogTitle>
+          </DialogHeader>
+          <DialogBody className="space-y-4">
+            <div className="rounded-xl bg-pink-50 p-3.5 text-xs text-pink-900 dark:bg-pink-950/40 dark:text-pink-200">
+              <p className="font-bold">PERINGATAN: Reset Poin &amp; Progres Gamifikasi</p>
+              <p className="mt-1 leading-relaxed">
+                {gamificationResetUser === "all"
+                  ? "Seluruh poin check-in, rantai streak, dan perolehan badge SEMUA anggota tim akan dikembalikan ke 0 secara permanen."
+                  : `Progres gamifikasi untuk anggota terpilih akan di-reset ke 0 secara permanen.`}
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-gray-100 bg-gray-50/70 p-3 text-xs dark:border-gray-800 dark:bg-gray-800/40">
+              <span className="font-semibold text-gray-700 dark:text-gray-300">
+                Ketik kata kunci konfirmasi berikut untuk melanjutkan:
+              </span>
+              <div className="mt-1 font-mono text-sm font-bold tracking-wider text-pink-600 dark:text-pink-400">
+                RESET-GAMIFIKASI
+              </div>
+            </div>
+
+            <div>
+              <Input
+                value={gamificationConfirmKeyword}
+                onChange={(e) => setGamificationConfirmKeyword(e.target.value)}
+                placeholder="Ketik RESET-GAMIFIKASI"
+                className="font-mono text-center tracking-widest text-sm"
+                autoFocus
+              />
+            </div>
+
+            <div className="mt-4 flex justify-end gap-2 pt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setGamificationConfirmModalOpen(false)}
+                disabled={resetGamificationMutation.isPending}
+              >
+                Batal
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => resetGamificationMutation.mutate()}
+                disabled={
+                  gamificationConfirmKeyword !== "RESET-GAMIFIKASI" ||
+                  resetGamificationMutation.isPending
+                }
+                className="gap-2 bg-pink-600 text-white hover:bg-pink-700 disabled:opacity-50"
+              >
+                {resetGamificationMutation.isPending ? (
+                  <>
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                    Mereset Data...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-4 w-4" />
+                    Konfirmasi Reset Poin
                   </>
                 )}
               </Button>

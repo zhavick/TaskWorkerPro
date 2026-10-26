@@ -232,6 +232,63 @@ public class MembersControllerTests : IDisposable
         user.ApprovedAt.Should().NotBeNull();
     }
 
+    [Fact]
+    public async Task UpdateMember_Admin_CanUpdateEmailAndGrantDataPurgeAdminRole()
+    {
+        // Arrange
+        var tenant = new FakeTenantService(1, "WCH", "usr-admin", isAdmin: true);
+        var controller = new MembersController(_context, tenant);
+        var request = new UpdateMemberRequest(
+            FullName: "Budi Santoso Purger",
+            JobTitle: "Data Maintenance Specialist",
+            Email: "budi.purger@trackerkerja.local",
+            Role: "DataPurgeAdmin"
+        );
+
+        // Act
+        var result = await controller.UpdateMember("usr-member-1", request);
+
+        // Assert
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        var user = await _context.Users.FindAsync("usr-member-1");
+        user.Should().NotBeNull();
+        user!.Email.Should().Be("budi.purger@trackerkerja.local");
+        user.FullName.Should().Be("Budi Santoso Purger");
+
+        var isPurgeAdmin = await _context.UserRoles.AnyAsync(ur => ur.UserId == "usr-member-1" && (ur.RoleId == "r-purge-admin" || _context.Roles.Any(r => r.Id == ur.RoleId && r.Name == "DataPurgeAdmin")));
+        isPurgeAdmin.Should().BeTrue();
+
+        var isAdminRole = await _context.UserRoles.AnyAsync(ur => ur.UserId == "usr-member-1" && (ur.RoleId == "r-admin" || _context.Roles.Any(r => r.Id == ur.RoleId && r.Name == "Administrator")));
+        isAdminRole.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task UpdateMember_Admin_CanRevokeDataPurgeAdminRole()
+    {
+        // Arrange
+        var tenant = new FakeTenantService(1, "WCH", "usr-admin", isAdmin: true);
+        var controller = new MembersController(_context, tenant);
+
+        // Grant first
+        await controller.UpdateMember("usr-member-1", new UpdateMemberRequest(
+            FullName: "Budi Santoso",
+            JobTitle: "Backend Dev",
+            Role: "DataPurgeAdmin"
+        ));
+
+        // Act: Revoke to Member
+        var revokeResult = await controller.UpdateMember("usr-member-1", new UpdateMemberRequest(
+            FullName: "Budi Santoso",
+            JobTitle: "Backend Dev",
+            Role: "Member"
+        ));
+
+        // Assert
+        Assert.IsType<OkObjectResult>(revokeResult);
+        var isPurgeAdmin = await _context.UserRoles.AnyAsync(ur => ur.UserId == "usr-member-1" && (ur.RoleId == "r-purge-admin" || _context.Roles.Any(r => r.Id == ur.RoleId && r.Name == "DataPurgeAdmin")));
+        isPurgeAdmin.Should().BeFalse();
+    }
+
     private class FakeTenantService : ICurrentTenantService
     {
         public FakeTenantService(int? companyId, string? companyCode, string? userId, bool isAdmin)

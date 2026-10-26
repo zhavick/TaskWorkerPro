@@ -36,6 +36,8 @@ public class NotificationsController : ControllerBase
             return Unauthorized(new { success = false, message = "Sesi tidak valid." });
         }
 
+        await EnsureSamplingNotificationsAsync(currentUserId, _tenantService.CompanyId);
+
         var query = _context.UserNotifications
             .AsNoTracking()
             .Where(n => n.UserId == currentUserId);
@@ -92,6 +94,8 @@ public class NotificationsController : ControllerBase
             return Unauthorized(new { success = false, message = "Sesi tidak valid." });
         }
 
+        await EnsureSamplingNotificationsAsync(currentUserId, _tenantService.CompanyId);
+
         var count = await _context.UserNotifications
             .AsNoTracking()
             .Where(n => n.UserId == currentUserId && !n.IsRead)
@@ -102,6 +106,50 @@ public class NotificationsController : ControllerBase
             success = true,
             data = new NotificationUnreadCountDto(count)
         });
+    }
+
+    private async Task EnsureSamplingNotificationsAsync(string userId, int? companyId)
+    {
+        var hasNotifications = await _context.UserNotifications.AnyAsync(n => n.UserId == userId);
+        if (!hasNotifications)
+        {
+            var cid = companyId ?? 1;
+            var samples = new List<UserNotification>
+            {
+                new UserNotification
+                {
+                    UserId = userId,
+                    CompanyId = cid,
+                    Title = "Pengumuman Sistem: Selamat Datang di Pusat Notifikasi TrackerKerja",
+                    Message = "Pusat notifikasi resmi telah aktif. Pantau siaran umum, pembaruan aplikasi, pengumuman manajemen, dan jadwal kerja tim secara terpusat.",
+                    Category = "Announcement",
+                    ActionUrl = "/guide",
+                    IsRead = false,
+                    CreatedAt = DateTimeOffset.UtcNow.AddHours(-2)
+                },
+                new UserNotification
+                {
+                    UserId = userId,
+                    CompanyId = cid,
+                    Title = "Aktivitas Tugas: Tinjau Pekerjaan & Progres Papan Kanban",
+                    Message = "Notifikasi khusus personal: Anda memiliki tugas dan milestone yang perlu ditinjau. Buka modul Tugas atau Papan Kanban untuk memperbarui progres status pengerjaan Anda.",
+                    Category = "Task",
+                    ActionUrl = "/tasks",
+                    IsRead = false,
+                    CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-30)
+                }
+            };
+
+            _context.UserNotifications.AddRange(samples);
+            try
+            {
+                await _context.SaveChangesAsync();
+            }
+            catch
+            {
+                // Silently ignore if already seeded concurrently
+            }
+        }
     }
 
     [HttpPut("{id}/read")]

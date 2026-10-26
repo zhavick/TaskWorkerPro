@@ -45,6 +45,7 @@ const MILESTONE_OPTIONS = [
   "Maintenance",
 ];
 
+
 export default function TaskStudioPage() {
   const params = useParams();
   const router = useRouter();
@@ -218,7 +219,7 @@ export default function TaskStudioPage() {
       setDescription(t.description || "");
       setPriority(parsePriority(t.priority));
       setStatus(parseStatus(t.status));
-      setProgress(typeof t.progress === "number" ? t.progress : 0);
+      setProgress(Math.max(0, Math.min(100, Number(t.progress) || 0)));
       setMilestone(t.milestone || "");
       setObstacle(t.obstacle || "");
       setSolution(t.solution || "");
@@ -590,6 +591,15 @@ export default function TaskStudioPage() {
                     </h4>
                     <p className="text-[11px] text-gray-500 dark:text-gray-400">
                       Simpan perubahan data tugas dan log sesi jam kerja sekaligus dalam 1 request atomik.
+                    </p>
+                    <p className="mt-1 text-[11px] font-semibold text-indigo-700 dark:text-indigo-300">
+                      ✓ Jam kerja sesi manual akan dicatatkan atas nama:{" "}
+                      <span className="font-bold underline">
+                        {members.find((m: any) => m.id === assignedToUserId)?.fullName ||
+                         members.find((m: any) => m.id === assignedToUserId)?.name ||
+                         task?.assignedToUserName ||
+                         "Pengguna yang ditugaskan"}
+                      </span>
                     </p>
                   </div>
                 </div>

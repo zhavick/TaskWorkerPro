@@ -18,12 +18,18 @@ import {
 import { Button } from "@/components/tailgrids/core/button";
 import { Input } from "@/components/tailgrids/core/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/tailgrids/core/dialog";
+import { SearchableTaskPicker } from "@/components/common/searchable-task-picker";
 import { toast } from "sonner";
 
 export default function TimesheetsPage() {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [manualModalOpen, setManualModalOpen] = useState(false);
+  const [startTimerModalOpen, setStartTimerModalOpen] = useState(false);
+
+  // Start Timer state
+  const [timerTaskId, setTimerTaskId] = useState<number | undefined>(undefined);
+  const [timerNotes, setTimerNotes] = useState("");
 
   // Manual Session Form state
   const [taskId, setTaskId] = useState<number | undefined>(undefined);
@@ -40,6 +46,29 @@ export default function TimesheetsPage() {
     },
   });
 
+  // Start Live Timer Mutation
+  const startTimerMutation = useMutation({
+    mutationFn: async () => {
+      if (!timerTaskId) throw new Error("Silakan cari dan pilih tugas terlebih dahulu.");
+      const res = await apiClient.post("/timesheets/start", {
+        taskId: timerTaskId,
+        notes: timerNotes?.trim() || null,
+      });
+      return res.data;
+    },
+    onSuccess: () => {
+      toast.success("Live timer berhasil dimulai!");
+      setStartTimerModalOpen(false);
+      setTimerTaskId(undefined);
+      setTimerNotes("");
+      queryClient.invalidateQueries({ queryKey: ["activeTimers"] });
+      queryClient.invalidateQueries({ queryKey: ["timesheetSessions"] });
+      queryClient.invalidateQueries({ queryKey: ["tasksList"] });
+      queryClient.invalidateQueries({ queryKey: ["kanbanTasks"] });
+    },
+    onError: (err: any) => toast.error(err.response?.data?.message || "Gagal memulai timer"),
+  });
+
   // Query Tasks for selection
   const { data: tasks = [] } = useQuery<any[]>({
     queryKey: ["tasksForTimesheet"],
@@ -52,11 +81,21 @@ export default function TimesheetsPage() {
   // Manual Session Mutation
   const createManualMutation = useMutation({
     mutationFn: async () => {
+      if (!taskId) throw new Error("Silakan pilih tugas terlebih dahulu.");
+      if (!startTime || !endTime) throw new Error("Waktu mulai dan selesai wajib diisi.");
+      const start = new Date(startTime);
+      const end = new Date(endTime);
+      if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+        throw new Error("Format tanggal waktu mulai atau selesai tidak valid.");
+      }
+      if (end <= start) {
+        throw new Error("Waktu selesai harus lebih besar dari waktu mulai.");
+      }
       const res = await apiClient.post("/timesheets/manual", {
         taskId,
-        startTime: new Date(startTime).toISOString(),
-        endTime: new Date(endTime).toISOString(),
-        notes,
+        startTime: start.toISOString(),
+        endTime: end.toISOString(),
+        notes: notes?.trim() || null,
       });
       return res.data;
     },
@@ -124,7 +163,7 @@ export default function TimesheetsPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             onClick={handleExportExcel}
             variant="outline"
@@ -132,6 +171,14 @@ export default function TimesheetsPage() {
           >
             <FileSpreadsheet className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
             Ekspor Excel Resmi (.xlsx)
+          </Button>
+
+          <Button
+            onClick={() => setStartTimerModalOpen(true)}
+            className="gap-2 bg-emerald-600 font-semibold text-white shadow-md shadow-emerald-500/20 hover:bg-emerald-700"
+          >
+            <Play className="h-4 w-4 fill-current" />
+            Mulai Timer
           </Button>
 
           <Button
@@ -277,22 +324,15 @@ export default function TimesheetsPage() {
             className="mt-4 space-y-3.5"
           >
             <div>
-              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
+              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
                 Pilih Tugas *
               </label>
-              <select
+              <SearchableTaskPicker
+                value={taskId ?? null}
+                onChange={(id) => setTaskId(id ?? undefined)}
                 required
-                value={taskId || ""}
-                onChange={(e) => setTaskId(Number(e.target.value))}
-                className="mt-1 w-full rounded-lg border border-gray-200 bg-transparent p-2 text-xs text-gray-900 dark:border-gray-800 dark:text-white"
-              >
-                <option value="">-- Pilih Tugas --</option>
-                {tasks.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.title}
-                  </option>
-                ))}
-              </select>
+                placeholder="Ketik untuk mencari tugas (judul atau kode TK-xxxx)..."
+              />
             </div>
 
             <div className="grid grid-cols-2 gap-3">
@@ -345,6 +385,64 @@ export default function TimesheetsPage() {
                 className="bg-indigo-600 text-white hover:bg-indigo-700"
               >
                 Simpan Jam Kerja
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+      {/* Modal Mulai Timer Langsung */}
+      <Dialog open={startTimerModalOpen} onOpenChange={setStartTimerModalOpen}>
+        <DialogContent className="max-w-md bg-white p-6 shadow-2xl dark:bg-gray-900">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-lg font-bold text-gray-900 dark:text-white">
+              <Play className="h-5 w-5 text-emerald-600 dark:text-emerald-400 fill-current" />
+              Mulai Timer Tugas Langsung
+            </DialogTitle>
+          </DialogHeader>
+
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              startTimerMutation.mutate();
+            }}
+            className="mt-4 space-y-4"
+          >
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                Pilih Tugas yang Dikerjakan *
+              </label>
+              <SearchableTaskPicker
+                value={timerTaskId ?? null}
+                onChange={(id) => setTimerTaskId(id ?? undefined)}
+                required
+                placeholder="Ketik untuk mencari tugas (judul atau kode TK-xxxx)..."
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
+                Catatan Aktivitas (Opsional)
+              </label>
+              <textarea
+                rows={2}
+                placeholder="Fokus pengerjaan sesi ini..."
+                value={timerNotes}
+                onChange={(e) => setTimerNotes(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-gray-200 bg-transparent p-2 text-xs text-gray-900 dark:border-gray-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+              />
+            </div>
+
+            <div className="mt-4 flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={() => setStartTimerModalOpen(false)}>
+                Batal
+              </Button>
+              <Button
+                type="submit"
+                disabled={!timerTaskId || startTimerMutation.isPending}
+                className="bg-emerald-600 text-white hover:bg-emerald-700 gap-1.5"
+              >
+                <Play className="h-3.5 w-3.5 fill-current" />
+                Mulai Timer Sekarang
               </Button>
             </div>
           </form>

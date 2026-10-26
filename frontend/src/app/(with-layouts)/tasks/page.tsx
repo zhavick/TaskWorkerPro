@@ -40,20 +40,15 @@ import { CreateTaskDialog } from "@/components/tasks/create-task-dialog";
 import { toast } from "sonner";
 import Link from "next/link";
 import { useCurrentUser } from "@/hooks/use-current-user";
+import {
+  TASK_STATUS_LABELS,
+  TASK_PRIORITY_LABELS,
+  parseTaskStatus,
+  parseTaskPriority,
+} from "@/utils/task-status";
 
-const priorityLabels: Record<number, { label: string; badge: string; dot: string }> = {
-  0: { label: "Rendah", badge: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-400 dark:border-emerald-800", dot: "bg-emerald-500" },
-  1: { label: "Sedang", badge: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/50 dark:text-blue-400 dark:border-blue-800", dot: "bg-blue-500" },
-  2: { label: "Tinggi", badge: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/50 dark:text-amber-400 dark:border-amber-800", dot: "bg-amber-500" },
-  3: { label: "Kritis", badge: "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/50 dark:text-rose-400 dark:border-rose-800", dot: "bg-rose-500" },
-};
-
-const statusLabels: Record<number, { label: string; badge: string }> = {
-  0: { label: "To Do", badge: "bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700" },
-  1: { label: "In Progress", badge: "bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950/50 dark:text-indigo-400 dark:border-indigo-800" },
-  2: { label: "Done", badge: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-400 dark:border-emerald-800" },
-  3: { label: "Overdue", badge: "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/50 dark:text-rose-400 dark:border-rose-800" },
-};
+const priorityLabels = TASK_PRIORITY_LABELS;
+const statusLabels = TASK_STATUS_LABELS;
 
 type SortField = "title" | "project" | "priority" | "status" | "progress" | "dueDate" | "createdAt";
 
@@ -129,7 +124,7 @@ export default function TasksListPage() {
 
   // Helpers for RBAC & Past-Month Done protection
   const isPastMonthDone = (t: any) => {
-    if (t.status !== 2) return false;
+    if (parseTaskStatus(t.status) !== 2) return false;
     const dateStr = t.dueDate || t.createdAt;
     if (!dateStr) return false;
     const taskDate = new Date(dateStr);
@@ -352,7 +347,7 @@ export default function TasksListPage() {
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-extrabold tracking-tight text-gray-900 dark:text-white">
-              Daftar Tugas Operasional
+              Daftar Tugas
             </h1>
             <span className="rounded-full bg-indigo-50 px-2.5 py-0.5 text-xs font-bold text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-400 border border-indigo-200/60 dark:border-indigo-800/60">
               {totalCount} Total
@@ -773,12 +768,14 @@ export default function TasksListPage() {
               {tasks.map((t) => {
                 const hours = Math.round((t.totalDurationSeconds / 3600) * 10) / 10;
                 const isSelected = selectedTaskIds.includes(t.id);
-                const priorityInfo = priorityLabels[t.priority] || priorityLabels[1];
-                const statusInfo = statusLabels[t.status] || statusLabels[0];
+                const statusNum = parseTaskStatus(t.status);
+                const priorityNum = parseTaskPriority(t.priority);
+                const priorityInfo = priorityLabels[priorityNum] || priorityLabels[1];
+                const statusInfo = statusLabels[statusNum] || statusLabels[0];
                 const isOverdue =
                   t.dueDate &&
                   new Date(t.dueDate).getTime() < Date.now() &&
-                  t.status !== 2;
+                  statusNum !== 2;
 
                 return (
                   <tr

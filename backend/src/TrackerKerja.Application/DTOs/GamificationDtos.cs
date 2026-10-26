@@ -109,3 +109,43 @@ public record UserBadgeItemDto(
     string? AwardedBy
 );
 
+public record MasterBadgeDto(
+    int Id,
+    string Code,
+    string Name,
+    string? Description,
+    string? Category,
+    string Icon,
+    string Color,
+    int Points,
+    BadgeRarity Rarity,
+    int TriggerType,
+    int TriggerThreshold,
+    bool IsActive,
+    int OrderIndex,
+    DateTimeOffset CreatedAt
+);
+
+public record CreateOrUpdateMasterBadgeRequest(
+    string Code,
+    string Name,
+    string? Description,
+    string? Category,
+    string Icon,
+    string Color,
+    int Points,
+    BadgeRarity Rarity,
+    int TriggerType = 0,
+    int TriggerThreshold = 1,
+    bool IsActive = true,
+    int OrderIndex = 0
+);
+
+public record ResetGamificationPointsRequest(
+    string? UserId = null,
+    bool ResetCheckIns = true,
+    bool ResetBadges = true,
+    bool ResetClaims = true
+);
+
+

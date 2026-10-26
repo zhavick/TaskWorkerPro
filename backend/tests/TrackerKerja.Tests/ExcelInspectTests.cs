@@ -23,7 +23,11 @@ public class ExcelInspectTests
     [Fact]
     public async Task TestParseTaskTrackerV2Excel()
     {
-        var filePath = @"C:\Users\WAHANA 24\Downloads\Task Tracker v2.xlsx";
+        var filePath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../Sample Source DB/Task Tracker v2.xlsx"));
+        if (!File.Exists(filePath))
+        {
+            filePath = @"/Users/mac/Projects/2026/taskpro/TaskWorkerPro/Sample Source DB/Task Tracker v2.xlsx";
+        }
         if (!File.Exists(filePath)) return;
 
         using var stream = File.OpenRead(filePath);
@@ -107,10 +111,10 @@ public class ExcelInspectTests
     [Fact]
     public async Task TestCommitTaskTrackerV2Excel()
     {
-        var filePath = @"C:\Users\WAHANA 24\Downloads\Task Tracker v2.xlsx";
+        var filePath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../Sample Source DB/Task Tracker v2.xlsx"));
         if (!File.Exists(filePath))
         {
-            filePath = @"C:\TEMP\VSCODE\TrackerKerjaModern\backend\tests\temp_tracker.xlsx";
+            filePath = @"/Users/mac/Projects/2026/taskpro/TaskWorkerPro/Sample Source DB/Task Tracker v2.xlsx";
         }
         if (!File.Exists(filePath)) return;
 

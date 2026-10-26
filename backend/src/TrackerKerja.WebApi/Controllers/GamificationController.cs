@@ -713,9 +713,14 @@ public class GamificationController : ControllerBase
     }
 
     [HttpDelete("admin/badges/{badgeId}/user/{userId}")]
-    [Authorize(Roles = "Administrator,SuperAdmin")]
+    [Authorize]
     public async Task<IActionResult> RevokeBadge(int badgeId, string userId)
     {
+        if (!await IsUserAdminAsync())
+        {
+            return StatusCode(403, new { success = false, message = "Akses ditolak: Hanya Administrator yang diizinkan." });
+        }
+
         var userBadge = await _context.UserBadges
             .Include(ub => ub.Badge)
             .Include(ub => ub.User)
@@ -734,5 +739,348 @@ public class GamificationController : ControllerBase
             success = true,
             message = $"Lencana '{userBadge.Badge.Name}' berhasil ditarik dari pengguna '{userBadge.User.FullName}'."
         });
+    }
+
+    [HttpGet("admin/badges")]
+    [Authorize]
+    public async Task<IActionResult> GetAdminBadges()
+    {
+        if (!await IsUserAdminAsync())
+        {
+            return StatusCode(403, new { success = false, message = "Akses ditolak: Hanya Administrator yang diizinkan." });
+        }
+
+        var badges = await _context.MasterBadges
+            .OrderBy(b => b.OrderIndex)
+            .ThenBy(b => b.Id)
+            .Select(b => new MasterBadgeDto(
+                b.Id,
+                b.Code,
+                b.Name,
+                b.Description,
+                b.Category,
+                b.Icon,
+                b.Color,
+                b.Points,
+                b.Rarity,
+                b.TriggerType,
+                b.TriggerThreshold,
+                b.IsActive,
+                b.OrderIndex,
+                b.CreatedAt
+            ))
+            .ToListAsync();
+
+        return Ok(new { success = true, data = badges });
+    }
+
+    [HttpPost("admin/badges")]
+    [Authorize]
+    public async Task<IActionResult> CreateBadge([FromBody] CreateOrUpdateMasterBadgeRequest request)
+    {
+        if (!await IsUserAdminAsync())
+        {
+            return StatusCode(403, new { success = false, message = "Akses ditolak: Hanya Administrator yang diizinkan." });
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Name))
+        {
+            return BadRequest(new { success = false, message = "Nama lencana (badge) wajib diisi." });
+        }
+
+        var code = string.IsNullOrWhiteSpace(request.Code)
+            ? request.Name.Trim().ToLowerInvariant().Replace(" ", "-")
+            : request.Code.Trim();
+
+        var codeExists = await _context.MasterBadges.AnyAsync(b => b.Code.ToLower() == code.ToLower());
+        if (codeExists)
+        {
+            return BadRequest(new { success = false, message = $"Kode lencana '{code}' sudah digunakan oleh badge lain." });
+        }
+
+        var badge = new MasterBadge
+        {
+            Code = code,
+            Name = request.Name.Trim(),
+            Description = request.Description?.Trim(),
+            Category = string.IsNullOrWhiteSpace(request.Category) ? "General" : request.Category.Trim(),
+            Icon = string.IsNullOrWhiteSpace(request.Icon) ? "award" : request.Icon.Trim(),
+            Color = string.IsNullOrWhiteSpace(request.Color) ? "#6366F1" : request.Color.Trim(),
+            Points = Math.Max(0, request.Points),
+            Rarity = request.Rarity,
+            TriggerType = request.TriggerType,
+            TriggerThreshold = Math.Max(1, request.TriggerThreshold),
+            IsActive = request.IsActive,
+            OrderIndex = request.OrderIndex,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+
+        _context.MasterBadges.Add(badge);
+        await _context.SaveChangesAsync();
+
+        return Ok(new
+        {
+            success = true,
+            message = $"Lencana '{badge.Name}' berhasil ditambahkan ke master badges.",
+            data = new MasterBadgeDto(
+                badge.Id,
+                badge.Code,
+                badge.Name,
+                badge.Description,
+                badge.Category,
+                badge.Icon,
+                badge.Color,
+                badge.Points,
+                badge.Rarity,
+                badge.TriggerType,
+                badge.TriggerThreshold,
+                badge.IsActive,
+                badge.OrderIndex,
+                badge.CreatedAt
+            )
+        });
+    }
+
+    [HttpPut("admin/badges/{id}")]
+    [Authorize]
+    public async Task<IActionResult> UpdateBadge(int id, [FromBody] CreateOrUpdateMasterBadgeRequest request)
+    {
+        if (!await IsUserAdminAsync())
+        {
+            return StatusCode(403, new { success = false, message = "Akses ditolak: Hanya Administrator yang diizinkan." });
+        }
+
+        var badge = await _context.MasterBadges.FirstOrDefaultAsync(b => b.Id == id);
+        if (badge == null)
+        {
+            return NotFound(new { success = false, message = "Lencana tidak ditemukan." });
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Name))
+        {
+            return BadRequest(new { success = false, message = "Nama lencana (badge) wajib diisi." });
+        }
+
+        var code = string.IsNullOrWhiteSpace(request.Code)
+            ? badge.Code
+            : request.Code.Trim();
+
+        var codeExists = await _context.MasterBadges.AnyAsync(b => b.Id != id && b.Code.ToLower() == code.ToLower());
+        if (codeExists)
+        {
+            return BadRequest(new { success = false, message = $"Kode lencana '{code}' sudah digunakan oleh badge lain." });
+        }
+
+        badge.Code = code;
+        badge.Name = request.Name.Trim();
+        badge.Description = request.Description?.Trim();
+        badge.Category = string.IsNullOrWhiteSpace(request.Category) ? "General" : request.Category.Trim();
+        badge.Icon = string.IsNullOrWhiteSpace(request.Icon) ? "award" : request.Icon.Trim();
+        badge.Color = string.IsNullOrWhiteSpace(request.Color) ? "#6366F1" : request.Color.Trim();
+        badge.Points = Math.Max(0, request.Points);
+        badge.Rarity = request.Rarity;
+        badge.TriggerType = request.TriggerType;
+        badge.TriggerThreshold = Math.Max(1, request.TriggerThreshold);
+        badge.IsActive = request.IsActive;
+        badge.OrderIndex = request.OrderIndex;
+
+        await _context.SaveChangesAsync();
+
+        return Ok(new
+        {
+            success = true,
+            message = $"Lencana '{badge.Name}' berhasil diperbarui.",
+            data = new MasterBadgeDto(
+                badge.Id,
+                badge.Code,
+                badge.Name,
+                badge.Description,
+                badge.Category,
+                badge.Icon,
+                badge.Color,
+                badge.Points,
+                badge.Rarity,
+                badge.TriggerType,
+                badge.TriggerThreshold,
+                badge.IsActive,
+                badge.OrderIndex,
+                badge.CreatedAt
+            )
+        });
+    }
+
+    [HttpDelete("admin/badges/{id}")]
+    [Authorize]
+    public async Task<IActionResult> DeleteBadge(int id)
+    {
+        if (!await IsUserAdminAsync())
+        {
+            return StatusCode(403, new { success = false, message = "Akses ditolak: Hanya Administrator yang diizinkan." });
+        }
+
+        var badge = await _context.MasterBadges.FirstOrDefaultAsync(b => b.Id == id);
+        if (badge == null)
+        {
+            return NotFound(new { success = false, message = "Lencana tidak ditemukan." });
+        }
+
+        var userBadges = await _context.UserBadges.Where(ub => ub.BadgeId == id).ToListAsync();
+        if (userBadges.Any())
+        {
+            _context.UserBadges.RemoveRange(userBadges);
+        }
+
+        _context.MasterBadges.Remove(badge);
+        await _context.SaveChangesAsync();
+
+        return Ok(new
+        {
+            success = true,
+            message = $"Lencana '{badge.Name}' berhasil dihapus."
+        });
+    }
+
+    [HttpPatch("admin/badges/{id}/toggle-active")]
+    [Authorize]
+    public async Task<IActionResult> ToggleBadgeActive(int id)
+    {
+        if (!await IsUserAdminAsync())
+        {
+            return StatusCode(403, new { success = false, message = "Akses ditolak: Hanya Administrator yang diizinkan." });
+        }
+
+        var badge = await _context.MasterBadges.FirstOrDefaultAsync(b => b.Id == id);
+        if (badge == null)
+        {
+            return NotFound(new { success = false, message = "Lencana tidak ditemukan." });
+        }
+
+        badge.IsActive = !badge.IsActive;
+        await _context.SaveChangesAsync();
+
+        return Ok(new
+        {
+            success = true,
+            message = $"Status lencana '{badge.Name}' kini {(badge.IsActive ? "Aktif" : "Nonaktif")}.",
+            isActive = badge.IsActive
+        });
+    }
+
+    [HttpPost("admin/reset-points")]
+    [Authorize(Roles = "Administrator,SuperAdmin")]
+    public async Task<IActionResult> ResetGamificationPoints([FromBody] ResetGamificationPointsRequest? request)
+    {
+        if (!await IsUserAdminAsync())
+        {
+            return StatusCode(403, new { success = false, message = "Akses ditolak: Hanya Administrator yang diizinkan." });
+        }
+
+        var req = request ?? new ResetGamificationPointsRequest();
+        var companyId = _tenantService.CompanyId;
+        var isAllUsers = string.IsNullOrWhiteSpace(req.UserId) || req.UserId.Equals("all", StringComparison.OrdinalIgnoreCase);
+
+        List<string> targetUserIds;
+        string targetDescription;
+
+        if (isAllUsers)
+        {
+            var usersQuery = _context.Users.AsQueryable();
+            if (companyId.HasValue)
+            {
+                usersQuery = usersQuery.Where(u => u.CompanyId == companyId.Value);
+            }
+            targetUserIds = await usersQuery.Select(u => u.Id).ToListAsync();
+            targetDescription = $"seluruh pengguna ({targetUserIds.Count} akun)";
+        }
+        else
+        {
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == req.UserId);
+            if (user == null)
+            {
+                return NotFound(new { success = false, message = "Pengguna tidak ditemukan." });
+            }
+            targetUserIds = new List<string> { user.Id };
+            targetDescription = $"pengguna '{user.FullName}'";
+        }
+
+        int checkInsDeleted = 0;
+        int badgesDeleted = 0;
+        int claimsDeleted = 0;
+
+        if (req.ResetCheckIns && targetUserIds.Count > 0)
+        {
+            var checkIns = await _context.DailyCheckIns
+                .Where(c => targetUserIds.Contains(c.UserId))
+                .ToListAsync();
+            checkInsDeleted = checkIns.Count;
+            if (checkInsDeleted > 0)
+            {
+                _context.DailyCheckIns.RemoveRange(checkIns);
+            }
+        }
+
+        if (req.ResetBadges && targetUserIds.Count > 0)
+        {
+            var userBadges = await _context.UserBadges
+                .Where(b => targetUserIds.Contains(b.UserId))
+                .ToListAsync();
+            badgesDeleted = userBadges.Count;
+            if (badgesDeleted > 0)
+            {
+                _context.UserBadges.RemoveRange(userBadges);
+            }
+
+            var snapshots = await _context.UserBadgeSnapshots
+                .Where(s => targetUserIds.Contains(s.UserId))
+                .ToListAsync();
+            if (snapshots.Count > 0)
+            {
+                _context.UserBadgeSnapshots.RemoveRange(snapshots);
+            }
+        }
+
+        if (req.ResetClaims && targetUserIds.Count > 0)
+        {
+            var claims = await _context.RewardClaims
+                .Where(c => targetUserIds.Contains(c.UserId))
+                .ToListAsync();
+            claimsDeleted = claims.Count;
+            if (claimsDeleted > 0)
+            {
+                _context.RewardClaims.RemoveRange(claims);
+            }
+        }
+
+        await _context.SaveChangesAsync();
+
+        return Ok(new
+        {
+            success = true,
+            message = $"Berhasil mereset poin dan progres gamifikasi untuk {targetDescription}.",
+            details = new
+            {
+                target = targetDescription,
+                isAllUsers,
+                userId = req.UserId,
+                deletedCheckIns = checkInsDeleted,
+                deletedBadges = badgesDeleted,
+                deletedClaims = claimsDeleted
+            }
+        });
+    }
+
+    private async Task<bool> IsUserAdminAsync()
+    {
+        if (_tenantService.IsAdmin) return true;
+        var userId = _tenantService.UserId;
+        if (string.IsNullOrEmpty(userId)) return false;
+        var user = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId);
+        if (user == null) return false;
+        if ((user.Email?.Contains("admin", StringComparison.OrdinalIgnoreCase) ?? false) ||
+            (user.JobTitle?.Contains("admin", StringComparison.OrdinalIgnoreCase) ?? false))
+        {
+            return true;
+        }
+        return await _context.UserRoles.AnyAsync(ur => ur.UserId == userId && (ur.RoleId == "1" || ur.RoleId == "admin" || ur.RoleId == "role-admin"));
     }
 }

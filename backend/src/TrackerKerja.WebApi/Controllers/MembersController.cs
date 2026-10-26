@@ -76,11 +76,21 @@ public class MembersController : ControllerBase
             .Select(ur => ur.UserId)
             .ToListAsync();
 
+        var purgeAdminUserIds = await _context.UserRoles
+            .Where(ur => ur.RoleId == "r-purge-admin" || _context.Roles.Any(r => r.Id == ur.RoleId && r.Name == "DataPurgeAdmin"))
+            .Select(ur => ur.UserId)
+            .ToListAsync();
+
         var members = users.Select(u => {
             var isUserAdmin = u.Id == "usr-superadmin" ||
                               adminUserIds.Contains(u.Id) ||
                               (u.Email != null && u.Email.Equals("admin@trackerkerja.local", StringComparison.OrdinalIgnoreCase)) ||
                               u.JobTitle.Contains("Admin", StringComparison.OrdinalIgnoreCase);
+            var isUserPurgeAdmin = purgeAdminUserIds.Contains(u.Id);
+            var memberRoles = new List<string>();
+            if (isUserAdmin) memberRoles.Add("Administrator");
+            if (isUserPurgeAdmin && !isUserAdmin) memberRoles.Add("DataPurgeAdmin");
+            if (memberRoles.Count == 0) memberRoles.Add("Member");
 
             var memberProjects = u.AssignedTasks
                 .Where(t => t.Project != null)
@@ -102,14 +112,15 @@ public class MembersController : ControllerBase
                 u.IsApproved,
                 u.ApprovedAt,
                 u.CreatedAt,
-                new List<string> { isUserAdmin ? "Administrator" : "Member" },
+                memberRoles,
                 u.LockoutEnd.HasValue && u.LockoutEnd.Value > now,
                 u.AssignedTasks.Count,
                 u.AssignedTasks.Count(t => t.Status == Domain.Enums.TaskStatus.Done),
                 Math.Round(u.WorkSessions.Where(s => s.EndTime != null).Sum(s => s.Duration) / 3600.0, 1),
                 u.PhoneNumber,
                 memberProjects,
-                u.CoverPictureUrl
+                u.CoverPictureUrl,
+                CanPurgeData: isUserAdmin || isUserPurgeAdmin
             );
         }).ToList();
 
@@ -168,6 +179,12 @@ public class MembersController : ControllerBase
                           await _context.UserRoles.AnyAsync(ur => ur.UserId == user.Id && (ur.RoleId == "r-admin" || _context.Roles.Any(r => r.Id == ur.RoleId && r.Name == "Administrator"))) ||
                           (user.Email != null && user.Email.Equals("admin@trackerkerja.local", StringComparison.OrdinalIgnoreCase)) ||
                           user.JobTitle.Contains("Admin", StringComparison.OrdinalIgnoreCase);
+
+        var isUserPurgeAdmin = await _context.UserRoles.AnyAsync(ur => ur.UserId == user.Id && (ur.RoleId == "r-purge-admin" || _context.Roles.Any(r => r.Id == ur.RoleId && r.Name == "DataPurgeAdmin")));
+        var memberRoles = new List<string>();
+        if (isUserAdmin) memberRoles.Add("Administrator");
+        if (isUserPurgeAdmin && !isUserAdmin) memberRoles.Add("DataPurgeAdmin");
+        if (memberRoles.Count == 0) memberRoles.Add("Member");
 
         var totalTasks = user.AssignedTasks.Count;
         var completedTasks = user.AssignedTasks.Count(t => t.Status == Domain.Enums.TaskStatus.Done);
@@ -254,7 +271,8 @@ public class MembersController : ControllerBase
                 companyName = user.Company?.Name,
                 companyCode = user.Company?.Code,
                 isApproved = user.IsApproved,
-                roles = new List<string> { isUserAdmin ? "Administrator" : "Member" },
+                roles = memberRoles,
+                canPurgeData = isUserAdmin || isUserPurgeAdmin,
                 phoneNumber = user.PhoneNumber,
                 createdAt = user.CreatedAt,
                 kpi = new
@@ -310,6 +328,25 @@ public class MembersController : ControllerBase
             user.AvatarColor = request.AvatarColor;
         }
 
+        // Admin dapat memperbarui alamat email pengguna
+        if (_tenantService.IsAdmin && !string.IsNullOrWhiteSpace(request.Email))
+        {
+            var cleanEmail = request.Email.Trim().ToLowerInvariant();
+            if (!cleanEmail.Contains('@'))
+            {
+                return BadRequest(new { success = false, message = "Format alamat email tidak valid." });
+            }
+            var emailExists = await _context.Users.AnyAsync(u => u.Id != id && u.Email != null && u.Email.ToLower() == cleanEmail);
+            if (emailExists)
+            {
+                return BadRequest(new { success = false, message = $"Alamat email '{cleanEmail}' sudah digunakan oleh pengguna lain." });
+            }
+            user.Email = cleanEmail;
+            user.NormalizedEmail = cleanEmail.ToUpperInvariant();
+            user.UserName = cleanEmail;
+            user.NormalizedUserName = cleanEmail.ToUpperInvariant();
+        }
+
         // Hanya Admin yang dapat memindahkan / mengubah CompanyId
         if (_tenantService.IsAdmin && request.CompanyId.HasValue && request.CompanyId.Value > 0)
         {
@@ -321,7 +358,77 @@ public class MembersController : ControllerBase
             user.CompanyId = request.CompanyId.Value;
         }
 
+        // Admin dapat memberikan hak akses khusus: Administrator, DataPurgeAdmin (khusus cleaning/purging), atau Member
+        if (_tenantService.IsAdmin && (!string.IsNullOrWhiteSpace(request.Role) || request.CanPurgeData.HasValue))
+        {
+            var isTargetSuperAdmin = id == "usr-superadmin" || (user.Email != null && user.Email.Equals("admin@trackerkerja.local", StringComparison.OrdinalIgnoreCase));
+            var adminRole = await _context.Roles.FirstOrDefaultAsync(r => r.Id == "r-admin" || r.Name == "Administrator");
+            var adminRoleId = adminRole?.Id ?? "r-admin";
+            
+            var purgeRole = await _context.Roles.FirstOrDefaultAsync(r => r.Id == "r-purge-admin" || r.Name == "DataPurgeAdmin");
+            if (purgeRole == null)
+            {
+                purgeRole = new AppRole
+                {
+                    Id = "r-purge-admin",
+                    Name = "DataPurgeAdmin",
+                    NormalizedName = "DATAPURGEADMIN"
+                };
+                _context.Roles.Add(purgeRole);
+                await _context.SaveChangesAsync();
+            }
+
+            var currentAdminRole = await _context.UserRoles.FirstOrDefaultAsync(ur => ur.UserId == id && ur.RoleId == adminRoleId);
+            var currentPurgeRole = await _context.UserRoles.FirstOrDefaultAsync(ur => ur.UserId == id && ur.RoleId == purgeRole.Id);
+
+            var reqRole = request.Role?.Trim();
+            if (string.Equals(reqRole, "Administrator", StringComparison.OrdinalIgnoreCase))
+            {
+                if (currentAdminRole == null)
+                {
+                    _context.UserRoles.Add(new AppUserRole { UserId = id, RoleId = adminRoleId });
+                }
+                if (currentPurgeRole != null)
+                {
+                    _context.UserRoles.Remove(currentPurgeRole);
+                }
+            }
+            else if (string.Equals(reqRole, "DataPurgeAdmin", StringComparison.OrdinalIgnoreCase) || (request.CanPurgeData == true && reqRole != "Administrator"))
+            {
+                // Memberikan hak akses setingkat admin namun terbatas hanya untuk urusan cleaning dan purging data
+                if (currentPurgeRole == null)
+                {
+                    _context.UserRoles.Add(new AppUserRole { UserId = id, RoleId = purgeRole.Id });
+                }
+                if (currentAdminRole != null && !isTargetSuperAdmin)
+                {
+                    _context.UserRoles.Remove(currentAdminRole);
+                }
+            }
+            else if (string.Equals(reqRole, "Member", StringComparison.OrdinalIgnoreCase) || request.CanPurgeData == false)
+            {
+                if (currentPurgeRole != null)
+                {
+                    _context.UserRoles.Remove(currentPurgeRole);
+                }
+                if (currentAdminRole != null && !isTargetSuperAdmin)
+                {
+                    _context.UserRoles.Remove(currentAdminRole);
+                }
+            }
+        }
+
         await _context.SaveChangesAsync();
+
+        var updatedIsAdmin = user.Id == "usr-superadmin" ||
+                             await _context.UserRoles.AnyAsync(ur => ur.UserId == user.Id && (ur.RoleId == "r-admin" || _context.Roles.Any(r => r.Id == ur.RoleId && r.Name == "Administrator"))) ||
+                             (user.Email != null && user.Email.Equals("admin@trackerkerja.local", StringComparison.OrdinalIgnoreCase)) ||
+                             user.JobTitle.Contains("Admin", StringComparison.OrdinalIgnoreCase);
+        var updatedIsPurgeAdmin = await _context.UserRoles.AnyAsync(ur => ur.UserId == user.Id && (ur.RoleId == "r-purge-admin" || _context.Roles.Any(r => r.Id == ur.RoleId && r.Name == "DataPurgeAdmin")));
+        var updatedRoles = new List<string>();
+        if (updatedIsAdmin) updatedRoles.Add("Administrator");
+        if (updatedIsPurgeAdmin && !updatedIsAdmin) updatedRoles.Add("DataPurgeAdmin");
+        if (updatedRoles.Count == 0) updatedRoles.Add("Member");
 
         return Ok(new
         {
@@ -331,10 +438,13 @@ public class MembersController : ControllerBase
             {
                 user.Id,
                 user.FullName,
+                user.Email,
                 user.JobTitle,
                 user.PhoneNumber,
                 user.AvatarColor,
-                user.CompanyId
+                user.CompanyId,
+                roles = updatedRoles,
+                canPurgeData = updatedIsAdmin || updatedIsPurgeAdmin
             }
         });
     }

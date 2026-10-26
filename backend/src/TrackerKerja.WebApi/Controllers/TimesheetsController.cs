@@ -101,7 +101,7 @@ public class TimesheetsController : ControllerBase
 
     [HttpPost("{sessionId}/stop")]
     [HttpPost("stop/{sessionId}")]
-    public async Task<IActionResult> StopTimer(int sessionId)
+    public async Task<IActionResult> StopTimer(int sessionId, [FromBody] StopTimerRequest? request = null)
     {
         var session = await _context.Sessions
             .Include(s => s.Task)
@@ -119,9 +119,18 @@ public class TimesheetsController : ControllerBase
             return BadRequest(new { success = false, message = "Timer ini sudah pernah dihentikan sebelumnya." });
         }
 
-        var stopTime = DateTimeOffset.UtcNow;
+        var stopTime = request?.StopTime.HasValue == true ? request.StopTime.Value.ToUniversalTime() : DateTimeOffset.UtcNow;
+        if (stopTime <= session.StartTime)
+        {
+            stopTime = DateTimeOffset.UtcNow;
+        }
+
         session.EndTime = stopTime;
         session.Duration = Math.Max(1, (long)(stopTime - session.StartTime).TotalSeconds);
+        if (!string.IsNullOrWhiteSpace(request?.Notes))
+        {
+            session.Notes = request.Notes.Trim();
+        }
 
         await _context.SaveChangesAsync();
 
@@ -140,7 +149,10 @@ public class TimesheetsController : ControllerBase
         var currentUserId = _tenantService.UserId;
         if (string.IsNullOrEmpty(currentUserId)) return Unauthorized();
 
-        if (request.EndTime <= request.StartTime)
+        var startTimeUtc = request.StartTime.ToUniversalTime();
+        var endTimeUtc = request.EndTime.ToUniversalTime();
+
+        if (endTimeUtc <= startTimeUtc)
         {
             return BadRequest(new { success = false, message = "Waktu selesai harus lebih besar dari waktu mulai." });
         }
@@ -148,14 +160,21 @@ public class TimesheetsController : ControllerBase
         var task = await _context.Tasks.FirstOrDefaultAsync(t => t.Id == request.TaskId);
         if (task == null) return NotFound(new { success = false, message = "Tugas tidak ditemukan." });
 
-        var duration = (long)(request.EndTime - request.StartTime).TotalSeconds;
+        var duration = Math.Max(1, (long)(endTimeUtc - startTimeUtc).TotalSeconds);
+
+        // If logged by admin for a specific task, attribute the session to the task's assigned user if present
+        var sessionUserId = currentUserId;
+        if (_tenantService.IsAdmin && !string.IsNullOrEmpty(task.AssignedToUserId))
+        {
+            sessionUserId = task.AssignedToUserId;
+        }
 
         var session = new WorkSession
         {
             TaskId = task.Id,
-            UserId = currentUserId,
-            StartTime = request.StartTime,
-            EndTime = request.EndTime,
+            UserId = sessionUserId,
+            StartTime = startTimeUtc,
+            EndTime = endTimeUtc,
             Duration = duration,
             Notes = request.Notes?.Trim(),
             CreatedAt = DateTimeOffset.UtcNow

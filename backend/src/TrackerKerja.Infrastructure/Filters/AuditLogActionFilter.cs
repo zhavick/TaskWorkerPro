@@ -27,14 +27,13 @@ public class AuditLogActionFilter : IAsyncActionFilter
     private readonly AppDbContext? _directContext;
     private readonly ILogger<AuditLogActionFilter> _logger;
 
-    [ActivatorUtilitiesConstructor]
     public AuditLogActionFilter(IServiceScopeFactory scopeFactory, ILogger<AuditLogActionFilter> logger)
     {
         _scopeFactory = scopeFactory;
         _logger = logger;
     }
 
-    public AuditLogActionFilter(AppDbContext directContext, ILogger<AuditLogActionFilter> logger)
+    internal AuditLogActionFilter(AppDbContext directContext, ILogger<AuditLogActionFilter> logger)
     {
         _directContext = directContext;
         _logger = logger;
@@ -121,7 +120,8 @@ public class AuditLogActionFilter : IAsyncActionFilter
             var controllerName = context.Controller?.GetType().Name.Replace("Controller", "") ?? "Unknown";
             var actionName = context.ActionDescriptor.RouteValues.TryGetValue("action", out var act) ? act : context.ActionDescriptor.DisplayName;
 
-            var ipAddress = context.HttpContext.Connection.RemoteIpAddress?.ToString();
+            var ipAddress = ResolveClientIpAddress(context.HttpContext);
+            var userAgent = context.HttpContext.Request.Headers.TryGetValue("User-Agent", out var ua) ? ua.ToString() : null;
             var statusCode = executedContext?.Exception != null ? 500 : (executedContext?.HttpContext.Response.StatusCode ?? 200);
 
             // Correlate Auth login/registration events when context.User wasn't populated yet
@@ -151,6 +151,8 @@ public class AuditLogActionFilter : IAsyncActionFilter
             {
                 ["module"] = module,
                 ["actionSummary"] = actionSummary,
+                ["ipAddress"] = ipAddress,
+                ["userAgent"] = userAgent,
                 ["params"] = sanitizedArgs
             };
 
@@ -356,5 +358,49 @@ public class AuditLogActionFilter : IAsyncActionFilter
 
         return $"{httpMethod} {actionName ?? path}";
     }
+
+    private static string ResolveClientIpAddress(Microsoft.AspNetCore.Http.HttpContext httpContext)
+    {
+        var headers = httpContext.Request.Headers;
+
+        // Check standard proxy, ingress & CDN client IP headers
+        if (headers.TryGetValue("X-Forwarded-For", out var forwardedFor) && !string.IsNullOrWhiteSpace(forwardedFor))
+        {
+            var firstIp = forwardedFor.ToString().Split(',')[0].Trim();
+            if (!string.IsNullOrWhiteSpace(firstIp) && !firstIp.Equals("unknown", StringComparison.OrdinalIgnoreCase))
+            {
+                return firstIp;
+            }
+        }
+
+        if (headers.TryGetValue("X-Real-IP", out var realIp) && !string.IsNullOrWhiteSpace(realIp))
+        {
+            var ip = realIp.ToString().Trim();
+            if (!string.IsNullOrWhiteSpace(ip) && !ip.Equals("unknown", StringComparison.OrdinalIgnoreCase))
+            {
+                return ip;
+            }
+        }
+
+        if (headers.TryGetValue("CF-Connecting-IP", out var cfIp) && !string.IsNullOrWhiteSpace(cfIp))
+        {
+            return cfIp.ToString().Trim();
+        }
+
+        if (headers.TryGetValue("X-Client-IP", out var clientIp) && !string.IsNullOrWhiteSpace(clientIp))
+        {
+            return clientIp.ToString().Trim();
+        }
+
+        var remoteIp = httpContext.Connection.RemoteIpAddress?.ToString();
+        if (!string.IsNullOrWhiteSpace(remoteIp))
+        {
+            if (remoteIp == "::1") return "127.0.0.1";
+            return remoteIp;
+        }
+
+        return "127.0.0.1";
+    }
 }
+
 

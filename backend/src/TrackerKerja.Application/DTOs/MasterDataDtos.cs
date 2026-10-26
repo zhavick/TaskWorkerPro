@@ -140,7 +140,8 @@ public record AuditLogDto(
     int StatusCode,
     int DurationMs,
     DateTimeOffset Timestamp,
-    string? Details
+    string? Details,
+    string? IpAddress = null
 );
 
 public record AuditUserStatDto(

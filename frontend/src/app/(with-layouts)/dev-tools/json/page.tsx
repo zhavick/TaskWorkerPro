@@ -30,6 +30,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/tailgrids/core/dialog";
+import { SearchableTaskPicker } from "@/components/common/searchable-task-picker";
 import { toast } from "sonner";
 
 interface JsonHistoryItem {
@@ -247,24 +248,12 @@ export default function JsonFormatterPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 min-w-[260px] sm:min-w-[320px]">
-          <select
-            value={selectedTaskId ?? ""}
-            onChange={(e) => setSelectedTaskId(e.target.value ? Number(e.target.value) : null)}
-            className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-800 shadow-2xs focus:border-indigo-500 focus:outline-hidden dark:border-gray-800 dark:bg-gray-900 dark:text-gray-200"
-          >
-            <option value="">— Tidak Ditautkan ke Tugas —</option>
-            {tasks.map((t: any) => (
-              <option key={t.id} value={t.id}>
-                [TK-{String(t.id).padStart(4, "0")}] {t.title} {t.projectName ? `(${t.projectName})` : ""}
-              </option>
-            ))}
-          </select>
-          {boundTask && (
-            <span className="inline-flex items-center gap-1 shrink-0 rounded-lg bg-emerald-100 px-2 py-1 text-[11px] font-bold text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
-              <Check className="h-3 w-3" /> Terpilih
-            </span>
-          )}
+        <div className="w-full sm:w-auto min-w-[260px] sm:min-w-[340px]">
+          <SearchableTaskPicker
+            value={selectedTaskId}
+            onChange={(id) => setSelectedTaskId(id)}
+            placeholder="Cari tugas yang ditautkan..."
+          />
         </div>
       </div>
 
@@ -386,18 +375,11 @@ export default function JsonFormatterPage() {
               <label className="mb-1 block text-xs font-bold text-gray-700 dark:text-gray-300">
                 Tautkan ke Tugas (Task Binding)
               </label>
-              <select
-                value={selectedTaskId ?? ""}
-                onChange={(e) => setSelectedTaskId(e.target.value ? Number(e.target.value) : null)}
-                className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-800 shadow-2xs focus:border-indigo-500 focus:outline-hidden dark:border-gray-800 dark:bg-gray-900 dark:text-gray-200"
-              >
-                <option value="">— Tidak Ditautkan ke Tugas —</option>
-                {tasks.map((t: any) => (
-                  <option key={t.id} value={t.id}>
-                    [TK-{String(t.id).padStart(4, "0")}] {t.title} {t.projectName ? `(${t.projectName})` : ""}
-                  </option>
-                ))}
-              </select>
+              <SearchableTaskPicker
+                value={selectedTaskId}
+                onChange={(id) => setSelectedTaskId(id)}
+                placeholder="Cari tugas (judul atau kode TK-xxxx)..."
+              />
             </div>
 
             <div className="flex justify-end gap-2 pt-2">

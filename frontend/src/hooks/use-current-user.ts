@@ -57,6 +57,12 @@ export function useCurrentUser() {
     user?.email?.toLowerCase().includes("admin@")
   );
 
+  const isPurgeAdmin = Boolean(
+    isAdmin ||
+    user?.roles?.includes("DataPurgeAdmin") ||
+    user?.roles?.includes("CleanupAdmin")
+  );
+
   return {
     user,
     userId: user?.id,
@@ -64,6 +70,7 @@ export function useCurrentUser() {
     email: user?.email,
     roles: user?.roles || [],
     isAdmin,
+    isPurgeAdmin,
     isLoading: isLoading && !user,
   };
 }

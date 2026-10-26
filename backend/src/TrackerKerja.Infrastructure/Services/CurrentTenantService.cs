@@ -26,6 +26,37 @@ public class CurrentTenantService : ICurrentTenantService
 
     public string? UserId => _httpContextAccessor.HttpContext?.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
 
-    public bool IsAdmin => (_httpContextAccessor.HttpContext?.User?.IsInRole("Administrator") ?? false)
-                        || (_httpContextAccessor.HttpContext?.User?.IsInRole("SuperAdmin") ?? false);
+    public bool IsAdmin
+    {
+        get
+        {
+            var user = _httpContextAccessor.HttpContext?.User;
+            if (user == null) return false;
+            if (user.IsInRole("Administrator") || user.IsInRole("SuperAdmin") || user.IsInRole("Admin"))
+                return true;
+            var roleClaim = user.FindFirst(ClaimTypes.Role)?.Value;
+            if (!string.IsNullOrEmpty(roleClaim) && (roleClaim.Equals("Administrator", StringComparison.OrdinalIgnoreCase) || roleClaim.Equals("Admin", StringComparison.OrdinalIgnoreCase) || roleClaim.Equals("SuperAdmin", StringComparison.OrdinalIgnoreCase)))
+                return true;
+            var jobTitle = user.FindFirst("jobTitle")?.Value;
+            if (!string.IsNullOrEmpty(jobTitle) && (jobTitle.Contains("Admin", StringComparison.OrdinalIgnoreCase) || jobTitle.Contains("Architect", StringComparison.OrdinalIgnoreCase)))
+                return true;
+            return false;
+        }
+    }
+
+    public bool IsPurgeAdmin
+    {
+        get
+        {
+            if (IsAdmin) return true;
+            var user = _httpContextAccessor.HttpContext?.User;
+            if (user == null) return false;
+            if (user.IsInRole("DataPurgeAdmin") || user.IsInRole("CleanupAdmin"))
+                return true;
+            var roleClaim = user.FindFirst(ClaimTypes.Role)?.Value;
+            if (!string.IsNullOrEmpty(roleClaim) && (roleClaim.Equals("DataPurgeAdmin", StringComparison.OrdinalIgnoreCase) || roleClaim.Equals("CleanupAdmin", StringComparison.OrdinalIgnoreCase)))
+                return true;
+            return false;
+        }
+    }
 }

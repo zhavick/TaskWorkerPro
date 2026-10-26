@@ -10,14 +10,17 @@ interface AdminGuardProps {
   children: React.ReactNode;
   fallbackTitle?: string;
   fallbackMessage?: string;
+  allowPurgeAdmin?: boolean;
 }
 
 export function AdminGuard({
   children,
   fallbackTitle = "Akses Ditolak (403 Forbidden)",
   fallbackMessage = "Modul ini dibatasi hanya untuk Administrator. Akun Anda saat ini tidak memiliki wewenang untuk membuka konfigurasi sistem atau log audit korporat.",
+  allowPurgeAdmin = false,
 }: AdminGuardProps) {
-  const { isAdmin, isLoading } = useCurrentUser();
+  const { isAdmin, isPurgeAdmin, isLoading } = useCurrentUser();
+  const hasAccess = isAdmin || (allowPurgeAdmin && isPurgeAdmin);
 
   if (isLoading) {
     return (
@@ -30,7 +33,7 @@ export function AdminGuard({
     );
   }
 
-  if (!isAdmin) {
+  if (!hasAccess) {
     return (
       <div className="flex min-h-[70vh] items-center justify-center px-4 py-12">
         <div className="relative mx-auto w-full max-w-md overflow-hidden rounded-3xl border border-rose-200/80 bg-gradient-to-b from-rose-50/70 via-white to-white p-8 text-center shadow-xl dark:border-rose-900/60 dark:from-rose-950/30 dark:via-gray-900 dark:to-gray-900">

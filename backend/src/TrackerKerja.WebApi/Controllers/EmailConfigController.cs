@@ -11,6 +11,7 @@ namespace TrackerKerja.WebApi.Controllers;
 
 [ApiController]
 [Route("api/emailconfig")]
+[Route("api/email-config")]
 [Authorize]
 public class EmailConfigController : ControllerBase
 {

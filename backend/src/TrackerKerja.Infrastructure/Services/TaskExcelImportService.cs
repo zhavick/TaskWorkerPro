@@ -403,7 +403,8 @@ public class TaskExcelImportService : ITaskExcelImportService
             int projectCol = FindCol(headers, "project_name", "nama proyek", "project", "proyek", "nama project", "aplikasi", "nama aplikasi", "sistem");
             int milestoneCol = FindCol(headers, "milestone", "modul", "module_name", "jenis_task", "jenis task", "kategori", "fitur", "tahapan");
             int titleCol = FindCol(headers, "judul tugas", "judul", "task title", "title", "tugas", "task", "tasks", "nama tugas", "nama task", "task name", "aktivitas", "activity", "pekerjaan", "uraian pekerjaan", "deskripsi pekerjaan", "uraian tugas", "uraian", "kegiatan", "work item", "work items", "action item", "fitur", "rincian tugas", "daftar tugas", "item");
-            int descCol = FindCol(headers, "deskripsi", "description", "keterangan", "detail", "catatan");
+            int descCol = FindCol(headers, "deskripsi", "description", "keterangan", "detail");
+            int notesCol = FindCol(headers, "catatan", "notes", "note", "catatan tugas", "task note", "keterangan tambahan");
             int priorityCol = FindCol(headers, "prioritas", "priority", "urgensi", "level");
             int statusCol = FindCol(headers, "status", "keadaan", "progress status", "kondisi");
             int progressCol = FindCol(headers, "progres", "progress", "%", "persentase", "bobot", "persen");
@@ -447,6 +448,11 @@ public class TaskExcelImportService : ITaskExcelImportService
                     projectName = sheetPersonnel.DefaultProjectName;
                 }
                 var desc = descCol > 0 ? ws.Cell(r, descCol).GetString().Trim() : null;
+                var notesText = notesCol > 0 ? ws.Cell(r, notesCol).GetString().Trim() : null;
+                if (string.IsNullOrWhiteSpace(desc) && !string.IsNullOrWhiteSpace(notesText))
+                {
+                    desc = notesText;
+                }
                 // User Requirement 1: untuk deskripsi tugas, gunakan judul tugas, sehingga isi deskripsi sama dengan judul tugas
                 if (string.IsNullOrWhiteSpace(desc))
                 {
@@ -662,7 +668,8 @@ public class TaskExcelImportService : ITaskExcelImportService
                     validationMessages,
                     isUpdate,
                     existingTaskId,
-                    PicEmail: resolvedPicEmail
+                    PicEmail: resolvedPicEmail,
+                    Notes: notesText
                 ));
             }
         }
@@ -854,7 +861,8 @@ public class TaskExcelImportService : ITaskExcelImportService
                         Description = !string.IsNullOrWhiteSpace(row.Description) ? row.Description : existingRowInBatch.Description,
                         Milestone = !string.IsNullOrWhiteSpace(row.Milestone) ? row.Milestone : existingRowInBatch.Milestone,
                         Obstacle = !string.IsNullOrWhiteSpace(row.Obstacle) ? row.Obstacle : existingRowInBatch.Obstacle,
-                        Solution = !string.IsNullOrWhiteSpace(row.Solution) ? row.Solution : existingRowInBatch.Solution
+                        Solution = !string.IsNullOrWhiteSpace(row.Solution) ? row.Solution : existingRowInBatch.Solution,
+                        Notes = !string.IsNullOrWhiteSpace(row.Notes) ? row.Notes : existingRowInBatch.Notes
                     };
                     batchIdentityMap[identityKey] = merged;
                     int idx = deduplicatedRows.IndexOf(existingRowInBatch);
@@ -1230,6 +1238,60 @@ public class TaskExcelImportService : ITaskExcelImportService
         }
 
         if (hasHierarchyUpdates)
+        {
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+
+        // Resolve & pindahkan data Catatan (Notes) jika catatan tugas di sistem lokal masih kosong
+        bool hasNoteUpdates = false;
+        foreach (var row in deduplicatedRows)
+        {
+            if (!string.IsNullOrWhiteSpace(row.Notes))
+            {
+                WorkTask? currentTask = null;
+                if (!string.IsNullOrWhiteSpace(row.TaskCode) && batchTaskMap.TryGetValue(row.TaskCode.Trim(), out var mapped))
+                {
+                    currentTask = mapped;
+                }
+                else if (row.ExistingTaskId.HasValue)
+                {
+                    currentTask = existingTasks.FirstOrDefault(t => t.Id == row.ExistingTaskId.Value);
+                }
+                else if (!string.IsNullOrWhiteSpace(row.Title))
+                {
+                    dbTaskByTitle.TryGetValue(NormalizeTitle(row.Title), out currentTask);
+                }
+
+                if (currentTask != null)
+                {
+                    var existingNote = await _context.Notes.FirstOrDefaultAsync(n => n.TaskId == currentTask.Id, cancellationToken);
+                    if (existingNote == null)
+                    {
+                        _context.Notes.Add(new WorkNote
+                        {
+                            Title = $"Catatan: {currentTask.Title}",
+                            ContentHtml = $"<p>{row.Notes}</p>",
+                            Category = "General",
+                            Color = "#6366F1",
+                            TaskId = currentTask.Id,
+                            CompanyId = currentTask.CompanyId,
+                            AuthorUserId = currentTask.AssignedToUserId,
+                            CreatedAt = DateTimeOffset.UtcNow,
+                            UpdatedAt = DateTimeOffset.UtcNow
+                        });
+                        hasNoteUpdates = true;
+                    }
+                    else if (IsContentEmpty(existingNote.ContentHtml))
+                    {
+                        existingNote.ContentHtml = $"<p>{row.Notes}</p>";
+                        existingNote.UpdatedAt = DateTimeOffset.UtcNow;
+                        hasNoteUpdates = true;
+                    }
+                }
+            }
+        }
+
+        if (hasNoteUpdates)
         {
             await _context.SaveChangesAsync(cancellationToken);
         }
@@ -2632,6 +2694,26 @@ public class TaskExcelImportService : ITaskExcelImportService
             }
         }
         return null;
+    }
+
+    private static bool IsContentEmpty(string? content)
+    {
+        if (string.IsNullOrWhiteSpace(content)) return true;
+        var trimmed = content.Trim();
+        if (trimmed.Equals("<p></p>", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Equals("<p><br></p>", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Equals("<p><br/></p>", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Equals("<p>&nbsp;</p>", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Equals("<div></div>", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Equals("<div><br></div>", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Equals("<br>", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Equals("<br/>", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+        var stripped = System.Text.RegularExpressions.Regex.Replace(trimmed, "<.*?>", string.Empty);
+        stripped = stripped.Replace("&nbsp;", " ").Trim();
+        return string.IsNullOrWhiteSpace(stripped);
     }
 }
 

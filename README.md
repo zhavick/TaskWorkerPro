@@ -1,9 +1,10 @@
 # 🚀 Work Tracker Pro (TrackerKerja Modern)
 
-> **Enterprise Work Task Management, Multi-Timer Timesheet Tracking, Attendance Management, Technical Documentation, & Team Performance Analytics Platform (v3.9 Full-Width Studio Layout, Projects REST API, Docker Automation & QA Testing Edition)**
+> **Enterprise Work Task Management, Multi-Timer Timesheet Tracking, Attendance Management, Technical Documentation, Calendar Scheduling, & Team Performance Analytics Platform (v4.0 Full-Width Studio Layout, Projects REST API, Docker Automation & QA Testing Edition)**
 
 [![Next.js 16](https://img.shields.io/badge/Next.js-16%20TurboPack-black?logo=next.js&logoColor=white)](https://nextjs.org/)
 [![ASP.NET Core 8.0](https://img.shields.io/badge/ASP.NET%20Core-8.0%20Web%20API-512BD4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/)
+[![Tests Passing](https://img.shields.io/badge/Tests-186%20Passed-brightgreen?logo=dotnet&logoColor=white)](backend/tests/TrackerKerja.Tests)
 [![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL%2016%20%7C%20SQLite-336791?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![ClosedXML](https://img.shields.io/badge/ClosedXML-0.104.2-emerald?logo=microsoft-excel&logoColor=white)](https://github.com/ClosedXML/ClosedXML)
 [![Docker](https://img.shields.io/badge/Docker-Multi--Container-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
@@ -147,11 +148,11 @@ npm run dev
 ## 📚 Referensi Dokumentasi Lengkap
 
 ### Format Markdown (.md)
-- 📐 **[`documents/FSD_WORK_TRACKER_PRO.md`](file:///c:/TEMP/VSCODE/TrackerKerjaModern/documents/FSD_WORK_TRACKER_PRO.md)**: Dokumen Spesifikasi Fungsional (FSD), arsitektur modul, diagram Mermaid, dan alur bisnis v3.9.
-- 📘 **[`documents/TSD_WORK_TRACKER_PRO.md`](file:///c:/TEMP/VSCODE/TrackerKerjaModern/documents/TSD_WORK_TRACKER_PRO.md)**: Dokumen Spesifikasi Teknis (TSD), controller & API retrieval procedures, arsitektur basis data, ERD, dan sample data v3.9.
-- 📖 **[`documents/USER_GUIDE.md`](file:///c:/TEMP/VSCODE/TrackerKerjaModern/documents/USER_GUIDE.md)**: Panduan pengguna menyeluruh dengan alur kerja seluruh fitur dan modul.
-- 🧪 **[`QA/README.md`](file:///c:/TEMP/VSCODE/TrackerKerjaModern/QA/README.md)**: Panduan pengujian mutu (QA), prosedur rilis, dan standar pengujian end-to-end.
-- 📊 **[`QA/Tracking_Test_Case_E2E_TrackerKerja.xlsx`](file:///c:/TEMP/VSCODE/TrackerKerjaModern/QA/Tracking_Test_Case_E2E_TrackerKerja.xlsx)**: Workbook spreadsheet pelacakan eksekutif 72 E2E Test Case dengan formula dinamis dan status tracking.
-- 🐳 **[`DOCKER_GUIDE.md`](file:///c:/TEMP/VSCODE/TrackerKerjaModern/DOCKER_GUIDE.md)**: Panduan lengkap Docker, volume data, backup, dan perintah maintenance.
-- 📮 **[`TrackerKerja_Postman_Collection.json`](file:///c:/TEMP/VSCODE/TrackerKerjaModern/TrackerKerja_Postman_Collection.json)**: Koleksi Postman 2.1 untuk pengujian otomatis REST API.
-- 🌐 **[`TrackerKerja_Postman_Environment.json`](file:///c:/TEMP/VSCODE/TrackerKerjaModern/TrackerKerja_Postman_Environment.json)**: Environment Postman lokal.
+- 📐 **[`FSD.md`](FSD.md)** (atau [`documents/FSD_WORK_TRACKER_PRO.md`](documents/FSD_WORK_TRACKER_PRO.md)): **Dokumen Spesifikasi Fungsional (FSD)**, arsitektur modul, diagram Mermaid, tata letak studio bentang penuh, dan alur bisnis v4.0.
+- 📘 **[`TSD.md`](TSD.md)** (atau [`documents/TSD_WORK_TRACKER_PRO.md`](documents/TSD_WORK_TRACKER_PRO.md)): **Dokumen Spesifikasi Teknis (TSD)**, controller & API retrieval procedures, arsitektur basis data relasional, katalog tabel, ERD lengkap, dan sample data v4.0.
+- 📖 **[`USER_GUIDE.md`](USER_GUIDE.md)** (atau [`documents/USER_GUIDE.md`](documents/USER_GUIDE.md)): **Buku Panduan Pengguna (User Guide)** terpadu untuk Member, Leader, dan Administrator.
+- 🐳 **[`DOCKER_GUIDE.md`](DOCKER_GUIDE.md)**: Panduan lengkap Docker multi-container, persistent volumes, backup data, dan otomatisasi deployment.
+- 🧪 **[`QA/README.md`](QA/README.md)**: Panduan pengujian mutu (QA), konvensi penamaan test case, prosedur rilis, dan standar pengujian end-to-end.
+- 📊 **[`QA/Tracking_Test_Case_E2E_TrackerKerja.xlsx`](QA/Tracking_Test_Case_E2E_TrackerKerja.xlsx)**: Workbook spreadsheet pelacakan eksekutif 72 E2E Test Case dengan formula dinamis dan status tracking.
+- 📮 **[`TrackerKerja_Postman_Collection.json`](TrackerKerja_Postman_Collection.json)**: Koleksi Postman 2.1 untuk pengujian otomatis 100+ REST API endpoints.
+- 🌐 **[`TrackerKerja_Postman_Environment.json`](TrackerKerja_Postman_Environment.json)**: Environment Postman lokal.

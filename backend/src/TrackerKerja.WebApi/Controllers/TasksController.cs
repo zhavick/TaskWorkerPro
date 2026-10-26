@@ -163,13 +163,15 @@ public class TasksController : ControllerBase
         [FromQuery] string? search = null,
         [FromQuery] string? filter = null,
         [FromQuery] string? assignedToUserId = null,
+        [FromQuery] int? categoryId = null,
+        [FromQuery] string? milestone = null,
         [FromQuery] int? month = null,
         [FromQuery] int? year = null,
         [FromQuery] DateTimeOffset? doneStartDate = null,
         [FromQuery] DateTimeOffset? doneEndDate = null,
         [FromQuery] DateTimeOffset? startDate = null,
         [FromQuery] DateTimeOffset? endDate = null,
-        [FromQuery] bool includeSubtasks = true)
+        [FromQuery] bool includeSubtasks = false)
     {
         var query = _context.Tasks
             .Include(t => t.Project)
@@ -197,6 +199,8 @@ public class TasksController : ControllerBase
 
         if (projectId.HasValue) query = query.Where(t => t.ProjectId == projectId.Value);
         if (priority.HasValue) query = query.Where(t => t.Priority == priority.Value);
+        if (categoryId.HasValue) query = query.Where(t => t.CategoryId == categoryId.Value);
+        if (!string.IsNullOrWhiteSpace(milestone)) query = query.Where(t => t.Milestone == milestone);
 
         if (!string.IsNullOrWhiteSpace(search))
         {
@@ -205,16 +209,14 @@ public class TasksController : ControllerBase
                                      (t.Description != null && t.Description.ToLower().Contains(s)));
         }
 
-        // Done status filter: "done dapat di tampilkan hanya pada pada bulan aktif secara default, dan dapat di select berdasarkan rentang waktu"
-        // Todo, InProgress, and Overdue tasks are active work items and must always match grid data without being hidden.
+        // Done status filter: Only filter by date if explicitly requested (month, custom range, or dates)
         DateTimeOffset? rangeStart = doneStartDate ?? startDate;
         DateTimeOffset? rangeEnd = doneEndDate ?? endDate;
 
-        if (!rangeStart.HasValue && !rangeEnd.HasValue && month != 0)
+        if (month.HasValue && month.Value >= 1 && month.Value <= 12)
         {
-            var targetMonth = (month.HasValue && month.Value >= 1 && month.Value <= 12) ? month.Value : DateTime.UtcNow.Month;
             var targetYear = (year.HasValue && year.Value >= 2000 && year.Value <= 2100) ? year.Value : DateTime.UtcNow.Year;
-            rangeStart = new DateTimeOffset(targetYear, targetMonth, 1, 0, 0, 0, TimeSpan.Zero);
+            rangeStart = new DateTimeOffset(targetYear, month.Value, 1, 0, 0, 0, TimeSpan.Zero);
             rangeEnd = rangeStart.Value.AddMonths(1).AddTicks(-1);
         }
 
@@ -223,7 +225,7 @@ public class TasksController : ControllerBase
             var rStart = rangeStart ?? DateTimeOffset.MinValue;
             var rEnd = rangeEnd ?? DateTimeOffset.MaxValue;
 
-            // Filter Done tasks to the selected period/range, while keeping active tasks (Todo, InProgress, Overdue) visible
+            // Filter Done tasks to the selected period/range, while keeping active tasks (Todo, InProgress, Review, Overdue) visible
             query = query.Where(t =>
                 t.Status != Domain.Enums.TaskStatus.Done ||
                 (t.DueDate.HasValue && t.DueDate.Value >= rStart && t.DueDate.Value <= rEnd) ||
@@ -349,12 +351,12 @@ public class TasksController : ControllerBase
             Priority = request.Priority,
             Status = request.Status,
             Progress = Math.Clamp(request.Progress, 0, 100),
-            Milestone = request.Milestone,
-            Obstacle = request.Obstacle,
-            Solution = request.Solution,
+            Milestone = string.IsNullOrWhiteSpace(request.Milestone) ? null : request.Milestone.Trim(),
+            Obstacle = string.IsNullOrWhiteSpace(request.Obstacle) ? null : request.Obstacle.Trim(),
+            Solution = string.IsNullOrWhiteSpace(request.Solution) ? null : request.Solution.Trim(),
             ProjectId = request.ProjectId,
             CategoryId = request.CategoryId,
-            AssignedToUserId = request.AssignedToUserId,
+            AssignedToUserId = string.IsNullOrWhiteSpace(request.AssignedToUserId) ? null : request.AssignedToUserId.Trim(),
             CreatedByUserId = _tenantService.UserId,
             ParentTaskId = request.ParentTaskId,
             CompanyId = _tenantService.CompanyId ?? 1,
@@ -381,7 +383,7 @@ public class TasksController : ControllerBase
             );
         }
 
-        return Ok(new { success = true, message = "Tugas berhasil dibuat.", data = task });
+        return Ok(new { success = true, message = "Tugas berhasil dibuat.", data = MapToItemDto(task) });
     }
 
     [HttpPut("{id:int}")]
@@ -402,12 +404,12 @@ public class TasksController : ControllerBase
         if (request.Priority.HasValue) task.Priority = request.Priority.Value;
         if (request.Status.HasValue) task.Status = request.Status.Value;
         task.Progress = Math.Clamp(request.Progress, 0, 100);
-        task.Milestone = request.Milestone;
-        task.Obstacle = request.Obstacle;
-        task.Solution = request.Solution;
+        task.Milestone = string.IsNullOrWhiteSpace(request.Milestone) ? null : request.Milestone.Trim();
+        task.Obstacle = string.IsNullOrWhiteSpace(request.Obstacle) ? null : request.Obstacle.Trim();
+        task.Solution = string.IsNullOrWhiteSpace(request.Solution) ? null : request.Solution.Trim();
         task.ProjectId = request.ProjectId;
         task.CategoryId = request.CategoryId;
-        task.AssignedToUserId = request.AssignedToUserId;
+        task.AssignedToUserId = string.IsNullOrWhiteSpace(request.AssignedToUserId) ? null : request.AssignedToUserId.Trim();
         task.StartDate = request.StartDate;
         task.DueDate = request.DueDate;
         task.UpdatedAt = DateTimeOffset.UtcNow;
@@ -433,7 +435,7 @@ public class TasksController : ControllerBase
             );
         }
 
-        return Ok(new { success = true, message = "Tugas berhasil diperbarui.", data = task });
+        return Ok(new { success = true, message = "Tugas berhasil diperbarui.", data = MapToItemDto(task) });
     }
 
     [HttpPut("{id:int}/unified-save")]
@@ -464,12 +466,12 @@ public class TasksController : ControllerBase
                 if (request.Priority.HasValue) task.Priority = request.Priority.Value;
                 if (request.Status.HasValue) task.Status = request.Status.Value;
                 task.Progress = Math.Clamp(request.Progress, 0, 100);
-                task.Milestone = request.Milestone;
-                task.Obstacle = request.Obstacle;
-                task.Solution = request.Solution;
+                task.Milestone = string.IsNullOrWhiteSpace(request.Milestone) ? null : request.Milestone.Trim();
+                task.Obstacle = string.IsNullOrWhiteSpace(request.Obstacle) ? null : request.Obstacle.Trim();
+                task.Solution = string.IsNullOrWhiteSpace(request.Solution) ? null : request.Solution.Trim();
                 task.ProjectId = request.ProjectId;
                 task.CategoryId = request.CategoryId;
-                task.AssignedToUserId = request.AssignedToUserId;
+                task.AssignedToUserId = string.IsNullOrWhiteSpace(request.AssignedToUserId) ? null : request.AssignedToUserId.Trim();
                 task.StartDate = request.StartDate;
                 task.DueDate = request.DueDate;
                 task.UpdatedAt = DateTimeOffset.UtcNow;
@@ -484,7 +486,11 @@ public class TasksController : ControllerBase
                     var duration = (long)(request.ManualSessionEndTime.Value - request.ManualSessionStartTime.Value).TotalSeconds;
                     if (duration > 0)
                     {
-                        var sessionUserId = _tenantService.UserId ?? task.AssignedToUserId ?? task.CreatedByUserId;
+                        // When adding work session during task edit, attribute to the task's assigned user (or creator), NOT the admin editor
+                        var sessionUserId = !string.IsNullOrEmpty(task.AssignedToUserId)
+                            ? task.AssignedToUserId
+                            : (!string.IsNullOrEmpty(task.CreatedByUserId) ? task.CreatedByUserId : (_tenantService.UserId ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value));
+
                         if (!string.IsNullOrEmpty(sessionUserId))
                         {
                             var session = new WorkSession
@@ -821,7 +827,7 @@ public class TasksController : ControllerBase
             Priority = request.Priority,
             Status = Domain.Enums.TaskStatus.Todo,
             Progress = 0,
-            AssignedToUserId = request.AssignedToUserId,
+            AssignedToUserId = string.IsNullOrWhiteSpace(request.AssignedToUserId) ? null : request.AssignedToUserId.Trim(),
             DueDate = request.DueDate,
             CreatedAt = DateTimeOffset.UtcNow,
             UpdatedAt = DateTimeOffset.UtcNow
@@ -830,10 +836,23 @@ public class TasksController : ControllerBase
         _context.Tasks.Add(subtask);
         await _context.SaveChangesAsync();
 
-        return Ok(new { success = true, message = "Sub-tugas berhasil ditambahkan.", data = subtask });
+        var subtaskDto = new SubtaskDto(
+            subtask.Id,
+            subtask.Title,
+            subtask.Status,
+            subtask.Priority,
+            subtask.Progress,
+            subtask.AssignedToUserId,
+            null,
+            subtask.DueDate,
+            subtask.CreatedAt
+        );
+
+        return Ok(new { success = true, message = "Sub-tugas berhasil ditambahkan.", data = subtaskDto });
     }
 
     [HttpGet("import/template")]
+    [HttpGet("export/template")]
     [Authorize]
     public IActionResult DownloadTemplate([FromQuery] string format = "standard")
     {
@@ -842,6 +861,13 @@ public class TasksController : ControllerBase
             ? "Template_Import_Tugas_ARMS.xlsx"
             : "Template_Import_Tugas_Standar.xlsx";
         return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
+    }
+
+    [HttpGet("export/arms-template")]
+    [Authorize]
+    public IActionResult DownloadArmsTemplate()
+    {
+        return DownloadTemplate("arms");
     }
 
     [HttpPost("import/preview")]

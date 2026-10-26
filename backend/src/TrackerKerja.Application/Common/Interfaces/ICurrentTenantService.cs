@@ -6,4 +6,5 @@ public interface ICurrentTenantService
     string? CompanyCode { get; }
     string? UserId { get; }
     bool IsAdmin { get; }
+    bool IsPurgeAdmin => IsAdmin;
 }

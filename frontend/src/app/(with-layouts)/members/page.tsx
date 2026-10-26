@@ -62,6 +62,8 @@ interface MemberItem {
   isApproved: boolean;
   isLockedOut: boolean;
   createdAt: string;
+  roles?: string[];
+  canPurgeData?: boolean;
   avatarColor?: string | null;
   profilePictureUrl?: string | null;
   coverPictureUrl?: string | null;
@@ -107,13 +109,34 @@ export default function MembersPage() {
   const [detailMember, setDetailMember] = useState<MemberItem | null>(null);
   const [isEditingMember, setIsEditingMember] = useState(false);
   const [editFullName, setEditFullName] = useState("");
+  const [editEmail, setEditEmail] = useState("");
   const [editJobTitle, setEditJobTitle] = useState("");
   const [editPhoneNumber, setEditPhoneNumber] = useState("");
   const [editAvatarColor, setEditAvatarColor] = useState("#6366F1");
   const [editCompanyId, setEditCompanyId] = useState<number | undefined>(undefined);
+  const [editRole, setEditRole] = useState<"Member" | "DataPurgeAdmin" | "Administrator">("Member");
 
   const handleOpenDetail = (m: MemberItem) => {
     router.push(`/members/${m.id}`);
+  };
+
+  const handleStartEdit = (m: MemberItem) => {
+    setDetailMember(m);
+    setEditFullName(m.fullName);
+    setEditEmail(m.email);
+    setEditJobTitle(m.jobTitle);
+    setEditPhoneNumber(m.phoneNumber || "");
+    setEditAvatarColor(m.avatarColor || "#6366F1");
+    setEditCompanyId(m.companyId);
+
+    if (m.roles?.includes("Administrator") || m.id === "usr-superadmin") {
+      setEditRole("Administrator");
+    } else if (m.roles?.includes("DataPurgeAdmin") || m.canPurgeData) {
+      setEditRole("DataPurgeAdmin");
+    } else {
+      setEditRole("Member");
+    }
+    setIsEditingMember(true);
   };
 
   const [resetTarget, setResetTarget] = useState<MemberItem | null>(null);
@@ -301,17 +324,23 @@ export default function MembersPage() {
     mutationFn: async (payload: {
       id: string;
       fullName: string;
+      email?: string | null;
       jobTitle: string;
       phoneNumber?: string | null;
       avatarColor?: string | null;
       companyId?: number | null;
+      role?: string | null;
+      canPurgeData?: boolean | null;
     }) => {
       const res = await apiClient.put(`/members/${payload.id}`, {
         fullName: payload.fullName,
+        email: payload.email || undefined,
         jobTitle: payload.jobTitle,
         phoneNumber: payload.phoneNumber || null,
         avatarColor: payload.avatarColor || null,
         companyId: payload.companyId || null,
+        role: payload.role || undefined,
+        canPurgeData: payload.canPurgeData ?? undefined,
       });
       return res.data;
     },
@@ -323,9 +352,12 @@ export default function MembersPage() {
         setDetailMember({
           ...detailMember,
           fullName: editFullName,
+          email: editEmail || detailMember.email,
           jobTitle: editJobTitle,
           phoneNumber: editPhoneNumber,
           avatarColor: editAvatarColor,
+          roles: [editRole],
+          canPurgeData: editRole === "DataPurgeAdmin" || editRole === "Administrator",
           companyId: editCompanyId || detailMember.companyId,
           companyName:
             groups.find((g) => g.companyId === editCompanyId)?.companyName ||
@@ -613,6 +645,7 @@ export default function MembersPage() {
                     isAdmin={isAdmin}
                     currentUserId={userProfile?.id}
                     onOpenDetail={() => handleOpenDetail(m)}
+                    onOpenEdit={() => handleStartEdit(m)}
                     onOpenAudit={() => setAuditTarget(m)}
                     onResetPassword={() => {
                       setResetTarget(m);
@@ -659,6 +692,7 @@ export default function MembersPage() {
               isAdmin={isAdmin}
               currentUserId={userProfile?.id}
               onOpenDetail={() => handleOpenDetail(m)}
+              onOpenEdit={() => handleStartEdit(m)}
               onOpenAudit={() => setAuditTarget(m)}
               onResetPassword={() => {
                 setResetTarget(m);
@@ -969,10 +1003,13 @@ export default function MembersPage() {
                     updateMemberMutation.mutate({
                       id: detailMember.id,
                       fullName: editFullName.trim(),
+                      email: isAdmin ? editEmail.trim() : undefined,
                       jobTitle: editJobTitle.trim(),
                       phoneNumber: editPhoneNumber.trim() || null,
                       avatarColor: editAvatarColor,
                       companyId: editCompanyId,
+                      role: isAdmin ? editRole : undefined,
+                      canPurgeData: isAdmin ? editRole === "DataPurgeAdmin" : undefined,
                     });
                   }}
                   className="space-y-4"
@@ -989,6 +1026,25 @@ export default function MembersPage() {
                       required
                       className="text-xs font-medium"
                     />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
+                      <Mail className="h-3.5 w-3.5 text-indigo-500" />
+                      Alamat Email <span className="text-rose-500">*</span>
+                    </label>
+                    <Input
+                      type="email"
+                      value={editEmail}
+                      onChange={(e) => setEditEmail(e.target.value)}
+                      placeholder="nama@perusahaan.com"
+                      required
+                      disabled={!isAdmin}
+                      className="text-xs font-medium"
+                    />
+                    {!isAdmin && (
+                      <p className="text-[10px] text-gray-400">Hanya Administrator yang dapat mengubah email anggota.</p>
+                    )}
                   </div>
 
                   <div className="space-y-1.5">
@@ -1061,6 +1117,110 @@ export default function MembersPage() {
                       })}
                     </div>
                   </div>
+
+                  {/* Hak Akses & Peran Sistem (Admin Only) */}
+                  {isAdmin && (
+                    <div className="space-y-2 pt-3 border-t border-gray-100 dark:border-gray-800">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-bold text-gray-800 dark:text-gray-200 flex items-center gap-1.5">
+                          <ShieldCheck className="h-3.5 w-3.5 text-indigo-500" />
+                          Hak Akses & Peran Sistem
+                        </label>
+                        {detailMember.id === "usr-superadmin" && (
+                          <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold">
+                            Akun Root SuperAdmin
+                          </span>
+                        )}
+                      </div>
+
+                      {detailMember.id === "usr-superadmin" ? (
+                        <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300">
+                          Peran akun SuperAdmin utama dilindungi secara permanen dan tidak dapat diubah demi stabilitas sistem.
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {/* Member */}
+                          <label
+                            className={`flex items-start gap-3 rounded-xl border p-3 cursor-pointer transition-colors ${
+                              editRole === "Member"
+                                ? "border-indigo-500 bg-indigo-50/50 dark:border-indigo-500 dark:bg-indigo-950/30"
+                                : "border-gray-200 hover:bg-gray-50/60 dark:border-gray-700 dark:hover:bg-gray-800/40"
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              name="editMemberRole"
+                              value="Member"
+                              checked={editRole === "Member"}
+                              onChange={() => setEditRole("Member")}
+                              className="mt-0.5 text-indigo-600 focus:ring-indigo-500"
+                            />
+                            <div className="min-w-0 flex-1 text-xs">
+                              <div className="font-bold text-gray-900 dark:text-white">Pengguna Biasa (Member)</div>
+                              <p className="text-gray-500 text-[11px] leading-relaxed">
+                                Akses operasional standar: tugas harian, pencatatan log waktu aktivitas, dan profil diri.
+                              </p>
+                            </div>
+                          </label>
+
+                          {/* DataPurgeAdmin */}
+                          <label
+                            className={`flex items-start gap-3 rounded-xl border p-3 cursor-pointer transition-colors ${
+                              editRole === "DataPurgeAdmin"
+                                ? "border-amber-500 bg-amber-50/50 dark:border-amber-500 dark:bg-amber-950/30"
+                                : "border-gray-200 hover:bg-gray-50/60 dark:border-gray-700 dark:hover:bg-gray-800/40"
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              name="editMemberRole"
+                              value="DataPurgeAdmin"
+                              checked={editRole === "DataPurgeAdmin"}
+                              onChange={() => setEditRole("DataPurgeAdmin")}
+                              className="mt-0.5 text-amber-600 focus:ring-amber-500"
+                            />
+                            <div className="min-w-0 flex-1 text-xs">
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-gray-900 dark:text-white">
+                                  Admin Pembersihan Data (Purge Admin)
+                                </span>
+                                <span className="rounded-full bg-amber-100 px-1.5 py-0.2 text-[9px] font-extrabold text-amber-800 dark:bg-amber-900/60 dark:text-amber-300">
+                                  Setingkat Admin (Terbatas)
+                                </span>
+                              </div>
+                              <p className="text-gray-500 text-[11px] leading-relaxed">
+                                Diberikan hak akses ke menu Konfigurasi &gt; Pembersihan Data untuk monitoring statistik storage database, VACUUM maintenance, dan purging data log lama. Dibatasi dari pengaturan umum, keamanan, SMTP, dan master data.
+                              </p>
+                            </div>
+                          </label>
+
+                          {/* Administrator */}
+                          <label
+                            className={`flex items-start gap-3 rounded-xl border p-3 cursor-pointer transition-colors ${
+                              editRole === "Administrator"
+                                ? "border-indigo-600 bg-indigo-50/60 dark:border-indigo-500 dark:bg-indigo-950/40"
+                                : "border-gray-200 hover:bg-gray-50/60 dark:border-gray-700 dark:hover:bg-gray-800/40"
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              name="editMemberRole"
+                              value="Administrator"
+                              checked={editRole === "Administrator"}
+                              onChange={() => setEditRole("Administrator")}
+                              className="mt-0.5 text-indigo-600 focus:ring-indigo-500"
+                            />
+                            <div className="min-w-0 flex-1 text-xs">
+                              <div className="font-bold text-gray-900 dark:text-white">Administrator Penuh (System Admin)</div>
+                              <p className="text-gray-500 text-[11px] leading-relaxed">
+                                Hak akses administratif menyeluruh ke seluruh modul sistem: manajemen pengguna, konfigurasi perusahaan, audit log, keamanan, dan pengaturan sistem.
+                              </p>
+                            </div>
+                          </label>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </form>
               ) : (
                 /* READ-ONLY RINGKASAN PROFIL */
@@ -1646,6 +1806,7 @@ interface MemberCardProps {
   isAdmin: boolean;
   currentUserId?: string;
   onOpenDetail: () => void;
+  onOpenEdit?: () => void;
   onOpenAudit?: () => void;
   onResetPassword: () => void;
   onDeletePermanent: () => void;
@@ -1661,6 +1822,7 @@ function MemberCard({
   isAdmin,
   currentUserId,
   onOpenDetail,
+  onOpenEdit,
   onOpenAudit,
   onResetPassword,
   onDeletePermanent,
@@ -1719,7 +1881,19 @@ function MemberCard({
           </div>
 
           {/* Status Badges */}
-          <div className="shrink-0">
+          <div className="shrink-0 flex items-center gap-1">
+            {m.roles?.includes("Administrator") || m.roles?.includes("SuperAdmin") || m.id === "usr-superadmin" ? (
+              <span className="rounded-full bg-indigo-100 px-2.5 py-0.5 text-[10px] font-extrabold text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-400">
+                Admin
+              </span>
+            ) : m.roles?.includes("DataPurgeAdmin") || m.canPurgeData ? (
+              <span
+                className="rounded-full bg-amber-100 px-2.5 py-0.5 text-[10px] font-extrabold text-amber-700 dark:bg-amber-950/60 dark:text-amber-400"
+                title="Admin Pembersihan & Purge Data"
+              >
+                Purge Admin
+              </span>
+            ) : null}
             {!m.isApproved ? (
               <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-[10px] font-extrabold text-amber-700 dark:bg-amber-950/60 dark:text-amber-400">
                 Pending
@@ -1800,6 +1974,20 @@ function MemberCard({
             <Eye className="h-3 w-3" />
             Profil
           </button>
+          {isAdmin && onOpenEdit && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenEdit();
+              }}
+              className="text-[11px] font-semibold text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 flex items-center gap-1"
+              title="Edit Profil & Hak Akses"
+            >
+              <Edit3 className="h-3 w-3" />
+              Edit
+            </button>
+          )}
           <button
             type="button"
             onClick={(e) => {
