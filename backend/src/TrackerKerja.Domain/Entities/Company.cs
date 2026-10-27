@@ -15,4 +15,6 @@ public class Company
     public ICollection<Project> Projects { get; set; } = new List<Project>();
     public ICollection<WorkTask> Tasks { get; set; } = new List<WorkTask>();
     public ICollection<WorkNote> Notes { get; set; } = new List<WorkNote>();
+    public ICollection<TimesheetPeriod> TimesheetPeriods { get; set; } = new List<TimesheetPeriod>();
+    public CompanyTimesheetConfig? TimesheetConfig { get; set; }
 }
