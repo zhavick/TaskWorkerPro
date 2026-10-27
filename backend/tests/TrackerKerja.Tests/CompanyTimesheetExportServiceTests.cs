@@ -123,4 +123,38 @@ public class CompanyTimesheetExportServiceTests
         archive.Entries.Should().HaveCount(1);
         archive.Entries[0].Name.Should().Contain("Syafix Said");
     }
+
+    [Fact]
+    public async Task ExportUserTimesheet_WhenMultipleSessionsExistForSameTaskOnSameDay_ShouldGroupIntoSingleRowWithTotalHours()
+    {
+        // Add a second session for the same task on the same day (Friday 2026-09-04)
+        // Session 1 is already 7200s (2.0h)
+        // Session 2 is 21600s (6.0h), total = 8.0h (1.0 MD)
+        _context.Sessions.Add(new WorkSession
+        {
+            Id = 2,
+            TaskId = 836,
+            UserId = "syafix",
+            StartTime = new DateTimeOffset(2026, 9, 4, 11, 0, 0, TimeSpan.FromHours(7)),
+            EndTime = new DateTimeOffset(2026, 9, 4, 17, 0, 0, TimeSpan.FromHours(7)),
+            Duration = 21600
+        });
+        await _context.SaveChangesAsync();
+
+        var bytes = await _service.ExportUserTimesheetAsync(10, 1, "syafix");
+        bytes.Should().NotBeNull();
+
+        using var ms = new MemoryStream(bytes);
+        using var workbook = new XLWorkbook(ms);
+        var ws = workbook.Worksheet(1);
+
+        // Row 8 should be the grouped single row for task 836 with total 8.0 hours
+        ws.Cell("A8").GetString().Should().Be("TSK-0836");
+        ws.Cell("C8").GetDouble().Should().Be(8.0);
+        ws.Cell("D8").FormulaA1.Should().Be("IF(C8=\"\",\"\",C8/8)");
+
+        // Row 9 must NOT be another TSK-0836 row; it must be Saturday weekend row
+        ws.Cell("A9").GetString().Should().BeEmpty();
+        ws.Cell("B9").GetString().Should().Contain("Hari Libur Akhir Pekan (Sabtu)");
+    }
 }

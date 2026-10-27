@@ -59,7 +59,7 @@ public class AutomatedTimesheetGeneratorServiceTests
     }
 
     [Fact]
-    public async Task GenerateTimesheets_WithSingleTask_ShouldAllocate8Hours_AndCreateAttendance()
+    public async Task GenerateTimesheets_WithSingleTask_ShouldAllocate8Hours_ForSingleDayOnly_AndSingleSession()
     {
         var task = new WorkTask
         {
@@ -85,34 +85,78 @@ public class AutomatedTimesheetGeneratorServiceTests
         var result = await _service.GenerateTimesheetsAsync(request, 10);
 
         result.Success.Should().BeTrue();
-        result.WorkingDaysCount.Should().Be(3); // Thu, Fri, Mon
         result.UsersProcessedCount.Should().Be(1);
+        result.TotalHoursGenerated.Should().Be(8.0); // Only 1 task = 1 day = 8 hours
 
-        // Verify sessions per working day
+        // Verify sessions: exactly 1 day and 1 session (not split into morning/afternoon)
         var sessions = await _context.Sessions.Where(s => s.UserId == "syafix").ToListAsync();
-        sessions.Should().NotBeEmpty();
+        sessions.Should().HaveCount(1);
+        sessions[0].Duration.Should().Be(28800);
+        sessions[0].TaskId.Should().Be(101);
 
-        // Group by Date: Thu 3, Fri 4, Mon 7
-        var dates = sessions.Select(s => DateOnly.FromDateTime(s.StartTime.Date)).Distinct().OrderBy(d => d).ToList();
-        dates.Should().Equal(new DateOnly(2026, 9, 3), new DateOnly(2026, 9, 4), new DateOnly(2026, 9, 7));
+        // Group by Date: only 1 day (Thu 2026-09-03)
+        var dates = sessions.Select(s => DateOnly.FromDateTime(s.StartTime.Date)).Distinct().ToList();
+        dates.Should().Equal(new DateOnly(2026, 9, 3));
 
-        // Each working day must have exactly 28,800 seconds (8.0 hours)
-        foreach (var d in dates)
-        {
-            var daySecs = sessions.Where(s => DateOnly.FromDateTime(s.StartTime.Date) == d).Sum(s => s.Duration);
-            daySecs.Should().Be(28800);
-        }
-
-        // Attendance records created for all 3 working days
+        // Attendance records created for only that 1 working day
         var attendances = await _context.Attendances.Where(a => a.UserId == "syafix").ToListAsync();
-        attendances.Should().HaveCount(3);
-        attendances.All(a => a.WorkLocation == WorkLocation.WFO).Should().BeTrue();
+        attendances.Should().HaveCount(1);
+        attendances[0].Date.Should().Be(new DateOnly(2026, 9, 3));
+        attendances[0].WorkLocation.Should().Be(WorkLocation.WFO);
     }
 
     [Fact]
-    public async Task GenerateTimesheets_WithMultipleTasks_ShouldAllocateProportionallyByPriority_SummingTo8Hours()
+    public async Task GenerateTimesheets_WithTwoTasks_ShouldGenerateTwoDaysOnly_WithoutArtificialRepetition()
     {
-        // 2 tasks: Critical (weight 4) and Low (weight 1)
+        var task1 = new WorkTask
+        {
+            Id = 102,
+            Title = "Task Pertama",
+            CompanyId = 10,
+            ProjectId = 1,
+            AssignedToUserId = "syafix",
+            Priority = TaskPriority.High,
+            StartDate = new DateTimeOffset(2026, 9, 3, 0, 0, 0, TimeSpan.Zero),
+            DueDate = new DateTimeOffset(2026, 9, 7, 0, 0, 0, TimeSpan.Zero)
+        };
+        var task2 = new WorkTask
+        {
+            Id = 103,
+            Title = "Task Kedua",
+            CompanyId = 10,
+            ProjectId = 1,
+            AssignedToUserId = "syafix",
+            Priority = TaskPriority.Medium,
+            StartDate = new DateTimeOffset(2026, 9, 3, 0, 0, 0, TimeSpan.Zero),
+            DueDate = new DateTimeOffset(2026, 9, 7, 0, 0, 0, TimeSpan.Zero)
+        };
+        _context.Tasks.AddRange(task1, task2);
+        await _context.SaveChangesAsync();
+
+        var request = new AutoGenerateTimesheetRequest(10, 1, "syafix", "Overwrite");
+        var result = await _service.GenerateTimesheetsAsync(request, 10);
+
+        result.Success.Should().BeTrue();
+        result.TotalHoursGenerated.Should().Be(16.0); // 2 tasks = 2 days = 16 hours
+
+        var sessions = await _context.Sessions.Where(s => s.UserId == "syafix").ToListAsync();
+        sessions.Should().HaveCount(2); // 1 session per task per day
+        sessions.All(s => s.Duration == 28800).Should().BeTrue();
+
+        var dates = sessions.Select(s => DateOnly.FromDateTime(s.StartTime.Date)).Distinct().OrderBy(d => d).ToList();
+        dates.Should().Equal(new DateOnly(2026, 9, 3), new DateOnly(2026, 9, 4));
+
+        // Monday 2026-09-07 should NOT have any sessions or attendances
+        dates.Should().NotContain(new DateOnly(2026, 9, 7));
+
+        var attendances = await _context.Attendances.Where(a => a.UserId == "syafix").ToListAsync();
+        attendances.Should().HaveCount(2);
+    }
+
+    [Fact]
+    public async Task GenerateTimesheets_WithMultipleTasks_ShouldAllocateOneDayPerTask_SummingTo8HoursEach()
+    {
+        // 2 tasks: Critical and Low
         var taskCritical = new WorkTask
         {
             Id = 201,
@@ -147,18 +191,22 @@ public class AutomatedTimesheetGeneratorServiceTests
 
         var result = await _service.GenerateTimesheetsAsync(request, 10);
         result.Success.Should().BeTrue();
+        result.TotalHoursGenerated.Should().Be(16.0);
 
         var sessions = await _context.Sessions.Where(s => s.UserId == "syafix").ToListAsync();
+        sessions.Should().HaveCount(2);
 
         // Check for Thursday 2026-09-03
         var thuSessions = sessions.Where(s => DateOnly.FromDateTime(s.StartTime.Date) == new DateOnly(2026, 9, 3)).ToList();
-        thuSessions.Sum(s => s.Duration).Should().Be(28800);
+        thuSessions.Should().HaveCount(1);
+        thuSessions[0].Duration.Should().Be(28800);
+        thuSessions[0].TaskId.Should().Be(201);
 
-        // Urgent task should have greater duration than Low task
-        var urgentDuration = thuSessions.Where(s => s.TaskId == 201).Sum(s => s.Duration);
-        var lowDuration = thuSessions.Where(s => s.TaskId == 202).Sum(s => s.Duration);
-
-        urgentDuration.Should().BeGreaterThan(lowDuration);
+        // Check for Friday 2026-09-04
+        var friSessions = sessions.Where(s => DateOnly.FromDateTime(s.StartTime.Date) == new DateOnly(2026, 9, 4)).ToList();
+        friSessions.Should().HaveCount(1);
+        friSessions[0].Duration.Should().Be(28800);
+        friSessions[0].TaskId.Should().Be(202);
     }
 
     [Fact]

@@ -127,7 +127,7 @@ export function AutomatedTimesheetGeneratorModal({
             <div>
               <span>Generate Timesheet Otomatis Administrator</span>
               <p className="text-xs font-normal text-gray-500 dark:text-gray-400 mt-0.5">
-                Konversi data tugas ke log 8 jam/hari proporsional bobot prioritas
+                Konversi data tugas ke log timesheet 8 jam/hari (1 tugas = 1 hari penuh, 1 totalan per tugas)
               </p>
             </div>
           </DialogTitle>
@@ -236,7 +236,7 @@ export function AutomatedTimesheetGeneratorModal({
                     Timpa Ulang (Overwrite)
                   </span>
                   <span className="text-[11px] text-gray-500 dark:text-gray-400">
-                    Menghapus log sesi lama pada periode ini dan membuat ulang secara rapi 8 jam per hari.
+                    Menghapus log sesi lama pada periode ini dan membuat ulang dari daftar tugas personel (8 jam per hari).
                   </span>
                 </div>
               </label>
@@ -275,23 +275,23 @@ export function AutomatedTimesheetGeneratorModal({
                 <span>Ringkasan Rencana Eksekusi:</span>
                 <span className="inline-flex items-center gap-1 rounded-full bg-emerald-200/70 px-2.5 py-0.5 text-[11px] text-emerald-900 dark:bg-emerald-900 dark:text-emerald-300">
                   <Clock className="h-3 w-3" />
-                  {workingDays} Hari Kerja Aktif
+                  Maks. {workingDays} Hari Kerja Periode
                 </span>
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1 text-[11px]">
                 <div className="bg-white/80 dark:bg-gray-800/80 p-2 rounded-lg border border-emerald-100 dark:border-emerald-900/40">
-                  <span className="text-gray-500 dark:text-gray-400 block text-[10px]">Target Jam/Orang</span>
-                  <span className="font-bold text-gray-900 dark:text-white text-xs">{totalExpectedHours} Jam</span>
+                  <span className="text-gray-500 dark:text-gray-400 block text-[10px]">Basis Alokasi</span>
+                  <span className="font-bold text-gray-900 dark:text-white text-xs">1 Tugas = 1 Hari (8 Jam)</span>
                 </div>
                 <div className="bg-white/80 dark:bg-gray-800/80 p-2 rounded-lg border border-emerald-100 dark:border-emerald-900/40">
-                  <span className="text-gray-500 dark:text-gray-400 block text-[10px]">Jumlah Personel</span>
+                  <span className="text-gray-500 dark:text-gray-400 block text-[10px]">Target Personel</span>
                   <span className="font-bold text-gray-900 dark:text-white text-xs">{targetPersonnelCount} Orang</span>
                 </div>
                 <div className="bg-white/80 dark:bg-gray-800/80 p-2 rounded-lg border border-emerald-100 dark:border-emerald-900/40 col-span-2 sm:col-span-1">
-                  <span className="text-gray-500 dark:text-gray-400 block text-[10px]">Total Estimasi Jam</span>
+                  <span className="text-gray-500 dark:text-gray-400 block text-[10px]">Batas Maks. Periode</span>
                   <span className="font-bold text-emerald-700 dark:text-emerald-400 text-xs">
-                    {totalExpectedHours * targetPersonnelCount} Jam
+                    {totalExpectedHours} Jam/Orang
                   </span>
                 </div>
               </div>
@@ -300,14 +300,19 @@ export function AutomatedTimesheetGeneratorModal({
                 <p className="flex items-center gap-1.5">
                   <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
                   <span>
-                    Bobot Prioritas: <strong>Critical (4x)</strong>, <strong>High (3x)</strong>,{" "}
-                    <strong>Medium (2x)</strong>, <strong>Low (1x)</strong>
+                    Penentuan Hari: <strong>Sesuai jumlah data tugas</strong> unik yang dimiliki tiap personel (tidak dipaksakan rotasi berulang).
                   </span>
                 </p>
                 <p className="flex items-center gap-1.5">
                   <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
                   <span>
-                    Jadwal Harian: <strong>08:00 - 17:00 WIB</strong> (Istirahat 12:00 - 13:00) &bull; Absensi WFO
+                    Totalan Harian: Tugas dalam sehari <strong>langsung menjadi 1 totalan</strong> (misal 1 baris Tugas A = 8 jam).
+                  </span>
+                </p>
+                <p className="flex items-center gap-1.5">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                  <span>
+                    Jadwal & Absensi: <strong>08:00 - 17:00 WIB</strong> &bull; Absensi WFO otomatis tercatat pada hari kerja yang ada tugasnya.
                   </span>
                 </p>
               </div>

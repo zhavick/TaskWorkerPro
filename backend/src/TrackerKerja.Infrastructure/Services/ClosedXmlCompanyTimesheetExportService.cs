@@ -202,13 +202,24 @@ public class ClosedXmlCompanyTimesheetExportService : ICompanyTimesheetExportSer
 
                 if (daySessions.Any())
                 {
-                    foreach (var s in daySessions)
+                    var groupedSessions = daySessions
+                        .GroupBy(s => s.TaskId)
+                        .Select(g => new
+                        {
+                            TaskId = g.Key,
+                            FirstSession = g.First(),
+                            TotalDuration = g.Sum(s => s.Duration),
+                            Notes = string.Join("; ", g.Select(s => s.Notes).Where(n => !string.IsNullOrWhiteSpace(n)).Distinct())
+                        })
+                        .ToList();
+
+                    foreach (var g in groupedSessions)
                     {
-                        var taskKey = $"TSK-{s.TaskId:D4}";
-                        double hours = Math.Round(s.Duration / 3600.0, 1);
+                        var taskKey = $"TSK-{g.TaskId:D4}";
+                        double hours = Math.Round(g.TotalDuration / 3600.0, 1);
 
                         ws.Cell(currentRow, 1).Value = taskKey;
-                        ws.Cell(currentRow, 2).Value = s.Task.Title;
+                        ws.Cell(currentRow, 2).Value = g.FirstSession.Task.Title;
                         ws.Cell(currentRow, 3).Value = hours;
                         ws.Cell(currentRow, 4).FormulaA1 = $"IF(C{currentRow}=\"\",\"\",C{currentRow}/8)";
                         ws.Cell(currentRow, 5).Value = date.ToString("dd/MM/yyyy");
@@ -217,10 +228,10 @@ public class ClosedXmlCompanyTimesheetExportService : ICompanyTimesheetExportSer
                         ws.Cell(currentRow, 8).Value = user.UserName ?? user.FullName;
                         ws.Cell(currentRow, 9).Value = user.FullName;
                         ws.Cell(currentRow, 10).Value = period.PeriodCode;
-                        ws.Cell(currentRow, 11).Value = s.Task.Project?.Name ?? "-";
-                        ws.Cell(currentRow, 12).Value = s.Task.Category?.Name ?? "General";
+                        ws.Cell(currentRow, 11).Value = g.FirstSession.Task.Project?.Name ?? "-";
+                        ws.Cell(currentRow, 12).Value = g.FirstSession.Task.Category?.Name ?? "General";
                         ws.Cell(currentRow, 13).Value = workPlace;
-                        ws.Cell(currentRow, 14).Value = s.Notes ?? "";
+                        ws.Cell(currentRow, 14).Value = g.Notes;
 
                         ApplyRowStyle(ws, currentRow);
                         currentRow++;
