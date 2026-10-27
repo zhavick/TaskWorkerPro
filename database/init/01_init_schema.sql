@@ -470,3 +470,41 @@ CREATE INDEX IF NOT EXISTS ix_sessions_task_id ON sessions(task_id);
 CREATE INDEX IF NOT EXISTS ix_attendances_date_type ON attendances(date, type);
 CREATE INDEX IF NOT EXISTS ix_audit_logs_timestamp ON audit_logs(timestamp DESC);
 CREATE INDEX IF NOT EXISTS ix_audit_logs_details_gin ON audit_logs USING GIN(details);
+
+-- ============================================================================
+-- 14. TABEL KONFIGURASI TEMPLATE & PERIODE CUT-OFF TIMESHEET
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS timesheet_periods (
+    id SERIAL PRIMARY KEY,
+    company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+    period_code VARCHAR(50) NOT NULL,
+    name VARCHAR(200) NOT NULL,
+    start_date DATE NOT NULL,
+    end_date DATE NOT NULL,
+    working_days_count INTEGER NOT NULL DEFAULT 21,
+    is_closed BOOLEAN NOT NULL DEFAULT FALSE,
+    notes TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_timesheet_periods_company_id ON timesheet_periods(company_id);
+CREATE INDEX IF NOT EXISTS ix_timesheet_periods_start_date ON timesheet_periods(start_date DESC);
+
+CREATE TABLE IF NOT EXISTS company_timesheet_configs (
+    id SERIAL PRIMARY KEY,
+    company_id INTEGER NOT NULL UNIQUE REFERENCES companies(id) ON DELETE CASCADE,
+    template_file_path VARCHAR(500),
+    header_title VARCHAR(200) NOT NULL DEFAULT 'ELISTEC - Timesheet',
+    client_name VARCHAR(200) NOT NULL DEFAULT 'Tugu Insurance',
+    sow_number VARCHAR(100),
+    approver_title VARCHAR(100) NOT NULL DEFAULT 'Mengetahui,',
+    approver_name VARCHAR(150) NOT NULL DEFAULT 'xxxx',
+    resource_title VARCHAR(100) NOT NULL DEFAULT 'Resource,',
+    include_weekends BOOLEAN NOT NULL DEFAULT TRUE,
+    weekend_task_text_format VARCHAR(500) NOT NULL DEFAULT 'Hari Libur Akhir Pekan ({DayName}) - Tidak Ada Pengerjaan Task',
+    header_row_index INTEGER NOT NULL DEFAULT 7,
+    data_start_row_index INTEGER NOT NULL DEFAULT 8,
+    columns_mapping_json TEXT NOT NULL DEFAULT '[]',
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_company_timesheet_configs_company_id ON company_timesheet_configs(company_id);
