@@ -5,6 +5,7 @@ using TrackerKerja.Application.Common.Interfaces;
 using TrackerKerja.Application.DTOs;
 using TrackerKerja.Domain.Entities;
 using TrackerKerja.Infrastructure.Persistence;
+using TrackerKerja.Infrastructure.Services;
 
 namespace TrackerKerja.WebApi.Controllers;
 
@@ -16,15 +17,18 @@ public class TimesheetsController : ControllerBase
     private readonly AppDbContext _context;
     private readonly ICurrentTenantService _tenantService;
     private readonly IExcelExportService _excelService;
+    private readonly ICompanyTimesheetExportService _companyExportService;
 
     public TimesheetsController(
         AppDbContext context,
         ICurrentTenantService tenantService,
-        IExcelExportService excelService)
+        IExcelExportService excelService,
+        ICompanyTimesheetExportService? companyExportService = null)
     {
         _context = context;
         _tenantService = tenantService;
         _excelService = excelService;
+        _companyExportService = companyExportService ?? new ClosedXmlCompanyTimesheetExportService(context);
     }
 
     [HttpGet("active-timers")]
@@ -320,5 +324,58 @@ public class TimesheetsController : ControllerBase
 
         var fileName = $"Timesheet_Report_{DateTimeOffset.UtcNow:yyyyMMdd_HHmmss}.xlsx";
         return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
+    }
+
+    [HttpGet("export/company-template")]
+    public async Task<IActionResult> ExportCompanyTemplate(
+        [FromQuery] int periodId,
+        [FromQuery] string? userId = null,
+        [FromQuery] int? companyId = null)
+    {
+        var targetCompanyId = companyId ?? _tenantService.CompanyId;
+        if (!targetCompanyId.HasValue)
+        {
+            return BadRequest(new { success = false, message = "ID perusahaan tidak valid." });
+        }
+
+        // RBAC: Non-admin can only export their own timesheet
+        var currentUserId = _tenantService.UserId;
+        if (!_tenantService.IsAdmin)
+        {
+            if (string.IsNullOrEmpty(currentUserId)) return Unauthorized();
+            userId = currentUserId;
+        }
+
+        var period = await _context.TimesheetPeriods.FirstOrDefaultAsync(p => p.Id == periodId && p.CompanyId == targetCompanyId.Value);
+        if (period == null)
+        {
+            return NotFound(new { success = false, message = "Periode cut-off tidak ditemukan." });
+        }
+
+        var company = await _context.Companies.FirstOrDefaultAsync(c => c.Id == targetCompanyId.Value);
+        var companyCode = company?.Code ?? "ELISTEC";
+
+        if (!string.IsNullOrWhiteSpace(userId) && userId.ToLowerInvariant() != "all")
+        {
+            var targetUser = await _context.Users.FirstOrDefaultAsync(u => u.Id == userId);
+            if (targetUser == null) return NotFound(new { success = false, message = "Pengguna tidak ditemukan." });
+
+            var excelBytes = await _companyExportService.ExportUserTimesheetAsync(targetCompanyId.Value, periodId, userId);
+            var safePeriodName = period.Name.Replace("/", "-");
+            var fileName = $"Timesheet {companyCode} - {safePeriodName} - {targetUser.FullName}.xlsx";
+
+            return File(excelBytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
+        }
+        else
+        {
+            // Bulk ZIP
+            if (!_tenantService.IsAdmin) return Forbid();
+
+            var zipBytes = await _companyExportService.ExportBulkCompanyTimesheetsZipAsync(targetCompanyId.Value, periodId);
+            var safePeriodCode = period.PeriodCode.Replace("/", "-");
+            var zipFileName = $"Timesheets_{companyCode}_{safePeriodCode}_{DateTimeOffset.UtcNow:yyyyMMdd_HHmmss}.zip";
+
+            return File(zipBytes, "application/zip", zipFileName);
+        }
     }
 }
