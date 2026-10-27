@@ -16,11 +16,13 @@ public class CompanyTimesheetConfigController : ControllerBase
 {
     private readonly AppDbContext _context;
     private readonly ICurrentTenantService _tenantService;
+    private readonly ILogger<CompanyTimesheetConfigController> _logger;
 
-    public CompanyTimesheetConfigController(AppDbContext context, ICurrentTenantService tenantService)
+    public CompanyTimesheetConfigController(AppDbContext context, ICurrentTenantService tenantService, ILogger<CompanyTimesheetConfigController>? logger = null)
     {
         _context = context;
         _tenantService = tenantService;
+        _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<CompanyTimesheetConfigController>.Instance;
     }
 
     [HttpGet]

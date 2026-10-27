@@ -687,6 +687,109 @@ public class TasksControllerTests
         updatedTask.Status.Should().Be(origStatus);
     }
 
+    [Fact]
+    public async Task CommitImport_WhenCompanyIdMissing_ShouldReturnBadRequest()
+    {
+        // Admin tenant with no default CompanyId
+        var adminTenant = new FakeTenantService(null, null, "admin-1", true);
+        var controller = new TasksController(_context, adminTenant);
+
+        var request = new TaskImportCommitRequest(
+            DefaultProjectId: null,
+            BulkAssignUserId: null,
+            SelectedRowIndexes: null,
+            Rows: new List<TaskImportRowDto>
+            {
+                new(
+                    RowIndex: 1,
+                    TaskCode: "T-101",
+                    ParentTaskCode: null,
+                    Title: "Tugas Baru",
+                    Description: "Desc",
+                    ProjectName: "Proyek A",
+                    MatchedProjectId: null,
+                    PicIdentifier: "user-1",
+                    MatchedUserId: null,
+                    MatchedUserName: null,
+                    Priority: Domain.Enums.TaskPriority.Medium,
+                    Status: Domain.Enums.TaskStatus.Todo,
+                    Progress: 0,
+                    StartDate: null,
+                    DueDate: null,
+                    Milestone: null,
+                    Obstacle: null,
+                    Solution: null,
+                    ValidationStatus: TaskImportValidationStatus.Valid,
+                    ValidationMessages: new()
+                )
+            },
+            CompanyId: null // No company selected!
+        );
+
+        var result = await controller.CommitImport(request, null, default) as BadRequestObjectResult;
+
+        result.Should().NotBeNull();
+        result!.StatusCode.Should().Be(400);
+        result.Value.ToString().Should().Contain("Perusahaan tujuan wajib dipilih");
+    }
+
+    [Fact]
+    public async Task CommitImport_WhenCompanyIdProvidedInRequest_ShouldBindToThatCompany()
+    {
+        // Admin tenant with no default CompanyId
+        var adminTenant = new FakeTenantService(null, null, "admin-1", true);
+        var controller = new TasksController(_context, adminTenant);
+
+        // Ensure company 10 exists
+        var company = await _context.Companies.FindAsync(10);
+        if (company == null)
+        {
+            _context.Companies.Add(new Company { Id = 10, Name = "PT Testing Mandiri", Code = "TEST" });
+            await _context.SaveChangesAsync();
+        }
+
+        var request = new TaskImportCommitRequest(
+            DefaultProjectId: null,
+            BulkAssignUserId: null,
+            SelectedRowIndexes: null,
+            Rows: new List<TaskImportRowDto>
+            {
+                new(
+                    RowIndex: 1,
+                    TaskCode: "T-999",
+                    ParentTaskCode: null,
+                    Title: "Tugas Perusahaan 10",
+                    Description: "Desc",
+                    ProjectName: "Proyek PT Test",
+                    MatchedProjectId: null,
+                    PicIdentifier: null,
+                    MatchedUserId: null,
+                    MatchedUserName: null,
+                    Priority: Domain.Enums.TaskPriority.High,
+                    Status: Domain.Enums.TaskStatus.Todo,
+                    Progress: 0,
+                    StartDate: null,
+                    DueDate: null,
+                    Milestone: null,
+                    Obstacle: null,
+                    Solution: null,
+                    ValidationStatus: TaskImportValidationStatus.Valid,
+                    ValidationMessages: new()
+                )
+            },
+            CompanyId: 10 // Explicitly select company 10
+        );
+
+        var result = await controller.CommitImport(request, 10, default) as OkObjectResult;
+
+        result.Should().NotBeNull();
+        result!.StatusCode.Should().Be(200);
+
+        var savedTask = await _context.Tasks.FirstOrDefaultAsync(t => t.Title == "Tugas Perusahaan 10");
+        savedTask.Should().NotBeNull();
+        savedTask!.CompanyId.Should().Be(10);
+    }
+
     private class FakeTenantService : ICurrentTenantService
     {
         public FakeTenantService(int? companyId, string? companyCode, string? userId, bool isAdmin)

@@ -975,7 +975,10 @@ public class TasksController : ControllerBase
     [HttpPost("import/preview")]
     [Consumes("multipart/form-data")]
     [Authorize]
-    public async Task<IActionResult> PreviewImport(IFormFile? file, CancellationToken cancellationToken)
+    public async Task<IActionResult> PreviewImport(
+        IFormFile? file,
+        [FromQuery] int? companyId = null,
+        CancellationToken cancellationToken = default)
     {
         var uploadFile = file ?? (Request.HasFormContentType && Request.Form.Files.Count > 0
             ? Request.Form.Files["file"] ?? Request.Form.Files.FirstOrDefault()
@@ -992,13 +995,23 @@ public class TasksController : ControllerBase
             return BadRequest(new { success = false, message = "Hanya file format Excel (.xlsx / .xls) yang diperbolehkan." });
         }
 
+        var targetCompanyId = companyId;
+        if (!targetCompanyId.HasValue && Request.HasFormContentType && int.TryParse(Request.Form["companyId"], out var formCid))
+        {
+            targetCompanyId = formCid;
+        }
+        if (!targetCompanyId.HasValue)
+        {
+            targetCompanyId = _tenantService.CompanyId;
+        }
+
         try
         {
             await using var stream = uploadFile.OpenReadStream();
             var preview = await _excelImportService.PreviewImportAsync(
                 stream,
                 uploadFile.FileName,
-                _tenantService.CompanyId,
+                targetCompanyId,
                 cancellationToken
             );
 
@@ -1022,18 +1035,33 @@ public class TasksController : ControllerBase
 
     [HttpPost("import/commit")]
     [Authorize]
-    public async Task<IActionResult> CommitImport([FromBody] TaskImportCommitRequest request, CancellationToken cancellationToken)
+    public async Task<IActionResult> CommitImport(
+        [FromBody] TaskImportCommitRequest request,
+        [FromQuery] int? companyId = null,
+        CancellationToken cancellationToken = default)
     {
         if (request == null || request.Rows == null || request.Rows.Count == 0)
         {
             return BadRequest(new { success = false, message = "Data baris tugas untuk diimpor tidak boleh kosong." });
         }
 
+        var targetCompanyId = request.CompanyId ?? companyId ?? _tenantService.CompanyId;
+        if (!targetCompanyId.HasValue || targetCompanyId.Value <= 0)
+        {
+            return BadRequest(new { success = false, message = "Perusahaan tujuan wajib dipilih untuk proses impor tugas." });
+        }
+
+        var companyExists = await _context.Companies.AnyAsync(c => c.Id == targetCompanyId.Value, cancellationToken);
+        if (!companyExists)
+        {
+            return BadRequest(new { success = false, message = $"Perusahaan dengan ID {targetCompanyId.Value} tidak ditemukan." });
+        }
+
         try
         {
             var result = await _excelImportService.CommitImportAsync(
                 request,
-                _tenantService.CompanyId,
+                targetCompanyId.Value,
                 cancellationToken
             );
 
@@ -1064,7 +1092,10 @@ public class TasksController : ControllerBase
 
     [HttpPost("import-excel")]
     [Consumes("multipart/form-data")]
-    public async Task<IActionResult> ImportExcel(IFormFile? file, CancellationToken cancellationToken)
+    public async Task<IActionResult> ImportExcel(
+        IFormFile? file,
+        [FromQuery] int? companyId = null,
+        CancellationToken cancellationToken = default)
     {
         var uploadFile = file ?? (Request.HasFormContentType && Request.Form.Files.Count > 0
             ? Request.Form.Files["file"] ?? Request.Form.Files.FirstOrDefault()
@@ -1081,12 +1112,27 @@ public class TasksController : ControllerBase
             return BadRequest(new { success = false, message = "Hanya file format Excel (.xlsx / .xls) yang diperbolehkan." });
         }
 
+        var targetCompanyId = companyId;
+        if (!targetCompanyId.HasValue && Request.HasFormContentType && int.TryParse(Request.Form["companyId"], out var formCid))
+        {
+            targetCompanyId = formCid;
+        }
+        if (!targetCompanyId.HasValue)
+        {
+            targetCompanyId = _tenantService.CompanyId;
+        }
+
+        if (!targetCompanyId.HasValue || targetCompanyId.Value <= 0)
+        {
+            return BadRequest(new { success = false, message = "Perusahaan tujuan wajib dipilih untuk proses impor tugas." });
+        }
+
         try
         {
             await using var stream = uploadFile.OpenReadStream();
             var result = await _excelImportService.ImportTasksFromExcelAsync(
                 stream,
-                _tenantService.CompanyId,
+                targetCompanyId.Value,
                 cancellationToken
             );
 
