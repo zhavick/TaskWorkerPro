@@ -14,12 +14,14 @@ import {
   Filter,
   FileSpreadsheet,
   Trash2,
+  Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/tailgrids/core/button";
 import { Input } from "@/components/tailgrids/core/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/tailgrids/core/dialog";
 import { SearchableTaskPicker } from "@/components/common/searchable-task-picker";
 import { CompanyTimesheetExportModal } from "@/components/timesheets/company-timesheet-export-modal";
+import { AutomatedTimesheetGeneratorModal } from "@/components/timesheets/automated-timesheet-generator-modal";
 import { toast } from "sonner";
 
 export default function TimesheetsPage() {
@@ -28,6 +30,7 @@ export default function TimesheetsPage() {
   const [manualModalOpen, setManualModalOpen] = useState(false);
   const [startTimerModalOpen, setStartTimerModalOpen] = useState(false);
   const [companyExportModalOpen, setCompanyExportModalOpen] = useState(false);
+  const [autoGenModalOpen, setAutoGenModalOpen] = useState(false);
 
   // Start Timer state
   const [timerTaskId, setTimerTaskId] = useState<number | undefined>(undefined);
@@ -182,6 +185,15 @@ export default function TimesheetsPage() {
           >
             <FileSpreadsheet className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
             Ekspor Standar Perusahaan (ELISTEC)
+          </Button>
+
+          <Button
+            onClick={() => setAutoGenModalOpen(true)}
+            variant="outline"
+            className="gap-2 border-emerald-600/30 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-500/30 dark:text-emerald-400 dark:hover:bg-emerald-950/40 font-semibold"
+          >
+            <Sparkles className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+            Generate Otomatis 8 Jam
           </Button>
 
           <Button
@@ -464,6 +476,12 @@ export default function TimesheetsPage() {
       <CompanyTimesheetExportModal
         open={companyExportModalOpen}
         onOpenChange={setCompanyExportModalOpen}
+      />
+
+      {/* Modal Generator Timesheet Otomatis Administrator */}
+      <AutomatedTimesheetGeneratorModal
+        open={autoGenModalOpen}
+        onOpenChange={setAutoGenModalOpen}
       />
     </div>
   );
