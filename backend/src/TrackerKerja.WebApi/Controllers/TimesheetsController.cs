@@ -18,17 +18,20 @@ public class TimesheetsController : ControllerBase
     private readonly ICurrentTenantService _tenantService;
     private readonly IExcelExportService _excelService;
     private readonly ICompanyTimesheetExportService _companyExportService;
+    private readonly IAutomatedTimesheetGeneratorService _autoGenService;
 
     public TimesheetsController(
         AppDbContext context,
         ICurrentTenantService tenantService,
         IExcelExportService excelService,
-        ICompanyTimesheetExportService? companyExportService = null)
+        ICompanyTimesheetExportService? companyExportService = null,
+        IAutomatedTimesheetGeneratorService? autoGenService = null)
     {
         _context = context;
         _tenantService = tenantService;
         _excelService = excelService;
         _companyExportService = companyExportService ?? new ClosedXmlCompanyTimesheetExportService(context);
+        _autoGenService = autoGenService ?? new AutomatedTimesheetGeneratorService(context);
     }
 
     [HttpGet("active-timers")]
@@ -377,5 +380,22 @@ public class TimesheetsController : ControllerBase
 
             return File(zipBytes, "application/zip", zipFileName);
         }
+    }
+
+    [HttpPost("auto-generate")]
+    public async Task<IActionResult> AutoGenerateTimesheets(
+        [FromBody] AutoGenerateTimesheetRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!_tenantService.IsAdmin) return Forbid();
+
+        var targetCompanyId = request.CompanyId ?? _tenantService.CompanyId;
+        if (!targetCompanyId.HasValue)
+        {
+            return BadRequest(new { success = false, message = "ID perusahaan tidak valid." });
+        }
+
+        var result = await _autoGenService.GenerateTimesheetsAsync(request, targetCompanyId.Value, cancellationToken);
+        return Ok(result);
     }
 }
