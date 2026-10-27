@@ -19,6 +19,7 @@ import { Button } from "@/components/tailgrids/core/button";
 import { Input } from "@/components/tailgrids/core/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/tailgrids/core/dialog";
 import { SearchableTaskPicker } from "@/components/common/searchable-task-picker";
+import { CompanyTimesheetExportModal } from "@/components/timesheets/company-timesheet-export-modal";
 import { toast } from "sonner";
 
 export default function TimesheetsPage() {
@@ -26,6 +27,7 @@ export default function TimesheetsPage() {
   const [page, setPage] = useState(1);
   const [manualModalOpen, setManualModalOpen] = useState(false);
   const [startTimerModalOpen, setStartTimerModalOpen] = useState(false);
+  const [companyExportModalOpen, setCompanyExportModalOpen] = useState(false);
 
   // Start Timer state
   const [timerTaskId, setTimerTaskId] = useState<number | undefined>(undefined);
@@ -171,6 +173,15 @@ export default function TimesheetsPage() {
           >
             <FileSpreadsheet className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
             Ekspor Excel Resmi (.xlsx)
+          </Button>
+
+          <Button
+            onClick={() => setCompanyExportModalOpen(true)}
+            variant="outline"
+            className="gap-2 border-indigo-600/30 text-indigo-700 hover:bg-indigo-50 dark:border-indigo-500/30 dark:text-indigo-400 dark:hover:bg-indigo-950/40"
+          >
+            <FileSpreadsheet className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+            Ekspor Standar Perusahaan (ELISTEC)
           </Button>
 
           <Button
@@ -448,6 +459,12 @@ export default function TimesheetsPage() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Modal Ekspor Standar Perusahaan ELISTEC */}
+      <CompanyTimesheetExportModal
+        open={companyExportModalOpen}
+        onOpenChange={setCompanyExportModalOpen}
+      />
     </div>
   );
 }
