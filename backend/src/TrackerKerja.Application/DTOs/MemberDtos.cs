@@ -52,6 +52,11 @@ public record UpdateMemberRequest(
     bool? CanPurgeData = null
 );
 
+public record BulkChangeCompanyRequest(
+    List<string> UserIds,
+    int TargetCompanyId
+);
+
 public record CompanyMemberGroupDto(
     int? CompanyId,
     string CompanyName,

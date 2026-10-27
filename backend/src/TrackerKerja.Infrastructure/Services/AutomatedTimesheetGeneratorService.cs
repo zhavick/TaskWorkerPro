@@ -68,11 +68,24 @@ public class AutomatedTimesheetGeneratorService : IAutomatedTimesheetGeneratorSe
             );
         }
 
-        // Query company tasks
+        // Query company tasks (include tasks explicitly set to this company, or assigned to this company's users)
+        var targetUserIds = users.Select(u => u.Id).ToList();
         var companyTasks = await _context.Tasks
             .Include(t => t.Project)
-            .Where(t => t.CompanyId == companyId)
+            .Include(t => t.Sessions)
+            .Where(t => t.CompanyId == companyId || (t.AssignedToUserId != null && targetUserIds.Contains(t.AssignedToUserId)))
             .ToListAsync(cancellationToken);
+
+        // Synchronize any tasks assigned to these users that had old or null CompanyId
+        var tasksNeedingCompanySync = companyTasks.Where(t => t.CompanyId != companyId).ToList();
+        if (tasksNeedingCompanySync.Count > 0)
+        {
+            foreach (var t in tasksNeedingCompanySync)
+            {
+                t.CompanyId = companyId;
+            }
+            await _context.SaveChangesAsync(cancellationToken);
+        }
 
         if (companyTasks.Count == 0)
         {
@@ -110,13 +123,26 @@ public class AutomatedTimesheetGeneratorService : IAutomatedTimesheetGeneratorSe
                 userTasks = companyTasks;
             }
 
-            foreach (var date in workingDates)
+            // Identifikasi tugas-tugas yang timesheet-nya KOSONG (belum pernah dicatat atau total durasi sesi = 0)
+            var emptyTimesheetTasks = userTasks
+                .Where(t => t.Sessions == null || t.Sessions.Count == 0 || t.Sessions.All(s => s.Duration == 0))
+                .OrderByDescending(t => GetPriorityWeight(t.Priority))
+                .ThenBy(t => t.StartDate ?? t.CreatedAt)
+                .ToList();
+
+            var scheduledEmptyTaskIds = new HashSet<int>();
+            int emptyTasksPerDay = Math.Max(1, (int)Math.Ceiling((double)emptyTimesheetTasks.Count / Math.Max(1, workingDates.Count)));
+
+            for (int dayIdx = 0; dayIdx < workingDates.Count; dayIdx++)
             {
+                var date = workingDates[dayIdx];
                 var dayStart = new DateTimeOffset(date.Year, date.Month, date.Day, 0, 0, 0, tzOffset);
                 var dayEnd = dayStart.AddDays(1);
+                var dayStartUtc = dayStart.ToUniversalTime();
+                var dayEndUtc = dayEnd.ToUniversalTime();
 
                 var existingSessions = await _context.Sessions
-                    .Where(s => s.UserId == user.Id && s.StartTime >= dayStart && s.StartTime < dayEnd)
+                    .Where(s => s.UserId == user.Id && s.StartTime >= dayStartUtc && s.StartTime < dayEndUtc)
                     .ToListAsync(cancellationToken);
 
                 long existingDuration = existingSessions.Sum(s => s.Duration);
@@ -138,20 +164,47 @@ public class AutomatedTimesheetGeneratorService : IAutomatedTimesheetGeneratorSe
 
                 // Match candidate tasks for this date
                 var targetDateTime = new DateTimeOffset(date.Year, date.Month, date.Day, 12, 0, 0, tzOffset);
-                var candidateTasks = userTasks.Where(t =>
+                var dateMatchedTasks = userTasks.Where(t =>
                     (t.StartDate.HasValue && t.DueDate.HasValue && t.StartDate.Value <= targetDateTime && t.DueDate.Value >= targetDateTime)
                     || (t.StartDate.HasValue && !t.DueDate.HasValue && t.StartDate.Value <= targetDateTime)
                     || (!t.StartDate.HasValue && t.DueDate.HasValue && t.DueDate.Value >= targetDateTime)
-                    || (!t.StartDate.HasValue && !t.DueDate.HasValue && t.CreatedAt <= targetDateTime)
                 ).ToList();
 
-                if (candidateTasks.Count == 0)
+                List<WorkTask> candidateTasks;
+
+                if (dateMatchedTasks.Count > 0)
                 {
-                    candidateTasks = userTasks;
+                    candidateTasks = dateMatchedTasks.Take(4).ToList();
+                    foreach (var dt in candidateTasks)
+                    {
+                        scheduledEmptyTaskIds.Add(dt.Id);
+                    }
+                }
+                else
+                {
+                    var unscheduledEmpty = emptyTimesheetTasks.Where(t => !scheduledEmptyTaskIds.Contains(t.Id)).ToList();
+                    if (unscheduledEmpty.Count > 0)
+                    {
+                        candidateTasks = unscheduledEmpty.Take(Math.Clamp(emptyTasksPerDay, 1, 3)).ToList();
+                        foreach (var et in candidateTasks)
+                        {
+                            scheduledEmptyTaskIds.Add(et.Id);
+                        }
+                    }
+                    else
+                    {
+                        int rotIndex = dayIdx % userTasks.Count;
+                        candidateTasks = new List<WorkTask> { userTasks[rotIndex] };
+                        if (userTasks.Count > 1)
+                        {
+                            candidateTasks.Add(userTasks[(rotIndex + 1) % userTasks.Count]);
+                        }
+                    }
                 }
 
                 // Allocate proportional durations based on Priority Weight
                 int totalWeight = candidateTasks.Sum(t => GetPriorityWeight(t.Priority));
+                if (totalWeight <= 0) totalWeight = 1;
                 var taskAllocations = new List<(WorkTask Task, long Seconds)>();
                 long sumAlloc = 0;
 
@@ -215,8 +268,8 @@ public class AutomatedTimesheetGeneratorService : IAutomatedTimesheetGeneratorSe
                         {
                             TaskId = alloc.Task.Id,
                             UserId = user.Id,
-                            StartTime = currentTime,
-                            EndTime = sessionEnd,
+                            StartTime = currentTime.ToUniversalTime(),
+                            EndTime = sessionEnd.ToUniversalTime(),
                             Duration = thisSessionSecs,
                             Notes = $"Pengerjaan tugas {alloc.Task.Title} (Auto-generated)",
                             CreatedAt = DateTimeOffset.UtcNow
@@ -237,12 +290,14 @@ public class AutomatedTimesheetGeneratorService : IAutomatedTimesheetGeneratorSe
 
                 if (!attExists)
                 {
+                    var clockIn = new DateTimeOffset(date.Year, date.Month, date.Day, 8, 0, 0, tzOffset);
+                    var clockOut = new DateTimeOffset(date.Year, date.Month, date.Day, 17, 10, 0, tzOffset);
                     var att = new Attendance
                     {
                         UserId = user.Id,
                         Date = date,
-                        ClockIn = new DateTimeOffset(date.Year, date.Month, date.Day, 8, 0, 0, tzOffset),
-                        ClockOut = new DateTimeOffset(date.Year, date.Month, date.Day, 17, 10, 0, tzOffset),
+                        ClockIn = clockIn.ToUniversalTime(),
+                        ClockOut = clockOut.ToUniversalTime(),
                         WorkLocation = WorkLocation.WFO
                     };
                     _context.Attendances.Add(att);

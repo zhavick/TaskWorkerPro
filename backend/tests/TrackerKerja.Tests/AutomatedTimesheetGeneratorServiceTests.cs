@@ -249,4 +249,93 @@ public class AutomatedTimesheetGeneratorServiceTests
         var row8 = ws.Cell("A8").GetString();
         row8.Should().StartWith("TSK-");
     }
+
+    [Fact]
+    public async Task GenerateTimesheets_WithEmptyTimesheetTasks_ShouldTakeAndGenerateAllEmptyTasks()
+    {
+        // 3 tasks with empty timesheet (no sessions) and past dates
+        var emptyTask1 = new WorkTask
+        {
+            Id = 601,
+            Title = "Task Kosong 1",
+            CompanyId = 10,
+            ProjectId = 1,
+            AssignedToUserId = "syafix",
+            Priority = TaskPriority.High,
+            StartDate = new DateOnly(2026, 8, 1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
+            DueDate = new DateOnly(2026, 8, 5).ToDateTime(TimeOnly.MaxValue, DateTimeKind.Utc)
+        };
+        var emptyTask2 = new WorkTask
+        {
+            Id = 602,
+            Title = "Task Kosong 2",
+            CompanyId = 10,
+            ProjectId = 1,
+            AssignedToUserId = "syafix",
+            Priority = TaskPriority.Medium,
+            StartDate = new DateOnly(2026, 8, 6).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
+            DueDate = new DateOnly(2026, 8, 10).ToDateTime(TimeOnly.MaxValue, DateTimeKind.Utc)
+        };
+        var emptyTask3 = new WorkTask
+        {
+            Id = 603,
+            Title = "Task Kosong 3",
+            CompanyId = 10,
+            ProjectId = 1,
+            AssignedToUserId = "syafix",
+            Priority = TaskPriority.Low,
+            StartDate = new DateOnly(2026, 8, 11).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
+            DueDate = new DateOnly(2026, 8, 15).ToDateTime(TimeOnly.MaxValue, DateTimeKind.Utc)
+        };
+        _context.Tasks.AddRange(emptyTask1, emptyTask2, emptyTask3);
+        await _context.SaveChangesAsync();
+
+        var request = new AutoGenerateTimesheetRequest(10, 1, "syafix", "Overwrite");
+        var result = await _service.GenerateTimesheetsAsync(request, 10);
+
+        result.Success.Should().BeTrue();
+
+        // Verify that all 3 empty tasks now have generated sessions
+        var taskIdsWithSessions = await _context.Sessions
+            .Where(s => s.UserId == "syafix")
+            .Select(s => s.TaskId)
+            .Distinct()
+            .ToListAsync();
+
+        taskIdsWithSessions.Should().Contain(601);
+        taskIdsWithSessions.Should().Contain(602);
+        taskIdsWithSessions.Should().Contain(603);
+    }
+
+    [Fact]
+    public async Task GenerateTimesheets_WithCrossCompanyTasksAssignedToUser_ShouldSynchronizeAndGenerate()
+    {
+        // Task assigned to user in company 10, but task's CompanyId is 99
+        var crossTask = new WorkTask
+        {
+            Id = 701,
+            Title = "Task Cross Company",
+            CompanyId = 99,
+            ProjectId = 1,
+            AssignedToUserId = "syafix",
+            Priority = TaskPriority.High,
+            StartDate = new DateOnly(2026, 9, 3).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
+            DueDate = new DateOnly(2026, 9, 7).ToDateTime(TimeOnly.MaxValue, DateTimeKind.Utc)
+        };
+        _context.Tasks.Add(crossTask);
+        await _context.SaveChangesAsync();
+
+        var request = new AutoGenerateTimesheetRequest(10, 1, "syafix", "Overwrite");
+        var result = await _service.GenerateTimesheetsAsync(request, 10);
+
+        result.Success.Should().BeTrue();
+
+        // Check task CompanyId was synced to 10
+        var updatedTask = await _context.Tasks.FindAsync(701);
+        updatedTask!.CompanyId.Should().Be(10);
+
+        // Check sessions generated for this task
+        var sessions = await _context.Sessions.Where(s => s.TaskId == 701).ToListAsync();
+        sessions.Should().NotBeEmpty();
+    }
 }
