@@ -192,4 +192,61 @@ public class AutomatedTimesheetGeneratorServiceTests
         sessions.Any(s => s.StartTime.DayOfWeek == DayOfWeek.Saturday).Should().BeFalse();
         sessions.Any(s => s.StartTime.DayOfWeek == DayOfWeek.Sunday).Should().BeFalse();
     }
+
+    [Fact]
+    public async Task GenerateTimesheets_EndToEnd_ShouldExportToValidElistecExcel()
+    {
+        // 1. Setup Tasks
+        var task1 = new WorkTask
+        {
+            Id = 501,
+            Title = "Implementasi Backend API",
+            CompanyId = 10,
+            ProjectId = 1,
+            AssignedToUserId = "syafix",
+            Priority = TaskPriority.High,
+            StartDate = new DateOnly(2026, 9, 3).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
+            DueDate = new DateOnly(2026, 9, 4).ToDateTime(TimeOnly.MaxValue, DateTimeKind.Utc)
+        };
+        var task2 = new WorkTask
+        {
+            Id = 502,
+            Title = "Review Security & Auth",
+            CompanyId = 10,
+            ProjectId = 1,
+            AssignedToUserId = "syafix",
+            Priority = TaskPriority.Medium,
+            StartDate = new DateOnly(2026, 9, 3).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
+            DueDate = new DateOnly(2026, 9, 4).ToDateTime(TimeOnly.MaxValue, DateTimeKind.Utc)
+        };
+        _context.Tasks.AddRange(task1, task2);
+        await _context.SaveChangesAsync();
+
+        // 2. Auto Generate
+        var request = new AutoGenerateTimesheetRequest(10, 1, "syafix", "Overwrite");
+        var genResult = await _service.GenerateTimesheetsAsync(request, 10);
+        genResult.Success.Should().BeTrue();
+
+        // 3. Export to Excel using ClosedXmlCompanyTimesheetExportService
+        var exportService = new ClosedXmlCompanyTimesheetExportService(_context);
+        var bytes = await exportService.ExportUserTimesheetAsync(10, 1, "syafix");
+        bytes.Should().NotBeNull();
+        bytes.Length.Should().BeGreaterThan(0);
+
+        // 4. Save and inspect
+        Directory.CreateDirectory("test-results");
+        var outputPath = Path.Combine("test-results", "auto_generated_elistec_timesheet.xlsx");
+        await File.WriteAllBytesAsync(outputPath, bytes);
+
+        using var ms = new MemoryStream(bytes);
+        using var workbook = new ClosedXML.Excel.XLWorkbook(ms);
+        var ws = workbook.Worksheet(1);
+
+        ws.Cell("B4").GetString().Should().Contain("3 DAYS");
+        ws.Cell("B5").GetString().Should().Be("Syafix Said");
+
+        // Verify that there are sessions generated
+        var row8 = ws.Cell("A8").GetString();
+        row8.Should().StartWith("TSK-");
+    }
 }
