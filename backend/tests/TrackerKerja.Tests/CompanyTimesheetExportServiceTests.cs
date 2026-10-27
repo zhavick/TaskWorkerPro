@@ -105,6 +105,10 @@ public class CompanyTimesheetExportServiceTests
             }
         }
         foundWeekend.Should().BeTrue();
+
+        // Save generated file for end-to-end Python inspection
+        Directory.CreateDirectory("test-results");
+        await File.WriteAllBytesAsync(Path.Combine("test-results", "verified_export_elistec.xlsx"), bytes);
     }
 
     [Fact]
