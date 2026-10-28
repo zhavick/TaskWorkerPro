@@ -5,20 +5,20 @@
 
 ### INFORMASI DOKUMEN
 - **Nama Aplikasi**: Work Tracker Pro (TrackerKerja Modern)
-- **Versi Dokumen**: 3.9 (Full-Width Responsive Studio Layout, QA E2E Tracking Suite, Docker Automation & Announcements Edition)
+- **Versi Dokumen**: 4.1 (Interactive Project Task Charts, Today-First Task Sorting, Audit Trail CRUD Analytics, Standardized Gamification & Admin-Exclusion Edition)
 - **Status**: Disetujui & Terimplementasi Penuh (Production-Ready)
 - **Target Platform**: Web Application (Next.js 16 TurboPack Frontend / ASP.NET Core 8.0 Web API / Docker Multi-Container)
 - **Basis Data**: Entity Framework Core 8.0 dengan PostgreSQL 16 & SQLite Database Engine
 - **Engine Spreadsheet**: ClosedXML 0.104.2 (Format ARMS 21-kolom, Template Standar 9-kolom, & Timesheet Personal)
 - **Dokumentasi REST API**: OpenAPI 3.0 via Swashbuckle Swagger UI (`/swagger`) dengan Strict JWT Bearer Authorization & Postman Collection
 - **Repositori Source Code**: [https://github.com/zhavick/TaskWorkerPro.git](https://github.com/zhavick/TaskWorkerPro.git) (Branch `modern`)
-- **Tanggal Rilis & Pembaruan**: 17 Oktober 2026
+- **Tanggal Rilis & Pembaruan**: 26 Oktober 2026
 
 ---
 
 ## DAFTAR ISI
 1. [Pendahuluan & Lingkup Sistem](#1-pendahuluan--lingkup-sistem)
-2. [Arsitektur Sistem & Infrastruktur Container](#2-arsitektur-sistem--infrastruktur-container)
+2. [Arsitektur Sistem, Infrastruktur Container & Dashboard Analytics](#2-arsitektur-sistem-infrastruktur-container--dashboard-analytics)
 3. [Entity Relationship Diagram (ERD) & Struktur Database](#3-entity-relationship-diagram-erd--struktur-database)
 4. [Role-Based Access Control (RBAC) & Matriks Hak Akses](#4-role-based-access-control-rbac--matriks-hak-akses)
 5. [Flow Proses & Spesifikasi Modul](#5-flow-proses--spesifikasi-modul)
@@ -30,25 +30,26 @@
    - [5.2 Modul Sistem Desain Responsif & Mobile Navigation](#52-modul-sistem-desain-responsif--mobile-navigation)
    - [5.3 Modul Sistem Tema Tampilan Dinamis (40 Tema) & Global Font Switcher (5 Google Fonts)](#53-modul-sistem-tema-tampilan-dinamis-40-tema--global-font-switcher-5-google-fonts)
    - [5.4 Modul Manajemen Proyek & Kategori](#54-modul-manajemen-proyek--kategori)
-   - [5.5 Modul Manajemen Tugas, Struktur Parenting & Penyatuan Timesheet Manual](#55-modul-manajemen-tugas-struktur-parenting--penyatuan-timesheet-manual)
+   - [5.5 Modul Manajemen Tugas, Visualisasi Distribusi Proyek, Pengurutan Hari Ini & Penyatuan Timesheet Manual](#55-modul-manajemen-tugas-visualisasi-distribusi-proyek-pengurutan-hari-ini--penyatuan-timesheet-manual)
    - [5.6 Modul Kanban Board Interaktif & Mobile Segmented Switcher](#56-modul-kanban-board-interaktif--mobile-segmented-switcher)
-   - [5.7 Modul Timesheet, Multi-Timer Serentak & Laporan Personal Excel (.xlsx)](#57-modul-timesheet-multi-timer-serentak--laporan-personal-excel-xlsx)
+   - [5.7 Modul Timesheet, Multi-Timer Serentak, Grafik Beban Kerja & Laporan Personal Excel (.xlsx)](#57-modul-timesheet-multi-timer-serentak-grafik-beban-kerja--laporan-personal-excel-xlsx)
    - [5.8 Modul Presensi & Rekonsiliasi Absensi Tim (Attendance Management)](#58-modul-presensi--rekonsiliasi-absensi-tim-attendance-management)
    - [5.9 Modul Catatan & Multi-File Upload Terorganisir Folder Pengguna](#59-modul-catatan--multi-file-upload-terorganisir-folder-pengguna)
    - [5.10 Modul Import & Export Excel (Filter Periode, Format Standar, Format ARMS)](#510-modul-import--export-excel-filter-periode-format-standar-format-arms)
    - [5.11 Modul Anggota Tim (Member), Direktori Pure Grid Card, Banner Profil & Hapus Permanen Akun](#511-modul-anggota-tim-member-direktori-pure-grid-card-banner-profil--hapus-permanen-akun)
-   - [5.12 Modul Audit Trail & Aktivitas Sistem](#512-modul-audit-trail--aktivitas-sistem)
+   - [5.12 Modul Audit Trail, Aktivitas Sistem & Line Chart CRUD Interaktif](#512-modul-audit-trail-aktivitas-sistem--line-chart-crud-interaktif)
    - [5.13 Modul Master Data (Prioritas, Status & Milestone SDLC)](#513-modul-master-data-prioritas-status--milestone-sdlc)
    - [5.14 Modul Kalender Tugas Interaktif & Role-Based Scope Filter](#514-modul-kalender-tugas-interaktif--role-based-scope-filter)
    - [5.15 Modul SQL Beautifier & Query Tools](#515-modul-sql-beautifier--query-tools)
    - [5.16 Modul Multi-Instance Synchronization & File Attachment Sync (Host Induk Sync)](#516-modul-multi-instance-synchronization--file-attachment-sync-host-induk-sync)
-   - [5.17 Modul RESTful API (100+ Endpoints) & Strict Swagger JWT Bearer Authorization](#517-modul-restful-api-100-endpoints--strict-swagger-jwt-bearer-authorization)
+   - [5.17 Modul RESTful API (110+ Endpoints) & Strict Swagger JWT Bearer Authorization](#517-modul-restful-api-110-endpoints--strict-swagger-jwt-bearer-authorization)
    - [5.18 Modul Integrasi Server Email (SMTP) & Sub-Modul Template Email Event](#518-modul-integrasi-server-email-smtp--sub-modul-template-email-event)
    - [5.19 Pembaruan Navigasi, Ergonomi Antarmuka, Halaman Login Lottie, Onboarding Tour & AJAX Grid Table Pagination](#519-pembaruan-navigasi-ergonomi-antarmuka-halaman-login-lottie-onboarding-tour--ajax-grid-table-pagination)
-   - [5.20 Modul Gamifikasi, Daily Check-In, Aturan Streak, Master Badge Gaul & Klaim Hadiah](#520-modul-gamifikasi-daily-check-in-aturan-streak-master-badge-gaul--klaim-hadiah)
+   - [5.20 Modul Gamifikasi, Standarisasi Antarmuka Terpadu, Daily Check-In, Master Badge Gaul & Klaim Hadiah](#520-modul-gamifikasi-standarisasi-antarmuka-terpadu-daily-check-in-master-badge-gaul--klaim-hadiah)
    - [5.21 Modul Tata Letak Studio Bentang Penuh (Full-Width Responsive Studio Layout)](#521-modul-tata-letak-studio-bentang-penuh-full-width-responsive-studio-layout)
    - [5.22 Paket Pengujian Mutu (Quality Assurance - QA) & Matriks Pelacakan End-to-End](#522-paket-pengujian-mutu-quality-assurance---qa--matriks-pelacakan-end-to-end)
    - [5.23 Modul Pengumuman Resmi & Modal Popup Terpadu (Announcement Module)](#523-modul-pengumuman-resmi--modal-popup-terpadu-announcement-module)
+   - [5.24 Modul Panduan Pengguna Interaktif (Interactive User Guide & Role-Based Documentation)](#524-modul-panduan-pengguna-interaktif-interactive-user-guide--role-based-documentation)
 6. [Spesifikasi Non-Fungsional, Keamanan & Privasi Data](#6-spesifikasi-non-fungsional-keamanan--privasi-data)
 7. [Panduan Docker Containerization, Git Repository & Deployment](#7-panduan-docker-containerization-git-repository--deployment)
 
@@ -124,6 +125,14 @@ flowchart TB
     EFCore <--> |Read / Write SQL| DB_Volume
     Services <--> |Physical Disk I/O| Upload_Volume
 ```
+
+### 2.1 Modul Dashboard Eksekutif & Eksklusi Cerdas Akun Administrator
+Dashboard utama (`/dashboard`) berfungsi sebagai pusat pemantauan performa kerja terintegrasi:
+- **Eksklusi Akun Administrator dari Metrik Operasional Tim**:
+  - Akun dengan peran `Administrator` / `Admin` secara otomatis dikecualikan dari diagram tren produktivitas harian/mingguan (`GetProductivityChart`) dan distribusi status tugas anggota tim (`GetDistribution`).
+  - **Rasional & Nilai Bisnis**: Akun administrator memegang otoritas manajerial dan pemeliharaan teknis sistem, bukan pelaksana tugas operasional langsung di lapangan. Pengecualian ini menjamin visualisasi kapasitas kerja, utilisasi jam, dan pembagian tugas mencerminkan kondisi riil anggota tim pelaksana tanpa bias administratif.
+- **Kartu Metrik Kinerja Terpadu**: Menyajikan 4 ringkasan utama: *Tugas Aktif*, *Proyek Berjalan*, *Total Jam Kerja Terkumpul*, dan *Persentase Kehadiran Presensi Tim*.
+- **Widget Spanduk Pengingat Streak Gamifikasi**: Terhubung langsung ke modul gamifikasi untuk mengingatkan batas toleransi streak 2 hari dan memfasilitasi daily check-in satu klik.
 
 ---
 
@@ -521,21 +530,44 @@ erDiagram
 - **Standarisasi Tata Letak Lebar (Wide Screen Layout)**:
   - Antarmuka Proyek diselaraskan dengan tata letak lebar penuh (*wide layout*) serasi dengan modul Kalender dan Presensi.
 
-### 5.5 Modul Manajemen Tugas, Struktur Parenting & Penyatuan Timesheet Manual
-- **Parent-Child Hierarchy**: Kemampuan menghubungkan sub-tugas ke tugas induk.
-- **Log Kendala & Solusi**: Kolom `Obstacle` dan `Solution` untuk dokumentasi teknis hambatan kerja.
+### 5.5 Modul Manajemen Tugas, Visualisasi Distribusi Proyek, Pengurutan Hari Ini & Penyatuan Timesheet Manual
+- **Penyederhanaan Label Antarmuka**:
+  - Label utama pada halaman tugas (`/tasks`) disederhanakan dari label lama *"Daftar Tugas Operasional"* menjadi **"Daftar Tugas"** guna menyajikan hierarki tipografi yang bersih, modern, dan ergonomis.
+- **Visualisasi Distribusi Tugas Proyek (Interactive Project Task Chart)**:
+  - Ditenagai oleh endpoint `GET /api/tasks/project-chart` yang menghitung agregasi tugas per proyek secara real-time berdasarkan 4 kuadran status: Selesai (*Done*), Sedang Berjalan (*In Progress*), Belum Selesai (*To Do*), dan Terlambat (*Overdue*).
+  - **Dua Mode Tampilan Visual**:
+    1. **Stacked Bar Chart**: Diagram batang bertumpuk proporsional dengan segmentasi warna status intuitif (Done: Hijau Emerald `#10b981`, In Progress: Biru `#3b82f6`, To Do: Amber `#f59e0b`, Overdue: Rose `#ef4444`).
+    2. **Donut Chart**: Diagram lingkaran distribusi proporsi beban tugas antar proyek.
+  - **Interaktivitas Click-to-Filter**: Pengguna dapat mengklik langsung salah satu batang proyek pada diagram, dan sistem secara instan menyaring tabel daftar tugas di bawahnya untuk hanya menampilkan tugas-tugas dari proyek terkait tanpa reload halaman.
+  - **Panel Dapat Dilipat (*Collapsible Toggle*)**: Dilengkapi tombol sembunyikan/tampilkan grafik untuk menghemat ruang vertikal layar saat pengguna ingin fokus penuh pada tabel data tabular.
+- **Logika Pengurutan Berbasis Hari Ini (Today-First Sorting) & Filter Tanggal Cepat**:
+  - **Algoritma Sorting Cerdas**: Parameter kueri `sortBy=today` (beserta alias `now`, `currentdate`) memprioritaskan tugas:
+    - *Tier 0 (Prioritas Tertinggi)*: Tugas yang memiliki tanggal jatuh tempo hari ini (`DueDate.Date == Today`) atau sedang aktif dikerjakan hari ini ditempatkan di posisi paling atas tabel.
+    - *Tier 1 (Tenggat Lainnya)*: Tugas lainnya diurutkan secara kronologis berdasarkan kedekatan batas waktu (`DueDate` Ascending).
+  - **Default Sort pada Antarmuka**: Halaman daftar tugas secara otomatis menerapkan pengurutan `today` secara default saat pertama kali dimuat.
+  - **Chip Filter Tanggal Cepat (*Quick Date Filter Chips*)**: Disediakan tombol chip interaktif di atas tabel:
+    1. `Semua Tanggal`: Menampilkan seluruh tugas tanpa batasan waktu.
+    2. `Hari Ini / Sekarang`: Menyaring tugas yang berbatas waktu atau berstatus aktif pada hari berjalan.
+    3. `Minggu Ini`: Menyaring tugas yang dijadwalkan jatuh tempo dalam minggu berjalan.
+  - **Indikator Visual Baris Tugas (Glowing Emerald Badge)**: Setiap baris tugas yang memiliki batas waktu hari ini atau aktif hari ini diberi penanda visual badge `Hari Ini` dengan efek cahaya hijau emerald (*glowing pulse*) yang mencolok dan memudahkan fokus kerja harian.
+- **Parent-Child Hierarchy & Sub-Tasks**: Kemampuan menghubungkan sub-tugas ke tugas induk dengan pencarian cepat berbasis Select2.
+- **Log Kendala & Solusi**: Kolom `Obstacle` dan `Solution` untuk dokumentasi teknis hambatan kerja dan mitigasi solusi.
 - **Progress Slider (0–100%)**: Tombol cepat (0%, 25%, 50%, 75%, 100%) dengan auto-sync status *Done*.
 - **Filter Periode Ekspor**: Ekspor tugas berdasarkan rentang waktu fleksibel (*Today, Yesterday, Last 7 Days, Last 30 Days, This Month, Last Month, Custom*).
 - **Penyatuan Formulir Edit Tugas & Pengisian Jam Kerja Manual (`SaveTaskAndSession`)**:
-  - Form pada `Views/Task/Edit.cshtml` mengintegrasikan kolom input pencatatan jam kerja manual: *Durasi Jam*, *Durasi Menit*, *Tanggal Sesi Kerja*, dan *Catatan Sesi*.
-  - Aksi simpan tunggal mengeksekusi method `Edit` pada `TaskController.cs` yang memvalidasi dan memperbarui data tugas sekaligus mencatat entitas `WorkSessions` baru secara atomik dalam satu request transaksi database, mengeliminasi kebutuhan navigasi ganda ke menu timesheet terpisah.
+  - Form pada Task Studio mengintegrasikan kolom input pencatatan jam kerja manual: *Durasi Jam*, *Durasi Menit*, *Tanggal Sesi Kerja*, dan *Catatan Sesi*.
+  - Aksi simpan tunggal mengeksekusi pembaruan data tugas sekaligus mencatat entitas `WorkSessions` baru secara atomik dalam satu transaksi database, mengeliminasi kebutuhan navigasi ganda ke menu timesheet terpisah.
 
 ### 5.6 Modul Kanban Board Interaktif & Mobile Segmented Switcher
 - Papan visual bertenaga **SortableJS** dengan drag-and-drop kartu real-time.
 - **Mobile Segmented Switcher**: Tab pil (`📋 Todo`, `🔄 In Progress`, `🔍 Review`, `✅ Done`) pada smartphone untuk kemudahan akses kolom tanpa horizontal scrolling.
 
-### 5.7 Modul Timesheet, Multi-Timer Serentak & Laporan Personal Excel (.xlsx)
-- **Multi-Timer Serentak**: Kolom `UserId` pada `WorkSessions` memastikan pengguna dapat mengaktifkan beberapa timer tugas secara bersamaan tanpa saling mengganggu.
+### 5.7 Modul Timesheet, Multi-Timer Serentak, Grafik Beban Kerja & Laporan Personal Excel (.xlsx)
+- **Multi-Timer Serentak**: Kolom `UserId` pada `WorkSessions` memastikan pengguna dapat mengaktifkan beberapa timer tugas secara bersamaan tanpa saling mengganggu, terpantau langsung di Floating Timer Bar.
+- **Visualisasi Analitik Beban Kerja Karyawan (Member Comparison Bar Chart pada Laporan Timesheet)**:
+  - Diagram batang interaktif Recharts di bagian atas halaman laporan (`/reports`).
+  - Mengagregasi total jam kerja yang dikumpulkan per anggota tim dalam rentang tanggal filter yang ditentukan.
+  - Membantu pimpinan proyek dan manajer tim membandingkan alokasi waktu kerja, mendeteksi ketimpangan beban kerja, dan memonitor kapasitas tim secara visual dan transparan.
 - **Laporan Timesheet Personal (ClosedXML)**:
   - **Sheet 1 ("Timesheet Personal")**: Informasi metadata karyawan, tabel rincian sesi harian, dan formula otomatis `=SUM(...)`.
   - **Sheet 2 ("Rekap per Proyek")**: Ringkasan alokasi waktu dan persentase kontribusi per proyek.
@@ -559,6 +591,9 @@ erDiagram
 ### 5.10 Modul Import & Export Excel (Filter Periode, Format Standar, Format ARMS)
 - **Format Standar (9 Kolom)**: Fitur wizard preview interaktif dan penugasan PIC massal (*Bulk Assign*).
 - **Format ARMS Enterprise (21 Kolom)**: Ekspor dan impor tugas berstandar enterprise dengan pemetaan SDLC Waterfall Milestone.
+- **Dukungan Kolom Catatan & Migrasi Otomatis (Notes Migration)**:
+  - Parser spreadsheet mendeteksi kolom 'Catatan' / 'Notes' (seperti kolom 21 pada format ARMS).
+  - Jika tugas di sistem lokal belum memiliki catatan atau catatan yang ada masih kosong (`null`, spasi kosong, atau tag HTML kosong seperti `<p></p>`), sistem impor secara otomatis membuat atau memperbarui entitas `WorkNote` menggunakan data catatan dari spreadsheet sistem lama.
 
 ### 5.11 Modul Anggota Tim (Member), Grouping Perusahaan Admin, Pure Grid Card & Hapus Permanen Akun
 - **Grouping Anggota Berdasarkan Perusahaan (Khusus Login Administrator)**:
@@ -583,9 +618,18 @@ erDiagram
   - Menghapus akun pengguna dari basis data ASP.NET Identity, membersihkan relasi terkait, dan membebaskan penugasan tugas secara aman.
 - **Admin Direct Password Reset**: Administrator dapat mereset kata sandi anggota tim secara langsung via Web UI atau REST API `POST /api/members/{id}/reset-password`.
 
-### 5.12 Modul Audit Trail & Aktivitas Sistem
-- Pencatatan otomatis seluruh aktivitas controller via `AuditLogActionFilter`.
-- Visualisasi grafik multi-series tren aktivitas dan ekspor audit log ke CSV.
+### 5.12 Modul Audit Trail, Aktivitas Sistem & Line Chart CRUD Interaktif
+- **Pencatatan Otomatis Seluruh Aktivitas**: Seluruh request HTTP pengubah data (`POST`, `PUT`, `DELETE`, `PATCH`) dan akses penting secara otomatis diintersepsi oleh `AuditLogActionFilter` dan dicatat ke tabel `AuditLogs` mencakup identitas user, IP address, controller, action, status code, durasi eksekusi (ms), dan timestamp presisi.
+- **Visualisasi Tren Aktivitas CRUD (Interactive Multi-Line Chart)**:
+  - Ditenagai endpoint `GET /api/audit-logs/crud-chart?days={7|14|30}` yang mengklasifikasikan log aktivitas ke dalam 4 kategori CRUD:
+    1. **Create (C)**: Aksi `CREATE`, `ADD`, `INSERT`, `REGISTER` atau HTTP Method `POST` (Garis Hijau Emerald `#10b981`).
+    2. **Read (R)**: Aksi `READ`, `GET`, `VIEW`, `FETCH`, `EXPORT`, `DOWNLOAD` atau HTTP Method `GET` (Garis Biru Sky `#0284c7`).
+    3. **Update (U)**: Aksi `UPDATE`, `EDIT`, `MODIFY`, `PATCH`, `APPROVE`, `REJECT`, `RESET` atau HTTP Method `PUT`/`PATCH` (Garis Kuning Amber `#f59e0b`).
+    4. **Delete (D)**: Aksi `DELETE`, `REMOVE`, `PURGE`, `DESTROY` atau HTTP Method `DELETE` (Garis Merah Rose `#ef4444`).
+  - **Filter Rentang Waktu Interaktif**: Switcher tombol cepat untuk menampilkan data **7 Hari Terakhir** (default), **14 Hari Terakhir**, dan **30 Hari Terakhir**.
+  - **Kartu Ringkasan Metrik Operasi**: 4 kartu statistik di atas grafik menampilkan total frekuensi operasi Create, Read, Update, dan Delete untuk periode yang dipilih, mempermudah inspeksi anomali lonjakan modifikasi data atau penghapusan massal.
+- **Modal Detail Aktivitas**: Menampilkan modal popup elegan rincian setiap baris log audit termasuk payload data dan query string.
+- **Ekspor Audit Log**: Fasilitas ekspor rekaman audit trail ke format CSV untuk kebutuhan audit kepatuhan regulasi eksternal.
 
 ### 5.13 Modul Master Data (Prioritas, Status & Milestone SDLC)
 - Pengelolaan referensi Master Prioritas, Master Status, Kategori, dan Master Milestone SDLC Waterfall (*Requirement Analysis*, *System Design*, *Implementation*, *Testing & QA*, *Deployment*, *Maintenance*).
@@ -634,6 +678,12 @@ erDiagram
      - **Import Full Package (.zip / .sql)**: Menerima unggahan berkas `.zip` (full package) maupun berkas `.sql` mandiri. Sistem otomatis mengekstrak berkas lampiran ke direktori fisik target dan mengeksekusi SQL script secara atomik (*Transaction Rollback on Error*).
   3. **Metode 3: Manual SQL Dump (.sql)**:
      - Ekspor skrip SQL DML murni untuk migrasi data tabular tanpa berkas fisik.
+
+- **Mekanisme Cerdas Migrasi Catatan Kosong (Empty Notes Auto-Migration & Field Backfilling)**:
+  - **Deteksi Konten Kosong**: Sistem menerapkan evaluasi `IsContentEmpty(string? content)` yang tidak hanya mengecek string kosong atau spasi putih, melainkan juga mendeteksi dan mengeliminasi format tag HTML kosong hasil *rich-text editor* (misalnya: `<p></p>`, `<p><br></p>`, `<p>&nbsp;</p>`, `<div></div>`).
+  - **Migrasi Catatan Tugas (`WorkNote`)**: Apabila entitas catatan di sistem lokal masih kosong, dan payload sinkronisasi dari sistem lama membawa data catatan yang terisi, data catatan dari sistem lama otomatis dipindahkan ke catatan lokal, termasuk sinkronisasi judul (`Title`), kategori, warna kartu, dan berkas lampiran.
+  - **Pemetaan Relasi Tugas (`taskIdLookup`) & Lampiran (`noteIdLookup`)**: Mengatasi perbedaan ID tugas (*primary key*) antara sistem lama dan lokal dengan mencocokkan `TaskId` yang telah dimerge, serta menghubungkan lampiran berkas (`NoteAttachments`) ke ID catatan lokal yang bersangkutan secara presisi.
+  - **Backfilling Catatan Sesi & Presensi**: Mendukung pembaruan otomatis catatan kerja kosong pada riwayat sesi kerja (`WorkSession.Notes`), presensi kehadiran (`Attendance.Notes`), dan deskripsi tugas (`WorkTask.Description`).
 
 - **REST API Endpoints Modul Sinkronisasi**:
   - `GET /api/sync/ping` — Memeriksa koneksi host, status database, total entitas, serta total dan ukuran berkas upload.
@@ -751,6 +801,14 @@ Modul ini mengimplementasikan sistem gamifikasi komprehensif untuk meningkatkan 
 - **5.20.7 Integrasi Card & Widget Pengingat Check-In pada Dashboard Utama**:
   - **Kartu Metrik ke-5 (Personal Metrics)**: Dashboard menampilkan kartu *Daily Check-In & Streak* di samping 4 kartu metrik utama. Jika pengguna belum check-in, kartu menampilkan tombol *Check-In Sekarang (+10 Poin)* dengan indikator api menyala.
   - **Spanduk Pengingat Wajib Hari Ini**: Spanduk cerdas beranimasi di bawah salam personal yang memberitahukan sisa streak, peringatan reset 2 hari, dan tombol aksi langsung tanpa reload peramban.
+- **5.20.8 Standarisasi Tata Letak & Arsitektur Navigasi Bersama Modul Gamifikasi**:
+  - **Harmonisasi Tampilan Antar Modul**: Seluruh sub-halaman pada modul gamifikasi (`/gamification` - Peringkat, `/gamification/badges` - Koleksi Lencana, dan `/gamification/rewards` - Katalog Hadiah) distandarisasi untuk menyajikan bahasa desain yang konsisten dan seragam dengan modul utama lainnya.
+  - **Komponen Header Navigasi Bersama (`gamification-nav.tsx`)**: Mengenkapsulasi spanduk hero dengan *glassmorphism backdrop*, *glowing gradient border*, judul modul yang dinamis, deskripsi fitur, serta bilah tab navigasi horizontal yang mulus tanpa reload halaman penuh.
+  - **4 Kartu Metrik KPI Standar**: Setiap sub-halaman menampilkan 4 kartu indikator kinerja gamifikasi utama:
+    1. *Saldo Poin Terkumpul* (beserta nilai konversi Rupiah).
+    2. *Level / Peringkat Pengguna* (status liga performa anggota).
+    3. *Streak Hari Berjalan* (dengan indikator toleransi batas reset 2 hari).
+    4. *Total Lencana yang Diraih* (dengan rasio pencapaian terhadap 42 Master Badge).
 
 ### 5.21 Modul Tata Letak Studio Bentang Penuh (Full-Width Responsive Studio Layout)
 Seluruh formulir kerja inti telah dimodernisasi dari struktur sempit (`max-w-4xl`, `max-w-2xl`) menjadi tata letak studio bentang penuh (`w-full` dengan CSS Grid 12-kolom `lg:grid-cols-12`) yang mengoptimalkan penggunaan monitor resolusi tinggi (1080p, 1440p, 4K) dan tetap responsif pada perangkat seluler:
@@ -809,6 +867,20 @@ Modul terpusat bagi Administrator untuk menyiarkan informasi operasional penting
   - **Pencegahan Tumpukan Visual**: Modal popup pengumuman dijamin **TIDAK PERNAH** tampil berbarengan atau bertumpukan dengan panduan pengguna (baik Onboarding Welcome Modal, Interactive Spotlight Tour, maupun User Guide Modal).
   - **Mekanisme Antrean Cerdas**: Bila salah satu panduan sedang terbuka (`#onboardingWelcomeModal.classList.contains('active')`, `OnboardingTour.isActive`, atau `!#userGuideModal.classList.contains('hidden')`), modal pengumuman secara tertib menahan diri di latar belakang.
   - **Pemicu Otomatis Pasca-Tutup**: Segera setelah pengguna menutup panduan (mengeklik tombol X, Tutup, atau menekan tombol `Esc`), sistem menangkap event global `wtp:panduan_closed` serta mutasi DOM, kemudian memunculkan modal pengumuman secara mulus dengan transisi animasi 350ms.
+
+### 5.24 Modul Panduan Pengguna Interaktif (Interactive User Guide & Role-Based Documentation)
+- **Halaman Khusus (`/guide`) & Modal Pintas (`UserGuideModal`)**:
+  - Menyediakan pusat bantuan dan dokumentasi sistem komprehensif 16 bab langsung di dalam aplikasi web tanpa ketergantungan dokumen fisik eksternal.
+- **Navigasi Tab Interaktif & Mode Pembaca Dokumen Ganda**:
+  - **Mode Dokumen Berkelanjutan (*Continuous Document Reader*)**: Pengguna dapat membaca pelan-pelan dari awal hingga akhir layaknya membaca dokumen utuh dengan fitur *Reading Progress Bar*, *Anchor Links*, dan tombol *Kembali ke Atas*.
+  - **Mode Fokus Per Bab (*Chapter-by-Chapter Focus*)**: Menyajikan bab terpilih secara eksklusif dengan tombol navigasi *« Bab Sebelumnya* dan *Bab Selanjutnya »*.
+- **Penyaringan Berbasis Peran (*Role Audience Filter*)**:
+  - Tombol pengalih audiens: **Semua Panduan**, **Khusus Tim / Non-Admin 👤**, dan **Khusus Administrator 🛡️**.
+  - Menyematkan badge penanda peran pada setiap bab dan sub-point panduan.
+- **Pencarian Cepat (*Instant Topic Search*)**:
+  - Kolom pencarian realtime yang memfilter bab dan sub-point panduan berdasarkan kata kunci secara instan.
+- **Pintasan Aksi Langsung (*Direct Action Links*)**:
+  - Tombol tautan cepat pada header setiap bab untuk langsung membuka modul yang bersangkutan (misal: *Buka Modul Tugas*, *Buka Kalender*, *Buka Gamifikasi*, *Buka Konfigurasi*).
 
 ---
 
@@ -894,10 +966,11 @@ dotnet run --urls=http://localhost:5000
 ---
 
 ### 📦 Berkas Referensi Terkait
-- **Dokumentasi Pengguna**: [USER_GUIDE.md](file:///c:/TEMP/VSCODE/TrackerKerjaModern/documents/USER_GUIDE.md)
-- **Panduan Docker**: [DOCKER_GUIDE.md](file:///c:/TEMP/VSCODE/TrackerKerjaModern/DOCKER_GUIDE.md)
-- **Ringkasan Proyek**: [README.md](file:///c:/TEMP/VSCODE/TrackerKerjaModern/README.md)
-- **Panduan QA & SOP**: [QA/README.md](file:///c:/TEMP/VSCODE/TrackerKerjaModern/QA/README.md)
-- **Spreadsheet Pelacakan QA**: [Tracking_Test_Case_E2E_TrackerKerja.xlsx](file:///c:/TEMP/VSCODE/TrackerKerjaModern/QA/Tracking_Test_Case_E2E_TrackerKerja.xlsx)
-- **Postman Collection**: [TrackerKerja_Postman_Collection.json](file:///c:/TEMP/VSCODE/TrackerKerjaModern/TrackerKerja_Postman_Collection.json)
-- **Postman Environment**: [TrackerKerja_Postman_Environment.json](file:///c:/TEMP/VSCODE/TrackerKerjaModern/TrackerKerja_Postman_Environment.json)
+- **Dokumentasi Teknis**: [TSD.md](TSD.md)
+- **Buku Panduan Pengguna**: [USER_GUIDE.md](USER_GUIDE.md)
+- **Ringkasan Proyek**: [README.md](README.md)
+- **Panduan Docker**: [DOCKER_GUIDE.md](DOCKER_GUIDE.md)
+- **Panduan QA & SOP**: [QA/README.md](QA/README.md)
+- **Spreadsheet Pelacakan QA**: [Tracking_Test_Case_E2E_TrackerKerja.xlsx](QA/Tracking_Test_Case_E2E_TrackerKerja.xlsx)
+- **Postman Collection**: [TrackerKerja_Postman_Collection.json](TrackerKerja_Postman_Collection.json)
+- **Postman Environment**: [TrackerKerja_Postman_Environment.json](TrackerKerja_Postman_Environment.json)

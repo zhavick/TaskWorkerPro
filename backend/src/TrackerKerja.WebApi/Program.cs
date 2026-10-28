@@ -50,6 +50,8 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 builder.Services.AddScoped<ICurrentTenantService, CurrentTenantService>();
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
 builder.Services.AddScoped<IExcelExportService, ClosedXmlExportService>();
+builder.Services.AddScoped<ICompanyTimesheetExportService, ClosedXmlCompanyTimesheetExportService>();
+builder.Services.AddScoped<IAutomatedTimesheetGeneratorService, AutomatedTimesheetGeneratorService>();
 builder.Services.AddScoped<IReportService, ReportService>();
 builder.Services.AddScoped<ITaskExcelImportService, TaskExcelImportService>();
 builder.Services.AddSingleton<ISqlFormatterService, SqlFormatterService>();

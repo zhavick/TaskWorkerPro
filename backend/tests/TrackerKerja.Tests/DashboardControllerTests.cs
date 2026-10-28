@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using TrackerKerja.Domain.Entities;
@@ -296,6 +297,48 @@ public class DashboardControllerTests : IDisposable
 
         // Must NOT see user from Company 2 (multi-tenant boundary maintained)
         Assert.DoesNotContain(membersList, m => m.name == "Gamma Competitor");
+    }
+
+    [Fact]
+    public async Task GetDistribution_WhenCompanyHasTasks_ResolvesTargetCompanyIdAndReturnsRealMembers()
+    {
+        // Arrange: Admin has company 99 which has 0 tasks. Company 4 has 2 tasks and 2 members.
+        var adminTenant = new FakeTenantService(99, "ADMIN_HOLDING", "usr-admin", true);
+        var controller = new DashboardController(_context, adminTenant);
+
+        _context.Users.AddRange(
+            new AppUser { Id = "m-1", FullName = "Syafix Said", CompanyId = 4, IsApproved = true },
+            new AppUser { Id = "m-2", FullName = "Iqbal Ali", CompanyId = 4, IsApproved = true }
+        );
+
+        _context.Tasks.AddRange(
+            new WorkTask { Id = 801, Title = "Task Elistec 1", CompanyId = 4, AssignedToUserId = "m-1", Status = Domain.Enums.TaskStatus.Done },
+            new WorkTask { Id = 802, Title = "Task Elistec 2", CompanyId = 4, AssignedToUserId = "m-2", Status = Domain.Enums.TaskStatus.InProgress }
+        );
+        await _context.SaveChangesAsync();
+
+        // Act - call with companyId = 4 explicitly
+        var resultExplicit = await controller.GetDistribution(4) as OkObjectResult;
+        Assert.NotNull(resultExplicit);
+        var jsonDoc = JsonDocument.Parse(System.Text.Json.JsonSerializer.Serialize(resultExplicit!.Value));
+        var dataExplicit = jsonDoc.RootElement.GetProperty("data");
+        Assert.Equal(2, dataExplicit.GetProperty("totalTasks").GetInt32());
+
+        // Act - call with null companyId, admin defaults to company with tasks (4)
+        var resultAuto = await controller.GetDistribution(null) as OkObjectResult;
+        Assert.NotNull(resultAuto);
+        var jsonDocAuto = JsonDocument.Parse(System.Text.Json.JsonSerializer.Serialize(resultAuto!.Value));
+        var dataAuto = jsonDocAuto.RootElement.GetProperty("data");
+        Assert.Equal(2, dataAuto.GetProperty("totalTasks").GetInt32());
+
+        var byMember = dataAuto.GetProperty("byMember");
+        var memberNames = new List<string>();
+        foreach (var m in byMember.EnumerateArray())
+        {
+            memberNames.Add(m.GetProperty("name").GetString()!);
+        }
+        Assert.Contains("Syafix Said", memberNames);
+        Assert.Contains("Iqbal Ali", memberNames);
     }
 
     private class FakeTenantService : TrackerKerja.Application.Common.Interfaces.ICurrentTenantService

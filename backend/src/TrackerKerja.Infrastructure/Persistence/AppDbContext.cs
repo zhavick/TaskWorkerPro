@@ -45,6 +45,9 @@ public class AppDbContext : DbContext
     public DbSet<UserBadgeSnapshot> UserBadgeSnapshots => Set<UserBadgeSnapshot>();
     public DbSet<ImportLog> ImportLogs => Set<ImportLog>();
     public DbSet<UserNotification> UserNotifications => Set<UserNotification>();
+    public DbSet<TimesheetPeriod> TimesheetPeriods => Set<TimesheetPeriod>();
+    public DbSet<CompanyTimesheetConfig> CompanyTimesheetConfigs => Set<CompanyTimesheetConfig>();
+    public DbSet<Holiday> Holidays => Set<Holiday>();
 
     public int? CurrentCompanyId => _tenantService?.CompanyId;
     public bool IsCurrentUserAdmin => _tenantService?.IsAdmin ?? false;
@@ -203,5 +206,32 @@ public class AppDbContext : DbContext
 
         modelBuilder.Entity<UserNotification>().HasQueryFilter(n =>
             IsCurrentUserAdmin || CurrentCompanyId == null || n.CompanyId == CurrentCompanyId);
+
+        modelBuilder.Entity<TimesheetPeriod>().ToTable("timesheet_periods");
+        modelBuilder.Entity<TimesheetPeriod>()
+            .HasOne(p => p.Company)
+            .WithMany(c => c.TimesheetPeriods)
+            .HasForeignKey(p => p.CompanyId)
+            .OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<TimesheetPeriod>().HasQueryFilter(p =>
+            IsCurrentUserAdmin || CurrentCompanyId == null || p.CompanyId == CurrentCompanyId);
+
+        modelBuilder.Entity<CompanyTimesheetConfig>().ToTable("company_timesheet_configs");
+        modelBuilder.Entity<CompanyTimesheetConfig>()
+            .HasOne(c => c.Company)
+            .WithOne(comp => comp.TimesheetConfig)
+            .HasForeignKey<CompanyTimesheetConfig>(c => c.CompanyId)
+            .OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<CompanyTimesheetConfig>().HasQueryFilter(c =>
+            IsCurrentUserAdmin || CurrentCompanyId == null || c.CompanyId == CurrentCompanyId);
+
+        modelBuilder.Entity<Holiday>().ToTable("holidays");
+        modelBuilder.Entity<Holiday>()
+            .HasOne(h => h.Company)
+            .WithMany()
+            .HasForeignKey(h => h.CompanyId)
+            .OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<Holiday>().HasQueryFilter(h =>
+            IsCurrentUserAdmin || h.CompanyId == null || CurrentCompanyId == null || h.CompanyId == CurrentCompanyId);
     }
 }

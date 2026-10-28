@@ -30,10 +30,72 @@ public class AttendancesController : ControllerBase
         var userId = _tenantService.UserId;
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
 
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var tzOffset = TimeSpan.FromHours(7); // WIB
+        var nowTz = DateTimeOffset.UtcNow.ToOffset(tzOffset);
+        var today = DateOnly.FromDateTime(nowTz.DateTime);
+
         var attendance = await _context.Attendances
-            .AsNoTracking()
             .FirstOrDefaultAsync(a => a.UserId == userId && a.Date == today);
+
+        // Auto-reflect today's active tasks if attendance is not set or has 0 hours
+        if (attendance == null || (attendance.TotalHours == 0.0 && attendance.Type == AttendanceType.Present))
+        {
+            var isWeekend = today.DayOfWeek == DayOfWeek.Saturday || today.DayOfWeek == DayOfWeek.Sunday;
+            var isHoliday = await _context.Holidays.AsNoTracking().AnyAsync(h => h.Date == today);
+
+            if (!isWeekend && !isHoliday)
+            {
+                var todayStartUtc = new DateTimeOffset(today.Year, today.Month, today.Day, 0, 0, 0, tzOffset).ToUniversalTime();
+                var todayEndUtc = new DateTimeOffset(today.Year, today.Month, today.Day, 23, 59, 59, tzOffset).ToUniversalTime();
+
+                var activeTasks = await _context.Tasks
+                    .AsNoTracking()
+                    .Where(t => t.AssignedToUserId == userId &&
+                                (t.StartDate == null || t.StartDate <= todayEndUtc) &&
+                                (t.DueDate == null || t.DueDate >= todayStartUtc))
+                    .ToListAsync();
+
+                if (activeTasks.Count > 0)
+                {
+                    var clockIn = new DateTimeOffset(today.Year, today.Month, today.Day, 8, 0, 0, tzOffset).ToUniversalTime();
+                    var clockOut = new DateTimeOffset(today.Year, today.Month, today.Day, 17, 10, 0, tzOffset).ToUniversalTime();
+                    var taskTitles = string.Join(", ", activeTasks.Take(2).Select(t => t.Title.Length > 80 ? t.Title.Substring(0, 77) + "..." : t.Title));
+                    if (activeTasks.Count > 2) taskTitles += $" (+{activeTasks.Count - 2} lainnya)";
+                    var notesText = $"Presensi sinkronisasi tugas hari ini (8 Jam): {taskTitles}";
+                    if (notesText.Length > 450) notesText = notesText.Substring(0, 447) + "...";
+
+                    if (attendance == null)
+                    {
+                        attendance = new Attendance
+                        {
+                            UserId = userId,
+                            Date = today,
+                            Type = AttendanceType.Present,
+                            WorkLocation = WorkLocation.WFO,
+                            ClockIn = clockIn,
+                            ClockOut = clockOut,
+                            TotalHours = 8.0,
+                            Status = 2,
+                            Notes = $"Presensi sinkronisasi tugas hari ini (8 Jam): {taskTitles}",
+                            CreatedAt = DateTimeOffset.UtcNow,
+                            UpdatedAt = DateTimeOffset.UtcNow
+                        };
+                        _context.Attendances.Add(attendance);
+                    }
+                    else
+                    {
+                        attendance.ClockIn ??= clockIn;
+                        attendance.ClockOut ??= clockOut;
+                        attendance.TotalHours = 8.0;
+                        attendance.Status = 2;
+                        attendance.Notes = $"Presensi sinkronisasi tugas hari ini (8 Jam): {taskTitles}";
+                        attendance.UpdatedAt = DateTimeOffset.UtcNow;
+                    }
+
+                    await _context.SaveChangesAsync();
+                }
+            }
+        }
 
         if (attendance == null)
         {
@@ -493,5 +555,209 @@ public class AttendancesController : ControllerBase
         await _context.SaveChangesAsync();
 
         return Ok(new { success = true, message = "Entri presensi manual berhasil ditambahkan.", data = entry });
+    }
+
+    [HttpPost("sync-from-tasks")]
+    [Authorize]
+    public async Task<IActionResult> SyncFromTasks(
+        [FromQuery] int? companyId = null,
+        [FromQuery] string? userId = null,
+        [FromQuery] DateOnly? date = null,
+        [FromQuery] int? month = null,
+        [FromQuery] int? year = null)
+    {
+        var currentUserId = _tenantService.UserId;
+        if (string.IsNullOrEmpty(currentUserId)) return Unauthorized();
+
+        var isAdmin = _tenantService.IsAdmin;
+        int? targetCompanyId = companyId;
+        if (!targetCompanyId.HasValue)
+        {
+            if (!isAdmin)
+            {
+                targetCompanyId = _tenantService.CompanyId;
+            }
+            else if (_tenantService.CompanyId.HasValue)
+            {
+                var adminComp = _tenantService.CompanyId.Value;
+                var hasMembers = await _context.Users.AnyAsync(u => u.CompanyId == adminComp &&
+                    !(u.UserName != null && (u.UserName.ToLower() == "admin" || u.UserName.ToLower() == "administrator")) &&
+                    !(u.Email != null && u.Email.ToLower().Contains("admin@")));
+                if (hasMembers)
+                {
+                    targetCompanyId = adminComp;
+                }
+            }
+        }
+        string? targetUserId = isAdmin ? userId : currentUserId;
+
+        var usersQuery = _context.Users.Where(u => u.IsApproved);
+        if (targetCompanyId.HasValue)
+        {
+            usersQuery = usersQuery.Where(u => u.CompanyId == targetCompanyId.Value);
+        }
+        if (!string.IsNullOrEmpty(targetUserId))
+        {
+            usersQuery = usersQuery.Where(u => u.Id == targetUserId);
+        }
+        else
+        {
+            // Exclude admins when syncing team
+            usersQuery = usersQuery.Where(u =>
+                !(u.UserName != null && (u.UserName.ToLower() == "admin" || u.UserName.ToLower() == "administrator")) &&
+                !(u.Email != null && u.Email.ToLower().Contains("admin@")));
+        }
+
+        var users = await usersQuery.ToListAsync();
+        if (users.Count == 0)
+        {
+            return Ok(new { success = true, message = "Tidak ada pengguna yang memenuhi kriteria sinkronisasi.", syncedCount = 0 });
+        }
+
+        var holidays = await _context.Holidays.AsNoTracking().ToListAsync();
+        var holidaySet = holidays.Select(h => h.Date).ToHashSet();
+        var tzOffset = TimeSpan.FromHours(7);
+
+        int totalSynced = 0;
+
+        foreach (var user in users)
+        {
+            var userTasks = await _context.Tasks
+                .AsNoTracking()
+                .Where(t => t.AssignedToUserId == user.Id)
+                .ToListAsync();
+
+            if (userTasks.Count == 0) continue;
+
+            // Collect active dates for user
+            var dateTaskMap = new Dictionary<DateOnly, List<WorkTask>>();
+
+            foreach (var task in userTasks)
+            {
+                DateOnly taskStart;
+                DateOnly taskDue;
+
+                if (task.StartDate.HasValue && task.DueDate.HasValue)
+                {
+                    taskStart = DateOnly.FromDateTime(task.StartDate.Value.ToOffset(tzOffset).DateTime);
+                    taskDue = DateOnly.FromDateTime(task.DueDate.Value.ToOffset(tzOffset).DateTime);
+                }
+                else if (task.StartDate.HasValue)
+                {
+                    taskStart = DateOnly.FromDateTime(task.StartDate.Value.ToOffset(tzOffset).DateTime);
+                    taskDue = taskStart;
+                }
+                else if (task.DueDate.HasValue)
+                {
+                    taskDue = DateOnly.FromDateTime(task.DueDate.Value.ToOffset(tzOffset).DateTime);
+                    taskStart = taskDue;
+                }
+                else
+                {
+                    var created = DateOnly.FromDateTime(task.CreatedAt.ToOffset(tzOffset).DateTime);
+                    taskStart = created;
+                    taskDue = created;
+                }
+
+                if (taskStart > taskDue)
+                {
+                    var tmp = taskStart;
+                    taskStart = taskDue;
+                    taskDue = tmp;
+                }
+
+                // If specific date requested, clamp or filter
+                if (date.HasValue)
+                {
+                    if (date.Value < taskStart || date.Value > taskDue) continue;
+                    taskStart = date.Value;
+                    taskDue = date.Value;
+                }
+                else if (month.HasValue && year.HasValue)
+                {
+                    var mStart = new DateOnly(year.Value, month.Value, 1);
+                    var mEnd = new DateOnly(year.Value, month.Value, DateTime.DaysInMonth(year.Value, month.Value));
+                    if (taskDue < mStart || taskStart > mEnd) continue;
+                    taskStart = taskStart < mStart ? mStart : taskStart;
+                    taskDue = taskDue > mEnd ? mEnd : taskDue;
+                }
+
+                for (var cur = taskStart; cur <= taskDue; cur = cur.AddDays(1))
+                {
+                    // Skip weekends & holidays
+                    if (cur.DayOfWeek == DayOfWeek.Saturday || cur.DayOfWeek == DayOfWeek.Sunday || holidaySet.Contains(cur))
+                    {
+                        continue;
+                    }
+
+                    if (!dateTaskMap.ContainsKey(cur))
+                    {
+                        dateTaskMap[cur] = new List<WorkTask>();
+                    }
+                    if (!dateTaskMap[cur].Any(t => t.Id == task.Id))
+                    {
+                        dateTaskMap[cur].Add(task);
+                    }
+                }
+            }
+
+            foreach (var kvp in dateTaskMap)
+            {
+                var curDate = kvp.Key;
+                var tasksOnDate = kvp.Value;
+
+                var clockIn = new DateTimeOffset(curDate.Year, curDate.Month, curDate.Day, 8, 0, 0, tzOffset);
+                var clockOut = new DateTimeOffset(curDate.Year, curDate.Month, curDate.Day, 17, 10, 0, tzOffset);
+                var taskTitles = string.Join(", ", tasksOnDate.Take(2).Select(t => t.Title.Length > 80 ? t.Title.Substring(0, 77) + "..." : t.Title));
+                if (tasksOnDate.Count > 2) taskTitles += $" (+{tasksOnDate.Count - 2} lainnya)";
+                var notesText = $"Presensi sinkronisasi tugas harian (8 Jam): {taskTitles}";
+                if (notesText.Length > 450) notesText = notesText.Substring(0, 447) + "...";
+
+                var existingAtt = await _context.Attendances
+                    .FirstOrDefaultAsync(a => a.UserId == user.Id && a.Date == curDate);
+
+                if (existingAtt == null)
+                {
+                    existingAtt = new Attendance
+                    {
+                        UserId = user.Id,
+                        Date = curDate,
+                        Type = AttendanceType.Present,
+                        WorkLocation = WorkLocation.WFO,
+                        ClockIn = clockIn.ToUniversalTime(),
+                        ClockOut = clockOut.ToUniversalTime(),
+                        TotalHours = 8.0,
+                        Status = 2, // Approved
+                        Notes = notesText,
+                        CreatedAt = DateTimeOffset.UtcNow,
+                        UpdatedAt = DateTimeOffset.UtcNow
+                    };
+                    _context.Attendances.Add(existingAtt);
+                    totalSynced++;
+                }
+                else
+                {
+                    existingAtt.Type = AttendanceType.Present;
+                    existingAtt.WorkLocation = WorkLocation.WFO;
+                    existingAtt.ClockIn = clockIn.ToUniversalTime();
+                    existingAtt.ClockOut = clockOut.ToUniversalTime();
+                    existingAtt.TotalHours = 8.0;
+                    existingAtt.Status = 2; // Approved
+                    existingAtt.Notes = notesText;
+                    existingAtt.UpdatedAt = DateTimeOffset.UtcNow;
+                    totalSynced++;
+                }
+            }
+        }
+
+        await _context.SaveChangesAsync();
+
+        return Ok(new
+        {
+            success = true,
+            message = $"Presensi berhasil disinkronkan: {totalSynced} entri kehadiran (8 Jam/hari) diperbarui untuk {users.Count} personel.",
+            syncedCount = totalSynced,
+            usersCount = users.Count
+        });
     }
 }

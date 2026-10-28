@@ -25,6 +25,7 @@ import {
   LayoutGrid,
   ListFilter,
   Sparkles,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/tailgrids/core/button";
 import { Input } from "@/components/tailgrids/core/input";
@@ -398,6 +399,27 @@ export default function AttendancePage() {
       toast.error(err.response?.data?.message || err.message || "Gagal menyimpan presensi manual"),
   });
 
+  // Sync Attendance from Tasks Mutation (8 Jam/hari)
+  const syncFromTasksMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiClient.post("/attendances/sync-from-tasks", {});
+      return res.data;
+    },
+    onSuccess: (data) => {
+      toast.success(
+        data?.message || "Presensi berhasil disinkronkan dengan tugas harian (8 Jam/hari)!"
+      );
+      queryClient.invalidateQueries({ queryKey: ["attendanceTodayStatus"] });
+      queryClient.invalidateQueries({ queryKey: ["attendanceMyHistory"] });
+      queryClient.invalidateQueries({ queryKey: ["attendanceMySummary"] });
+      queryClient.invalidateQueries({ queryKey: ["attendanceReconciliation"] });
+      queryClient.invalidateQueries({ queryKey: ["teamMonthlyAttendance"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboardStats"] });
+    },
+    onError: (err: any) =>
+      toast.error(err.response?.data?.message || "Gagal melakukan sinkronisasi presensi dari tugas"),
+  });
+
   return (
     <div className="space-y-6 px-2 py-4 lg:px-6">
       {/* Header */}
@@ -411,28 +433,46 @@ export default function AttendancePage() {
           </p>
         </div>
 
-        {/* Tab Switcher */}
-        <div className="flex rounded-xl bg-gray-100 p-1 dark:bg-gray-800">
-          <button
-            onClick={() => setActiveTab("personal")}
-            className={`rounded-lg px-3.5 py-1.5 text-xs font-semibold transition ${
-              activeTab === "personal"
-                ? "bg-card-background text-primary-500 shadow-xs"
-                : "text-gray-500 hover:text-gray-900 dark:text-gray-400"
-            }`}
+        {/* Actions & Tab Switcher */}
+        <div className="flex flex-wrap items-center gap-2.5">
+          <Button
+            onClick={() => syncFromTasksMutation.mutate()}
+            disabled={syncFromTasksMutation.isPending}
+            variant="outline"
+            className="gap-1.5 border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/40 text-xs shadow-2xs font-semibold"
+            title="Sinkronisasikan seluruh tugas aktif member menjadi presensi 8 jam kerja penuh yang disetujui"
           >
-            Presensi Mandiri
-          </button>
-          <button
-            onClick={() => setActiveTab("reconciliation")}
-            className={`rounded-lg px-3.5 py-1.5 text-xs font-semibold transition ${
-              activeTab === "reconciliation"
-                ? "bg-card-background text-primary-500 shadow-xs"
-                : "text-gray-500 hover:text-gray-900 dark:text-gray-400"
-            }`}
-          >
-            Presensi & Rekonsiliasi Tim
-          </button>
+            {syncFromTasksMutation.isPending ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-emerald-600" />
+            ) : (
+              <Sparkles className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+            )}
+            Sinkronisasi Presensi dari Tugas
+          </Button>
+
+          {/* Tab Switcher */}
+          <div className="flex rounded-xl bg-gray-100 p-1 dark:bg-gray-800">
+            <button
+              onClick={() => setActiveTab("personal")}
+              className={`rounded-lg px-3.5 py-1.5 text-xs font-semibold transition ${
+                activeTab === "personal"
+                  ? "bg-card-background text-primary-500 shadow-xs"
+                  : "text-gray-500 hover:text-gray-900 dark:text-gray-400"
+              }`}
+            >
+              Presensi Mandiri
+            </button>
+            <button
+              onClick={() => setActiveTab("reconciliation")}
+              className={`rounded-lg px-3.5 py-1.5 text-xs font-semibold transition ${
+                activeTab === "reconciliation"
+                  ? "bg-card-background text-primary-500 shadow-xs"
+                  : "text-gray-500 hover:text-gray-900 dark:text-gray-400"
+              }`}
+            >
+              Presensi & Rekonsiliasi Tim
+            </button>
+          </div>
         </div>
       </div>
 
@@ -805,6 +845,19 @@ export default function AttendancePage() {
                     Audit Harian
                   </button>
                 </div>
+
+                <Button
+                  onClick={() => syncFromTasksMutation.mutate()}
+                  disabled={syncFromTasksMutation.isPending}
+                  className="gap-1.5 bg-emerald-600 font-semibold text-white shadow-md shadow-emerald-500/20 hover:bg-emerald-700 text-xs"
+                >
+                  {syncFromTasksMutation.isPending ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin text-white" />
+                  ) : (
+                    <Sparkles className="h-3.5 w-3.5 text-white" />
+                  )}
+                  Sinkronisasi Tugas ke Presensi (8 Jam)
+                </Button>
 
                 <Button
                   onClick={() => setManualModalOpen(true)}

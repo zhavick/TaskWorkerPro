@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef, useMemo } from "react";
+import React, { useState, useRef, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "@/services/api/client";
 import {
@@ -29,6 +29,7 @@ import {
   Copy,
   Check,
   RefreshCw,
+  Building2,
 } from "lucide-react";
 import { Button } from "@/components/tailgrids/core/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/tailgrids/core/dialog";
@@ -94,6 +95,9 @@ export function ImportExcelDialog({ open, onOpenChange, onSuccess }: ImportExcel
   // Wizard Step: 'upload' | 'preview' | 'result'
   const [step, setStep] = useState<"upload" | "preview" | "result">("upload");
 
+  // Selected Target Company (Mandatory for Admin)
+  const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(null);
+
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [defaultProjectId, setDefaultProjectId] = useState<string>("");
   const [bulkAssignUserId, setBulkAssignUserId] = useState<string>("");
@@ -119,24 +123,49 @@ export function ImportExcelDialog({ open, onOpenChange, onSuccess }: ImportExcel
   // Result state
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
 
-  // Projects Query
-  const { data: projects = [] } = useQuery<any[]>({
-    queryKey: ["projectsSelect"],
+  // Companies Query (for tenant/company selection)
+  const { data: companies = [], isLoading: loadingCompanies } = useQuery<any[]>({
+    queryKey: ["companiesSelect"],
     queryFn: async () => {
-      const res = await apiClient.get("/projects");
-      return res.data.data;
+      const res = await apiClient.get("/companies");
+      return res.data?.data || [];
     },
     enabled: open,
   });
 
-  // Members Query for Bulk PIC Assignment
-  const { data: members = [] } = useQuery<any[]>({
-    queryKey: ["membersSelect"],
+  // Auto-select first company when loaded if not yet set
+  useEffect(() => {
+    if (companies.length > 0 && selectedCompanyId === null) {
+      setSelectedCompanyId(companies[0].id);
+    }
+  }, [companies, selectedCompanyId]);
+
+  const handleCompanyChange = (companyId: number) => {
+    setSelectedCompanyId(companyId);
+    setDefaultProjectId("");
+    setBulkAssignUserId("");
+  };
+
+  // Projects Query (filtered by selected company)
+  const { data: projects = [] } = useQuery<any[]>({
+    queryKey: ["projectsSelect", selectedCompanyId],
     queryFn: async () => {
-      const res = await apiClient.get("/members");
-      return res.data.data;
+      const url = selectedCompanyId ? `/projects?companyId=${selectedCompanyId}` : "/projects";
+      const res = await apiClient.get(url);
+      return res.data?.data || [];
     },
-    enabled: open,
+    enabled: open && !!selectedCompanyId,
+  });
+
+  // Members Query for Bulk PIC Assignment (filtered by selected company)
+  const { data: members = [] } = useQuery<any[]>({
+    queryKey: ["membersSelect", selectedCompanyId],
+    queryFn: async () => {
+      const url = selectedCompanyId ? `/members?companyId=${selectedCompanyId}` : "/members";
+      const res = await apiClient.get(url);
+      return res.data?.data || [];
+    },
+    enabled: open && !!selectedCompanyId,
   });
 
   // Download Template Handler
@@ -165,12 +194,14 @@ export function ImportExcelDialog({ open, onOpenChange, onSuccess }: ImportExcel
   // Preview Mutation
   const previewMutation = useMutation({
     mutationFn: async () => {
+      if (!selectedCompanyId) throw new Error("Silakan pilih perusahaan tujuan terlebih dahulu.");
       if (!selectedFile) throw new Error("Silakan pilih file Excel terlebih dahulu.");
 
       const formData = new FormData();
       formData.append("file", selectedFile);
+      formData.append("companyId", selectedCompanyId.toString());
 
-      const res = await apiClient.post("/tasks/import/preview", formData);
+      const res = await apiClient.post(`/tasks/import/preview?companyId=${selectedCompanyId}`, formData);
       return res.data;
     },
     onSuccess: (data) => {
@@ -198,10 +229,12 @@ export function ImportExcelDialog({ open, onOpenChange, onSuccess }: ImportExcel
   // Commit Mutation
   const commitMutation = useMutation({
     mutationFn: async () => {
+      if (!selectedCompanyId) throw new Error("Silakan pilih perusahaan tujuan terlebih dahulu.");
       if (!previewData) throw new Error("Data pratinjau tidak ditemukan.");
       if (selectedRowIndexes.size === 0) throw new Error("Pilih setidaknya satu baris tugas yang valid untuk diimpor.");
 
       const payload = {
+        companyId: selectedCompanyId,
         defaultProjectId: defaultProjectId ? parseInt(defaultProjectId, 10) : null,
         bulkAssignUserId: bulkAssignUserId || null,
         selectedRowIndexes: Array.from(selectedRowIndexes),
@@ -213,7 +246,7 @@ export function ImportExcelDialog({ open, onOpenChange, onSuccess }: ImportExcel
         autoApproveNewUsers,
       };
 
-      const res = await apiClient.post("/tasks/import/commit", payload);
+      const res = await apiClient.post(`/tasks/import/commit?companyId=${selectedCompanyId}`, payload);
       return res.data;
     },
     onSuccess: (data) => {
@@ -428,6 +461,47 @@ export function ImportExcelDialog({ open, onOpenChange, onSuccess }: ImportExcel
         {/* ================= STEP 1: UPLOAD & CONFIGURATION ================= */}
         {step === "upload" && (
           <div className="space-y-4 pt-3">
+            {/* Mandatory Target Company Selector */}
+            <div className="rounded-xl border border-emerald-200/90 bg-emerald-50/60 p-3.5 dark:border-emerald-900/60 dark:bg-emerald-950/20 space-y-1.5 shadow-2xs">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-gray-900 dark:text-white flex items-center gap-1.5">
+                  <Building2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                  Perusahaan / Tenant Tujuan Impor <span className="text-rose-500 font-extrabold">*</span>
+                </label>
+                {loadingCompanies && (
+                  <span className="flex items-center gap-1 text-[11px] text-gray-500">
+                    <Loader2 className="h-3 w-3 animate-spin text-emerald-600" /> Memuat daftar perusahaan...
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                Pilih perusahaan tujuan tempat semua tugas, proyek, dan personil baru akan ditempatkan.
+              </p>
+              <div className="relative mt-1">
+                <select
+                  value={selectedCompanyId ?? ""}
+                  onChange={(e) => {
+                    const val = e.target.value ? parseInt(e.target.value, 10) : null;
+                    if (val) handleCompanyChange(val);
+                  }}
+                  className="w-full rounded-xl border border-emerald-300 bg-white p-2.5 text-xs font-semibold text-gray-900 shadow-xs outline-hidden focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 dark:border-emerald-800 dark:bg-gray-900 dark:text-white"
+                >
+                  <option value="" disabled>-- Pilih Perusahaan Tujuan (Wajib) --</option>
+                  {companies.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} {c.code ? `(${c.code})` : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {!selectedCompanyId && (
+                <p className="text-[11px] font-medium text-rose-500 flex items-center gap-1 pt-0.5">
+                  <AlertCircle className="h-3 w-3 shrink-0" />
+                  Harap pilih perusahaan tujuan terlebih dahulu sebelum melanjutkan.
+                </p>
+              )}
+            </div>
+
             {/* Template Download Section */}
             <div className="rounded-xl border border-gray-100 bg-gray-50/70 p-3 dark:border-gray-800 dark:bg-gray-800/40">
               <div className="flex items-center justify-between mb-2">
@@ -669,8 +743,8 @@ export function ImportExcelDialog({ open, onOpenChange, onSuccess }: ImportExcel
               <Button
                 type="button"
                 onClick={() => previewMutation.mutate()}
-                disabled={!selectedFile || previewMutation.isPending}
-                className="bg-emerald-600 text-white hover:bg-emerald-700 text-xs font-semibold gap-1.5 shadow-md shadow-emerald-600/20"
+                disabled={!selectedCompanyId || !selectedFile || previewMutation.isPending}
+                className="bg-emerald-600 text-white hover:bg-emerald-700 text-xs font-semibold gap-1.5 shadow-md shadow-emerald-600/20 disabled:opacity-50"
               >
                 {previewMutation.isPending ? (
                   <>
@@ -691,6 +765,30 @@ export function ImportExcelDialog({ open, onOpenChange, onSuccess }: ImportExcel
         {/* ================= STEP 2: PREVIEW & VALIDATION TABLE ================= */}
         {step === "preview" && previewData && (
           <div className="space-y-3 pt-2">
+            {/* Selected Company Banner */}
+            {selectedCompanyId && (
+              <div className="flex items-center justify-between rounded-xl border border-emerald-200 bg-emerald-50/70 px-3.5 py-2 dark:border-emerald-900/60 dark:bg-emerald-950/30">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-emerald-600 text-white shrink-0">
+                    <Building2 className="h-3.5 w-3.5" />
+                  </div>
+                  <div className="flex items-center gap-1.5 text-xs font-medium text-gray-800 dark:text-gray-200">
+                    <span className="text-gray-500 dark:text-gray-400">Target Perusahaan:</span>
+                    <span className="font-bold text-emerald-800 dark:text-emerald-300">
+                      {companies.find((c) => c.id === selectedCompanyId)?.name || `Perusahaan ID #${selectedCompanyId}`}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setStep("upload")}
+                  className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 hover:underline"
+                >
+                  Ganti Perusahaan
+                </button>
+              </div>
+            )}
+
             {/* Top Stat Summary Cards */}
             <div className="grid grid-cols-4 gap-2">
               <div className="rounded-xl border border-gray-200 bg-gray-50/60 p-2.5 text-center dark:border-gray-800 dark:bg-gray-800/40">
@@ -1053,6 +1151,15 @@ export function ImportExcelDialog({ open, onOpenChange, onSuccess }: ImportExcel
                 <CheckCircle2 className="h-5 w-5 shrink-0" />
                 <span>Impor Excel Selesai Berhasil!</span>
               </div>
+              {selectedCompanyId && (
+                <div className="mt-1 flex items-center gap-1.5 text-xs text-emerald-800 dark:text-emerald-300">
+                  <Building2 className="h-3.5 w-3.5" />
+                  <span>
+                    Perusahaan Tujuan:{" "}
+                    <strong>{companies.find((c) => c.id === selectedCompanyId)?.name || `ID #${selectedCompanyId}`}</strong>
+                  </span>
+                </div>
+              )}
               <div className="mt-3 grid grid-cols-2 sm:grid-cols-5 gap-2 text-center text-xs">
                 <div className="rounded-lg bg-white/80 p-2.5 shadow-xs dark:bg-gray-900">
                   <div className="flex items-center justify-center text-gray-500 mb-1">

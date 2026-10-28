@@ -150,6 +150,12 @@ export default function MembersPage() {
   const [isManageAdminGroupOpen, setIsManageAdminGroupOpen] = useState(false);
   const [adminEmailInput, setAdminEmailInput] = useState("");
 
+  // Bulk Company Change States
+  const [isBulkCompanyModalOpen, setIsBulkCompanyModalOpen] = useState(false);
+  const [bulkSelectedUserIds, setBulkSelectedUserIds] = useState<string[]>([]);
+  const [bulkTargetCompanyId, setBulkTargetCompanyId] = useState<number | null>(null);
+  const [bulkMemberSearch, setBulkMemberSearch] = useState("");
+
   // Member Audit Logs Query
   const { data: memberAuditLogs = [], isLoading: loadingMemberAudit } = useQuery<any[]>({
     queryKey: ["memberAuditLogs", auditTarget?.id],
@@ -236,6 +242,15 @@ export default function MembersPage() {
 
   const members = membersResponse?.data || [];
   const groups = membersResponse?.groups || [];
+
+  // 3. Fetch Master Companies for company reassignment
+  const { data: allCompanies = [] } = useQuery<any[]>({
+    queryKey: ["masterCompaniesList"],
+    queryFn: async () => {
+      const res = await apiClient.get("/companies");
+      return res.data?.data || [];
+    },
+  });
 
   // Summary Metrics
   const metrics = useMemo(() => {
@@ -368,8 +383,25 @@ export default function MembersPage() {
         });
       }
     },
+    onError: (err: any) => toast.error(err.response?.data?.message || "Gagal memperbarui profil"),
+  });
+
+  const bulkChangeCompanyMutation = useMutation({
+    mutationFn: async ({ userIds, targetCompanyId }: { userIds: string[]; targetCompanyId: number }) => {
+      const res = await apiClient.post("/members/bulk-change-company", {
+        userIds,
+        targetCompanyId,
+      });
+      return res.data;
+    },
+    onSuccess: (data) => {
+      toast.success(data.message || "Perusahaan anggota dan tugas berhasil dipindahkan!");
+      queryClient.invalidateQueries({ queryKey: ["membersList"] });
+      setBulkSelectedUserIds([]);
+      setIsBulkCompanyModalOpen(false);
+    },
     onError: (err: any) => {
-      toast.error(err.response?.data?.message || "Gagal memperbarui data anggota");
+      toast.error(err.response?.data?.message || "Gagal memindahkan perusahaan.");
     },
   });
 
@@ -436,14 +468,30 @@ export default function MembersPage() {
         {/* View Mode Switcher & Admin Group Management */}
         <div className="flex flex-wrap items-center gap-2">
           {isAdmin && (
-            <button
-              type="button"
-              onClick={() => setIsManageAdminGroupOpen(true)}
-              className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 px-3.5 py-2 text-xs font-bold text-white shadow-md hover:from-indigo-700 hover:to-purple-700 transition"
-            >
-              <ShieldCheck className="h-4 w-4" />
-              Kelola Group Admin
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  setBulkSelectedUserIds([]);
+                  setBulkTargetCompanyId(allCompanies[0]?.id || groups[0]?.companyId || null);
+                  setBulkMemberSearch("");
+                  setIsBulkCompanyModalOpen(true);
+                }}
+                className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 px-3.5 py-2 text-xs font-bold text-white shadow-md hover:from-emerald-700 hover:to-teal-700 transition"
+              >
+                <Building className="h-4 w-4" />
+                Pindah Perusahaan Staf
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsManageAdminGroupOpen(true)}
+                className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 px-3.5 py-2 text-xs font-bold text-white shadow-md hover:from-indigo-700 hover:to-purple-700 transition"
+              >
+                <ShieldCheck className="h-4 w-4" />
+                Kelola Group Admin
+              </button>
+            </>
           )}
 
           <div className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white p-1 shadow-2xs dark:border-gray-800 dark:bg-gray-900">
@@ -1074,7 +1122,7 @@ export default function MembersPage() {
                     />
                   </div>
 
-                  {isAdmin && groups.length > 0 && (
+                  {isAdmin && (allCompanies.length > 0 || groups.length > 0) && (
                     <div className="space-y-1.5">
                       <label className="text-xs font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
                         <Building className="h-3.5 w-3.5 text-indigo-500" />
@@ -1085,12 +1133,20 @@ export default function MembersPage() {
                         onChange={(e) => setEditCompanyId(Number(e.target.value))}
                         className="w-full text-xs font-medium rounded-xl border border-gray-300 bg-white p-2.5 text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                       >
-                        {groups.map((g) => (
-                          <option key={g.companyId} value={g.companyId}>
-                            [{g.companyCode}] {g.companyName}
-                          </option>
-                        ))}
+                        {(allCompanies.length > 0 ? allCompanies : groups).map((c: any) => {
+                          const cId = c.id ?? c.companyId;
+                          const cCode = c.code ?? c.companyCode;
+                          const cName = c.name ?? c.companyName;
+                          return (
+                            <option key={cId} value={cId}>
+                              [{cCode}] {cName}
+                            </option>
+                          );
+                        })}
                       </select>
+                      <p className="text-[10px] text-gray-400">
+                        Memindahkan perusahaan anggota akan otomatis memindahkan seluruh tugas yang ditugaskan ke anggota ini.
+                      </p>
                     </div>
                   )}
 
@@ -1792,6 +1848,220 @@ export default function MembersPage() {
               className="text-xs"
             >
               Tutup
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 6. MODAL BULK PINDAH PERUSAHAAN ANGGOTA */}
+      <Dialog isOpen={isBulkCompanyModalOpen} onOpenChange={setIsBulkCompanyModalOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-600 text-white shadow-md">
+                <Building className="h-5 w-5" />
+              </div>
+              <div>
+                <DialogTitle className="text-base font-extrabold text-gray-900 dark:text-white">
+                  Pindah Perusahaan Staf (Bulk Reassignment)
+                </DialogTitle>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Pindahkan staf dan otomatis sinkronkan seluruh tugas (*task*) yang ditugaskan ke perusahaan tujuan.
+                </p>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <DialogBody className="space-y-4 py-2">
+            {/* Target Company Selection */}
+            <div className="rounded-xl border border-emerald-100 bg-emerald-50/50 p-3.5 dark:border-emerald-900/40 dark:bg-emerald-950/20 space-y-2">
+              <label className="text-xs font-bold text-gray-800 dark:text-gray-200 flex items-center gap-2">
+                <Building className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                Pilih Perusahaan Tujuan <span className="text-rose-500">*</span>
+              </label>
+              <select
+                value={bulkTargetCompanyId ?? ""}
+                onChange={(e) => setBulkTargetCompanyId(Number(e.target.value))}
+                className="w-full text-xs font-semibold rounded-xl border border-gray-300 bg-white p-2.5 text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              >
+                {(allCompanies.length > 0 ? allCompanies : groups).map((c: any) => {
+                  const cId = c.id ?? c.companyId;
+                  const cCode = c.code ?? c.companyCode;
+                  const cName = c.name ?? c.companyName;
+                  return (
+                    <option key={cId} value={cId}>
+                      [{cCode}] {cName}
+                    </option>
+                  );
+                })}
+              </select>
+              <p className="text-[11px] text-emerald-700 dark:text-emerald-300">
+                Penting: Seluruh tugas yang ditugaskan ke staf yang dipindahkan akan otomatis dialihkan ke perusahaan ini agar timesheet dapat digenerate secara akurat.
+              </p>
+            </div>
+
+            {/* Member Selection Search & Controls */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
+                  <Input
+                    value={bulkMemberSearch}
+                    onChange={(e) => setBulkMemberSearch(e.target.value)}
+                    placeholder="Cari nama, email, atau jabatan staf..."
+                    className="pl-9 text-xs"
+                  />
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    type="button"
+                    onClick={() => {
+                      const filteredIds = members
+                        .filter((m) => {
+                          const q = bulkMemberSearch.toLowerCase();
+                          return (
+                            m.fullName.toLowerCase().includes(q) ||
+                            m.email.toLowerCase().includes(q) ||
+                            m.jobTitle.toLowerCase().includes(q)
+                          );
+                        })
+                        .map((m) => m.id);
+                      setBulkSelectedUserIds(Array.from(new Set([...bulkSelectedUserIds, ...filteredIds])));
+                    }}
+                    className="text-[11px] h-8 px-2.5 font-semibold"
+                  >
+                    Pilih Semua
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    type="button"
+                    onClick={() => setBulkSelectedUserIds([])}
+                    className="text-[11px] h-8 px-2.5 text-gray-500"
+                  >
+                    Reset
+                  </Button>
+                </div>
+              </div>
+
+              <div className="text-[11px] font-semibold text-gray-500 flex items-center justify-between px-1">
+                <span>Daftar Staf ({members.length})</span>
+                <span className="text-emerald-600 dark:text-emerald-400 font-bold">
+                  Terpilih: {bulkSelectedUserIds.length} staf
+                </span>
+              </div>
+
+              {/* Members Scrollable List */}
+              <div className="max-h-64 overflow-y-auto space-y-1.5 rounded-xl border border-gray-200 bg-gray-50/50 p-2 dark:border-gray-800 dark:bg-gray-900/40">
+                {members
+                  .filter((m) => {
+                    if (!bulkMemberSearch) return true;
+                    const q = bulkMemberSearch.toLowerCase();
+                    return (
+                      m.fullName.toLowerCase().includes(q) ||
+                      m.email.toLowerCase().includes(q) ||
+                      m.jobTitle.toLowerCase().includes(q)
+                    );
+                  })
+                  .map((m) => {
+                    const isSelected = bulkSelectedUserIds.includes(m.id);
+                    return (
+                      <label
+                        key={m.id}
+                        className={`flex items-center justify-between rounded-lg border p-2.5 cursor-pointer transition ${
+                          isSelected
+                            ? "border-emerald-500 bg-emerald-50/60 dark:border-emerald-600 dark:bg-emerald-950/30"
+                            : "border-gray-200 bg-white hover:bg-gray-50 dark:border-gray-700/60 dark:bg-gray-800/60 dark:hover:bg-gray-800"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setBulkSelectedUserIds([...bulkSelectedUserIds, m.id]);
+                              } else {
+                                setBulkSelectedUserIds(bulkSelectedUserIds.filter((id) => id !== m.id));
+                              }
+                            }}
+                            className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 h-4 w-4 shrink-0"
+                          />
+                          <div
+                            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-bold text-white"
+                            style={{ backgroundColor: m.avatarColor || "#6366F1" }}
+                          >
+                            {m.fullName.charAt(0).toUpperCase()}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-xs font-bold text-gray-900 dark:text-white truncate">
+                                {m.fullName}
+                              </span>
+                              <span className="rounded bg-gray-100 px-1 py-0.2 text-[9px] font-medium text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                                [{m.companyCode}]
+                              </span>
+                            </div>
+                            <span className="text-[10px] text-gray-500 dark:text-gray-400 block truncate">
+                              {m.email} • {m.jobTitle}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="shrink-0 text-right">
+                          <span className="text-[10px] font-semibold text-gray-500 block">
+                            {m.totalTasks} task
+                          </span>
+                        </div>
+                      </label>
+                    );
+                  })}
+              </div>
+            </div>
+          </DialogBody>
+
+          <DialogFooter className="flex items-center justify-between w-full">
+            <Button
+              size="sm"
+              variant="outline"
+              type="button"
+              onClick={() => setIsBulkCompanyModalOpen(false)}
+              className="text-xs"
+            >
+              Batal
+            </Button>
+
+            <Button
+              size="sm"
+              type="button"
+              disabled={
+                bulkSelectedUserIds.length === 0 ||
+                !bulkTargetCompanyId ||
+                bulkChangeCompanyMutation.isPending
+              }
+              onClick={() => {
+                if (bulkTargetCompanyId && bulkSelectedUserIds.length > 0) {
+                  bulkChangeCompanyMutation.mutate({
+                    userIds: bulkSelectedUserIds,
+                    targetCompanyId: bulkTargetCompanyId,
+                  });
+                }
+              }}
+              className="gap-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
+            >
+              {bulkChangeCompanyMutation.isPending ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Memindahkan...
+                </>
+              ) : (
+                <>
+                  <Building className="h-3.5 w-3.5" />
+                  Pindahkan {bulkSelectedUserIds.length} Staf &amp; Tugas
+                </>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

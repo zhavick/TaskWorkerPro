@@ -179,6 +179,70 @@ public static class DbInitializer
             {
                 // Ignore DDL errors if unsupported or already managed
             }
+
+            // Tabel Timesheet Periods & Company Timesheet Configs
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(@"
+                    CREATE TABLE IF NOT EXISTS timesheet_periods (
+                        id SERIAL PRIMARY KEY,
+                        company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+                        period_code VARCHAR(50) NOT NULL,
+                        name VARCHAR(200) NOT NULL,
+                        start_date DATE NOT NULL,
+                        end_date DATE NOT NULL,
+                        working_days_count INTEGER NOT NULL DEFAULT 21,
+                        is_closed BOOLEAN NOT NULL DEFAULT FALSE,
+                        notes TEXT,
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    );
+                    CREATE INDEX IF NOT EXISTS ix_timesheet_periods_company_id ON timesheet_periods(company_id);
+                    CREATE INDEX IF NOT EXISTS ix_timesheet_periods_start_date ON timesheet_periods(start_date DESC);
+
+                    CREATE TABLE IF NOT EXISTS company_timesheet_configs (
+                        id SERIAL PRIMARY KEY,
+                        company_id INTEGER NOT NULL UNIQUE REFERENCES companies(id) ON DELETE CASCADE,
+                        template_file_path VARCHAR(500),
+                        header_title VARCHAR(200) NOT NULL DEFAULT 'ELISTEC - Timesheet',
+                        client_name VARCHAR(200) NOT NULL DEFAULT 'Tugu Insurance',
+                        sow_number VARCHAR(100),
+                        approver_title VARCHAR(100) NOT NULL DEFAULT 'Mengetahui,',
+                        approver_name VARCHAR(150) NOT NULL DEFAULT 'xxxx',
+                        resource_title VARCHAR(100) NOT NULL DEFAULT 'Resource,',
+                        include_weekends BOOLEAN NOT NULL DEFAULT TRUE,
+                        weekend_task_text_format VARCHAR(500) NOT NULL DEFAULT 'Hari Libur Akhir Pekan ({DayName}) - Tidak Ada Pengerjaan Task',
+                        header_row_index INTEGER NOT NULL DEFAULT 7,
+                        data_start_row_index INTEGER NOT NULL DEFAULT 8,
+                        columns_mapping_json TEXT NOT NULL DEFAULT '[]',
+                        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    );
+                    CREATE INDEX IF NOT EXISTS ix_company_timesheet_configs_company_id ON company_timesheet_configs(company_id);
+
+                    CREATE TABLE IF NOT EXISTS holidays (
+                        id SERIAL PRIMARY KEY,
+                        date DATE NOT NULL,
+                        name VARCHAR(200) NOT NULL,
+                        description VARCHAR(500),
+                        is_national BOOLEAN NOT NULL DEFAULT TRUE,
+                        company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    );
+                    CREATE INDEX IF NOT EXISTS ix_holidays_date ON holidays(date);
+                    CREATE INDEX IF NOT EXISTS ix_holidays_company_id ON holidays(company_id);
+                    CREATE UNIQUE INDEX IF NOT EXISTS uq_holiday_date_company ON holidays(date, COALESCE(company_id, 0));
+
+                    -- Pastikan seluruh presensi kehadiran sinkron 8 jam kerja dan berstatus Approved
+                    UPDATE attendances 
+                    SET total_hours = 8.0, status = 2, notes = 'Presensi sinkronisasi 8 jam tugas harian' 
+                    WHERE (total_hours = 0 OR status = 1) AND type = 1;
+                ");
+            }
+            catch
+            {
+                // Ignore DDL errors if unsupported or already managed
+            }
         }
 
         // 1. Pastikan Perusahaan Default (HQ Tenant)
@@ -440,6 +504,9 @@ public static class DbInitializer
 
         // 10. Inisialisasi Otomatis Presensi Kehadiran Anggota (1 Agustus 2026 s/d 25 Oktober 2026)
         await AutoSeedAttendancesAsync(context);
+
+        // 11. Inisialisasi Otomatis Master Data Hari Libur Nasional 2026 Jika Kosong
+        await AutoSeedHolidaysAsync(context);
     }
 
     private static async Task AutoSeedTaskTrackerExcelAsync(AppDbContext context, ITaskExcelImportService? excelImportService)
@@ -545,5 +612,42 @@ public static class DbInitializer
             context.Attendances.AddRange(attendances);
             await context.SaveChangesAsync();
         }
+    }
+
+    public static async Task AutoSeedHolidaysAsync(AppDbContext context, int year = 2026)
+    {
+        if (await context.Holidays.IgnoreQueryFilters().AnyAsync(h => h.IsNational && h.Date.Year == year)) return;
+
+        var nationalHolidays = GetDefaultNationalHolidays(year);
+        if (nationalHolidays.Any())
+        {
+            context.Holidays.AddRange(nationalHolidays);
+            await context.SaveChangesAsync();
+        }
+    }
+
+    public static List<Holiday> GetDefaultNationalHolidays(int year = 2026)
+    {
+        if (year != 2026) return new List<Holiday>();
+
+        return new List<Holiday>
+        {
+            new Holiday { Date = new DateOnly(2026, 1, 1), Name = "Tahun Baru 2026 Masehi", Description = "Tahun Baru Masehi", IsNational = true },
+            new Holiday { Date = new DateOnly(2026, 1, 16), Name = "Isra Mi'raj Nabi Muhammad SAW", Description = "Peringatan Isra Mi'raj", IsNational = true },
+            new Holiday { Date = new DateOnly(2026, 2, 17), Name = "Tahun Baru Imlek 2577 Kongzili", Description = "Tahun Baru Imlek", IsNational = true },
+            new Holiday { Date = new DateOnly(2026, 3, 20), Name = "Hari Suci Nyepi (Tahun Baru Saka 1948)", Description = "Hari Suci Nyepi", IsNational = true },
+            new Holiday { Date = new DateOnly(2026, 3, 21), Name = "Hari Raya Idul Fitri 1447 Hijriah (Hari 1)", Description = "Idul Fitri 1447 H", IsNational = true },
+            new Holiday { Date = new DateOnly(2026, 3, 22), Name = "Hari Raya Idul Fitri 1447 Hijriah (Hari 2)", Description = "Idul Fitri 1447 H", IsNational = true },
+            new Holiday { Date = new DateOnly(2026, 4, 3), Name = "Wafat Yesus Kristus (Jumat Agung)", Description = "Wafat Yesus Kristus", IsNational = true },
+            new Holiday { Date = new DateOnly(2026, 5, 1), Name = "Hari Buruh Internasional", Description = "May Day", IsNational = true },
+            new Holiday { Date = new DateOnly(2026, 5, 14), Name = "Kenaikan Yesus Kristus", Description = "Kenaikan Yesus Kristus", IsNational = true },
+            new Holiday { Date = new DateOnly(2026, 5, 27), Name = "Hari Raya Idul Adha 1447 Hijriah", Description = "Idul Adha 1447 H", IsNational = true },
+            new Holiday { Date = new DateOnly(2026, 5, 31), Name = "Hari Raya Waisak 2570 BE", Description = "Hari Raya Waisak", IsNational = true },
+            new Holiday { Date = new DateOnly(2026, 6, 1), Name = "Hari Lahir Pancasila", Description = "Hari Lahir Pancasila", IsNational = true },
+            new Holiday { Date = new DateOnly(2026, 6, 16), Name = "Tahun Baru Islam 1448 Hijriah", Description = "1 Muharram 1448 H", IsNational = true },
+            new Holiday { Date = new DateOnly(2026, 8, 17), Name = "Hari Proklamasi Kemerdekaan RI", Description = "HUT RI ke-81", IsNational = true },
+            new Holiday { Date = new DateOnly(2026, 8, 25), Name = "Maulid Nabi Muhammad SAW", Description = "Peringatan Maulid Nabi", IsNational = true },
+            new Holiday { Date = new DateOnly(2026, 12, 25), Name = "Hari Raya Natal", Description = "Hari Raya Natal", IsNational = true }
+        };
     }
 }

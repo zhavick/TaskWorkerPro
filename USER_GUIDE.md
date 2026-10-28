@@ -1,9 +1,9 @@
 # Buku Panduan Pengguna (User Guide)
 # Work Tracker Pro (TrackerKerja Modern)
 
-> **Versi Aplikasi**: 4.0 (Next.js 16 TurboPack & ASP.NET Core 8 Web API Modern Edition)  
+> **Versi Aplikasi**: 4.1 (Next.js 16 TurboPack & ASP.NET Core 8 Web API Modern Edition)  
 > **Target Pengguna**: Seluruh Karyawan, System Analyst, Developer, QA, Technical Writer, Project Lead, dan Administrator  
-> **Terakhir Diperbarui**: 23 Oktober 2026  
+> **Terakhir Diperbarui**: 26 Oktober 2026  
 
 ---
 
@@ -18,10 +18,10 @@
 2. [Dashboard & Ringkasan Kinerja](#2-dashboard--ringkasan-kinerja)
    - 2.1 [Kartu Metrik & Statistik Pribadi](#21-kartu-metrik--statistik-pribadi)
    - 2.2 [Pemberitahuan & Notifikasi Lonceng](#22-pemberitahuan--notifikasi-lonceng)
-   - 2.3 [Distribusi Tugas & Beban Kerja Proyek](#23-distribusi-tugas--beban-kerja-proyek)
+   - 2.3 [Distribusi Tugas, Beban Kerja Proyek & Eksklusi Akun Administrator](#23-distribusi-tugas-beban-kerja-proyek--eksklusi-akun-administrator)
 3. [Modul Task (Manajemen Tugas Kerja)](#3-modul-task-manajemen-tugas-kerja)
    - 3.1 [Membuat Tugas Baru](#31-membuat-tugas-baru)
-   - 3.2 [Daftar Tugas & Filter Pencarian Cepat](#32-daftar-tugas--filter-pencarian-cepat)
+   - 3.2 [Daftar Tugas, Visualisasi Distribusi Proyek, Pengurutan Hari Ini & Filter Tanggal Cepat](#32-daftar-tugas-visualisasi-distribusi-proyek-pengurutan-hari-ini--filter-tanggal-cepat)
    - 3.3 [Memperbarui Status & Slider Kemajuan (0–100%)](#33-memperbarui-status--slider-kemajuan-0100)
    - 3.4 [Sub-Task (Hierarki Tugas Induk & Anak)](#34-sub-task-hierarki-tugas-induk--anak)
    - 3.5 [Mencatat Kendala (Obstacle) & Solusi Teknis](#35-mencatat-kendala-obstacle--solusi-teknis)
@@ -38,6 +38,7 @@
    - 5.3 [Pencatatan Jam Kerja Manual](#53-pencatatan-jam-kerja-manual)
    - 5.4 [Notifikasi Pengingat Pengisian Timesheet (Cut-Off Tanggal 25)](#54-notifikasi-pengingat-pengisian-timesheet-cut-off-tanggal-25)
    - 5.5 [Export Laporan Excel Timesheet Resmi (Format Standar Elistec)](#55-export-laporan-excel-timesheet-resmi-format-standar-elistec)
+   - 5.6 [Grafik Batang Beban Kerja Anggota Tim pada Halaman Laporan (/reports)](#56-grafik-batang-beban-kerja-anggota-tim-pada-halaman-laporan-reports)
 6. [Modul Absensi & Presensi Kerja (Attendance)](#6-modul-absensi--presensi-kerja-attendance)
    - 6.1 [Pencatatan Check-In & Check-Out Harian](#61-pencatatan-check-in--check-out-harian)
    - 6.2 [Status Kehadiran Fleksibel (Hadir, WFH, Sakit, Izin, Cuti, Libur)](#62-status-kehadiran-fleksibel-hadir-wfh-sakit-izin-cuti-libur)
@@ -69,13 +70,14 @@
     - 13.5 [Sinkronisasi Multi-Instance ke Host Induk (Online Streaming Base64 & Paket ZIP)](#135-sinkronisasi-multi-instance-ke-host-induk-online-streaming-base64--paket-zip)
     - 13.6 [Backup & Restore Database (.db & .sql)](#136-backup--restore-database-db--sql)
     - 13.7 [Integrasi Server Email (SMTP), Diagnostik Koneksi & 7 Template Event](#137-integrasi-server-email-smtp-diagnostik-koneksi--7-template-event)
-    - 13.8 [Audit Trail & Modal Detail Aktivitas](#138-audit-trail--modal-detail-aktivitas)
+    - 13.8 [Audit Trail, Line Chart CRUD Interaktif & Modal Detail Aktivitas](#138-audit-trail-line-chart-crud-interaktif--modal-detail-aktivitas)
 14. [Modul Gamifikasi, Aturan Poin 15 & 30 Hari, Daily Check-In & Hadiah](#14-modul-gamifikasi-aturan-poin-15--30-hari-daily-check-in--hadiah)
-    - 14.1 [Saldo Awal Bulanan (0), Aturan Poin 15/30 Hari & Aturan Streak (Reset 2 Hari)](#141-saldo-awal-bulanan-0-aturan-poin-1530-hari--aturan-streak-reset-2-hari)
-    - 14.2 [Milestone Bulanan (Streak 30 Hari) & Hadiah Spesial](#142-milestone-bulanan-streak-30-hari--hadiah-spesial)
-    - 14.3 [Koleksi 40+ Master Badge Gaul & Modern Anak Muda](#143-koleksi-40-master-badge-gaul--modern-anak-muda)
-    - 14.4 [Katalog Hadiah & Penukaran Poin (1 Poin = Rp 100)](#144-katalog-hadiah--penukaran-poin-1-poin--rp-100)
-    - 14.5 [Manajemen Master Hadiah & Persetujuan Klaim (Admin Approval)](#145-manajemen-master-hadiah--persetujuan-klaim-admin-approval)
+    - 14.1 [Navigasi Terpadu Sub-Modul & 4 Kartu Metrik KPI Gamifikasi](#141-navigasi-terpadu-sub-modul--4-kartu-metrik-kpi-gamifikasi)
+    - 14.2 [Saldo Awal Bulanan (0), Aturan Poin 15/30 Hari & Aturan Streak (Reset 2 Hari)](#142-saldo-awal-bulanan-0-aturan-poin-1530-hari--aturan-streak-reset-2-hari)
+    - 14.3 [Milestone Bulanan (Streak 30 Hari) & Hadiah Spesial](#143-milestone-bulanan-streak-30-hari--hadiah-spesial)
+    - 14.4 [Koleksi 42 Master Badge Gaul & Modern Anak Muda](#144-koleksi-42-master-badge-gaul--modern-anak-muda)
+    - 14.5 [Katalog Hadiah & Penukaran Poin (1 Poin = Rp 100)](#145-katalog-hadiah--penukaran-poin-1-poin--rp-100)
+    - 14.6 [Manajemen Master Hadiah & Persetujuan Klaim (Admin Approval)](#146-manajemen-master-hadiah--persetujuan-klaim-admin-approval)
 15. [Tata Letak Studio Bentang Penuh (Full-Width Responsive Studio Layout)](#15-tata-letak-studio-bentang-penuh-full-width-responsive-studio-layout)
     - 15.1 [Prinsip Kerja Kanvas Studio 2-Kolom & Bilah Aksi Bawah](#151-prinsip-kerja-kanvas-studio-2-kolom--bilah-aksi-bawah)
     - 15.2 [Operasional Halaman Edit Tugas (/Task/Edit)](#152-operasional-halaman-edit-tugas-taskedit)
@@ -205,8 +207,11 @@ Klik ikon **Lonceng Notifikasi** pada bilah atas untuk melihat panel pemberitahu
 - **Tab Mendekati Deadline**: Tugas yang memiliki batas waktu dalam 2–3 hari ke depan.
 - **Tab Timesheet (Pengingat Cut-Off)**: Menampilkan daftar tugas aktif yang belum memiliki catatan jam kerja (*timesheet*), terutama saat mendekati periode cut-off bulanan tanggal 25.
 
-### 2.3 Distribusi Tugas & Beban Kerja Proyek
+### 2.3 Distribusi Tugas, Beban Kerja Proyek & Eksklusi Akun Administrator
 Menampilkan diagram lingkaran (*doughnut chart*) dan grafik batang interaktif untuk melihat sebaran tugas per proyek, persentase penyelesaian, serta ringkasan aktivitas terbaru tim.
+
+> [!NOTE]
+> **Eksklusi Akun Administrator dari Analitik Tim**: Seluruh akun dengan peran **Administrator** secara otomatis tidak disertakan dalam grafik tren produktivitas kerja dan distribusi beban tugas tim di dashboard. Hal ini dirancang agar data yang ditampilkan murni mencerminkan kapasitas dan kontribusi anggota pelaksana operasional teknis tanpa terdistorsi oleh data administratif.
 
 ---
 
@@ -215,7 +220,7 @@ Menampilkan diagram lingkaran (*doughnut chart*) dan grafik batang interaktif un
 Modul Tugas adalah inti pengelolaan pekerjaan sehari-hari.
 
 ### 3.1 Membuat Tugas Baru
-1. Klik tombol **+ Tugas Baru** pada bilah atas atau di halaman Daftar Tugas (`/Task`).
+1. Klik tombol **+ Tugas Baru** pada bilah atas atau di halaman Daftar Tugas (`/tasks`).
 2. Isi formulir pembuatan tugas:
    - **Judul Tugas**: Nama ringkas aktivitas pekerjaan (contoh: *Pembuatan Dokumen FSD Integrasi API*).
    - **Kode Tugas (Task Code)**: Dihasilkan otomatis oleh sistem (contoh: `TSK-0732`).
@@ -228,13 +233,36 @@ Modul Tugas adalah inti pengelolaan pekerjaan sehari-hari.
    - **Deskripsi Detail**: Uraikan ruang lingkup dan instruksi tugas.
 3. Klik tombol **Simpan Tugas**.
 
-### 3.2 Daftar Tugas & Filter Pencarian Cepat
-Pada halaman `/Task`, Anda dapat memfilter tugas berdasarkan:
-- Pencarian kata kunci pada judul atau kode tugas.
-- Filter berdasarkan **Proyek**.
-- Filter berdasarkan **Status** (*Todo*, *In Progress*, *Done*).
-- Filter berdasarkan **Prioritas** dan **Penanggung Jawab (PIC)**.
-- Opsi sorting berdasarkan tanggal terbaru, prioritas tertinggi, atau tenggat waktu terdekat.
+### 3.2 Daftar Tugas, Visualisasi Distribusi Proyek, Pengurutan Hari Ini & Filter Tanggal Cepat
+Pada halaman `/tasks` (dengan label antarmuka bersih **"Daftar Tugas"**), Anda disajikan antarmuka visual interaktif yang kaya fitur:
+
+#### A. Grafik Interaktif Distribusi Tugas Proyek (Stacked Bar & Donut)
+Tepat di atas tabel tugas, terdapat kartu analitik distribusi tugas per proyek:
+- **Membaca Status Tugas**:
+  - 🟢 **Selesai (Done)**: Ditampilkan dengan warna hijau emerald.
+  - 🔵 **Sedang Berjalan (In Progress)**: Ditampilkan dengan warna biru sky.
+  - 🟡 **Belum Selesai (To Do)**: Ditampilkan dengan warna kuning amber.
+  - 🔴 **Terlambat (Overdue)**: Ditampilkan dengan warna merah rose untuk tugas aktif yang telah melewati batas waktu tenggat.
+- **Beralih Mode Tampilan (Switcher)**:
+  - Klik tombol **Stacked Bar** untuk melihat grafik batang bertumpuk proporsional per proyek.
+  - Klik tombol **Donut** untuk melihat proporsi volume tugas dalam diagram donat melingkar.
+- **Interaktivitas Click-to-Filter**:
+  - Klik salah satu batang proyek atau irisan donat pada grafik. Sistem secara instan memfilter tabel daftar tugas di bawahnya untuk hanya menampilkan tugas-tugas milik proyek tersebut tanpa perlu memuat ulang halaman!
+  - Untuk melihat kembali semua tugas, klik tombol **Reset Filter Proyek** atau pilih opsi "Semua Proyek" pada dropdown filter.
+- **Lipat / Tampilkan Grafik (*Collapse Toggle*)**:
+  - Klik tombol toggle panah di sudut kanan kartu untuk menyembunyikan grafik saat Anda ingin memprioritaskan ruang vertikal layar untuk membaca tabel data.
+
+#### B. Logika Pengurutan Berbasis Hari Ini (Today-First Sorting)
+- **Pengurutan Default Otomatis**: Saat pertama kali membuka halaman Daftar Tugas, sistem secara otomatis menerapkan pengurutan **Hari Ini / Sekarang** (`sortBy=today`).
+- **Prioritas Tugas**: Tugas yang memiliki batas waktu hari ini atau sedang aktif dikerjakan hari ini secara otomatis ditempatkan di posisi paling atas tabel (Tier 0), kemudian diikuti oleh tugas-tugas dengan tenggat waktu terdekat.
+- **Badge Hijau Menyala `Hari Ini`**: Setiap baris tugas yang jatuh tempo hari ini atau aktif hari ini ditandai dengan badge khusus berwarna hijau emerald dengan animasi cahaya lembut (*glowing pulse*) agar menarik perhatian dan membantu Anda memfokuskan prioritas kerja hari ini.
+
+#### C. Chip Filter Tanggal Cepat & Pencarian
+Di atas tabel tersedia tombol chip filter cepat:
+- **`Semua Tanggal`**: Menampilkan seluruh tugas tanpa batasan rentang tanggal.
+- **`Hari Ini / Sekarang`**: Menyaring hanya tugas yang memiliki batas waktu atau berstatus aktif pada hari ini.
+- **`Minggu Ini`**: Menyaring tugas yang dijadwalkan jatuh tempo dalam minggu berjalan.
+- **Pencarian & Filter Kolom**: Anda tetap dapat memfilter tugas berdasarkan kata kunci judul/deskripsi, Proyek, Status, Prioritas, dan Penanggung Jawab (PIC).
 
 ### 3.3 Memperbarui Status & Slider Kemajuan (0–100%)
 Setiap tugas dilengkapi dengan slider persentase kemajuan (*progress bar*):
@@ -363,6 +391,15 @@ Jika Anda lupa menyalakan timer saat bekerja:
 3. Pilih rentang tanggal (tersedia preset *Bulan Ini*, *Bulan Lalu*, *Minggu Ini*, atau rentang tanggal kustom).
 4. Klik **Download Excel**.
 - Format laporan mencakup konversi otomatis ke *Man-Days (MD)*, penandaan hari libur nasional, akhir pekan, dan formula kalkulasi grand total otomatis.
+
+### 5.6 Grafik Batang Beban Kerja Anggota Tim pada Halaman Laporan (`/reports`)
+Pada halaman laporan timesheet modern (`/reports`):
+1. **Visualisasi Komparatif Jam Kerja**:
+   - Di bagian atas ringkasan laporan, sistem secara otomatis merender diagram batang interaktif yang membandingkan akumulasi jam kerja nyata dari masing-masing anggota tim.
+2. **Interpretasi Data untuk Manajemen & Lead**:
+   - Memudahkan pimpinan tim dan manajer proyek mengidentifikasi beban kerja anggota secara visual tanpa harus menghitung manual dari baris tabel.
+   - Sumbu X menampilkan nama atau email karyawan, sedangkan sumbu Y menampilkan total jam kerja desimal.
+3. **Filter Sinkron**: Mengubah filter rentang tanggal pada halaman laporan otomatis memperbarui grafik batang seketika.
 
 ---
 
@@ -591,19 +628,46 @@ Modul ini memungkinkan sistem TrackerKerja mengirimkan email notifikasi otomatis
    - Klik **Edit Template** untuk mengubah subjek, isi pesan HTML, atau menyisipkan chip placeholder variabel dinamis (`{FullName}`, `{TaskTitle}`, `{ProjectName}`, `{ActionUrl}`, dll.).
    - Klik **Pratinjau (Preview)** untuk melihat hasil render visual email secara real-time.
 
-### 13.8 Audit Trail & Modal Detail Aktivitas
-Setiap aksi penting (pembuatan, perubahan, penghapusan, login, logout, dsb.) tercatat secara otomatis di menu **Audit Trail (`/AuditTrail`)**:
-- **Inspeksi Detail via Popup Modal**:
-  - Pada tabel log audit, klik tombol **Lihat Detail** pada baris aktivitas yang diinginkan.
-  - Sebuah popup modal elegan akan menampilkan informasi menyeluruh: waktu kejadian, user penanggung jawab, IP address, HTTP Method, URL request, Controller & Action, status HTTP (200, 400, 500), durasi eksekusi dalam milidetik, serta payload JSON/rincian perubahan data.
+### 13.8 Audit Trail, Line Chart CRUD Interaktif & Modal Detail Aktivitas
+Setiap aksi penting (pembuatan, perubahan, penghapusan, login, logout, dsb.) tercatat secara otomatis di menu **Audit Trail (`/audit-trail`)**:
+1. **Grafik Garis Aktivitas CRUD Interaktif (Multi-Line Chart)**:
+   - Di bagian atas halaman Audit Trail, disajikan visualisasi grafik garis bertenaga Recharts yang memetakan aktivitas sistem ke dalam 4 kuadran CRUD:
+     - 🟢 **Create (Garis Hijau Emerald)**: Operasi penambahan atau pendaftaran data baru (misal registrasi akun, pembuatan tugas, penambahan catatan, presensi check-in).
+     - 🔵 **Read (Garis Biru Sky)**: Operasi pembacaan, penelusuran, atau pengunduhan data (misal pencarian tugas, ekspor spreadsheet, tampilan detail).
+     - 🟡 **Update (Garis Kuning Amber)**: Operasi pengubahan data (misal update progress slider tugas, pengubahan profil, verifikasi admin approval).
+     - 🔴 **Delete (Garis Merah Rose)**: Operasi penghapusan data atau pembersihan log (misal hapus tugas, hapus catatan, pembersihan storage).
+   - **Pemilih Rentang Waktu Fleksibel**:
+     - Klik tombol **7 Hari Terakhir** (tampilan default untuk melihat tren mingguan).
+     - Klik tombol **14 Hari Terakhir** atau **30 Hari Terakhir** untuk menganalisis tren aktivitas bulanan.
+   - **Kartu Ringkasan Metrik Operasi**:
+     - 4 kartu ringkasan di atas grafik menampilkan akumulasi total angka Create, Read, Update, dan Delete untuk periode yang sedang dipilih, mempermudah inspeksi cepat jika terjadi anomali lonjakan modifikasi atau penghapusan data.
+2. **Inspeksi Detail Aktivitas via Popup Modal**:
+   - Pada tabel log audit di bawah grafik, klik tombol **Lihat Detail** pada baris aktivitas yang diinginkan.
+   - Sebuah popup modal elegan akan menampilkan informasi menyeluruh: waktu kejadian, user penanggung jawab, IP address, HTTP Method, URL request, Controller & Action, status HTTP (200, 400, 500), durasi eksekusi dalam milidetik, serta payload JSON/rincian perubahan data.
+3. **Ekspor Data Audit Trail ke CSV**:
+   - Gunakan tombol **Export CSV** untuk mengunduh seluruh rekaman log untuk dokumentasi kepatuhan audit internal atau eksternal.
 
 ---
 
 ## 14. Modul Gamifikasi, Aturan Poin 15 & 30 Hari, Daily Check-In & Hadiah
 
-Modul **Gamifikasi** (`/Gamification`) hadir untuk mendorong kedisiplinan dan produktivitas tim melalui pendekatan berbasis penghargaan (*gamified reward system*).
+Modul **Gamifikasi** (`/gamification`) hadir untuk mendorong kedisiplinan dan produktivitas tim melalui pendekatan berbasis penghargaan (*gamified reward system*).
 
-### 14.1 Saldo Awal Bulanan (0), Aturan Poin 15/30 Hari & Aturan Streak (Reset 2 Hari)
+### 14.1 Navigasi Terpadu Sub-Modul & 4 Kartu Metrik KPI Gamifikasi
+Seluruh sub-halaman pada modul gamifikasi telah distandarisasi untuk menghadirkan pengalaman visual yang seragam dan kohesif:
+1. **Header Navigasi Terpadu & Tab Bersama**:
+   - Di bagian atas layar terdapat banner spanduk hero beraksen *glassmorphic* dan bilah navigasi 3 tab horizontal:
+     - 🏆 **Overview & Peringkat (`/gamification`)**: Papan peringkat (leaderboard) tim, riwayat perolehan poin, dan linimasa aktivitas gamifikasi.
+     - 🎖️ **Koleksi Badge (`/gamification/badges`)**: Galeri 42 Master Badge gaul lengkap dengan status terkunci/terbuka, deskripsi gaul yang memotivasi, dan progress bar pemenuhan syarat.
+     - 🎁 **Katalog Hadiah (`/gamification/rewards`)**: Etalase penukaran reward (pulsa, voucher e-wallet, merchandise), pemesanan reward, dan riwayat status klaim.
+2. **4 Kartu Metrik KPI Standar**:
+   - Setiap sub-halaman menampilkan 4 kartu metrik performa gamifikasi yang selalu tersinkronisasi:
+     - 💰 **Saldo Poin**: Akumulasi poin tersedia yang siap ditukarkan beserta kalkulasi estimasi nilai dalam Rupiah (1 Poin = Rp 100).
+     - ⚡ **Level / Peringkat**: Peringkat keaktifan dan liga performa pengguna.
+     - 🔥 **Streak Hari**: Menampilkan rentang hari konsistensi check-in aktif beserta status keamanan streak (toleransi 2 hari sebelum reset).
+     - 🛡️ **Total Lencana**: Jumlah lencana yang telah berhasil Anda raih dari total koleksi 42 Master Badge.
+
+### 14.2 Saldo Awal Bulanan (0), Aturan Poin 15/30 Hari & Aturan Streak (Reset 2 Hari)
 1. **Ketentuan Saldo Bulanan & Akumulasi Poin (Aturan 15 & 30 Hari)**:
    - **Saldo Poin Dimulai dari 0**: Pada awal setiap bulan kalender baru, saldo poin akumulasi check-in seluruh pengguna **dimulai kembali dari 0** guna menciptakan kompetisi yang segar dan menjaga komitmen disiplin kerja yang konsisten.
    - **Aturan Perolehan Poin Check-In**:
@@ -621,11 +685,11 @@ Modul **Gamifikasi** (`/Gamification`) hadir untuk mendorong kedisiplinan dan pr
    - **Aturan Reset 2 Hari**: Jika Anda tidak melakukan check-in selama **2 hari berturut-turut** (`gap >= 2 hari`), hitungan streak akan otomatis **kembali ke awal (Hari 1)**.
    - Indikator kobaran api (*streak flame counter*) dan roadmap visual hari 1–30 akan memperlihatkan status konsistensi Anda.
 
-### 14.2 Milestone Bulanan (Streak 30 Hari) & Hadiah Spesial
+### 14.3 Milestone Bulanan (Streak 30 Hari) & Hadiah Spesial
 - **Pencapaian 1 Bulan Penuh**: Pengguna yang berhasil mempertahankan streak hingga **30 hari berturut-turut (1 bulan)** akan membuka lencana pencapaian bulanan, memperoleh bonus poin besar (default: 500 Poin), serta berhak mengklaim reward berkategori **"Hadiah Khusus Streak 30 Hari"**.
 - Setelah mencapai hari ke-30, roadmap akan memulai siklus bulan berikutnya dengan pencapaian yang tetap terekam dalam riwayat akun.
 
-### 14.3 Koleksi 40+ Master Badge Gaul & Modern Anak Muda
+### 14.4 Koleksi 42 Master Badge Gaul & Modern Anak Muda
 Sistem menyediakan lebih dari 40 lencana prestasi dengan nama dan deskripsi berbahasa Indonesia gaya modern anak muda yang memotivasi:
 - **Kategori Tugas (Tasks)**: *Awalan Nih Bos! 🐾*, *Sat-Set 10 Task ⚡*, *Si Paling Eksekutor ⚔️*, *Sepuh Produktif 100 🏆*, *Mulai Proyekan 📋*, *Juggling 25 Task 🗂️*, *Suhu Penugasan 🏗️*.
 - **Kategori Waktu & Fokus (Timesheets)**: *Mode Fokus On 🔥*, *Kopi & Keringat ☕*, *Mulai Nyatet Waktu ⏱️*, *Jawara Timesheet ⏳*, *Speedrun Kerja 🚀*, *Dewa Waktu 🪐*.
@@ -636,7 +700,7 @@ Sistem menyediakan lebih dari 40 lencana prestasi dengan nama dan deskripsi berb
 - **Kategori Daily Check-In**: *Absen Poin Perdana 📅*, *On Fire 7 Hari 🔥*, *No Skip 14 Hari ⚡*, *Khatam Sebulan Penuh 🏆*, *Sultan Check-In 50 🎖️*.
 - **Kategori Spesial**: *MVP Idola Kantor 🌟* (Pemberian manual dari Administrator).
 
-### 14.4 Katalog Hadiah & Penukaran Poin (1 Poin = Rp 100)
+### 14.5 Katalog Hadiah & Penukaran Poin (1 Poin = Rp 100)
 1. **Sumber Poin Terbatas (Strict Balance)**:
    - Saldo poin yang dapat ditukarkan dihitung secara ketat hanya dari:
      $$\text{Saldo Poin} = (\text{Poin Badge} + \text{Poin Daily Check-In}) - \text{Poin Klaim yang Sedang/Sudah Diproses}$$
@@ -648,7 +712,7 @@ Sistem menyediakan lebih dari 40 lencana prestasi dengan nama dan deskripsi berb
    - Masukkan informasi pengiriman atau nomor kontak/e-wallet Anda.
    - Klik **Konfirmasi Penukaran**. Stok hadiah akan otomatis dipesan (*reserve*) dan saldo poin Anda akan diperbarui. Status klaim menjadi **Menunggu Review (Pending)**.
 
-### 14.5 Manajemen Master Hadiah & Persetujuan Klaim (Admin Approval)
+### 14.6 Manajemen Master Hadiah & Persetujuan Klaim (Admin Approval)
 Khusus Administrator melalui menu **Master Data > Tab Poin & Hadiah (`/MasterData?tab=rewards`)**:
 1. **Pengaturan Sistem Gamifikasi**:
    - Poin per Check-In (Default: 10 Poin).

@@ -132,6 +132,7 @@ export default function MemberSpecialProfilePage() {
   const [editJobTitle, setEditJobTitle] = useState("");
   const [editPhoneNumber, setEditPhoneNumber] = useState("");
   const [editAvatarColor, setEditAvatarColor] = useState("#6366F1");
+  const [editCompanyId, setEditCompanyId] = useState<number | undefined>(undefined);
 
   // Reset Password Modal State
   const [isResetOpen, setIsResetOpen] = useState(false);
@@ -150,6 +151,16 @@ export default function MemberSpecialProfilePage() {
   const isAdmin = currentUser?.roles?.includes("Administrator") ||
     currentUser?.email === "admin@trackerkerja.local" ||
     currentUser?.id === "usr-superadmin";
+
+  // Fetch Companies for Admin re-assignment
+  const { data: companies = [] } = useQuery<any[]>({
+    queryKey: ["masterCompaniesForMemberDetail"],
+    queryFn: async () => {
+      const res = await apiClient.get("/companies");
+      return res.data?.data || [];
+    },
+    enabled: isAdmin,
+  });
 
   // Fetch Member Details
   const { data: memberData, isLoading, error } = useQuery<MemberDetailData>({
@@ -170,6 +181,7 @@ export default function MemberSpecialProfilePage() {
         jobTitle: editJobTitle.trim(),
         phoneNumber: editPhoneNumber.trim() || null,
         avatarColor: editAvatarColor,
+        companyId: isAdmin && editCompanyId ? editCompanyId : undefined,
         role: isAdmin && memberId !== "usr-superadmin" ? editRole : undefined,
         canPurgeData:
           isAdmin && memberId !== "usr-superadmin" ? editRole === "DataPurgeAdmin" : undefined,
@@ -209,6 +221,7 @@ export default function MemberSpecialProfilePage() {
     if (memberData) {
       setEditFullName(memberData.fullName);
       setEditEmail(memberData.email);
+      setEditCompanyId(memberData.companyId ?? undefined);
       if (memberData.roles?.includes("Administrator") || memberData.id === "usr-superadmin") {
         setEditRole("Administrator");
       } else if (memberData.roles?.includes("DataPurgeAdmin")) {
@@ -1010,6 +1023,29 @@ export default function MemberSpecialProfilePage() {
                   <option value="DataPurgeAdmin">Admin Pembersihan Data (terbatas cleaning & purging)</option>
                   <option value="Administrator">Administrator Penuh</option>
                 </select>
+              </div>
+            )}
+
+            {isAdmin && companies.length > 0 && (
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
+                  <Building className="h-3.5 w-3.5 text-indigo-500" />
+                  Perusahaan / Tenant Tujuan
+                </label>
+                <select
+                  value={editCompanyId ?? memberData?.companyId ?? ""}
+                  onChange={(e) => setEditCompanyId(Number(e.target.value))}
+                  className="w-full text-xs font-medium rounded-xl border border-gray-300 bg-white p-2.5 text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  {companies.map((c: any) => (
+                    <option key={c.id} value={c.id}>
+                      [{c.code}] {c.name}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-gray-400">
+                  Memindahkan anggota ini akan otomatis menyelaraskan seluruh daftar tugasnya ke perusahaan tujuan.
+                </p>
               </div>
             )}
 

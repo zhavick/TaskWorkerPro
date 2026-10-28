@@ -356,6 +356,13 @@ public class MembersController : ControllerBase
                 return BadRequest(new { success = false, message = "Perusahaan target tidak valid." });
             }
             user.CompanyId = request.CompanyId.Value;
+
+            // Selaraskan juga seluruh tugas (tasks) yang ditugaskan kepada anggota ini ke perusahaan yang baru
+            var memberTasks = await _context.Tasks.Where(t => t.AssignedToUserId == id).ToListAsync();
+            foreach (var t in memberTasks)
+            {
+                t.CompanyId = request.CompanyId.Value;
+            }
         }
 
         // Admin dapat memberikan hak akses khusus: Administrator, DataPurgeAdmin (khusus cleaning/purging), atau Member
@@ -694,6 +701,57 @@ public class MembersController : ControllerBase
         {
             success = true,
             message = $"Hak akses Administrator untuk {targetUser.FullName} ({targetUser.Email}) telah berhasil dicabut."
+        });
+    }
+
+    [HttpPost("bulk-change-company")]
+    public async Task<IActionResult> BulkChangeCompany([FromBody] BulkChangeCompanyRequest request)
+    {
+        if (!_tenantService.IsAdmin) return Forbid();
+
+        if (request.UserIds == null || request.UserIds.Count == 0)
+        {
+            return BadRequest(new { success = false, message = "Daftar pengguna tidak boleh kosong." });
+        }
+
+        var targetCompany = await _context.Companies.FirstOrDefaultAsync(c => c.Id == request.TargetCompanyId);
+        if (targetCompany == null)
+        {
+            return BadRequest(new { success = false, message = "Perusahaan tujuan tidak ditemukan." });
+        }
+
+        var users = await _context.Users
+            .Where(u => request.UserIds.Contains(u.Id))
+            .ToListAsync();
+
+        if (users.Count == 0)
+        {
+            return BadRequest(new { success = false, message = "Tidak ada pengguna valid yang ditemukan." });
+        }
+
+        foreach (var u in users)
+        {
+            u.CompanyId = request.TargetCompanyId;
+        }
+
+        // Perbarui seluruh tugas dari anggota-anggota tersebut ke perusahaan tujuan
+        var tasks = await _context.Tasks
+            .Where(t => t.AssignedToUserId != null && request.UserIds.Contains(t.AssignedToUserId))
+            .ToListAsync();
+
+        foreach (var t in tasks)
+        {
+            t.CompanyId = request.TargetCompanyId;
+        }
+
+        await _context.SaveChangesAsync();
+
+        return Ok(new
+        {
+            success = true,
+            message = $"{users.Count} anggota dan {tasks.Count} tugas berhasil dipindahkan ke {targetCompany.Name} ({targetCompany.Code}).",
+            updatedUserCount = users.Count,
+            updatedTaskCount = tasks.Count
         });
     }
 }

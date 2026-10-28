@@ -60,3 +60,21 @@ public record TimesheetExportFilter(
     int? ProjectId,
     string? UserId
 );
+
+public record AutoGenerateTimesheetRequest(
+    int? CompanyId,
+    int PeriodId,
+    string? UserId = "all",
+    string Mode = "Overwrite"
+);
+
+public record AutoGenerateTimesheetResultDto(
+    bool Success,
+    string Message,
+    int UsersProcessedCount,
+    int WorkingDaysCount,
+    int GeneratedSessionsCount,
+    int AttendancesCreatedCount,
+    double TotalHoursGenerated
+);
+

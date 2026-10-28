@@ -22,15 +22,49 @@ public class DashboardController : ControllerBase
         _tenantService = tenantService;
     }
 
+    private int? ResolveTargetCompanyId(int? requestCompanyId, bool isAdmin, string currentUserId)
+    {
+        if (requestCompanyId.HasValue && requestCompanyId.Value > 0)
+        {
+            return requestCompanyId.Value;
+        }
+
+        if (!isAdmin)
+        {
+            return _tenantService.CompanyId;
+        }
+
+        // For Administrator:
+        // 1. If explicit requestCompanyId is passed, it is used.
+        // 2. If null, check if _tenantService.CompanyId has tasks.
+        // 3. If _tenantService.CompanyId has no tasks, default to primary operational company with tasks!
+        if (_tenantService.CompanyId.HasValue && _context.Tasks.Any(t => t.CompanyId == _tenantService.CompanyId.Value))
+        {
+            return _tenantService.CompanyId.Value;
+        }
+
+        var primaryCompanyId = _context.Tasks
+            .Where(t => t.CompanyId.HasValue)
+            .Select(t => t.CompanyId!.Value)
+            .FirstOrDefault();
+
+        return primaryCompanyId > 0 ? primaryCompanyId : _tenantService.CompanyId;
+    }
+
     [HttpGet("stats")]
-    public async Task<IActionResult> GetStats()
+    public async Task<IActionResult> GetStats([FromQuery] int? companyId = null)
     {
         var currentUserId = _tenantService.UserId ?? string.Empty;
         var isAdmin = _tenantService.IsAdmin || (User?.Identity?.IsAuthenticated == true && (User?.IsInRole("Administrator") ?? false));
         var now = DateTimeOffset.UtcNow;
+        var targetCompanyId = ResolveTargetCompanyId(companyId, isAdmin, currentUserId);
 
         // Scoping: User only counts their assigned tasks unless Administrator
         var tasksQuery = _context.Tasks.AsNoTracking().AsQueryable();
+        if (targetCompanyId.HasValue)
+        {
+            tasksQuery = tasksQuery.Where(t => t.CompanyId == targetCompanyId.Value);
+        }
         if (!isAdmin && !string.IsNullOrEmpty(currentUserId))
         {
             tasksQuery = tasksQuery.Where(t => t.AssignedToUserId == currentUserId);
@@ -44,14 +78,24 @@ public class DashboardController : ControllerBase
 
         var completionRate = totalTasks > 0 ? (int)Math.Round((double)doneTasks / totalTasks * 100) : 0;
 
-        // Work sessions today for current user
+        // Work sessions today for current user or team
         var todayStart = new DateTimeOffset(now.Year, now.Month, now.Day, 0, 0, 0, TimeSpan.Zero);
         var todayEnd = todayStart.AddDays(1);
 
-        var todaySessions = await _context.Sessions
+        var todaySessionsQuery = _context.Sessions
             .AsNoTracking()
-            .Where(s => s.UserId == currentUserId && s.StartTime >= todayStart && s.StartTime < todayEnd)
-            .ToListAsync();
+            .Where(s => s.StartTime >= todayStart && s.StartTime < todayEnd);
+
+        if (!isAdmin && !string.IsNullOrEmpty(currentUserId))
+        {
+            todaySessionsQuery = todaySessionsQuery.Where(s => s.UserId == currentUserId);
+        }
+        else if (targetCompanyId.HasValue)
+        {
+            todaySessionsQuery = todaySessionsQuery.Where(s => s.User.CompanyId == targetCompanyId.Value || s.Task.CompanyId == targetCompanyId.Value);
+        }
+
+        var todaySessions = await todaySessionsQuery.ToListAsync();
 
         long todayWorkSeconds = todaySessions.Sum(s =>
         {
@@ -61,9 +105,20 @@ public class DashboardController : ControllerBase
         double todayWorkHours = Math.Round((double)todayWorkSeconds / 3600.0, 1);
 
         // Projects & Members count
-        var totalProjects = await _context.Projects.AsNoTracking().CountAsync();
-        var activeProjects = await _context.Projects.AsNoTracking().CountAsync(p => p.Status == ProjectStatus.Active);
-        var totalMembers = await _context.Users.AsNoTracking().CountAsync(u => u.IsApproved && (_tenantService.CompanyId == null || u.CompanyId == _tenantService.CompanyId));
+        var projectsQuery = _context.Projects.AsNoTracking().AsQueryable();
+        if (targetCompanyId.HasValue)
+        {
+            projectsQuery = projectsQuery.Where(p => p.CompanyId == targetCompanyId.Value || p.Tasks.Any(t => t.CompanyId == targetCompanyId.Value));
+        }
+        var totalProjects = await projectsQuery.CountAsync();
+        var activeProjects = await projectsQuery.CountAsync(p => p.Status == ProjectStatus.Active);
+
+        var membersQuery = _context.Users.AsNoTracking().Where(u => u.IsApproved);
+        if (targetCompanyId.HasValue)
+        {
+            membersQuery = membersQuery.Where(u => u.CompanyId == targetCompanyId.Value);
+        }
+        var totalMembers = await membersQuery.CountAsync();
 
         // Gamification status
         var todayDateOnly = DateOnly.FromDateTime(now.UtcDateTime);
@@ -113,6 +168,10 @@ public class DashboardController : ControllerBase
 
         // Operational integrity checks: Tasks without projects & Empty projects
         var tasksWithoutProjectQuery = _context.Tasks.AsNoTracking().Where(t => t.ProjectId == null);
+        if (targetCompanyId.HasValue)
+        {
+            tasksWithoutProjectQuery = tasksWithoutProjectQuery.Where(t => t.CompanyId == targetCompanyId.Value);
+        }
         if (!isAdmin && !string.IsNullOrEmpty(currentUserId))
         {
             tasksWithoutProjectQuery = tasksWithoutProjectQuery.Where(t => t.AssignedToUserId == currentUserId);
@@ -124,13 +183,18 @@ public class DashboardController : ControllerBase
             .Select(t => new { t.Id, t.Title, Status = (int)t.Status })
             .ToListAsync();
 
-        var projectsWithTaskCount = await _context.Projects.AsNoTracking()
+        var projectsWithTaskQuery = _context.Projects.AsNoTracking().AsQueryable();
+        if (targetCompanyId.HasValue)
+        {
+            projectsWithTaskQuery = projectsWithTaskQuery.Where(p => p.CompanyId == targetCompanyId.Value || p.Tasks.Any(t => t.CompanyId == targetCompanyId.Value));
+        }
+        var projectsWithTaskCount = await projectsWithTaskQuery
             .Select(p => new
             {
                 p.Id,
                 p.Name,
                 p.Status,
-                TaskCount = p.Tasks.Count()
+                TaskCount = p.Tasks.Count(t => !targetCompanyId.HasValue || t.CompanyId == targetCompanyId.Value)
             })
             .ToListAsync();
 
@@ -192,12 +256,13 @@ public class DashboardController : ControllerBase
     }
 
     [HttpGet("productivity")]
-    public async Task<IActionResult> GetProductivityChart([FromQuery] int days = 7)
+    public async Task<IActionResult> GetProductivityChart([FromQuery] int days = 7, [FromQuery] int? companyId = null)
     {
         var currentUserId = _tenantService.UserId ?? string.Empty;
         var isAdmin = _tenantService.IsAdmin || (User.Identity?.IsAuthenticated == true && User.IsInRole("Administrator"));
         var now = DateTimeOffset.UtcNow;
         var startDate = new DateTimeOffset(now.Year, now.Month, now.Day, 0, 0, 0, TimeSpan.Zero).AddDays(-(days - 1));
+        var targetCompanyId = ResolveTargetCompanyId(companyId, isAdmin, currentUserId);
 
         // Fetch sessions in range
         var sessionsQuery = _context.Sessions
@@ -227,6 +292,10 @@ public class DashboardController : ControllerBase
         {
             // Administrator tidak diikutsertakan dalam chart
             sessionsQuery = sessionsQuery.Where(s => !adminUserIds.Contains(s.UserId));
+            if (targetCompanyId.HasValue)
+            {
+                sessionsQuery = sessionsQuery.Where(s => s.User.CompanyId == targetCompanyId.Value || s.Task.CompanyId == targetCompanyId.Value);
+            }
         }
 
         var sessions = await sessionsQuery.ToListAsync();
@@ -234,7 +303,12 @@ public class DashboardController : ControllerBase
         // Fetch tasks in range
         var tasksQuery = _context.Tasks
             .AsNoTracking()
-            .Where(t => t.UpdatedAt >= startDate && t.Status == Domain.Enums.TaskStatus.Done);
+            .Where(t => t.Status == Domain.Enums.TaskStatus.Done && ((t.DueDate.HasValue && t.DueDate >= startDate) || t.UpdatedAt >= startDate));
+
+        if (targetCompanyId.HasValue)
+        {
+            tasksQuery = tasksQuery.Where(t => t.CompanyId == targetCompanyId.Value);
+        }
 
         if (!isAdmin && !string.IsNullOrEmpty(currentUserId))
         {
@@ -269,7 +343,9 @@ public class DashboardController : ControllerBase
             long totalSeconds = daySessions.Sum(s => s.EndTime.HasValue ? s.Duration : Math.Max(0, (long)(now - s.StartTime).TotalSeconds));
             double hours = Math.Round((double)totalSeconds / 3600.0, 1);
 
-            int tasksCount = doneTasks.Count(t => t.UpdatedAt >= dayStart && t.UpdatedAt < dayEnd);
+            int tasksCount = doneTasks.Count(t =>
+                (t.DueDate.HasValue && t.DueDate >= dayStart && t.DueDate < dayEnd) ||
+                (t.UpdatedAt >= dayStart && t.UpdatedAt < dayEnd));
 
             result.Add(new
             {
@@ -284,18 +360,11 @@ public class DashboardController : ControllerBase
     }
 
     [HttpGet("distribution")]
-    public async Task<IActionResult> GetDistribution()
+    public async Task<IActionResult> GetDistribution([FromQuery] int? companyId = null)
     {
         var currentUserId = _tenantService.UserId ?? string.Empty;
         var isAdmin = _tenantService.IsAdmin || (User?.Identity?.IsAuthenticated == true && (User?.IsInRole("Administrator") ?? false));
-
-        // Multi-tenant company scoping: resolve user's company (1 perusahaan yang sama)
-        int? targetCompanyId = _tenantService.CompanyId;
-        if (!targetCompanyId.HasValue && !string.IsNullOrEmpty(currentUserId))
-        {
-            var currentUser = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == currentUserId);
-            targetCompanyId = currentUser?.CompanyId;
-        }
+        var targetCompanyId = ResolveTargetCompanyId(companyId, isAdmin, currentUserId);
 
         var tasksQuery = _context.Tasks
             .Include(t => t.Project)
@@ -524,10 +593,11 @@ public class DashboardController : ControllerBase
     }
 
     [HttpGet("activities")]
-    public async Task<IActionResult> GetRecentActivities([FromQuery] int limit = 10)
+    public async Task<IActionResult> GetRecentActivities([FromQuery] int limit = 10, [FromQuery] int? companyId = null)
     {
         var currentUserId = _tenantService.UserId ?? string.Empty;
         var isAdmin = _tenantService.IsAdmin || (User?.Identity?.IsAuthenticated == true && (User?.IsInRole("Administrator") ?? false));
+        var targetCompanyId = ResolveTargetCompanyId(companyId, isAdmin, currentUserId);
 
         // Recent Work Sessions
         var sessionsQuery = _context.Sessions
@@ -535,6 +605,11 @@ public class DashboardController : ControllerBase
             .Include(s => s.User)
             .AsNoTracking()
             .AsQueryable();
+
+        if (targetCompanyId.HasValue)
+        {
+            sessionsQuery = sessionsQuery.Where(s => s.User.CompanyId == targetCompanyId.Value || s.Task.CompanyId == targetCompanyId.Value);
+        }
 
         if (!isAdmin && !string.IsNullOrEmpty(currentUserId))
         {
@@ -564,6 +639,11 @@ public class DashboardController : ControllerBase
             .Include(t => t.AssignedToUser)
             .AsNoTracking()
             .AsQueryable();
+
+        if (targetCompanyId.HasValue)
+        {
+            tasksQuery = tasksQuery.Where(t => t.CompanyId == targetCompanyId.Value);
+        }
 
         if (!isAdmin && !string.IsNullOrEmpty(currentUserId))
         {
