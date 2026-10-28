@@ -123,18 +123,7 @@ public class AutomatedTimesheetGeneratorService : IAutomatedTimesheetGeneratorSe
                 userTasks = companyTasks;
             }
 
-            // Urutkan tugas unik per personel: prioritaskan yang memiliki StartDate, lalu bobot prioritas
-            var distinctUserTasks = userTasks
-                .GroupBy(t => t.Id)
-                .Select(g => g.First())
-                .OrderBy(t => t.StartDate.HasValue ? 0 : 1)
-                .ThenBy(t => t.StartDate ?? t.CreatedAt)
-                .ThenByDescending(t => GetPriorityWeight(t.Priority))
-                .ToList();
-
-            // Total hari yang di-generate per personel dibatasi sejumlah data tugas unik yang dimiliki (1 tugas = 1 hari kerja 8 jam)
-            int daysToGenerate = Math.Min(distinctUserTasks.Count, workingDates.Count);
-            if (daysToGenerate == 0) continue;
+            if (userTasks.Count == 0) continue;
 
             if (request.Mode == "Overwrite")
             {
@@ -158,9 +147,86 @@ public class AutomatedTimesheetGeneratorService : IAutomatedTimesheetGeneratorSe
                 }
             }
 
-            for (int dayIdx = 0; dayIdx < daysToGenerate; dayIdx++)
+            // Map tasks to their actual dates
+            DateOnly? GetTaskDate(WorkTask t)
             {
-                var date = workingDates[dayIdx];
+                if (t.StartDate.HasValue)
+                    return DateOnly.FromDateTime(t.StartDate.Value.ToOffset(tzOffset).DateTime);
+                if (t.DueDate.HasValue)
+                    return DateOnly.FromDateTime(t.DueDate.Value.ToOffset(tzOffset).DateTime);
+                return null;
+            }
+
+            // Group tasks by their specific target date
+            var tasksByDate = new Dictionary<DateOnly, List<WorkTask>>();
+            var tasksWithoutDate = new List<WorkTask>();
+
+            foreach (var task in userTasks)
+            {
+                var tDate = GetTaskDate(task);
+                if (tDate.HasValue && tDate.Value >= period.StartDate && tDate.Value <= period.EndDate)
+                {
+                    var targetDate = tDate.Value;
+                    // If task falls on weekend, map to nearest weekday within period
+                    if (targetDate.DayOfWeek == DayOfWeek.Saturday)
+                    {
+                        var fri = targetDate.AddDays(-1);
+                        targetDate = fri >= period.StartDate ? fri : targetDate.AddDays(2);
+                    }
+                    else if (targetDate.DayOfWeek == DayOfWeek.Sunday)
+                    {
+                        var mon = targetDate.AddDays(1);
+                        targetDate = mon <= period.EndDate ? mon : targetDate.AddDays(-2);
+                    }
+
+                    if (!tasksByDate.ContainsKey(targetDate))
+                    {
+                        tasksByDate[targetDate] = new List<WorkTask>();
+                    }
+                    tasksByDate[targetDate].Add(task);
+                }
+                else
+                {
+                    tasksWithoutDate.Add(task);
+                }
+            }
+
+            // For any tasks without dates (or dates outside the period), map to available unused working dates in this period
+            if (tasksWithoutDate.Count > 0)
+            {
+                var availableDates = workingDates
+                    .Where(d => !tasksByDate.ContainsKey(d))
+                    .OrderBy(d => d)
+                    .ToList();
+
+                var distinctUndated = tasksWithoutDate
+                    .GroupBy(t => t.Id)
+                    .Select(g => g.First())
+                    .OrderBy(t => t.StartDate.HasValue ? 0 : 1)
+                    .ThenBy(t => t.StartDate ?? t.CreatedAt)
+                    .ThenByDescending(t => GetPriorityWeight(t.Priority))
+                    .ToList();
+
+                int dateIdx = 0;
+                foreach (var undatedTask in distinctUndated)
+                {
+                    if (dateIdx >= availableDates.Count) break;
+                    var date = availableDates[dateIdx];
+                    if (!tasksByDate.ContainsKey(date))
+                    {
+                        tasksByDate[date] = new List<WorkTask>();
+                    }
+                    tasksByDate[date].Add(undatedTask);
+                    dateIdx++;
+                }
+            }
+
+            // Generate exactly on the days that have tasks
+            foreach (var dateEntry in tasksByDate.OrderBy(kv => kv.Key))
+            {
+                var date = dateEntry.Key;
+                var rawTasks = dateEntry.Value;
+
                 var dayStart = new DateTimeOffset(date.Year, date.Month, date.Day, 0, 0, 0, tzOffset);
                 var dayEnd = dayStart.AddDays(1);
                 var dayStartUtc = dayStart.ToUniversalTime();
@@ -174,7 +240,6 @@ public class AutomatedTimesheetGeneratorService : IAutomatedTimesheetGeneratorSe
 
                 if (request.Mode == "FillEmptyOnly" && existingDuration >= 28800)
                 {
-                    // Day is already full (>= 8 hours)
                     continue;
                 }
 
@@ -187,26 +252,46 @@ public class AutomatedTimesheetGeneratorService : IAutomatedTimesheetGeneratorSe
                 long neededSeconds = 28800 - existingDuration;
                 if (neededSeconds <= 0) continue;
 
-                var task = distinctUserTasks[dayIdx];
+                // Group by distinct task for this date
+                // "perhitungan data tugas dikumpulkan dalam sehari dan jika terdapat kemunculan beberapa kali, maka langsung di submit menjadi totalan, misal 2x tugas A, maka total jumlah jam nya untuk menempuh waktu 8 jam sehari"
+                var distinctTasks = rawTasks
+                    .GroupBy(t => t.Id)
+                    .Select(g => g.First())
+                    .ToList();
 
-                // Jadwalkan 1 sesi utuh 8 jam (28.800 detik) untuk tugas tersebut pada hari ini
-                var startTime = new DateTimeOffset(date.Year, date.Month, date.Day, 8, 0, 0, tzOffset);
-                var endTime = new DateTimeOffset(date.Year, date.Month, date.Day, 17, 0, 0, tzOffset);
+                if (distinctTasks.Count == 0) continue;
 
-                var session = new WorkSession
+                long baseSecondsPerTask = neededSeconds / distinctTasks.Count;
+                long remainderSeconds = neededSeconds % distinctTasks.Count;
+
+                // Create sessions starting from 08:00 WIB
+                int currentMinuteOffset = 0;
+                for (int i = 0; i < distinctTasks.Count; i++)
                 {
-                    TaskId = task.Id,
-                    UserId = user.Id,
-                    StartTime = startTime.ToUniversalTime(),
-                    EndTime = endTime.ToUniversalTime(),
-                    Duration = neededSeconds,
-                    Notes = $"Pengerjaan tugas {task.Title} (Auto-generated)",
-                    CreatedAt = DateTimeOffset.UtcNow
-                };
+                    var task = distinctTasks[i];
+                    long taskDuration = baseSecondsPerTask + (i == 0 ? remainderSeconds : 0);
+                    if (taskDuration <= 0) continue;
 
-                _context.Sessions.Add(session);
-                totalSessionsCreated++;
-                totalSecondsCreated += neededSeconds;
+                    var sStart = new DateTimeOffset(date.Year, date.Month, date.Day, 8, 0, 0, tzOffset).AddMinutes(currentMinuteOffset);
+                    var sEnd = sStart.AddSeconds(taskDuration);
+
+                    var session = new WorkSession
+                    {
+                        TaskId = task.Id,
+                        UserId = user.Id,
+                        StartTime = sStart.ToUniversalTime(),
+                        EndTime = sEnd.ToUniversalTime(),
+                        Duration = taskDuration,
+                        Notes = $"Pengerjaan tugas {task.Title} (Auto-generated)",
+                        CreatedAt = DateTimeOffset.UtcNow
+                    };
+
+                    _context.Sessions.Add(session);
+                    totalSessionsCreated++;
+                    totalSecondsCreated += taskDuration;
+
+                    currentMinuteOffset += (int)(taskDuration / 60);
+                }
 
                 // Synchronize Attendance (ClockIn: 08:00, ClockOut: 17:10, WFO)
                 var attExists = await _context.Attendances

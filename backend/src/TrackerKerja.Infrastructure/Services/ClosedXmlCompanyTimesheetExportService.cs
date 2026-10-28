@@ -113,8 +113,9 @@ public class ClosedXmlCompanyTimesheetExportService : ICompanyTimesheetExportSer
         }
 
         // 2. Query Sessions & Attendance
-        var startDateTime = period.StartDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
-        var endDateTime = period.EndDate.ToDateTime(TimeOnly.MaxValue, DateTimeKind.Utc);
+        var tzOffset = TimeSpan.FromHours(7); // WIB (UTC+7)
+        var startDateTime = new DateTimeOffset(period.StartDate.Year, period.StartDate.Month, period.StartDate.Day, 0, 0, 0, tzOffset).ToUniversalTime();
+        var endDateTime = new DateTimeOffset(period.EndDate.Year, period.EndDate.Month, period.EndDate.Day, 23, 59, 59, tzOffset).ToUniversalTime();
 
         var sessions = await _context.Sessions
             .Include(s => s.Task).ThenInclude(t => t.Project)
@@ -122,6 +123,13 @@ public class ClosedXmlCompanyTimesheetExportService : ICompanyTimesheetExportSer
             .AsNoTracking()
             .Where(s => s.UserId == userId && s.StartTime >= startDateTime && s.StartTime <= endDateTime)
             .OrderBy(s => s.StartTime)
+            .ToListAsync();
+
+        var userTasks = await _context.Tasks
+            .Include(t => t.Project)
+            .Include(t => t.Category)
+            .AsNoTracking()
+            .Where(t => t.CompanyId == companyId && (t.AssignedToUserId == userId || t.AssignedToUserId == null))
             .ToListAsync();
 
         var attendances = await _context.Attendances
@@ -175,7 +183,9 @@ public class ClosedXmlCompanyTimesheetExportService : ICompanyTimesheetExportSer
             }
             else
             {
-                var daySessions = sessions.Where(s => DateOnly.FromDateTime(s.StartTime.DateTime) == date).ToList();
+                var daySessions = sessions
+                    .Where(s => DateOnly.FromDateTime(s.StartTime.ToOffset(tzOffset).DateTime) == date)
+                    .ToList();
                 attendanceMap.TryGetValue(date, out var att);
 
                 string clockIn = "-";
@@ -184,20 +194,20 @@ public class ClosedXmlCompanyTimesheetExportService : ICompanyTimesheetExportSer
 
                 if (att?.ClockIn.HasValue == true)
                 {
-                    clockIn = att.ClockIn.Value.ToLocalTime().ToString("h:mm tt");
+                    clockIn = att.ClockIn.Value.ToOffset(tzOffset).ToString("h:mm tt");
                 }
                 else if (daySessions.Any())
                 {
-                    clockIn = daySessions.Min(s => s.StartTime).ToLocalTime().ToString("h:mm tt");
+                    clockIn = daySessions.Min(s => s.StartTime).ToOffset(tzOffset).ToString("h:mm tt");
                 }
 
                 if (att?.ClockOut.HasValue == true)
                 {
-                    clockOut = att.ClockOut.Value.ToLocalTime().ToString("h:mm tt");
+                    clockOut = att.ClockOut.Value.ToOffset(tzOffset).ToString("h:mm tt");
                 }
                 else if (daySessions.Any())
                 {
-                    clockOut = daySessions.Max(s => s.EndTime ?? s.StartTime).ToLocalTime().ToString("h:mm tt");
+                    clockOut = daySessions.Max(s => s.EndTime ?? s.StartTime).ToOffset(tzOffset).ToString("h:mm tt");
                 }
 
                 if (daySessions.Any())
@@ -235,6 +245,42 @@ public class ClosedXmlCompanyTimesheetExportService : ICompanyTimesheetExportSer
 
                         ApplyRowStyle(ws, currentRow);
                         currentRow++;
+                    }
+                }
+                else
+                {
+                    // Fallback to tasks assigned to this user whose StartDate or DueDate matches this date
+                    var matchingTasks = userTasks
+                        .Where(t => (t.StartDate.HasValue && DateOnly.FromDateTime(t.StartDate.Value.ToOffset(tzOffset).DateTime) == date) ||
+                                    (!t.StartDate.HasValue && t.DueDate.HasValue && DateOnly.FromDateTime(t.DueDate.Value.ToOffset(tzOffset).DateTime) == date))
+                        .GroupBy(t => t.Id)
+                        .Select(g => g.First())
+                        .ToList();
+
+                    if (matchingTasks.Any())
+                    {
+                        double hoursPerTask = Math.Round(8.0 / matchingTasks.Count, 1);
+                        foreach (var task in matchingTasks)
+                        {
+                            var taskKey = $"TSK-{task.Id:D4}";
+                            ws.Cell(currentRow, 1).Value = taskKey;
+                            ws.Cell(currentRow, 2).Value = task.Title;
+                            ws.Cell(currentRow, 3).Value = hoursPerTask;
+                            ws.Cell(currentRow, 4).FormulaA1 = $"IF(C{currentRow}=\"\",\"\",C{currentRow}/8)";
+                            ws.Cell(currentRow, 5).Value = date.ToString("dd/MM/yyyy");
+                            ws.Cell(currentRow, 6).Value = "8:00 AM";
+                            ws.Cell(currentRow, 7).Value = "5:10 PM";
+                            ws.Cell(currentRow, 8).Value = user.UserName ?? user.FullName;
+                            ws.Cell(currentRow, 9).Value = user.FullName;
+                            ws.Cell(currentRow, 10).Value = period.PeriodCode;
+                            ws.Cell(currentRow, 11).Value = task.Project?.Name ?? "-";
+                            ws.Cell(currentRow, 12).Value = task.Category?.Name ?? "General";
+                            ws.Cell(currentRow, 13).Value = "WFO";
+                            ws.Cell(currentRow, 14).Value = "";
+
+                            ApplyRowStyle(ws, currentRow);
+                            currentRow++;
+                        }
                     }
                 }
             }

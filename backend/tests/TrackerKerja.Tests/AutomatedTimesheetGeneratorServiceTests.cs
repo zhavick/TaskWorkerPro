@@ -127,7 +127,7 @@ public class AutomatedTimesheetGeneratorServiceTests
             ProjectId = 1,
             AssignedToUserId = "syafix",
             Priority = TaskPriority.Medium,
-            StartDate = new DateTimeOffset(2026, 9, 3, 0, 0, 0, TimeSpan.Zero),
+            StartDate = new DateTimeOffset(2026, 9, 4, 0, 0, 0, TimeSpan.Zero),
             DueDate = new DateTimeOffset(2026, 9, 7, 0, 0, 0, TimeSpan.Zero)
         };
         _context.Tasks.AddRange(task1, task2);
@@ -176,7 +176,7 @@ public class AutomatedTimesheetGeneratorServiceTests
             ProjectId = 1,
             AssignedToUserId = "syafix",
             Priority = TaskPriority.Low,
-            StartDate = new DateTimeOffset(2026, 9, 3, 0, 0, 0, TimeSpan.Zero),
+            StartDate = new DateTimeOffset(2026, 9, 4, 0, 0, 0, TimeSpan.Zero),
             DueDate = new DateTimeOffset(2026, 9, 7, 0, 0, 0, TimeSpan.Zero)
         };
         _context.Tasks.AddRange(taskCritical, taskLow);
@@ -264,7 +264,7 @@ public class AutomatedTimesheetGeneratorServiceTests
             ProjectId = 1,
             AssignedToUserId = "syafix",
             Priority = TaskPriority.Medium,
-            StartDate = new DateOnly(2026, 9, 3).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
+            StartDate = new DateOnly(2026, 9, 4).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
             DueDate = new DateOnly(2026, 9, 4).ToDateTime(TimeOnly.MaxValue, DateTimeKind.Utc)
         };
         _context.Tasks.AddRange(task1, task2);
@@ -385,5 +385,76 @@ public class AutomatedTimesheetGeneratorServiceTests
         // Check sessions generated for this task
         var sessions = await _context.Sessions.Where(s => s.TaskId == 701).ToListAsync();
         sessions.Should().NotBeEmpty();
+    }
+
+    [Fact]
+    public async Task GenerateTimesheets_TasksShouldMatchTheirExactDates_AndConsolidateMultipleOccurrencesInDay()
+    {
+        // 3 tasks with distinct specific dates in September 2026:
+        // Task A on 2026-09-03 (Thu)
+        // Task B on 2026-09-04 (Fri)
+        // Task C on 2026-09-07 (Mon)
+        var taskA1 = new WorkTask
+        {
+            Id = 801,
+            Title = "Task A Pertemuan Kickoff",
+            CompanyId = 10,
+            ProjectId = 1,
+            AssignedToUserId = "syafix",
+            Priority = TaskPriority.High,
+            StartDate = new DateTimeOffset(2026, 9, 3, 8, 0, 0, TimeSpan.FromHours(7)),
+            DueDate = new DateTimeOffset(2026, 9, 3, 17, 0, 0, TimeSpan.FromHours(7))
+        };
+        // Duplicate Task A on same day 2026-09-03
+        var taskA2 = new WorkTask
+        {
+            Id = 802,
+            Title = "Task A Pertemuan Kickoff",
+            CompanyId = 10,
+            ProjectId = 1,
+            AssignedToUserId = "syafix",
+            Priority = TaskPriority.High,
+            StartDate = new DateTimeOffset(2026, 9, 3, 10, 0, 0, TimeSpan.FromHours(7)),
+            DueDate = new DateTimeOffset(2026, 9, 3, 15, 0, 0, TimeSpan.FromHours(7))
+        };
+        var taskB = new WorkTask
+        {
+            Id = 803,
+            Title = "Task B Konfigurasi Router",
+            CompanyId = 10,
+            ProjectId = 1,
+            AssignedToUserId = "syafix",
+            Priority = TaskPriority.Medium,
+            StartDate = new DateTimeOffset(2026, 9, 7, 8, 0, 0, TimeSpan.FromHours(7)), // Scheduled for Monday Sep 7, NOT Sep 4!
+            DueDate = new DateTimeOffset(2026, 9, 7, 17, 0, 0, TimeSpan.FromHours(7))
+        };
+
+        _context.Tasks.AddRange(taskA1, taskA2, taskB);
+        await _context.SaveChangesAsync();
+
+        var request = new AutoGenerateTimesheetRequest(10, 1, "syafix", "Overwrite");
+        var result = await _service.GenerateTimesheetsAsync(request, 10);
+
+        result.Success.Should().BeTrue();
+
+        var sessions = await _context.Sessions
+            .Include(s => s.Task)
+            .Where(s => s.UserId == "syafix" && (s.TaskId == 801 || s.TaskId == 802 || s.TaskId == 803))
+            .ToListAsync();
+
+        // Task A was scheduled on Sep 3
+        var sep3Sessions = sessions.Where(s => DateOnly.FromDateTime(s.StartTime.ToOffset(TimeSpan.FromHours(7)).DateTime) == new DateOnly(2026, 9, 3)).ToList();
+        sep3Sessions.Should().NotBeEmpty();
+        sep3Sessions.Sum(s => s.Duration).Should().Be(28800); // exactly 8 hours on Sep 3
+
+        // Task B was scheduled on Sep 7, so it MUST be on Sep 7, NOT Sep 4!
+        var sep7Sessions = sessions.Where(s => DateOnly.FromDateTime(s.StartTime.ToOffset(TimeSpan.FromHours(7)).DateTime) == new DateOnly(2026, 9, 7)).ToList();
+        sep7Sessions.Should().HaveCount(1);
+        sep7Sessions[0].Task.Title.Should().Be("Task B Konfigurasi Router");
+        sep7Sessions[0].Duration.Should().Be(28800);
+
+        // Friday Sep 4 should NOT have Task B mistakenly placed on it
+        var sep4Sessions = sessions.Where(s => DateOnly.FromDateTime(s.StartTime.ToOffset(TimeSpan.FromHours(7)).DateTime) == new DateOnly(2026, 9, 4)).ToList();
+        sep4Sessions.Should().BeEmpty();
     }
 }
