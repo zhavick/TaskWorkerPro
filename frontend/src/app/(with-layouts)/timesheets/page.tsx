@@ -446,7 +446,27 @@ export default function TimesheetsPage() {
   const handleExportExcel = async () => {
     try {
       toast.loading("Menyiapkan file spreadsheet laporan resmi...", { id: "exportExcel" });
-      const response = await apiClient.get("/timesheets/export/excel", {
+      const params = new URLSearchParams();
+      if (dateFilter === "today") {
+        const now = new Date();
+        const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+        const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+        params.append("startDate", start.toISOString());
+        params.append("endDate", end.toISOString());
+      } else if (dateFilter === "this-week") {
+        const now = new Date();
+        const day = now.getDay() === 0 ? 6 : now.getDay() - 1;
+        const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - day, 0, 0, 0);
+        const end = new Date(start.getTime() + 7 * 24 * 3600 * 1000 - 1000);
+        params.append("startDate", start.toISOString());
+        params.append("endDate", end.toISOString());
+      }
+      if (projectFilter !== "all") {
+        params.append("projectId", projectFilter);
+      }
+
+      const qs = params.toString() ? `?${params.toString()}` : "";
+      const response = await apiClient.get(`/timesheets/export/excel${qs}`, {
         responseType: "blob",
       });
 

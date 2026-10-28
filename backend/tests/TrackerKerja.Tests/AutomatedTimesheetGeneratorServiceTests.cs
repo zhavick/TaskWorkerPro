@@ -301,7 +301,7 @@ public class AutomatedTimesheetGeneratorServiceTests
     [Fact]
     public async Task GenerateTimesheets_WithEmptyTimesheetTasks_ShouldTakeAndGenerateAllEmptyTasks()
     {
-        // 3 tasks with empty timesheet (no sessions) and past dates
+        // 3 tasks with empty timesheet (no sessions) within September period
         var emptyTask1 = new WorkTask
         {
             Id = 601,
@@ -310,8 +310,8 @@ public class AutomatedTimesheetGeneratorServiceTests
             ProjectId = 1,
             AssignedToUserId = "syafix",
             Priority = TaskPriority.High,
-            StartDate = new DateOnly(2026, 8, 1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
-            DueDate = new DateOnly(2026, 8, 5).ToDateTime(TimeOnly.MaxValue, DateTimeKind.Utc)
+            StartDate = new DateOnly(2026, 9, 3).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
+            DueDate = new DateOnly(2026, 9, 3).ToDateTime(TimeOnly.MaxValue, DateTimeKind.Utc)
         };
         var emptyTask2 = new WorkTask
         {
@@ -321,8 +321,8 @@ public class AutomatedTimesheetGeneratorServiceTests
             ProjectId = 1,
             AssignedToUserId = "syafix",
             Priority = TaskPriority.Medium,
-            StartDate = new DateOnly(2026, 8, 6).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
-            DueDate = new DateOnly(2026, 8, 10).ToDateTime(TimeOnly.MaxValue, DateTimeKind.Utc)
+            StartDate = new DateOnly(2026, 9, 4).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
+            DueDate = new DateOnly(2026, 9, 4).ToDateTime(TimeOnly.MaxValue, DateTimeKind.Utc)
         };
         var emptyTask3 = new WorkTask
         {
@@ -332,8 +332,8 @@ public class AutomatedTimesheetGeneratorServiceTests
             ProjectId = 1,
             AssignedToUserId = "syafix",
             Priority = TaskPriority.Low,
-            StartDate = new DateOnly(2026, 8, 11).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
-            DueDate = new DateOnly(2026, 8, 15).ToDateTime(TimeOnly.MaxValue, DateTimeKind.Utc)
+            StartDate = new DateOnly(2026, 9, 7).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
+            DueDate = new DateOnly(2026, 9, 7).ToDateTime(TimeOnly.MaxValue, DateTimeKind.Utc)
         };
         _context.Tasks.AddRange(emptyTask1, emptyTask2, emptyTask3);
         await _context.SaveChangesAsync();
@@ -456,5 +456,55 @@ public class AutomatedTimesheetGeneratorServiceTests
         // Friday Sep 4 should NOT have Task B mistakenly placed on it
         var sep4Sessions = sessions.Where(s => DateOnly.FromDateTime(s.StartTime.ToOffset(TimeSpan.FromHours(7)).DateTime) == new DateOnly(2026, 9, 4)).ToList();
         sep4Sessions.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task GenerateTimesheets_TasksFromPreviousMonths_ShouldNeverBeIncludedOrCarriedOverToNewPeriod()
+    {
+        // Task from August 2026 (StartDate: 2026-08-07, DueDate: 2026-08-12)
+        var augustTask = new WorkTask
+        {
+            Id = 901,
+            Title = "Membuat Diagram HLD dan LLD API Integration",
+            CompanyId = 10,
+            ProjectId = 1,
+            AssignedToUserId = "syafix",
+            Priority = TaskPriority.High,
+            StartDate = new DateTimeOffset(2026, 8, 7, 8, 0, 0, TimeSpan.FromHours(7)),
+            DueDate = new DateTimeOffset(2026, 8, 12, 17, 0, 0, TimeSpan.FromHours(7))
+        };
+
+        // Task from September 2026 within Period 1 (StartDate: 2026-09-03, DueDate: 2026-09-07)
+        var septemberTask = new WorkTask
+        {
+            Id = 902,
+            Title = "Implementasi Fitur Reporting Periode September",
+            CompanyId = 10,
+            ProjectId = 1,
+            AssignedToUserId = "syafix",
+            Priority = TaskPriority.Medium,
+            StartDate = new DateTimeOffset(2026, 9, 3, 8, 0, 0, TimeSpan.FromHours(7)),
+            DueDate = new DateTimeOffset(2026, 9, 3, 17, 0, 0, TimeSpan.FromHours(7))
+        };
+
+        _context.Tasks.AddRange(augustTask, septemberTask);
+        await _context.SaveChangesAsync();
+
+        // Run generator for September 2026 (Period 1: 2026-09-03 to 2026-09-07)
+        var request = new AutoGenerateTimesheetRequest(10, 1, "syafix", "Overwrite");
+        var result = await _service.GenerateTimesheetsAsync(request, 10);
+
+        result.Success.Should().BeTrue();
+
+        var sessions = await _context.Sessions
+            .Include(s => s.Task)
+            .Where(s => s.UserId == "syafix" && (s.TaskId == 901 || s.TaskId == 902))
+            .ToListAsync();
+
+        // The September task should have generated sessions
+        sessions.Any(s => s.TaskId == 902).Should().BeTrue();
+
+        // The August task (Membuat Diagram HLD dan LLD API Integration) MUST NOT have any sessions generated in September!
+        sessions.Any(s => s.TaskId == 901).Should().BeFalse();
     }
 }

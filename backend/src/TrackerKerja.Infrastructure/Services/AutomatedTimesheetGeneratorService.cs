@@ -147,77 +147,55 @@ public class AutomatedTimesheetGeneratorService : IAutomatedTimesheetGeneratorSe
                 }
             }
 
-            // Map tasks to their actual dates
-            DateOnly? GetTaskDate(WorkTask t)
-            {
-                if (t.StartDate.HasValue)
-                    return DateOnly.FromDateTime(t.StartDate.Value.ToOffset(tzOffset).DateTime);
-                if (t.DueDate.HasValue)
-                    return DateOnly.FromDateTime(t.DueDate.Value.ToOffset(tzOffset).DateTime);
-                return null;
-            }
-
-            // Group tasks by their specific target date
+            // Map tasks to their actual date within the period
             var tasksByDate = new Dictionary<DateOnly, List<WorkTask>>();
-            var tasksWithoutDate = new List<WorkTask>();
 
             foreach (var task in userTasks)
             {
-                var tDate = GetTaskDate(task);
-                if (tDate.HasValue && tDate.Value >= period.StartDate && tDate.Value <= period.EndDate)
+                DateOnly? targetDate = null;
+                if (task.StartDate.HasValue)
                 {
-                    var targetDate = tDate.Value;
-                    // If task falls on weekend, map to nearest weekday within period
-                    if (targetDate.DayOfWeek == DayOfWeek.Saturday)
-                    {
-                        var fri = targetDate.AddDays(-1);
-                        targetDate = fri >= period.StartDate ? fri : targetDate.AddDays(2);
-                    }
-                    else if (targetDate.DayOfWeek == DayOfWeek.Sunday)
-                    {
-                        var mon = targetDate.AddDays(1);
-                        targetDate = mon <= period.EndDate ? mon : targetDate.AddDays(-2);
-                    }
-
-                    if (!tasksByDate.ContainsKey(targetDate))
-                    {
-                        tasksByDate[targetDate] = new List<WorkTask>();
-                    }
-                    tasksByDate[targetDate].Add(task);
+                    targetDate = DateOnly.FromDateTime(task.StartDate.Value.ToOffset(tzOffset).DateTime);
+                }
+                else if (task.DueDate.HasValue)
+                {
+                    targetDate = DateOnly.FromDateTime(task.DueDate.Value.ToOffset(tzOffset).DateTime);
                 }
                 else
                 {
-                    tasksWithoutDate.Add(task);
+                    var created = DateOnly.FromDateTime(task.CreatedAt.ToOffset(tzOffset).DateTime);
+                    if (created >= period.StartDate && created <= period.EndDate)
+                    {
+                        targetDate = created;
+                    }
                 }
-            }
 
-            // For any tasks without dates (or dates outside the period), map to available unused working dates in this period
-            if (tasksWithoutDate.Count > 0)
-            {
-                var availableDates = workingDates
-                    .Where(d => !tasksByDate.ContainsKey(d))
-                    .OrderBy(d => d)
-                    .ToList();
-
-                var distinctUndated = tasksWithoutDate
-                    .GroupBy(t => t.Id)
-                    .Select(g => g.First())
-                    .OrderBy(t => t.StartDate.HasValue ? 0 : 1)
-                    .ThenBy(t => t.StartDate ?? t.CreatedAt)
-                    .ThenByDescending(t => GetPriorityWeight(t.Priority))
-                    .ToList();
-
-                int dateIdx = 0;
-                foreach (var undatedTask in distinctUndated)
+                // If targetDate is outside this period (e.g. August task in October period), do not include
+                if (!targetDate.HasValue || targetDate.Value < period.StartDate || targetDate.Value > period.EndDate)
                 {
-                    if (dateIdx >= availableDates.Count) break;
-                    var date = availableDates[dateIdx];
+                    continue;
+                }
+
+                var date = targetDate.Value;
+                // If falls on weekend, adjust to nearest working day in period
+                if (date.DayOfWeek == DayOfWeek.Saturday)
+                {
+                    var fri = date.AddDays(-1);
+                    date = fri >= period.StartDate ? fri : date.AddDays(2);
+                }
+                else if (date.DayOfWeek == DayOfWeek.Sunday)
+                {
+                    var mon = date.AddDays(1);
+                    date = mon <= period.EndDate ? mon : date.AddDays(-2);
+                }
+
+                if (date >= period.StartDate && date <= period.EndDate)
+                {
                     if (!tasksByDate.ContainsKey(date))
                     {
                         tasksByDate[date] = new List<WorkTask>();
                     }
-                    tasksByDate[date].Add(undatedTask);
-                    dateIdx++;
+                    tasksByDate[date].Add(task);
                 }
             }
 

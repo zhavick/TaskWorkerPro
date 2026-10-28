@@ -157,4 +157,48 @@ public class CompanyTimesheetExportServiceTests
         ws.Cell("A9").GetString().Should().BeEmpty();
         ws.Cell("B9").GetString().Should().Contain("Hari Libur Akhir Pekan (Sabtu)");
     }
+
+    [Fact]
+    public async Task ExportUserTimesheet_ShouldExcludeTasksFromPreviousMonths()
+    {
+        // Add a task from August 2026
+        var augustTask = new WorkTask
+        {
+            Id = 999,
+            Title = "Membuat Diagram HLD dan LLD API Integration",
+            ProjectId = 1,
+            CompanyId = 10,
+            AssignedToUserId = "syafix",
+            StartDate = new DateTimeOffset(2026, 8, 7, 8, 0, 0, TimeSpan.FromHours(7)),
+            DueDate = new DateTimeOffset(2026, 8, 12, 17, 0, 0, TimeSpan.FromHours(7))
+        };
+        _context.Tasks.Add(augustTask);
+
+        // Even if an invalid/mismatched session with an August task exists on September 4
+        _context.Sessions.Add(new WorkSession
+        {
+            Id = 9991,
+            TaskId = 999,
+            UserId = "syafix",
+            StartTime = new DateTimeOffset(2026, 9, 4, 8, 0, 0, TimeSpan.FromHours(7)),
+            EndTime = new DateTimeOffset(2026, 9, 4, 16, 0, 0, TimeSpan.FromHours(7)),
+            Duration = 28800
+        });
+        await _context.SaveChangesAsync();
+
+        var bytes = await _service.ExportUserTimesheetAsync(10, 1, "syafix");
+        bytes.Should().NotBeNull();
+
+        using var ms = new MemoryStream(bytes);
+        using var workbook = new XLWorkbook(ms);
+        var ws = workbook.Worksheet(1);
+
+        // Verify that the August task title does NOT appear anywhere in the September exported sheet!
+        var lastRow = ws.LastRowUsed()?.RowNumber() ?? 8;
+        for (int r = 8; r <= lastRow; r++)
+        {
+            var taskTitle = ws.Cell(r, 2).GetString();
+            taskTitle.Should().NotContain("Membuat Diagram HLD dan LLD API Integration");
+        }
+    }
 }

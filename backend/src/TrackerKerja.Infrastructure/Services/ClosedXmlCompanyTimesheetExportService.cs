@@ -185,6 +185,15 @@ public class ClosedXmlCompanyTimesheetExportService : ICompanyTimesheetExportSer
             {
                 var daySessions = sessions
                     .Where(s => DateOnly.FromDateTime(s.StartTime.ToOffset(tzOffset).DateTime) == date)
+                    .Where(s =>
+                    {
+                        var tDue = s.Task.DueDate.HasValue ? DateOnly.FromDateTime(s.Task.DueDate.Value.ToOffset(tzOffset).DateTime) : (DateOnly?)null;
+                        var tStart = s.Task.StartDate.HasValue ? DateOnly.FromDateTime(s.Task.StartDate.Value.ToOffset(tzOffset).DateTime) : (DateOnly?)null;
+                        // Exclude tasks that were already completed/due before this period or start after this period
+                        if (tDue.HasValue && tDue.Value < period.StartDate) return false;
+                        if (tStart.HasValue && tStart.Value > period.EndDate) return false;
+                        return true;
+                    })
                     .ToList();
                 attendanceMap.TryGetValue(date, out var att);
 
@@ -249,10 +258,25 @@ public class ClosedXmlCompanyTimesheetExportService : ICompanyTimesheetExportSer
                 }
                 else
                 {
-                    // Fallback to tasks assigned to this user whose StartDate or DueDate matches this date
+                    // Fallback to tasks assigned to this user that overlap with this specific date
                     var matchingTasks = userTasks
-                        .Where(t => (t.StartDate.HasValue && DateOnly.FromDateTime(t.StartDate.Value.ToOffset(tzOffset).DateTime) == date) ||
-                                    (!t.StartDate.HasValue && t.DueDate.HasValue && DateOnly.FromDateTime(t.DueDate.Value.ToOffset(tzOffset).DateTime) == date))
+                        .Where(t =>
+                        {
+                            var tStart = t.StartDate.HasValue ? DateOnly.FromDateTime(t.StartDate.Value.ToOffset(tzOffset).DateTime) : (DateOnly?)null;
+                            var tDue = t.DueDate.HasValue ? DateOnly.FromDateTime(t.DueDate.Value.ToOffset(tzOffset).DateTime) : (DateOnly?)null;
+
+                            // Exclude tasks completely outside this period
+                            if (tDue.HasValue && tDue.Value < period.StartDate) return false;
+                            if (tStart.HasValue && tStart.Value > period.EndDate) return false;
+
+                            if (tStart.HasValue && tDue.HasValue)
+                            {
+                                return date >= tStart.Value && date <= tDue.Value;
+                            }
+                            if (tStart.HasValue) return tStart.Value == date;
+                            if (tDue.HasValue) return tDue.Value == date;
+                            return false;
+                        })
                         .GroupBy(t => t.Id)
                         .Select(g => g.First())
                         .ToList();
@@ -268,19 +292,39 @@ public class ClosedXmlCompanyTimesheetExportService : ICompanyTimesheetExportSer
                             ws.Cell(currentRow, 3).Value = hoursPerTask;
                             ws.Cell(currentRow, 4).FormulaA1 = $"IF(C{currentRow}=\"\",\"\",C{currentRow}/8)";
                             ws.Cell(currentRow, 5).Value = date.ToString("dd/MM/yyyy");
-                            ws.Cell(currentRow, 6).Value = "8:00 AM";
-                            ws.Cell(currentRow, 7).Value = "5:10 PM";
+                            ws.Cell(currentRow, 6).Value = clockIn != "-" ? clockIn : "8:00 AM";
+                            ws.Cell(currentRow, 7).Value = clockOut != "-" ? clockOut : "5:10 PM";
                             ws.Cell(currentRow, 8).Value = user.UserName ?? user.FullName;
                             ws.Cell(currentRow, 9).Value = user.FullName;
                             ws.Cell(currentRow, 10).Value = period.PeriodCode;
                             ws.Cell(currentRow, 11).Value = task.Project?.Name ?? "-";
                             ws.Cell(currentRow, 12).Value = task.Category?.Name ?? "General";
-                            ws.Cell(currentRow, 13).Value = "WFO";
+                            ws.Cell(currentRow, 13).Value = workPlace;
                             ws.Cell(currentRow, 14).Value = "";
 
                             ApplyRowStyle(ws, currentRow);
                             currentRow++;
                         }
+                    }
+                    else if (att != null)
+                    {
+                        ws.Cell(currentRow, 1).Value = "";
+                        ws.Cell(currentRow, 2).Value = "Standby / Koordinasi Teknis Proyek";
+                        ws.Cell(currentRow, 3).Value = 8.0;
+                        ws.Cell(currentRow, 4).FormulaA1 = $"IF(C{currentRow}=\"\",\"\",C{currentRow}/8)";
+                        ws.Cell(currentRow, 5).Value = date.ToString("dd/MM/yyyy");
+                        ws.Cell(currentRow, 6).Value = clockIn != "-" ? clockIn : "8:00 AM";
+                        ws.Cell(currentRow, 7).Value = clockOut != "-" ? clockOut : "5:10 PM";
+                        ws.Cell(currentRow, 8).Value = user.UserName ?? user.FullName;
+                        ws.Cell(currentRow, 9).Value = user.FullName;
+                        ws.Cell(currentRow, 10).Value = period.PeriodCode;
+                        ws.Cell(currentRow, 11).Value = "-";
+                        ws.Cell(currentRow, 12).Value = "General";
+                        ws.Cell(currentRow, 13).Value = workPlace;
+                        ws.Cell(currentRow, 14).Value = "";
+
+                        ApplyRowStyle(ws, currentRow);
+                        currentRow++;
                     }
                 }
             }
