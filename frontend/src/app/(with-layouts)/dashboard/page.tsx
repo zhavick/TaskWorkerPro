@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "@/services/api/client";
 import {
   Briefcase,
+  Building,
   CheckCircle2,
   Clock,
   Flame,
@@ -51,6 +52,7 @@ export default function DashboardPage() {
   const [userRole, setUserRole] = useState("Member");
   const [activeChartTab, setActiveChartTab] = useState<"hours" | "tasks">("hours");
   const [activeDistributionTab, setActiveDistributionTab] = useState<"project" | "status" | "member">("project");
+  const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(null);
 
   useEffect(() => {
     try {
@@ -63,12 +65,26 @@ export default function DashboardPage() {
     } catch {}
   }, []);
 
-  // 1. Dashboard Stats Query (TSD 2.13)
-  const { data: statsData } = useQuery({
-    queryKey: ["dashboardStats"],
+  // 0. Query Available Companies
+  const { data: companies = [] } = useQuery<any[]>({
+    queryKey: ["dashboardCompanies"],
     queryFn: async () => {
       try {
-        const res = await apiClient.get("/dashboard/stats");
+        const res = await apiClient.get("/companies");
+        return res.data?.data || [];
+      } catch {
+        return [];
+      }
+    },
+  });
+
+  // 1. Dashboard Stats Query (TSD 2.13)
+  const { data: statsData } = useQuery({
+    queryKey: ["dashboardStats", selectedCompanyId],
+    queryFn: async () => {
+      try {
+        const url = selectedCompanyId ? `/dashboard/stats?companyId=${selectedCompanyId}` : "/dashboard/stats";
+        const res = await apiClient.get(url);
         return res.data.data;
       } catch {
         return null;
@@ -78,10 +94,13 @@ export default function DashboardPage() {
 
   // 2. Dashboard Productivity Chart Query (TSD 2.13)
   const { data: productivityData = [] } = useQuery({
-    queryKey: ["dashboardProductivity"],
+    queryKey: ["dashboardProductivity", selectedCompanyId],
     queryFn: async () => {
       try {
-        const res = await apiClient.get("/dashboard/productivity?days=7");
+        const url = selectedCompanyId
+          ? `/dashboard/productivity?days=7&companyId=${selectedCompanyId}`
+          : "/dashboard/productivity?days=7";
+        const res = await apiClient.get(url);
         return res.data.data;
       } catch {
         return [];
@@ -91,10 +110,13 @@ export default function DashboardPage() {
 
   // 3. Dashboard Distribution Query (USER_GUIDE 2.3)
   const { data: distributionData } = useQuery({
-    queryKey: ["dashboardDistribution"],
+    queryKey: ["dashboardDistribution", selectedCompanyId],
     queryFn: async () => {
       try {
-        const res = await apiClient.get("/dashboard/distribution");
+        const url = selectedCompanyId
+          ? `/dashboard/distribution?companyId=${selectedCompanyId}`
+          : "/dashboard/distribution";
+        const res = await apiClient.get(url);
         return res.data.data;
       } catch {
         return null;
@@ -104,10 +126,13 @@ export default function DashboardPage() {
 
   // 4. Dashboard Recent Activities Query (TSD 2.13)
   const { data: activitiesData = [] } = useQuery({
-    queryKey: ["dashboardActivities"],
+    queryKey: ["dashboardActivities", selectedCompanyId],
     queryFn: async () => {
       try {
-        const res = await apiClient.get("/dashboard/activities?limit=6");
+        const url = selectedCompanyId
+          ? `/dashboard/activities?limit=6&companyId=${selectedCompanyId}`
+          : "/dashboard/activities?limit=6";
+        const res = await apiClient.get(url);
         return res.data.data;
       } catch {
         return [];
@@ -117,18 +142,20 @@ export default function DashboardPage() {
 
   // 5. Projects Query (for burn rate analysis)
   const { data: projects = [] } = useQuery<any[]>({
-    queryKey: ["dashboardProjects"],
+    queryKey: ["dashboardProjects", selectedCompanyId],
     queryFn: async () => {
-      const res = await apiClient.get("/projects");
+      const url = selectedCompanyId ? `/projects?companyId=${selectedCompanyId}` : "/projects";
+      const res = await apiClient.get(url);
       return res.data.data || [];
     },
   });
 
   // Fallback Queries if /dashboard/stats is still loading or using individual endpoints
   const { data: tasks = [] } = useQuery<any[]>({
-    queryKey: ["dashboardTasks"],
+    queryKey: ["dashboardTasks", selectedCompanyId],
     queryFn: async () => {
-      const res = await apiClient.get("/tasks");
+      const url = selectedCompanyId ? `/tasks?companyId=${selectedCompanyId}` : "/tasks";
+      const res = await apiClient.get(url);
       return res.data.data || [];
     },
     enabled: !statsData,
@@ -278,34 +305,8 @@ export default function DashboardPage() {
     return rawMemberDistribution.filter((m: any) => !isAdministrator(m));
   }, [rawMemberDistribution]);
 
-  const defaultMemberChartData = [
-    {
-      userId: "user-member-2",
-      name: "Siti Rahma",
-      jobTitle: "QA Lead Engineer",
-      color: "#EC4899",
-      value: 7,
-      doneCount: 5,
-      inProgressCount: 2,
-      percentage: 46.7,
-      projects: ["Migrasi Core Banking Cloud"],
-    },
-    {
-      userId: "user-member-1",
-      name: "Budi Santoso",
-      jobTitle: "Senior Fullstack Developer",
-      color: "var(--neutral-brand-color, #10B981)",
-      value: 8,
-      doneCount: 6,
-      inProgressCount: 2,
-      percentage: 53.3,
-      projects: ["Sistem Presensi Geofencing AI"],
-    },
-  ];
-
   const memberChartData = useMemo(() => {
-    const list = memberDistribution.length > 0 ? memberDistribution : defaultMemberChartData;
-    return list.filter((m: any) => !isAdministrator(m));
+    return memberDistribution.filter((m: any) => !isAdministrator(m));
   }, [memberDistribution]);
 
   const currentPieData =
@@ -401,8 +402,26 @@ export default function DashboardPage() {
           </p>
         </div>
 
-        {/* Quick Actions (Presensi Cepat, Kalender, Studio Tugas) */}
+        {/* Quick Actions (Perusahaan Filter, Presensi Cepat, Kalender, Studio Tugas) */}
         <div className="flex flex-wrap items-center gap-2.5">
+          {/* Company Filter Dropdown */}
+          <div className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-1.5 shadow-2xs dark:border-gray-800 dark:bg-gray-900">
+            <Building className="h-4 w-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+            <select
+              value={selectedCompanyId ?? ""}
+              onChange={(e) => setSelectedCompanyId(e.target.value ? Number(e.target.value) : null)}
+              className="bg-transparent text-xs font-semibold text-gray-800 dark:text-gray-200 outline-none cursor-pointer"
+              title="Pilih perusahaan untuk memfilter metrik dashboard"
+            >
+              <option value="">🏢 Perusahaan: Otomatis</option>
+              {companies.map((c: any) => (
+                <option key={c.id} value={c.id} className="text-gray-900 bg-white dark:bg-gray-900 dark:text-gray-100">
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
           {attendance?.hasClockedIn && !attendance?.hasClockedOut ? (
             <Button
               onClick={() => clockOutMutation.mutate()}
@@ -1001,97 +1020,111 @@ export default function DashboardPage() {
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
           {/* Bar Chart Komparasi Tugas Anggota Tim (7 cols) */}
           <div className="h-68 w-full lg:col-span-7">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={memberChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--card-border, #E5E7EB)" opacity={0.6} />
-                <XAxis dataKey="name" tickLine={false} axisLine={false} fontSize={12} stroke="var(--text-secondary, #9CA3AF)" />
-                <YAxis tickLine={false} axisLine={false} fontSize={12} stroke="var(--text-secondary, #9CA3AF)" allowDecimals={false} />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "var(--card-background, #ffffff)",
-                    borderColor: "var(--card-border, #e5e7eb)",
-                    borderWidth: "1px",
-                    borderStyle: "solid",
-                    borderRadius: "0.75rem",
-                    color: "var(--text-primary, #111827)",
-                    fontSize: "12px",
-                    boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1)",
-                  }}
-                  itemStyle={{ color: "var(--text-primary, #111827)" }}
-                  labelStyle={{ color: "var(--text-secondary, #6b7280)", fontWeight: 600 }}
-                  formatter={(val: any, name: any) => [`${val} Tugas`, name]}
-                />
-                <Legend
-                  wrapperStyle={{ paddingTop: "12px", fontSize: "12px" }}
-                  formatter={(value) => <span className="text-text-secondary font-medium">{value}</span>}
-                />
-                <Bar dataKey="doneCount" name="Tugas Selesai" fill="var(--primary-500, #3758f9)" radius={[4, 4, 0, 0]} maxBarSize={32} />
-                <Bar dataKey="inProgressCount" name="Dalam Proses" fill="var(--neutral-brand-color, #10B981)" radius={[4, 4, 0, 0]} maxBarSize={32} />
-              </BarChart>
-            </ResponsiveContainer>
+            {memberChartData.length === 0 ? (
+              <div className="flex h-full min-h-[220px] flex-col items-center justify-center rounded-xl border border-dashed border-card-border p-6 text-center text-xs text-text-secondary">
+                <Users className="mb-2 h-7 w-7 text-text-secondary/50" />
+                <p className="font-semibold text-text-primary">Belum Ada Data Tugas Anggota Tim</p>
+                <p className="mt-1 text-[11px]">Tidak ada tugas aktif atau anggota tim yang teralokasi pada filter perusahaan ini.</p>
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={memberChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--card-border, #E5E7EB)" opacity={0.6} />
+                  <XAxis dataKey="name" tickLine={false} axisLine={false} fontSize={12} stroke="var(--text-secondary, #9CA3AF)" />
+                  <YAxis tickLine={false} axisLine={false} fontSize={12} stroke="var(--text-secondary, #9CA3AF)" allowDecimals={false} />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: "var(--card-background, #ffffff)",
+                      borderColor: "var(--card-border, #e5e7eb)",
+                      borderWidth: "1px",
+                      borderStyle: "solid",
+                      borderRadius: "0.75rem",
+                      color: "var(--text-primary, #111827)",
+                      fontSize: "12px",
+                      boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1)",
+                    }}
+                    itemStyle={{ color: "var(--text-primary, #111827)" }}
+                    labelStyle={{ color: "var(--text-secondary, #6b7280)", fontWeight: 600 }}
+                    formatter={(val: any, name: any) => [`${val} Tugas`, name]}
+                  />
+                  <Legend
+                    wrapperStyle={{ paddingTop: "12px", fontSize: "12px" }}
+                    formatter={(value) => <span className="text-text-secondary font-medium">{value}</span>}
+                  />
+                  <Bar dataKey="doneCount" name="Tugas Selesai" fill="var(--primary-500, #3758f9)" radius={[4, 4, 0, 0]} maxBarSize={32} />
+                  <Bar dataKey="inProgressCount" name="Dalam Proses" fill="var(--neutral-brand-color, #10B981)" radius={[4, 4, 0, 0]} maxBarSize={32} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
           </div>
 
           {/* Rincian Kartu Member (5 cols) */}
           <div className="space-y-2.5 max-h-68 overflow-y-auto pr-1 lg:col-span-5">
-            {memberChartData.map((m: any) => {
-              const total = (m.doneCount || 0) + (m.inProgressCount || 0);
-              const completionRate = total > 0 ? Math.round(((m.doneCount || 0) / total) * 100) : 0;
-              return (
-                <div
-                  key={m.userId || m.name}
-                  className="rounded-xl border border-card-border bg-card-surface-area p-3 transition-colors hover:border-primary-500/40 text-text-primary"
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2.5 truncate pr-2">
-                      <div
-                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-xs font-bold text-white shadow-xs"
-                        style={{ backgroundColor: m.color || "var(--primary-500, #3758f9)" }}
-                      >
-                        {m.name.charAt(0).toUpperCase()}
-                      </div>
-                      <div className="truncate">
-                        <span className="block truncate text-xs font-bold text-text-primary">
-                          {m.name}
-                        </span>
-                        <span className="block text-[11px] text-text-secondary">
-                          {m.jobTitle || "Anggota Tim"}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="shrink-0 text-right">
-                      <span className="text-xs font-black text-text-primary">
-                        {m.value || total} Tugas
-                      </span>
-                      <span className="block text-[10px] font-semibold text-primary-500">
-                        {completionRate}% Selesai
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Progress Bar Selesai vs Dalam Proses */}
-                  <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-background-gray-secondary">
-                    <div
-                      className="h-full bg-primary-500 transition-all duration-500"
-                      style={{ width: `${completionRate}%` }}
-                    />
-                  </div>
-
-                  {/* Assigned Projects Tags */}
-                  {m.projects && m.projects.length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-1">
-                      {m.projects.map((proj: string) => (
-                        <span
-                          key={proj}
-                          className="rounded-md border border-card-border bg-card-background px-1.5 py-0.5 text-[9px] font-medium text-text-secondary"
+            {memberChartData.length === 0 ? (
+              <div className="flex h-full min-h-[220px] items-center justify-center rounded-xl border border-dashed border-card-border p-6 text-center text-xs text-text-secondary">
+                Belum ada anggota tim terdaftar untuk filter ini.
+              </div>
+            ) : (
+              memberChartData.map((m: any) => {
+                const total = (m.doneCount || 0) + (m.inProgressCount || 0);
+                const completionRate = total > 0 ? Math.round(((m.doneCount || 0) / total) * 100) : 0;
+                return (
+                  <div
+                    key={m.userId || m.name}
+                    className="rounded-xl border border-card-border bg-card-surface-area p-3 transition-colors hover:border-primary-500/40 text-text-primary"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2.5 truncate pr-2">
+                        <div
+                          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-xs font-bold text-white shadow-xs"
+                          style={{ backgroundColor: m.color || "var(--primary-500, #3758f9)" }}
                         >
-                          {proj}
+                          {m.name.charAt(0).toUpperCase()}
+                        </div>
+                        <div className="truncate">
+                          <span className="block truncate text-xs font-bold text-text-primary">
+                            {m.name}
+                          </span>
+                          <span className="block text-[11px] text-text-secondary">
+                            {m.jobTitle || "Anggota Tim"}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <span className="text-xs font-black text-text-primary">
+                          {m.value || total} Tugas
                         </span>
-                      ))}
+                        <span className="block text-[10px] font-semibold text-primary-500">
+                          {completionRate}% Selesai
+                        </span>
+                      </div>
                     </div>
-                  )}
-                </div>
-              );
-            })}
+
+                    {/* Progress Bar Selesai vs Dalam Proses */}
+                    <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-background-gray-secondary">
+                      <div
+                        className="h-full bg-primary-500 transition-all duration-500"
+                        style={{ width: `${completionRate}%` }}
+                      />
+                    </div>
+
+                    {/* Assigned Projects Tags */}
+                    {m.projects && m.projects.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {m.projects.map((proj: string) => (
+                          <span
+                            key={proj}
+                            className="rounded-md border border-card-border bg-card-background px-1.5 py-0.5 text-[9px] font-medium text-text-secondary"
+                          >
+                            {proj}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
           </div>
         </div>
 
@@ -1117,63 +1150,71 @@ export default function DashboardPage() {
           </div>
 
           <div className="h-72 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={memberProjectData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--card-border, #E5E7EB)" opacity={0.6} />
-                <XAxis dataKey="name" tickLine={false} axisLine={false} fontSize={12} stroke="var(--text-secondary, #9CA3AF)" />
-                <YAxis tickLine={false} axisLine={false} fontSize={12} stroke="var(--text-secondary, #9CA3AF)" allowDecimals={false} />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "var(--card-background, #ffffff)",
-                    borderColor: "var(--card-border, #e5e7eb)",
-                    borderWidth: "1px",
-                    borderStyle: "solid",
-                    borderRadius: "0.75rem",
-                    color: "var(--text-primary, #111827)",
-                    fontSize: "12px",
-                    boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1)",
-                  }}
-                  itemStyle={{ color: "var(--text-primary, #111827)" }}
-                  labelStyle={{ color: "var(--text-secondary, #6b7280)", fontWeight: 600 }}
-                  formatter={(val: any, name: any) => [`${val} Tugas`, name]}
-                />
-                <Legend
-                  wrapperStyle={{ paddingTop: "12px", fontSize: "12px" }}
-                  formatter={(value) => <span className="text-text-secondary font-medium">{value}</span>}
-                />
-                {topProjectsList.map((proj: string, idx: number) => (
-                  <Bar
-                    key={proj}
-                    dataKey={proj}
-                    name={proj}
-                    stackId="workloadProject"
-                    fill={projectBarColors[idx % projectBarColors.length]}
-                    radius={[0, 0, 0, 0]}
-                    maxBarSize={36}
+            {memberProjectData.length === 0 ? (
+              <div className="flex h-full min-h-[220px] flex-col items-center justify-center rounded-xl border border-dashed border-card-border p-6 text-center text-xs text-text-secondary">
+                <Briefcase className="mb-2 h-7 w-7 text-text-secondary/50" />
+                <p className="font-semibold text-text-primary">Belum Ada Distribusi Proyek</p>
+                <p className="mt-1 text-[11px]">Tidak ada data pembagian tugas antar proyek pada filter perusahaan ini.</p>
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={memberProjectData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--card-border, #E5E7EB)" opacity={0.6} />
+                  <XAxis dataKey="name" tickLine={false} axisLine={false} fontSize={12} stroke="var(--text-secondary, #9CA3AF)" />
+                  <YAxis tickLine={false} axisLine={false} fontSize={12} stroke="var(--text-secondary, #9CA3AF)" allowDecimals={false} />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: "var(--card-background, #ffffff)",
+                      borderColor: "var(--card-border, #e5e7eb)",
+                      borderWidth: "1px",
+                      borderStyle: "solid",
+                      borderRadius: "0.75rem",
+                      color: "var(--text-primary, #111827)",
+                      fontSize: "12px",
+                      boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1)",
+                    }}
+                    itemStyle={{ color: "var(--text-primary, #111827)" }}
+                    labelStyle={{ color: "var(--text-secondary, #6b7280)", fontWeight: 600 }}
+                    formatter={(val: any, name: any) => [`${val} Tugas`, name]}
                   />
-                ))}
-                {memberProjectData.some((r: any) => (r["Proyek Lainnya"] || 0) > 0) && (
-                  <Bar
-                    dataKey="Proyek Lainnya"
-                    name="Proyek Lainnya"
-                    stackId="workloadProject"
-                    fill="#8B5CF6"
-                    radius={[0, 0, 0, 0]}
-                    maxBarSize={36}
+                  <Legend
+                    wrapperStyle={{ paddingTop: "12px", fontSize: "12px" }}
+                    formatter={(value) => <span className="text-text-secondary font-medium">{value}</span>}
                   />
-                )}
-                {memberProjectData.some((r: any) => (r["Tanpa Proyek"] || 0) > 0) && (
-                  <Bar
-                    dataKey="Tanpa Proyek"
-                    name="Tanpa Proyek"
-                    stackId="workloadProject"
-                    fill="#94A3B8"
-                    radius={[4, 4, 0, 0]}
-                    maxBarSize={36}
-                  />
-                )}
-              </BarChart>
-            </ResponsiveContainer>
+                  {topProjectsList.map((proj: string, idx: number) => (
+                    <Bar
+                      key={proj}
+                      dataKey={proj}
+                      name={proj}
+                      stackId="workloadProject"
+                      fill={projectBarColors[idx % projectBarColors.length]}
+                      radius={[0, 0, 0, 0]}
+                      maxBarSize={36}
+                    />
+                  ))}
+                  {memberProjectData.some((r: any) => (r["Proyek Lainnya"] || 0) > 0) && (
+                    <Bar
+                      dataKey="Proyek Lainnya"
+                      name="Proyek Lainnya"
+                      stackId="workloadProject"
+                      fill="#8B5CF6"
+                      radius={[0, 0, 0, 0]}
+                      maxBarSize={36}
+                    />
+                  )}
+                  {memberProjectData.some((r: any) => (r["Tanpa Proyek"] || 0) > 0) && (
+                    <Bar
+                      dataKey="Tanpa Proyek"
+                      name="Tanpa Proyek"
+                      stackId="workloadProject"
+                      fill="#94A3B8"
+                      radius={[4, 4, 0, 0]}
+                      maxBarSize={36}
+                    />
+                  )}
+                </BarChart>
+              </ResponsiveContainer>
+            )}
           </div>
         </div>
       </div>

@@ -305,23 +305,46 @@ public class AutomatedTimesheetGeneratorService : IAutomatedTimesheetGeneratorSe
                     currentMinuteOffset += (int)(taskDuration / 60);
                 }
 
-                // Synchronize Attendance (ClockIn: 08:00, ClockOut: 17:10, WFO)
-                var attExists = await _context.Attendances
-                    .AnyAsync(a => a.UserId == user.Id && a.Date == date, cancellationToken);
+                // Synchronize Attendance (ClockIn: 08:00, ClockOut: 17:10, WFO, 8.0 Jam, Approved)
+                var att = await _context.Attendances
+                    .FirstOrDefaultAsync(a => a.UserId == user.Id && a.Date == date, cancellationToken);
 
-                if (!attExists)
+                var clockIn = new DateTimeOffset(date.Year, date.Month, date.Day, 8, 0, 0, tzOffset);
+                var clockOut = new DateTimeOffset(date.Year, date.Month, date.Day, 17, 10, 0, tzOffset);
+                var taskTitles = string.Join(", ", distinctTasks.Take(2).Select(t => t.Title.Length > 80 ? t.Title.Substring(0, 77) + "..." : t.Title));
+                if (distinctTasks.Count > 2) taskTitles += $" (+{distinctTasks.Count - 2} lainnya)";
+                var notesText = $"Presensi sinkronisasi tugas harian (8 Jam): {taskTitles}";
+                if (notesText.Length > 450) notesText = notesText.Substring(0, 447) + "...";
+
+                if (att == null)
                 {
-                    var clockIn = new DateTimeOffset(date.Year, date.Month, date.Day, 8, 0, 0, tzOffset);
-                    var clockOut = new DateTimeOffset(date.Year, date.Month, date.Day, 17, 10, 0, tzOffset);
-                    var att = new Attendance
+                    att = new Attendance
                     {
                         UserId = user.Id,
                         Date = date,
+                        Type = AttendanceType.Present,
+                        WorkLocation = WorkLocation.WFO,
                         ClockIn = clockIn.ToUniversalTime(),
                         ClockOut = clockOut.ToUniversalTime(),
-                        WorkLocation = WorkLocation.WFO
+                        TotalHours = 8.0,
+                        Status = 2, // Approved
+                        Notes = notesText,
+                        CreatedAt = DateTimeOffset.UtcNow,
+                        UpdatedAt = DateTimeOffset.UtcNow
                     };
                     _context.Attendances.Add(att);
+                    totalAttendancesCreated++;
+                }
+                else
+                {
+                    att.Type = AttendanceType.Present;
+                    att.WorkLocation = WorkLocation.WFO;
+                    att.ClockIn = clockIn.ToUniversalTime();
+                    att.ClockOut = clockOut.ToUniversalTime();
+                    att.TotalHours = 8.0;
+                    att.Status = 2; // Approved
+                    att.Notes = notesText;
+                    att.UpdatedAt = DateTimeOffset.UtcNow;
                     totalAttendancesCreated++;
                 }
             }

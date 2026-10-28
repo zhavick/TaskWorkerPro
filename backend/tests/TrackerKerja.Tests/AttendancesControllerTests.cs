@@ -351,6 +351,81 @@ public class AttendancesControllerTests : IDisposable
         Assert.Equal(200, result.StatusCode);
     }
 
+    [Fact]
+    public async Task SyncFromTasks_WhenTasksExist_ShouldGenerateApprovedEightHoursAttendance()
+    {
+        // Arrange: User has active task
+        var tzOffset = TimeSpan.FromHours(7);
+        var targetDate = new DateOnly(2026, 9, 3); // Thursday
+        var task = new WorkTask
+        {
+            Id = 555,
+            Title = "Task Implementasi Dashboard",
+            CompanyId = 1,
+            AssignedToUserId = "user-1",
+            StartDate = new DateTimeOffset(2026, 9, 3, 8, 0, 0, tzOffset),
+            DueDate = new DateTimeOffset(2026, 9, 3, 17, 0, 0, tzOffset),
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        _context.Tasks.Add(task);
+        await _context.SaveChangesAsync();
+
+        // Act
+        var result = await _controller.SyncFromTasks(companyId: 1, userId: "user-1", date: targetDate) as OkObjectResult;
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal(200, result.StatusCode);
+
+        var json = ToJsonElement(result.Value);
+        Assert.True(json.GetProperty("success").GetBoolean());
+        Assert.Equal(1, json.GetProperty("syncedCount").GetInt32());
+
+        var att = await _context.Attendances.FirstOrDefaultAsync(a => a.UserId == "user-1" && a.Date == targetDate);
+        Assert.NotNull(att);
+        Assert.Equal(8.0, att!.TotalHours);
+        Assert.Equal(2, att.Status);
+        Assert.Equal(AttendanceType.Present, att.Type);
+        Assert.Equal(WorkLocation.WFO, att.WorkLocation);
+        Assert.Contains("Task Implementasi Dashboard", att.Notes);
+    }
+
+    [Fact]
+    public async Task GetTodayStatus_WhenUserHasActiveTasksToday_ShouldAutoReflectEightHoursAttendance()
+    {
+        // Arrange
+        var tzOffset = TimeSpan.FromHours(7);
+        var nowTz = DateTimeOffset.UtcNow.ToOffset(tzOffset);
+        var today = DateOnly.FromDateTime(nowTz.DateTime);
+
+        var task = new WorkTask
+        {
+            Id = 556,
+            Title = "Task Hari Ini Untuk Presensi",
+            CompanyId = 1,
+            AssignedToUserId = "user-1",
+            StartDate = new DateTimeOffset(today.Year, today.Month, today.Day, 8, 0, 0, tzOffset),
+            DueDate = new DateTimeOffset(today.Year, today.Month, today.Day, 17, 0, 0, tzOffset),
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        _context.Tasks.Add(task);
+        await _context.SaveChangesAsync();
+
+        // Act
+        var result = await _controller.GetTodayStatus() as OkObjectResult;
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal(200, result.StatusCode);
+
+        var json = ToJsonElement(result.Value);
+        Assert.True(json.GetProperty("success").GetBoolean());
+        var data = json.GetProperty("data");
+        Assert.True(data.GetProperty("hasClockedIn").GetBoolean());
+        Assert.True(data.GetProperty("hasClockedOut").GetBoolean());
+        Assert.Equal(8.0, data.GetProperty("totalHours").GetDouble());
+    }
+
     private class FakeTenantService : ICurrentTenantService
     {
         public FakeTenantService(int? companyId, string? companyCode, string? userId, bool isAdmin)

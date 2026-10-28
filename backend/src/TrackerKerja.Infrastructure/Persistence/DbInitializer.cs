@@ -232,6 +232,11 @@ public static class DbInitializer
                     CREATE INDEX IF NOT EXISTS ix_holidays_date ON holidays(date);
                     CREATE INDEX IF NOT EXISTS ix_holidays_company_id ON holidays(company_id);
                     CREATE UNIQUE INDEX IF NOT EXISTS uq_holiday_date_company ON holidays(date, COALESCE(company_id, 0));
+
+                    -- Pastikan seluruh presensi kehadiran sinkron 8 jam kerja dan berstatus Approved
+                    UPDATE attendances 
+                    SET total_hours = 8.0, status = 2, notes = 'Presensi sinkronisasi 8 jam tugas harian' 
+                    WHERE (total_hours = 0 OR status = 1) AND type = 1;
                 ");
             }
             catch

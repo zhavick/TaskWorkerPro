@@ -592,4 +592,40 @@ public class AutomatedTimesheetGeneratorServiceTests
         dates.Should().ContainInOrder(new DateOnly(2026, 9, 3), new DateOnly(2026, 9, 7));
         dates.Should().NotContain(new DateOnly(2026, 9, 4));
     }
+
+    [Fact]
+    public async Task GenerateTimesheets_ShouldCreateOrUpdateAttendancesWithEightHoursAndApprovedStatus()
+    {
+        var task = new WorkTask
+        {
+            Id = 980,
+            Title = "Implementasi Fitur Rekonsiliasi Otomatis",
+            CompanyId = 10,
+            ProjectId = 1,
+            AssignedToUserId = "syafix",
+            Priority = TaskPriority.High,
+            StartDate = new DateTimeOffset(2026, 9, 3, 8, 0, 0, TimeSpan.FromHours(7)),
+            DueDate = new DateTimeOffset(2026, 9, 3, 17, 0, 0, TimeSpan.FromHours(7))
+        };
+
+        _context.Tasks.Add(task);
+        await _context.SaveChangesAsync();
+
+        var request = new AutoGenerateTimesheetRequest(10, 1, "syafix", "Overwrite");
+        var result = await _service.GenerateTimesheetsAsync(request, 10);
+
+        result.Success.Should().BeTrue();
+        result.AttendancesCreatedCount.Should().BeGreaterThan(0);
+
+        var attendance = await _context.Attendances
+            .FirstOrDefaultAsync(a => a.UserId == "syafix" && a.Date == new DateOnly(2026, 9, 3));
+
+        attendance.Should().NotBeNull();
+        attendance!.TotalHours.Should().Be(8.0);
+        attendance.Status.Should().Be(2); // Approved
+        attendance.Type.Should().Be(AttendanceType.Present);
+        attendance.WorkLocation.Should().Be(WorkLocation.WFO);
+        attendance.Notes.Should().Contain("8 Jam");
+        attendance.Notes.Should().Contain("Implementasi Fitur Rekonsiliasi Otomatis");
+    }
 }
