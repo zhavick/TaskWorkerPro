@@ -354,4 +354,146 @@ public class MasterDataController : ControllerBase
             .ToListAsync();
         return Ok(new { success = true, data = titles });
     }
+
+    // ==========================================
+    // HOLIDAYS (HARI LIBUR)
+    // ==========================================
+
+    [HttpGet("holidays")]
+    public async Task<IActionResult> GetHolidays([FromQuery] int? year = null, [FromQuery] int? companyId = null)
+    {
+        var query = _context.Holidays
+            .AsNoTracking()
+            .Include(h => h.Company)
+            .AsQueryable();
+
+        if (year.HasValue)
+        {
+            query = query.Where(h => h.Date.Year == year.Value);
+        }
+
+        if (companyId.HasValue)
+        {
+            query = query.Where(h => h.IsNational || h.CompanyId == companyId.Value);
+        }
+
+        var holidays = await query
+            .OrderBy(h => h.Date)
+            .Select(h => new HolidayDto(
+                h.Id,
+                h.Date,
+                h.Name,
+                h.Description,
+                h.IsNational,
+                h.CompanyId,
+                h.Company != null ? h.Company.Name : null
+            ))
+            .ToListAsync();
+
+        return Ok(new { success = true, data = holidays });
+    }
+
+    [HttpGet("holidays/{id:int}")]
+    public async Task<IActionResult> GetHolidayById(int id)
+    {
+        var h = await _context.Holidays
+            .AsNoTracking()
+            .Include(x => x.Company)
+            .FirstOrDefaultAsync(x => x.Id == id);
+
+        if (h == null)
+            return NotFound(new { success = false, message = "Hari libur tidak ditemukan" });
+
+        var dto = new HolidayDto(
+            h.Id,
+            h.Date,
+            h.Name,
+            h.Description,
+            h.IsNational,
+            h.CompanyId,
+            h.Company != null ? h.Company.Name : null
+        );
+
+        return Ok(new { success = true, data = dto });
+    }
+
+    [HttpPost("holidays")]
+    public async Task<IActionResult> CreateHoliday([FromBody] CreateHolidayRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Name))
+            return BadRequest(new { success = false, message = "Nama hari libur wajib diisi." });
+
+        var holiday = new Holiday
+        {
+            Date = request.Date,
+            Name = request.Name.Trim(),
+            Description = request.Description,
+            IsNational = request.IsNational,
+            CompanyId = request.IsNational ? null : request.CompanyId,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow
+        };
+
+        _context.Holidays.Add(holiday);
+        await _context.SaveChangesAsync();
+
+        return Ok(new { success = true, data = holiday });
+    }
+
+    [HttpPut("holidays/{id:int}")]
+    public async Task<IActionResult> UpdateHoliday(int id, [FromBody] UpdateHolidayRequest request)
+    {
+        var holiday = await _context.Holidays.FindAsync(id);
+        if (holiday == null)
+            return NotFound(new { success = false, message = "Hari libur tidak ditemukan" });
+
+        if (string.IsNullOrWhiteSpace(request.Name))
+            return BadRequest(new { success = false, message = "Nama hari libur wajib diisi." });
+
+        holiday.Date = request.Date;
+        holiday.Name = request.Name.Trim();
+        holiday.Description = request.Description;
+        holiday.IsNational = request.IsNational;
+        holiday.CompanyId = request.IsNational ? null : request.CompanyId;
+        holiday.UpdatedAt = DateTimeOffset.UtcNow;
+
+        await _context.SaveChangesAsync();
+        return Ok(new { success = true, data = holiday });
+    }
+
+    [HttpDelete("holidays/{id:int}")]
+    public async Task<IActionResult> DeleteHoliday(int id)
+    {
+        var holiday = await _context.Holidays.FindAsync(id);
+        if (holiday == null)
+            return NotFound(new { success = false, message = "Hari libur tidak ditemukan" });
+
+        _context.Holidays.Remove(holiday);
+        await _context.SaveChangesAsync();
+        return Ok(new { success = true, message = "Hari libur berhasil dihapus" });
+    }
+
+    [HttpPost("holidays/seed-national")]
+    public async Task<IActionResult> SeedNationalHolidays([FromQuery] int year = 2026)
+    {
+        var defaults = DbInitializer.GetDefaultNationalHolidays(year);
+        if (!defaults.Any())
+        {
+            return BadRequest(new { success = false, message = $"Tidak ada data master libur nasional bawaan untuk tahun {year}." });
+        }
+
+        var existingDates = await _context.Holidays
+            .Where(h => h.IsNational && h.Date.Year == year)
+            .Select(h => h.Date)
+            .ToListAsync();
+
+        var toAdd = defaults.Where(d => !existingDates.Contains(d.Date)).ToList();
+        if (toAdd.Any())
+        {
+            _context.Holidays.AddRange(toAdd);
+            await _context.SaveChangesAsync();
+        }
+
+        return Ok(new { success = true, message = $"Berhasil menambahkan {toAdd.Count} hari libur nasional untuk tahun {year}.", addedCount = toAdd.Count });
+    }
 }
