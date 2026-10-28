@@ -139,6 +139,12 @@ public class ClosedXmlCompanyTimesheetExportService : ICompanyTimesheetExportSer
 
         var attendanceMap = attendances.ToDictionary(a => a.Date, a => a);
 
+        var holidays = await _context.Holidays
+            .AsNoTracking()
+            .Where(h => (h.IsNational || h.CompanyId == companyId) && h.Date >= period.StartDate && h.Date <= period.EndDate)
+            .ToListAsync();
+        var holidayMap = holidays.ToDictionary(h => h.Date, h => h);
+
         // Clear existing template rows from row 8 downwards if it was loaded from prefilled template
         var maxRowUsed = ws.LastRowUsed()?.RowNumber() ?? 8;
         if (maxRowUsed >= 8)
@@ -154,6 +160,8 @@ public class ClosedXmlCompanyTimesheetExportService : ICompanyTimesheetExportSer
         for (var date = period.StartDate; date <= period.EndDate; date = date.AddDays(1))
         {
             var isWeekend = date.DayOfWeek == DayOfWeek.Saturday || date.DayOfWeek == DayOfWeek.Sunday;
+            holidayMap.TryGetValue(date, out var holiday);
+            var isHoliday = holiday != null;
 
             if (isWeekend)
             {
@@ -180,6 +188,28 @@ public class ClosedXmlCompanyTimesheetExportService : ICompanyTimesheetExportSer
                     ApplyRowStyle(ws, currentRow);
                     currentRow++;
                 }
+            }
+            else if (isHoliday)
+            {
+                var holidayText = $"Hari Libur ({holiday!.Name}) - Tidak Ada Pengerjaan Task";
+
+                ws.Cell(currentRow, 1).Value = "";
+                ws.Cell(currentRow, 2).Value = holidayText;
+                ws.Cell(currentRow, 3).Value = 0;
+                ws.Cell(currentRow, 4).FormulaA1 = $"IF(C{currentRow}=\"\",\"\",C{currentRow}/8)";
+                ws.Cell(currentRow, 5).Value = date.ToString("dd/MM/yyyy");
+                ws.Cell(currentRow, 6).Value = "-";
+                ws.Cell(currentRow, 7).Value = "-";
+                ws.Cell(currentRow, 8).Value = user.UserName ?? user.FullName;
+                ws.Cell(currentRow, 9).Value = user.FullName;
+                ws.Cell(currentRow, 10).Value = period.PeriodCode;
+                ws.Cell(currentRow, 11).Value = "-";
+                ws.Cell(currentRow, 12).Value = "-";
+                ws.Cell(currentRow, 13).Value = "";
+                ws.Cell(currentRow, 14).Value = "";
+
+                ApplyRowStyle(ws, currentRow);
+                currentRow++;
             }
             else
             {

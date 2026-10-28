@@ -201,4 +201,44 @@ public class CompanyTimesheetExportServiceTests
             taskTitle.Should().NotContain("Membuat Diagram HLD dan LLD API Integration");
         }
     }
+
+    [Fact]
+    public async Task ExportUserTimesheet_ShouldRenderHolidayRow_AndSkipWorkOnHolidays()
+    {
+        // Add Holiday on Thursday 2026-09-03
+        _context.Holidays.Add(new Holiday
+        {
+            Date = new DateOnly(2026, 9, 3),
+            Name = "Hari Peringatan Khusus",
+            IsNational = true,
+            CompanyId = null
+        });
+        await _context.SaveChangesAsync();
+
+        var bytes = await _service.ExportUserTimesheetAsync(10, 1, "syafix");
+        bytes.Should().NotBeNull();
+
+        using var ms = new MemoryStream(bytes);
+        using var workbook = new XLWorkbook(ms);
+        var ws = workbook.Worksheet(1);
+
+        // Find the row with date 03/09/2026
+        int? holidayRow = null;
+        var lastRow = ws.LastRowUsed()?.RowNumber() ?? 8;
+        for (int r = 8; r <= lastRow; r++)
+        {
+            if (ws.Cell(r, 5).GetString() == "03/09/2026")
+            {
+                holidayRow = r;
+                break;
+            }
+        }
+
+        holidayRow.Should().NotBeNull();
+        ws.Cell(holidayRow!.Value, 1).GetString().Should().BeEmpty();
+        ws.Cell(holidayRow.Value, 2).GetString().Should().Be("Hari Libur (Hari Peringatan Khusus) - Tidak Ada Pengerjaan Task");
+        ws.Cell(holidayRow.Value, 3).GetDouble().Should().Be(0);
+        ws.Cell(holidayRow.Value, 6).GetString().Should().Be("-");
+        ws.Cell(holidayRow.Value, 7).GetString().Should().Be("-");
+    }
 }
