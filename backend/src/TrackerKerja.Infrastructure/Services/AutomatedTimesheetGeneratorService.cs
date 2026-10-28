@@ -100,11 +100,19 @@ public class AutomatedTimesheetGeneratorService : IAutomatedTimesheetGeneratorSe
             );
         }
 
-        // Gather working dates (Monday - Friday)
+        // Load holidays for this company or national holidays within period
+        var holidays = await _context.Holidays
+            .AsNoTracking()
+            .Where(h => (h.IsNational || h.CompanyId == period.CompanyId) && h.Date >= period.StartDate && h.Date <= period.EndDate)
+            .Select(h => h.Date)
+            .ToListAsync(cancellationToken);
+        var holidaySet = new HashSet<DateOnly>(holidays);
+
+        // Gather working dates (Monday - Friday, excluding holidays)
         var workingDates = new List<DateOnly>();
         for (var d = period.StartDate; d <= period.EndDate; d = d.AddDays(1))
         {
-            if (d.DayOfWeek != DayOfWeek.Saturday && d.DayOfWeek != DayOfWeek.Sunday)
+            if (d.DayOfWeek != DayOfWeek.Saturday && d.DayOfWeek != DayOfWeek.Sunday && !holidaySet.Contains(d))
             {
                 workingDates.Add(d);
             }
@@ -147,55 +155,81 @@ public class AutomatedTimesheetGeneratorService : IAutomatedTimesheetGeneratorSe
                 }
             }
 
-            // Map tasks to their actual date within the period
+            // Map tasks to their actual date within the period (supporting multi-day carryover)
             var tasksByDate = new Dictionary<DateOnly, List<WorkTask>>();
 
             foreach (var task in userTasks)
             {
-                DateOnly? targetDate = null;
-                if (task.StartDate.HasValue)
+                DateOnly taskStart;
+                DateOnly taskDue;
+
+                if (task.StartDate.HasValue && task.DueDate.HasValue)
                 {
-                    targetDate = DateOnly.FromDateTime(task.StartDate.Value.ToOffset(tzOffset).DateTime);
+                    taskStart = DateOnly.FromDateTime(task.StartDate.Value.ToOffset(tzOffset).DateTime);
+                    taskDue = DateOnly.FromDateTime(task.DueDate.Value.ToOffset(tzOffset).DateTime);
+                }
+                else if (task.StartDate.HasValue)
+                {
+                    taskStart = DateOnly.FromDateTime(task.StartDate.Value.ToOffset(tzOffset).DateTime);
+                    taskDue = taskStart;
                 }
                 else if (task.DueDate.HasValue)
                 {
-                    targetDate = DateOnly.FromDateTime(task.DueDate.Value.ToOffset(tzOffset).DateTime);
+                    taskDue = DateOnly.FromDateTime(task.DueDate.Value.ToOffset(tzOffset).DateTime);
+                    taskStart = taskDue;
                 }
                 else
                 {
                     var created = DateOnly.FromDateTime(task.CreatedAt.ToOffset(tzOffset).DateTime);
-                    if (created >= period.StartDate && created <= period.EndDate)
-                    {
-                        targetDate = created;
-                    }
+                    taskStart = created;
+                    taskDue = created;
                 }
 
-                // If targetDate is outside this period (e.g. August task in October period), do not include
-                if (!targetDate.HasValue || targetDate.Value < period.StartDate || targetDate.Value > period.EndDate)
+                if (taskStart > taskDue)
+                {
+                    var tmp = taskStart;
+                    taskStart = taskDue;
+                    taskDue = tmp;
+                }
+
+                // If task entire range is completely outside this period, skip it
+                if (taskDue < period.StartDate || taskStart > period.EndDate)
                 {
                     continue;
                 }
 
-                var date = targetDate.Value;
-                // If falls on weekend, adjust to nearest working day in period
-                if (date.DayOfWeek == DayOfWeek.Saturday)
+                // If single-day task falls on weekend, adjust to nearest working day if possible
+                if (taskStart == taskDue && (taskStart.DayOfWeek == DayOfWeek.Saturday || taskStart.DayOfWeek == DayOfWeek.Sunday))
                 {
-                    var fri = date.AddDays(-1);
-                    date = fri >= period.StartDate ? fri : date.AddDays(2);
-                }
-                else if (date.DayOfWeek == DayOfWeek.Sunday)
-                {
-                    var mon = date.AddDays(1);
-                    date = mon <= period.EndDate ? mon : date.AddDays(-2);
+                    var shifted = taskStart.DayOfWeek == DayOfWeek.Saturday ? taskStart.AddDays(-1) : taskStart.AddDays(1);
+                    if (shifted >= period.StartDate && shifted <= period.EndDate && !holidaySet.Contains(shifted))
+                    {
+                        taskStart = shifted;
+                        taskDue = shifted;
+                    }
                 }
 
-                if (date >= period.StartDate && date <= period.EndDate)
+                // Clamp active range to period
+                var effectiveStart = taskStart < period.StartDate ? period.StartDate : taskStart;
+                var effectiveEnd = taskDue > period.EndDate ? period.EndDate : taskDue;
+
+                // Carry over task to every working day in [effectiveStart, effectiveEnd], skipping weekends and holidays
+                for (var cur = effectiveStart; cur <= effectiveEnd; cur = cur.AddDays(1))
                 {
-                    if (!tasksByDate.ContainsKey(date))
+                    if (cur.DayOfWeek == DayOfWeek.Saturday || cur.DayOfWeek == DayOfWeek.Sunday || holidaySet.Contains(cur))
                     {
-                        tasksByDate[date] = new List<WorkTask>();
+                        continue; // Melongkapi akhir pekan dan hari libur
                     }
-                    tasksByDate[date].Add(task);
+
+                    if (!tasksByDate.ContainsKey(cur))
+                    {
+                        tasksByDate[cur] = new List<WorkTask>();
+                    }
+
+                    if (!tasksByDate[cur].Any(t => t.Id == task.Id))
+                    {
+                        tasksByDate[cur].Add(task);
+                    }
                 }
             }
 

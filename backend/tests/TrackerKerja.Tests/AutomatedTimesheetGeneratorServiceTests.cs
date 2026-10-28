@@ -70,7 +70,7 @@ public class AutomatedTimesheetGeneratorServiceTests
             AssignedToUserId = "syafix",
             Priority = TaskPriority.Medium,
             StartDate = new DateTimeOffset(2026, 9, 3, 0, 0, 0, TimeSpan.Zero),
-            DueDate = new DateTimeOffset(2026, 9, 7, 0, 0, 0, TimeSpan.Zero)
+            DueDate = new DateTimeOffset(2026, 9, 3, 0, 0, 0, TimeSpan.Zero)
         };
         _context.Tasks.Add(task);
         await _context.SaveChangesAsync();
@@ -117,7 +117,7 @@ public class AutomatedTimesheetGeneratorServiceTests
             AssignedToUserId = "syafix",
             Priority = TaskPriority.High,
             StartDate = new DateTimeOffset(2026, 9, 3, 0, 0, 0, TimeSpan.Zero),
-            DueDate = new DateTimeOffset(2026, 9, 7, 0, 0, 0, TimeSpan.Zero)
+            DueDate = new DateTimeOffset(2026, 9, 3, 0, 0, 0, TimeSpan.Zero)
         };
         var task2 = new WorkTask
         {
@@ -128,7 +128,7 @@ public class AutomatedTimesheetGeneratorServiceTests
             AssignedToUserId = "syafix",
             Priority = TaskPriority.Medium,
             StartDate = new DateTimeOffset(2026, 9, 4, 0, 0, 0, TimeSpan.Zero),
-            DueDate = new DateTimeOffset(2026, 9, 7, 0, 0, 0, TimeSpan.Zero)
+            DueDate = new DateTimeOffset(2026, 9, 4, 0, 0, 0, TimeSpan.Zero)
         };
         _context.Tasks.AddRange(task1, task2);
         await _context.SaveChangesAsync();
@@ -166,7 +166,7 @@ public class AutomatedTimesheetGeneratorServiceTests
             AssignedToUserId = "syafix",
             Priority = TaskPriority.Critical,
             StartDate = new DateTimeOffset(2026, 9, 3, 0, 0, 0, TimeSpan.Zero),
-            DueDate = new DateTimeOffset(2026, 9, 7, 0, 0, 0, TimeSpan.Zero)
+            DueDate = new DateTimeOffset(2026, 9, 3, 0, 0, 0, TimeSpan.Zero)
         };
         var taskLow = new WorkTask
         {
@@ -177,7 +177,7 @@ public class AutomatedTimesheetGeneratorServiceTests
             AssignedToUserId = "syafix",
             Priority = TaskPriority.Low,
             StartDate = new DateTimeOffset(2026, 9, 4, 0, 0, 0, TimeSpan.Zero),
-            DueDate = new DateTimeOffset(2026, 9, 7, 0, 0, 0, TimeSpan.Zero)
+            DueDate = new DateTimeOffset(2026, 9, 4, 0, 0, 0, TimeSpan.Zero)
         };
         _context.Tasks.AddRange(taskCritical, taskLow);
         await _context.SaveChangesAsync();
@@ -506,5 +506,90 @@ public class AutomatedTimesheetGeneratorServiceTests
 
         // The August task (Membuat Diagram HLD dan LLD API Integration) MUST NOT have any sessions generated in September!
         sessions.Any(s => s.TaskId == 901).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task GenerateTimesheets_MultiDayTask_ShouldCarryOverToEveryWorkingDayInDateRange()
+    {
+        // Period 1: 2026-09-03 (Thu) to 2026-09-07 (Mon) -> Working days: Sep 3 (Thu), Sep 4 (Fri), Sep 7 (Mon)
+        var multiDayTask = new WorkTask
+        {
+            Id = 950,
+            Title = "Pengembangan Modul Integrasi Pembayaran",
+            CompanyId = 10,
+            ProjectId = 1,
+            AssignedToUserId = "syafix",
+            Priority = TaskPriority.High,
+            StartDate = new DateTimeOffset(2026, 9, 3, 8, 0, 0, TimeSpan.FromHours(7)),
+            DueDate = new DateTimeOffset(2026, 9, 7, 17, 0, 0, TimeSpan.FromHours(7))
+        };
+
+        _context.Tasks.Add(multiDayTask);
+        await _context.SaveChangesAsync();
+
+        var request = new AutoGenerateTimesheetRequest(10, 1, "syafix", "Overwrite");
+        var result = await _service.GenerateTimesheetsAsync(request, 10);
+
+        result.Success.Should().BeTrue();
+
+        var sessions = await _context.Sessions
+            .Where(s => s.UserId == "syafix" && s.TaskId == 950)
+            .OrderBy(s => s.StartTime)
+            .ToListAsync();
+
+        // Must be generated on all 3 working days (Sep 3, Sep 4, Sep 7)
+        sessions.Should().HaveCount(3);
+
+        var dates = sessions.Select(s => DateOnly.FromDateTime(s.StartTime.ToOffset(TimeSpan.FromHours(7)).DateTime)).ToList();
+        dates.Should().ContainInOrder(new DateOnly(2026, 9, 3), new DateOnly(2026, 9, 4), new DateOnly(2026, 9, 7));
+
+        // Each working day should receive 8 hours (28,800 seconds)
+        sessions.All(s => s.Duration == 28800).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task GenerateTimesheets_MultiDayTask_ShouldSkipHolidaysInPeriod()
+    {
+        // Add a holiday on Friday 2026-09-04
+        _context.Holidays.Add(new Holiday
+        {
+            Date = new DateOnly(2026, 9, 4),
+            Name = "Hari Cuti Bersama Khusus",
+            IsNational = true,
+            CompanyId = null
+        });
+
+        // Task spans Sep 3 to Sep 7
+        var multiDayTask = new WorkTask
+        {
+            Id = 960,
+            Title = "Audit Arsitektur Sistem Pembayaran",
+            CompanyId = 10,
+            ProjectId = 1,
+            AssignedToUserId = "syafix",
+            Priority = TaskPriority.High,
+            StartDate = new DateTimeOffset(2026, 9, 3, 8, 0, 0, TimeSpan.FromHours(7)),
+            DueDate = new DateTimeOffset(2026, 9, 7, 17, 0, 0, TimeSpan.FromHours(7))
+        };
+
+        _context.Tasks.Add(multiDayTask);
+        await _context.SaveChangesAsync();
+
+        var request = new AutoGenerateTimesheetRequest(10, 1, "syafix", "Overwrite");
+        var result = await _service.GenerateTimesheetsAsync(request, 10);
+
+        result.Success.Should().BeTrue();
+
+        var sessions = await _context.Sessions
+            .Where(s => s.UserId == "syafix" && s.TaskId == 960)
+            .OrderBy(s => s.StartTime)
+            .ToListAsync();
+
+        // Friday Sep 4 is a holiday, so it MUST be skipped! Only Sep 3 and Sep 7 generated.
+        sessions.Should().HaveCount(2);
+
+        var dates = sessions.Select(s => DateOnly.FromDateTime(s.StartTime.ToOffset(TimeSpan.FromHours(7)).DateTime)).ToList();
+        dates.Should().ContainInOrder(new DateOnly(2026, 9, 3), new DateOnly(2026, 9, 7));
+        dates.Should().NotContain(new DateOnly(2026, 9, 4));
     }
 }
