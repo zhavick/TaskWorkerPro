@@ -47,6 +47,7 @@ public class AppDbContext : DbContext
     public DbSet<UserNotification> UserNotifications => Set<UserNotification>();
     public DbSet<TimesheetPeriod> TimesheetPeriods => Set<TimesheetPeriod>();
     public DbSet<CompanyTimesheetConfig> CompanyTimesheetConfigs => Set<CompanyTimesheetConfig>();
+    public DbSet<Holiday> Holidays => Set<Holiday>();
 
     public int? CurrentCompanyId => _tenantService?.CompanyId;
     public bool IsCurrentUserAdmin => _tenantService?.IsAdmin ?? false;
@@ -223,5 +224,14 @@ public class AppDbContext : DbContext
             .OnDelete(DeleteBehavior.Cascade);
         modelBuilder.Entity<CompanyTimesheetConfig>().HasQueryFilter(c =>
             IsCurrentUserAdmin || CurrentCompanyId == null || c.CompanyId == CurrentCompanyId);
+
+        modelBuilder.Entity<Holiday>().ToTable("holidays");
+        modelBuilder.Entity<Holiday>()
+            .HasOne(h => h.Company)
+            .WithMany()
+            .HasForeignKey(h => h.CompanyId)
+            .OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<Holiday>().HasQueryFilter(h =>
+            IsCurrentUserAdmin || h.CompanyId == null || CurrentCompanyId == null || h.CompanyId == CurrentCompanyId);
     }
 }
