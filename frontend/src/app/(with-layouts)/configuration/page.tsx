@@ -49,6 +49,7 @@ import {
   Building2,
   Search,
   FileSpreadsheet,
+  Calendar,
 } from "lucide-react";
 import { Button } from "@/components/tailgrids/core/button";
 import { Input } from "@/components/tailgrids/core/input";
@@ -68,6 +69,7 @@ import {
   SyncResultData,
 } from "@/components/sync/sync-progress-modal";
 import { TimesheetTemplateManager } from "@/components/configuration/timesheet-template-manager";
+import { MasterHolidaysManager } from "@/components/configuration/master-holidays-manager";
 
 const COLOR_PRESETS = [
   "#6366F1", // Indigo
@@ -148,7 +150,7 @@ export default function ConfigurationPage() {
 
   // Subtab for Master Data
   const [masterSubTab, setMasterSubTab] = useState<
-    "companies" | "priorities" | "statuses" | "milestones" | "categories" | "timesheet"
+    "companies" | "priorities" | "statuses" | "milestones" | "categories" | "timesheet" | "holidays"
   >("companies");
 
   // ==========================================
@@ -1497,7 +1499,7 @@ export default function ConfigurationPage() {
       {activeTab === "master" && (
         <div className="space-y-6">
           {/* Sub Navigation Cards */}
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-7">
             <button
               type="button"
               onClick={() => setMasterSubTab("companies")}
@@ -1647,6 +1649,32 @@ export default function ConfigurationPage() {
                   Template Timesheet
                 </h3>
                 <p className="text-[11px] text-gray-500">Standar &amp; Cut-Off</p>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setMasterSubTab("holidays")}
+              className={`flex items-center gap-3 rounded-2xl border p-4 text-left transition ${
+                masterSubTab === "holidays"
+                  ? "border-indigo-600 bg-indigo-50/70 shadow-xs dark:border-indigo-500 dark:bg-indigo-950/30"
+                  : "border-gray-200 bg-white hover:border-gray-300 dark:border-gray-800 dark:bg-gray-900"
+              }`}
+            >
+              <div
+                className={`flex h-10 w-10 items-center justify-center rounded-xl ${
+                  masterSubTab === "holidays"
+                    ? "bg-indigo-600 text-white"
+                    : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300"
+                }`}
+              >
+                <Calendar className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="text-xs font-bold text-gray-900 dark:text-white">
+                  Hari Libur
+                </h3>
+                <p className="text-[11px] text-gray-500">Nasional &amp; Khusus</p>
               </div>
             </button>
           </div>
@@ -2240,6 +2268,13 @@ export default function ConfigurationPage() {
           {/* ======================================================== */}
           {masterSubTab === "timesheet" && (
             <TimesheetTemplateManager />
+          )}
+
+          {/* ======================================================== */}
+          {/* SUBTAB 6: MASTER DATA HARI LIBUR */}
+          {/* ======================================================== */}
+          {masterSubTab === "holidays" && (
+            <MasterHolidaysManager />
           )}
         </div>
       )}
