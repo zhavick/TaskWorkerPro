@@ -28,6 +28,11 @@ import {
   Loader2,
   History,
   Lock,
+  BookOpen,
+  ExternalLink,
+  FileText,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { Button } from "@/components/tailgrids/core/button";
 import { Input } from "@/components/tailgrids/core/input";
@@ -76,6 +81,23 @@ export default function TaskStudioPage() {
 
   // Subtask form
   const [subtaskTitle, setSubtaskTitle] = useState("");
+
+  // Notes linked to this task
+  const [showNoteForm, setShowNoteForm] = useState(false);
+  const [newNoteTitle, setNewNoteTitle] = useState("");
+  const [newNoteCategory, setNewNoteCategory] = useState("General");
+  const [newNoteColor, setNewNoteColor] = useState("#6366F1");
+  const [newNoteContent, setNewNoteContent] = useState("");
+
+  // Query Notes linked to this task
+  const { data: taskNotes = [], isLoading: loadingTaskNotes } = useQuery<any[]>({
+    queryKey: ["taskNotes", taskId],
+    queryFn: async () => {
+      const res = await apiClient.get(`/notes?taskId=${taskId}`);
+      return res.data.data || [];
+    },
+    enabled: !!taskId,
+  });
 
   // 1. Query Task Detail
   const { data: detailData, isLoading } = useQuery<any>({
@@ -416,6 +438,38 @@ export default function TaskStudioPage() {
     onError: (err: any) => toast.error(extractErrorMessage(err, "Gagal menghapus tugas")),
   });
 
+  // Create Note for Task Mutation
+  const createTaskNoteMutation = useMutation({
+    mutationFn: async () => {
+      if (!newNoteTitle.trim()) {
+        throw new Error("Judul catatan wajib diisi.");
+      }
+      const res = await apiClient.post("/notes", {
+        title: newNoteTitle.trim(),
+        contentHtml: newNoteContent.trim()
+          ? `<p>${newNoteContent.replace(/\n/g, "<br/>")}</p>`
+          : "<p>(Catatan tanpa isi)</p>",
+        category: newNoteCategory,
+        color: newNoteColor,
+        isPinned: false,
+        taskId: taskId,
+      });
+      return res.data;
+    },
+    onSuccess: () => {
+      toast.success("Catatan berhasil dibuat dan ditautkan ke tugas ini!");
+      setNewNoteTitle("");
+      setNewNoteContent("");
+      setShowNoteForm(false);
+      queryClient.invalidateQueries({ queryKey: ["taskNotes", taskId] });
+      queryClient.invalidateQueries({ queryKey: ["notesList"] });
+    },
+    onError: (err: any) => {
+      const msg = err.response?.data?.message || err.message || "Gagal membuat catatan";
+      toast.error(msg);
+    },
+  });
+
   if (isLoading) {
     return (
       <div className="flex h-64 items-center justify-center">
@@ -744,6 +798,215 @@ export default function TaskStudioPage() {
                   <p className="py-4 text-center text-xs text-gray-400">
                     Belum ada sesi kerja tercatat untuk tugas ini.
                   </p>
+                )}
+              </div>
+            </div>
+
+            {/* 4. Catatan & Dokumentasi Terkait (Task Notes Linked Card) */}
+            <div className="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-xs dark:border-gray-800 dark:bg-gray-900">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pb-3 border-b border-gray-100 dark:border-gray-800">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-400">
+                    <BookOpen className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                      <span>Catatan & Dokumentasi Terkait</span>
+                      <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-bold text-indigo-700 dark:bg-indigo-950/80 dark:text-indigo-300">
+                        {taskNotes.length}
+                      </span>
+                    </h4>
+                    <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                      Catatan ini terhubung langsung dengan modul catatan utama.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Link href={`/notes?taskId=${taskId}`}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 gap-1.5 text-xs text-indigo-600 border-indigo-200 hover:bg-indigo-50 dark:border-indigo-800 dark:text-indigo-400"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      <span>Buka di /notes</span>
+                    </Button>
+                  </Link>
+                  <Button
+                    size="sm"
+                    onClick={() => setShowNoteForm(!showNoteForm)}
+                    className="h-8 gap-1.5 bg-indigo-600 text-xs font-semibold text-white hover:bg-indigo-700 shadow-xs"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    <span>{showNoteForm ? "Tutup Form" : "Buat Catatan"}</span>
+                  </Button>
+                </div>
+              </div>
+
+              {/* Form Pembuatan Catatan Cepat (Collapsible) */}
+              {showNoteForm && (
+                <div className="mt-4 rounded-xl border border-indigo-200 bg-indigo-50/40 p-4 dark:border-indigo-900/60 dark:bg-indigo-950/20 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-indigo-900 dark:text-indigo-200">
+                      Tulis Catatan Baru untuk Tugas Ini
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowNoteForm(false)}
+                      className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xs"
+                    >
+                      Tutup
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="sm:col-span-2">
+                      <label className="block text-[11px] font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                        Judul Catatan <span className="text-red-500">*</span>
+                      </label>
+                      <Input
+                        value={newNoteTitle}
+                        onChange={(e) => setNewNoteTitle(e.target.value)}
+                        placeholder={`Contoh: Catatan Penugasan TK-${taskId}`}
+                        className="text-xs bg-white dark:bg-gray-900"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                        Kategori
+                      </label>
+                      <select
+                        value={newNoteCategory}
+                        onChange={(e) => setNewNoteCategory(e.target.value)}
+                        className="w-full rounded-xl border border-gray-200 bg-white p-2 text-xs font-semibold text-gray-900 dark:border-gray-800 dark:bg-gray-900 dark:text-white"
+                      >
+                        {["General", "Backend", "Frontend", "Database", "DevOps", "SOP"].map((c) => (
+                          <option key={c} value={c}>{c}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                      Warna Aksen
+                    </label>
+                    <div className="flex items-center gap-2">
+                      {["#6366F1", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6", "#EC4899", "#06B6D4"].map((col) => (
+                        <button
+                          key={col}
+                          type="button"
+                          onClick={() => setNewNoteColor(col)}
+                          className={`h-5 w-5 rounded-full transition-transform ${
+                            newNoteColor === col ? "scale-125 ring-2 ring-indigo-500 ring-offset-1" : "hover:scale-110"
+                          }`}
+                          style={{ backgroundColor: col }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                      Isi Catatan / Dokumentasi
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={newNoteContent}
+                      onChange={(e) => setNewNoteContent(e.target.value)}
+                      placeholder="Tuliskan dokumentasi, referensi API, atau poin-poin penting pengerjaan tugas di sini..."
+                      className="w-full rounded-xl border border-gray-200 bg-white p-2.5 text-xs text-gray-900 dark:border-gray-800 dark:bg-gray-900 dark:text-white"
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2 pt-1">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowNoteForm(false)}
+                      className="text-xs"
+                    >
+                      Batal
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => createTaskNoteMutation.mutate()}
+                      disabled={createTaskNoteMutation.isPending || !newNoteTitle.trim()}
+                      className="bg-indigo-600 text-xs font-semibold text-white hover:bg-indigo-700 gap-1.5 shadow-xs"
+                    >
+                      {createTaskNoteMutation.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                      <span>Simpan Catatan & Tautkan ke Tugas</span>
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* Daftar Catatan yang Sudah Tertaut */}
+              <div className="mt-4">
+                {loadingTaskNotes ? (
+                  <div className="py-6 text-center text-xs text-gray-400 flex items-center justify-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin text-indigo-600" />
+                    <span>Memuat catatan terkait...</span>
+                  </div>
+                ) : taskNotes.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-gray-200 p-6 text-center dark:border-gray-800">
+                    <FileText className="mx-auto h-8 w-8 text-gray-300 dark:text-gray-600 mb-2" />
+                    <p className="text-xs font-semibold text-gray-600 dark:text-gray-400">
+                      Belum ada catatan yang tertaut untuk tugas ini.
+                    </p>
+                    <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5">
+                      Klik tombol &ldquo;Buat Catatan&rdquo; di atas untuk mendokumentasikan teknis pengerjaan atau memo penting.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {taskNotes.map((note: any) => (
+                      <div
+                        key={note.id}
+                        className="group flex flex-col justify-between rounded-xl border border-gray-100 bg-gray-50/50 p-3.5 shadow-2xs hover:border-indigo-200 hover:bg-indigo-50/20 dark:border-gray-800 dark:bg-gray-800/40 dark:hover:border-indigo-900/50 transition"
+                      >
+                        <div>
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-1.5 truncate">
+                              <span
+                                className="h-2 w-2 rounded-full shrink-0"
+                                style={{ backgroundColor: note.color || "#6366F1" }}
+                              />
+                              <span className="font-bold text-xs text-gray-900 dark:text-white truncate">
+                                {note.title}
+                              </span>
+                            </div>
+                            <span className="rounded bg-white dark:bg-gray-900 px-1.5 py-0.5 text-[9px] font-bold text-gray-600 dark:text-gray-300 border border-gray-200/60 dark:border-gray-700 shrink-0">
+                              {note.category}
+                            </span>
+                          </div>
+
+                          <div
+                            className="mt-2 text-[11px] text-gray-600 dark:text-gray-300 line-clamp-2 leading-relaxed"
+                            dangerouslySetInnerHTML={{
+                              __html: note.contentHtml?.replace(/<[^>]+>/g, " ").trim() || "(Tanpa isi teks)",
+                            }}
+                          />
+                        </div>
+
+                        <div className="mt-3 flex items-center justify-between border-t border-gray-200/50 dark:border-gray-800 pt-2 text-[10px] text-gray-400">
+                          <span className="truncate max-w-[120px]">
+                            {note.authorUserName || "Penulis"} • {new Date(note.createdAt).toLocaleDateString("id-ID", { day: "numeric", month: "short" })}
+                          </span>
+                          <Link
+                            href={`/notes?taskId=${taskId}`}
+                            className="flex items-center gap-1 font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
+                          >
+                            <span>Buka di /notes</span>
+                            <ExternalLink className="h-3 w-3" />
+                          </Link>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
             </div>

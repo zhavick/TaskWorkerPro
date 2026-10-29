@@ -338,7 +338,8 @@ public class TaskExcelImportService : ITaskExcelImportService
 
         var existingTasks = await _context.Tasks
             .Include(t => t.Project)
-            .Where(t => !companyId.HasValue || t.CompanyId == companyId)
+            .Include(t => t.AssignedToUser)
+            .Where(t => !companyId.HasValue || t.CompanyId == companyId || t.CompanyId == null)
             .ToListAsync(cancellationToken);
 
         // Pre-build existing task lookup indexes
@@ -351,6 +352,22 @@ public class TaskExcelImportService : ITaskExcelImportService
             dbTaskByCode[$"TK-{t.Id:D4}"] = t;
             dbTaskByCode[$"TK-{t.Id}"] = t;
             dbTaskByCode[t.Id.ToString()] = t;
+            if (!string.IsNullOrWhiteSpace(t.Tags))
+            {
+                var tags = t.Tags.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                foreach (var tag in tags)
+                {
+                    if (tag.StartsWith("code:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var codeVal = tag[5..].Trim();
+                        if (!string.IsNullOrWhiteSpace(codeVal)) dbTaskByCode[codeVal] = t;
+                    }
+                    else
+                    {
+                        dbTaskByCode[tag] = t;
+                    }
+                }
+            }
             if (t.ProjectId.HasValue)
             {
                 dbTaskByProjAndTitle[$"{t.ProjectId.Value}|{NormalizeTitle(t.Title)}"] = t;
@@ -600,6 +617,8 @@ public class TaskExcelImportService : ITaskExcelImportService
                 bool isUpdate = false;
                 int? existingTaskId = null;
                 WorkTask? matchedExistingTask = null;
+                var differences = new List<string>();
+                bool hasDifferences = false;
 
                 if (!string.IsNullOrWhiteSpace(taskCode))
                 {
@@ -621,13 +640,90 @@ public class TaskExcelImportService : ITaskExcelImportService
                     isUpdate = true;
                     existingTaskId = matchedExistingTask.Id;
                     var currentProjName = matchedExistingTask.Project?.Name ?? "Tanpa Proyek";
+
+                    // 1. Perbedaan Proyek
                     if (!string.IsNullOrWhiteSpace(projectName) && !string.Equals(currentProjName, projectName, StringComparison.OrdinalIgnoreCase))
                     {
-                        validationMessages.Add($"(Pembaruan & Pindah Proyek) Tugas #{matchedExistingTask.Id} ('{matchedExistingTask.Title}') dipindahkan dari proyek '{currentProjName}' ke '{projectName}'.");
+                        differences.Add($"Proyek: '{currentProjName}' ➔ '{projectName}'");
+                    }
+
+                    // 2. Perbedaan Judul (jika dicocokkan via taskCode)
+                    if (!string.IsNullOrWhiteSpace(title) && !string.Equals(matchedExistingTask.Title?.Trim(), title.Trim(), StringComparison.OrdinalIgnoreCase))
+                    {
+                        differences.Add($"Judul: '{matchedExistingTask.Title}' ➔ '{title}'");
+                    }
+
+                    // 3. Perbedaan Status
+                    if (matchedExistingTask.Status != status)
+                    {
+                        differences.Add($"Status: {matchedExistingTask.Status} ➔ {status}");
+                    }
+
+                    // 4. Perbedaan Progres
+                    if (matchedExistingTask.Progress != progress)
+                    {
+                        differences.Add($"Progres: {matchedExistingTask.Progress}% ➔ {progress}%");
+                    }
+
+                    // 5. Perbedaan Prioritas
+                    if (matchedExistingTask.Priority != priority)
+                    {
+                        differences.Add($"Prioritas: {matchedExistingTask.Priority} ➔ {priority}");
+                    }
+
+                    // 6. Perbedaan PIC
+                    var currentPic = matchedExistingTask.AssignedToUser?.FullName ?? matchedExistingTask.AssignedToUser?.UserName;
+                    var targetPic = !string.IsNullOrWhiteSpace(matchedUserName) ? matchedUserName : (!string.IsNullOrWhiteSpace(picToMatch) ? picToMatch : null);
+                    if (!string.IsNullOrWhiteSpace(targetPic) && !string.Equals(currentPic?.Trim(), targetPic.Trim(), StringComparison.OrdinalIgnoreCase))
+                    {
+                        differences.Add($"PIC: '{(string.IsNullOrWhiteSpace(currentPic) ? "Belum Ditugaskan" : currentPic)}' ➔ '{targetPic}'");
+                    }
+
+                    // 7. Perbedaan Tanggal Mulai
+                    if (startDate.HasValue && (!matchedExistingTask.StartDate.HasValue || matchedExistingTask.StartDate.Value.Date != startDate.Value.Date))
+                    {
+                        differences.Add($"Tgl Mulai: {(matchedExistingTask.StartDate.HasValue ? matchedExistingTask.StartDate.Value.ToString("yyyy-MM-dd") : "Kosong")} ➔ {startDate.Value:yyyy-MM-dd}");
+                    }
+
+                    // 8. Perbedaan Tenggat Waktu
+                    if (dueDate.HasValue && (!matchedExistingTask.DueDate.HasValue || matchedExistingTask.DueDate.Value.Date != dueDate.Value.Date))
+                    {
+                        differences.Add($"Tenggat: {(matchedExistingTask.DueDate.HasValue ? matchedExistingTask.DueDate.Value.ToString("yyyy-MM-dd") : "Kosong")} ➔ {dueDate.Value:yyyy-MM-dd}");
+                    }
+
+                    // 9. Perbedaan Milestone
+                    if (!string.IsNullOrWhiteSpace(milestone) && !string.Equals(matchedExistingTask.Milestone?.Trim(), milestone.Trim(), StringComparison.OrdinalIgnoreCase))
+                    {
+                        differences.Add($"Milestone: '{(string.IsNullOrWhiteSpace(matchedExistingTask.Milestone) ? "Kosong" : matchedExistingTask.Milestone)}' ➔ '{milestone}'");
+                    }
+
+                    // 10. Perbedaan Kendala
+                    if (!string.IsNullOrWhiteSpace(obstacle) && !string.Equals(matchedExistingTask.Obstacle?.Trim(), obstacle.Trim(), StringComparison.OrdinalIgnoreCase))
+                    {
+                        differences.Add($"Kendala: '{(string.IsNullOrWhiteSpace(matchedExistingTask.Obstacle) ? "Kosong" : matchedExistingTask.Obstacle)}' ➔ '{obstacle}'");
+                    }
+
+                    // 11. Perbedaan Solusi
+                    if (!string.IsNullOrWhiteSpace(solution) && !string.Equals(matchedExistingTask.Solution?.Trim(), solution.Trim(), StringComparison.OrdinalIgnoreCase))
+                    {
+                        differences.Add($"Solusi: '{(string.IsNullOrWhiteSpace(matchedExistingTask.Solution) ? "Kosong" : matchedExistingTask.Solution)}' ➔ '{solution}'");
+                    }
+
+                    // 12. Perbedaan Deskripsi
+                    if (!string.IsNullOrWhiteSpace(desc) && !string.Equals(desc.Trim(), title?.Trim(), StringComparison.OrdinalIgnoreCase) && !string.Equals(matchedExistingTask.Description?.Trim(), desc.Trim(), StringComparison.OrdinalIgnoreCase))
+                    {
+                        differences.Add("Deskripsi diperbarui");
+                    }
+
+                    hasDifferences = differences.Count > 0;
+
+                    if (hasDifferences)
+                    {
+                        validationMessages.Add($"(Pembaruan #{matchedExistingTask.Id}) Ditemukan {differences.Count} perbedaan: {string.Join("; ", differences)}.");
                     }
                     else
                     {
-                        validationMessages.Add($"(Pembaruan) Tugas #{matchedExistingTask.Id} ('{matchedExistingTask.Title}') sudah ada di sistem dan nilainya akan diperbarui dengan data ter-update.");
+                        validationMessages.Add($"(Tanpa Perubahan) Tugas #{matchedExistingTask.Id} di file sama persis dengan yang ada di sistem.");
                     }
                 }
 
@@ -649,7 +745,7 @@ public class TaskExcelImportService : ITaskExcelImportService
                     rowIndex,
                     string.IsNullOrWhiteSpace(taskCode) ? null : taskCode,
                     string.IsNullOrWhiteSpace(parentTaskCode) ? null : parentTaskCode,
-                    title,
+                    title ?? string.Empty,
                     string.IsNullOrWhiteSpace(desc) ? null : desc,
                     string.IsNullOrWhiteSpace(projectName) ? null : projectName,
                     matchedProjectId,
@@ -669,7 +765,9 @@ public class TaskExcelImportService : ITaskExcelImportService
                     isUpdate,
                     existingTaskId,
                     PicEmail: resolvedPicEmail,
-                    Notes: notesText
+                    Notes: notesText,
+                    Differences: differences,
+                    HasDifferences: hasDifferences
                 ));
             }
         }
@@ -678,6 +776,9 @@ public class TaskExcelImportService : ITaskExcelImportService
         int validCount = rows.Count(r => r.ValidationStatus == TaskImportValidationStatus.Valid);
         int warningCount = rows.Count(r => r.ValidationStatus == TaskImportValidationStatus.Warning);
         int errorCount = rows.Count(r => r.ValidationStatus == TaskImportValidationStatus.Error);
+        int updatedCount = rows.Count(r => r.IsUpdate && r.HasDifferences);
+        int unchangedCount = rows.Count(r => r.IsUpdate && !r.HasDifferences);
+        int newCount = rows.Count(r => !r.IsUpdate && r.ValidationStatus != TaskImportValidationStatus.Error);
 
         return new TaskImportPreviewDto(
             fileName,
@@ -687,7 +788,10 @@ public class TaskExcelImportService : ITaskExcelImportService
             errorCount,
             rows,
             companyId,
-            detectedCompanyName
+            detectedCompanyName,
+            UpdatedCount: updatedCount,
+            UnchangedCount: unchangedCount,
+            NewCount: newCount
         );
     }
 
@@ -762,7 +866,8 @@ public class TaskExcelImportService : ITaskExcelImportService
 
         var existingTasks = await _context.Tasks
             .Include(t => t.Project)
-            .Where(t => !companyId.HasValue || t.CompanyId == companyId)
+            .Include(t => t.AssignedToUser)
+            .Where(t => !companyId.HasValue || t.CompanyId == companyId || t.CompanyId == null)
             .ToListAsync(cancellationToken);
 
         // Pre-build existing task lookup indexes
@@ -775,6 +880,22 @@ public class TaskExcelImportService : ITaskExcelImportService
             dbTaskByCode[$"TK-{t.Id:D4}"] = t;
             dbTaskByCode[$"TK-{t.Id}"] = t;
             dbTaskByCode[t.Id.ToString()] = t;
+            if (!string.IsNullOrWhiteSpace(t.Tags))
+            {
+                var tags = t.Tags.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                foreach (var tag in tags)
+                {
+                    if (tag.StartsWith("code:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var codeVal = tag[5..].Trim();
+                        if (!string.IsNullOrWhiteSpace(codeVal)) dbTaskByCode[codeVal] = t;
+                    }
+                    else
+                    {
+                        dbTaskByCode[tag] = t;
+                    }
+                }
+            }
             if (t.ProjectId.HasValue)
             {
                 dbTaskByProjAndTitle[$"{t.ProjectId.Value}|{NormalizeTitle(t.Title)}"] = t;
@@ -1156,6 +1277,26 @@ public class TaskExcelImportService : ITaskExcelImportService
                     targetTask.AssignedToUserId = assignedUserId;
                 }
 
+                // Pastikan CompanyId terisi jika sebelumnya null
+                if (!targetTask.CompanyId.HasValue && companyId.HasValue)
+                {
+                    targetTask.CompanyId = companyId;
+                }
+
+                // Simpan kode task ke Tags untuk memudahkan pencocokan di masa mendatang
+                if (!string.IsNullOrWhiteSpace(row.TaskCode))
+                {
+                    var cleanCode = row.TaskCode.Trim();
+                    if (string.IsNullOrWhiteSpace(targetTask.Tags))
+                    {
+                        targetTask.Tags = $"code:{cleanCode}";
+                    }
+                    else if (!targetTask.Tags.Contains(cleanCode, StringComparison.OrdinalIgnoreCase))
+                    {
+                        targetTask.Tags += $",code:{cleanCode}";
+                    }
+                }
+
                 targetTask.UpdatedAt = DateTimeOffset.UtcNow;
                 totalUpdated++;
 
@@ -1177,6 +1318,7 @@ public class TaskExcelImportService : ITaskExcelImportService
                     Milestone = !string.IsNullOrWhiteSpace(row.Milestone) && row.Milestone.Length > 100 ? row.Milestone[..100] : row.Milestone,
                     Obstacle = row.Obstacle,
                     Solution = row.Solution,
+                    Tags = !string.IsNullOrWhiteSpace(row.TaskCode) ? $"code:{row.TaskCode.Trim()}" : null,
                     Project = project,
                     ProjectId = project?.Id,
                     AssignedToUserId = assignedUserId,

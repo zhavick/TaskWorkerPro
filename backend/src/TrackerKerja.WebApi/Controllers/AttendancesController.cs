@@ -345,12 +345,29 @@ public class AttendancesController : ControllerBase
         [FromQuery] int? companyId = null)
     {
         var targetDate = date ?? DateOnly.FromDateTime(DateTime.UtcNow);
-        var targetCompany = _tenantService.IsAdmin ? (companyId ?? _tenantService.CompanyId) : _tenantService.CompanyId;
+        int? targetCompany = null;
+        if (!_tenantService.IsAdmin)
+        {
+            targetCompany = _tenantService.CompanyId;
+        }
+        else if (companyId.HasValue)
+        {
+            targetCompany = companyId.Value;
+        }
+        else if (_tenantService.CompanyId.HasValue)
+        {
+            var adminComp = _tenantService.CompanyId.Value;
+            var hasMembersInAdminCompany = await _context.Users.AnyAsync(u => u.IsApproved && u.CompanyId == adminComp);
+            if (hasMembersInAdminCompany)
+            {
+                targetCompany = adminComp;
+            }
+        }
 
         var records = await _context.Attendances
             .Include(a => a.User)
             .AsNoTracking()
-            .Where(a => a.Date == targetDate && (!targetCompany.HasValue || a.User.CompanyId == targetCompany.Value))
+            .Where(a => a.Date == targetDate && (!targetCompany.HasValue || a.User.CompanyId == targetCompany.Value || a.User.CompanyId == null))
             .OrderBy(a => a.User.FullName)
             .Select(a => new AttendanceHistoryDto(
                 a.Id,
@@ -380,12 +397,29 @@ public class AttendancesController : ControllerBase
         var now = DateTime.UtcNow;
         int targetMonth = month ?? now.Month;
         int targetYear = year ?? now.Year;
-        var targetCompany = _tenantService.IsAdmin ? (companyId ?? _tenantService.CompanyId) : _tenantService.CompanyId;
+        int? targetCompany = null;
+        if (!_tenantService.IsAdmin)
+        {
+            targetCompany = _tenantService.CompanyId;
+        }
+        else if (companyId.HasValue)
+        {
+            targetCompany = companyId.Value;
+        }
+        else if (_tenantService.CompanyId.HasValue)
+        {
+            var adminComp = _tenantService.CompanyId.Value;
+            var hasMembersInAdminCompany = await _context.Users.AnyAsync(u => u.IsApproved && u.CompanyId == adminComp);
+            if (hasMembersInAdminCompany)
+            {
+                targetCompany = adminComp;
+            }
+        }
 
         var membersQuery = _context.Users.AsNoTracking().Where(u => u.IsApproved);
         if (targetCompany.HasValue)
         {
-            membersQuery = membersQuery.Where(u => u.CompanyId == targetCompany.Value);
+            membersQuery = membersQuery.Where(u => u.CompanyId == targetCompany.Value || u.CompanyId == null);
         }
 
         var members = await membersQuery
@@ -515,7 +549,7 @@ public class AttendancesController : ControllerBase
             if (targetUserId != currentUserId && _tenantService.CompanyId.HasValue)
             {
                 var targetMember = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == targetUserId);
-                if (targetMember == null || targetMember.CompanyId != _tenantService.CompanyId.Value)
+                if (targetMember == null || (targetMember.CompanyId.HasValue && targetMember.CompanyId != _tenantService.CompanyId.Value))
                 {
                     return BadRequest(new { success = false, message = "Anggota tidak ditemukan pada perusahaan ini." });
                 }
@@ -570,42 +604,35 @@ public class AttendancesController : ControllerBase
         if (string.IsNullOrEmpty(currentUserId)) return Unauthorized();
 
         var isAdmin = _tenantService.IsAdmin;
-        int? targetCompanyId = companyId;
-        if (!targetCompanyId.HasValue)
+        int? targetCompanyId = null;
+        if (!isAdmin)
         {
-            if (!isAdmin)
+            targetCompanyId = _tenantService.CompanyId;
+        }
+        else if (companyId.HasValue)
+        {
+            targetCompanyId = companyId.Value;
+        }
+        else if (_tenantService.CompanyId.HasValue)
+        {
+            var adminComp = _tenantService.CompanyId.Value;
+            var hasMembers = await _context.Users.AnyAsync(u => u.IsApproved && u.CompanyId == adminComp);
+            if (hasMembers)
             {
-                targetCompanyId = _tenantService.CompanyId;
-            }
-            else if (_tenantService.CompanyId.HasValue)
-            {
-                var adminComp = _tenantService.CompanyId.Value;
-                var hasMembers = await _context.Users.AnyAsync(u => u.CompanyId == adminComp &&
-                    !(u.UserName != null && (u.UserName.ToLower() == "admin" || u.UserName.ToLower() == "administrator")) &&
-                    !(u.Email != null && u.Email.ToLower().Contains("admin@")));
-                if (hasMembers)
-                {
-                    targetCompanyId = adminComp;
-                }
+                targetCompanyId = adminComp;
             }
         }
+
         string? targetUserId = isAdmin ? userId : currentUserId;
 
         var usersQuery = _context.Users.Where(u => u.IsApproved);
         if (targetCompanyId.HasValue)
         {
-            usersQuery = usersQuery.Where(u => u.CompanyId == targetCompanyId.Value);
+            usersQuery = usersQuery.Where(u => u.CompanyId == targetCompanyId.Value || u.CompanyId == null);
         }
         if (!string.IsNullOrEmpty(targetUserId))
         {
             usersQuery = usersQuery.Where(u => u.Id == targetUserId);
-        }
-        else
-        {
-            // Exclude admins when syncing team
-            usersQuery = usersQuery.Where(u =>
-                !(u.UserName != null && (u.UserName.ToLower() == "admin" || u.UserName.ToLower() == "administrator")) &&
-                !(u.Email != null && u.Email.ToLower().Contains("admin@")));
         }
 
         var users = await usersQuery.ToListAsync();
@@ -664,6 +691,16 @@ public class AttendancesController : ControllerBase
                     var tmp = taskStart;
                     taskStart = taskDue;
                     taskDue = tmp;
+                }
+
+                // Jika tugas masih berjalan (belum selesai) dan dueDate di masa lampau, anggap berlanjut hingga hari ini
+                var today = DateOnly.FromDateTime(DateTime.UtcNow.Add(tzOffset));
+                if (task.Status != Domain.Enums.TaskStatus.Done)
+                {
+                    if (taskDue < today && taskStart <= today)
+                    {
+                        taskDue = today;
+                    }
                 }
 
                 // If specific date requested, clamp or filter
