@@ -51,6 +51,35 @@ public class DashboardController : ControllerBase
         return primaryCompanyId > 0 ? primaryCompanyId : _tenantService.CompanyId;
     }
 
+    private async Task<HashSet<string>> GetImportedUserIdsAsync()
+    {
+        // 1. Pengguna yang memiliki penugasan tugas hasil import Excel
+        var userIdsWithImportedTasks = await _context.Tasks
+            .AsNoTracking()
+            .Where(t => !string.IsNullOrEmpty(t.AssignedToUserId) &&
+                        t.Tags != null &&
+                        (t.Tags.Contains("code:") || t.Tags.Contains("import") || t.Tags.Contains("excel") || t.Tags.Contains("TK-")))
+            .Select(t => t.AssignedToUserId!)
+            .Distinct()
+            .ToListAsync();
+
+        // 2. Pengguna yang dibuat atau ditandai dari proses import Excel
+        var importedUsersFromDb = await _context.Users
+            .AsNoTracking()
+            .Where(u => u.PhoneNumber == "IMPORTED_EXCEL" ||
+                        u.RejectionReason == "FROM_EXCEL_IMPORT" ||
+                        (u.Id.StartsWith("usr-") && u.Id != "usr-superadmin" && u.Id.Length <= 14))
+            .Select(u => u.Id)
+            .ToListAsync();
+
+        var set = new HashSet<string>(userIdsWithImportedTasks, StringComparer.OrdinalIgnoreCase);
+        foreach (var id in importedUsersFromDb)
+        {
+            set.Add(id);
+        }
+        return set;
+    }
+
     [HttpGet("stats")]
     public async Task<IActionResult> GetStats([FromQuery] int? companyId = null)
     {
@@ -284,14 +313,18 @@ public class DashboardController : ControllerBase
             .ToListAsync();
         adminUserIds.AddRange(adminDirectUsers);
 
+        var importedUserIds = await GetImportedUserIdsAsync();
+        // Administrator murni (bukan dari hasil import Excel) tidak diikutsertakan dalam chart
+        var excludedAdminIds = adminUserIds.Where(id => !importedUserIds.Contains(id)).Distinct().ToHashSet(StringComparer.OrdinalIgnoreCase);
+
         if (!isAdmin && !string.IsNullOrEmpty(currentUserId))
         {
             sessionsQuery = sessionsQuery.Where(s => s.UserId == currentUserId);
         }
         else
         {
-            // Administrator tidak diikutsertakan dalam chart
-            sessionsQuery = sessionsQuery.Where(s => !adminUserIds.Contains(s.UserId));
+            // Administrator murni tidak diikutsertakan dalam chart, tapi admin dari hasil import Excel tetap disertakan
+            sessionsQuery = sessionsQuery.Where(s => !excludedAdminIds.Contains(s.UserId));
             if (targetCompanyId.HasValue)
             {
                 sessionsQuery = sessionsQuery.Where(s => s.User.CompanyId == targetCompanyId.Value || s.Task.CompanyId == targetCompanyId.Value);
@@ -316,8 +349,8 @@ public class DashboardController : ControllerBase
         }
         else
         {
-            // Administrator tidak diikutsertakan dalam chart
-            tasksQuery = tasksQuery.Where(t => t.AssignedToUserId == null || !adminUserIds.Contains(t.AssignedToUserId));
+            // Administrator murni tidak diikutsertakan dalam chart, tapi admin dari hasil import Excel tetap disertakan
+            tasksQuery = tasksQuery.Where(t => t.AssignedToUserId == null || !excludedAdminIds.Contains(t.AssignedToUserId));
         }
 
         var doneTasks = await tasksQuery.ToListAsync();
@@ -433,7 +466,7 @@ public class DashboardController : ControllerBase
         var usersQuery = _context.Users.AsNoTracking().Where(u => u.IsApproved);
         if (targetCompanyId.HasValue)
         {
-            usersQuery = usersQuery.Where(u => u.CompanyId == targetCompanyId.Value);
+            usersQuery = usersQuery.Where(u => u.CompanyId == targetCompanyId.Value || u.CompanyId == null || allTasks.Any(t => t.AssignedToUserId == u.Id));
         }
         var companyUsers = await usersQuery.ToListAsync();
 
@@ -443,16 +476,31 @@ public class DashboardController : ControllerBase
             .Select(ur => ur.UserId)
             .ToListAsync();
 
-        // Administrator tidak diikutsertakan dalam chart dashboard
-        var nonAdminUsers = companyUsers.Where(u =>
-            !adminRoleUserIds.Contains(u.Id) &&
-            !(u.UserName != null && (u.UserName.Equals("admin", StringComparison.OrdinalIgnoreCase) || u.UserName.Equals("administrator", StringComparison.OrdinalIgnoreCase))) &&
-            !(u.Email != null && u.Email.Contains("admin@", StringComparison.OrdinalIgnoreCase)) &&
-            !(u.JobTitle != null && (u.JobTitle.Contains("Administrator", StringComparison.OrdinalIgnoreCase) || u.JobTitle.Contains("Admin", StringComparison.OrdinalIgnoreCase))) &&
-            !(u.FullName != null && (u.FullName.Contains("Administrator", StringComparison.OrdinalIgnoreCase) || u.FullName.StartsWith("Admin ", StringComparison.OrdinalIgnoreCase)))
-        ).ToList();
+        var importedUserIds = await GetImportedUserIdsAsync();
 
-        var byMember = nonAdminUsers
+        // Aturan:
+        // 1. Jika role = "admin" (murni), maka tidak perlu ditampilkan di dashboard tentang datanya.
+        // 2. Jika role = "admin" dan datang dari hasil import data excel, maka ia tetap bisa menjadi admin dan ditampilkan data chart di dashboard nya!
+        var dashboardMembers = companyUsers.Where(u =>
+        {
+            var isImported = importedUserIds.Contains(u.Id);
+            if (isImported)
+            {
+                // Pengguna dari hasil import Excel SELALU ditampilkan di chart dashboard (meskipun ber-role admin)
+                return true;
+            }
+
+            // Jika bukan dari import, sembunyikan jika ber-role admin murni sistem
+            var isAdminRole = adminRoleUserIds.Contains(u.Id);
+            var isAdminByName = (u.UserName != null && (u.UserName.Equals("admin", StringComparison.OrdinalIgnoreCase) || u.UserName.Equals("administrator", StringComparison.OrdinalIgnoreCase))) ||
+                                (u.Email != null && u.Email.Contains("admin@", StringComparison.OrdinalIgnoreCase)) ||
+                                (u.JobTitle != null && (u.JobTitle.Contains("Administrator", StringComparison.OrdinalIgnoreCase) || u.JobTitle.Contains("Admin", StringComparison.OrdinalIgnoreCase))) ||
+                                (u.FullName != null && (u.FullName.Contains("Administrator", StringComparison.OrdinalIgnoreCase) || u.FullName.StartsWith("Admin ", StringComparison.OrdinalIgnoreCase)));
+
+            return !isAdminRole && !isAdminByName;
+        }).ToList();
+
+        var byMember = dashboardMembers
             .Select((u, idx) =>
             {
                 var userTasks = allTasks.Where(t => t.AssignedToUserId == u.Id).ToList();
@@ -550,7 +598,7 @@ public class DashboardController : ControllerBase
             .Select(g => g.Key)
             .ToList();
 
-        var byMemberProject = nonAdminUsers
+        var byMemberProject = dashboardMembers
             .Where(u => allTasks.Any(t => t.AssignedToUserId == u.Id))
             .Select(u =>
             {

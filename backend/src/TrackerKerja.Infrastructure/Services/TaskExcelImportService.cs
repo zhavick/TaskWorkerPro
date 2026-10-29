@@ -1163,6 +1163,12 @@ public class TaskExcelImportService : ITaskExcelImportService
                                     }
                                 }
 
+                                if (string.IsNullOrEmpty(existingInCompany.PhoneNumber))
+                                {
+                                    existingInCompany.PhoneNumber = "IMPORTED_EXCEL";
+                                    await _context.SaveChangesAsync(cancellationToken);
+                                }
+
                                 assignedUserId = existingInCompany.Id;
                                 if (!string.IsNullOrEmpty(picKey)) userCache[picKey] = existingInCompany;
                                 userCache[finalDisplayName] = existingInCompany;
@@ -1191,6 +1197,8 @@ public class TaskExcelImportService : ITaskExcelImportService
                                     UserName = finalUserName,
                                     NormalizedUserName = finalUserName.ToUpperInvariant(),
                                     EmailConfirmed = true,
+                                    PhoneNumber = "IMPORTED_EXCEL",
+                                    RejectionReason = "FROM_EXCEL_IMPORT",
                                     JobTitle = defaultJobTitle.Length > 100 ? defaultJobTitle[..100] : defaultJobTitle,
                                     AvatarColor = PickAvatarColor(finalDisplayName),
                                     PasswordHash = PasswordHasher.HashPassword(defaultPassword),
@@ -1289,11 +1297,29 @@ public class TaskExcelImportService : ITaskExcelImportService
                     var cleanCode = row.TaskCode.Trim();
                     if (string.IsNullOrWhiteSpace(targetTask.Tags))
                     {
-                        targetTask.Tags = $"code:{cleanCode}";
+                        targetTask.Tags = $"code:{cleanCode},import:excel";
                     }
-                    else if (!targetTask.Tags.Contains(cleanCode, StringComparison.OrdinalIgnoreCase))
+                    else
                     {
-                        targetTask.Tags += $",code:{cleanCode}";
+                        if (!targetTask.Tags.Contains(cleanCode, StringComparison.OrdinalIgnoreCase))
+                        {
+                            targetTask.Tags += $",code:{cleanCode}";
+                        }
+                        if (!targetTask.Tags.Contains("import:excel", StringComparison.OrdinalIgnoreCase))
+                        {
+                            targetTask.Tags += ",import:excel";
+                        }
+                    }
+                }
+                else
+                {
+                    if (string.IsNullOrWhiteSpace(targetTask.Tags))
+                    {
+                        targetTask.Tags = "import:excel";
+                    }
+                    else if (!targetTask.Tags.Contains("import:excel", StringComparison.OrdinalIgnoreCase))
+                    {
+                        targetTask.Tags += ",import:excel";
                     }
                 }
 
@@ -1318,7 +1344,7 @@ public class TaskExcelImportService : ITaskExcelImportService
                     Milestone = !string.IsNullOrWhiteSpace(row.Milestone) && row.Milestone.Length > 100 ? row.Milestone[..100] : row.Milestone,
                     Obstacle = row.Obstacle,
                     Solution = row.Solution,
-                    Tags = !string.IsNullOrWhiteSpace(row.TaskCode) ? $"code:{row.TaskCode.Trim()}" : null,
+                    Tags = !string.IsNullOrWhiteSpace(row.TaskCode) ? $"code:{row.TaskCode.Trim()},import:excel" : "import:excel",
                     Project = project,
                     ProjectId = project?.Id,
                     AssignedToUserId = assignedUserId,
