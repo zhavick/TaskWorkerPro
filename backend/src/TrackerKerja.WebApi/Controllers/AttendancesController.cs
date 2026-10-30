@@ -24,6 +24,49 @@ public class AttendancesController : ControllerBase
         _tenantService = tenantService;
     }
 
+    private int? ResolveTargetCompanyId(int? requestCompanyId)
+    {
+        if (requestCompanyId.HasValue)
+        {
+            if (requestCompanyId.Value == -1) return null; // -1 = Semua Perusahaan (Admin)
+            if (requestCompanyId.Value > 0) return requestCompanyId.Value;
+        }
+
+        if (!_tenantService.IsAdmin)
+        {
+            return _tenantService.CompanyId;
+        }
+
+        // Untuk Administrator:
+        // Cek apakah _tenantService.CompanyId memiliki data operasional (tugas/absensi)
+        if (_tenantService.CompanyId.HasValue)
+        {
+            var adminComp = _tenantService.CompanyId.Value;
+            var hasOperationalData = _context.Tasks.Any(t => t.CompanyId == adminComp) ||
+                                     _context.Attendances.Any(a => a.User.CompanyId == adminComp);
+            if (hasOperationalData)
+            {
+                return adminComp;
+            }
+        }
+
+        // Jika holding/company admin tidak memiliki data, arahkan ke primary company operasional
+        var primaryCompWithData = _context.Tasks
+            .Where(t => t.CompanyId.HasValue)
+            .Select(t => t.CompanyId!.Value)
+            .FirstOrDefault();
+
+        if (primaryCompWithData == 0)
+        {
+            primaryCompWithData = _context.Attendances
+                .Where(a => a.User.CompanyId.HasValue)
+                .Select(a => a.User.CompanyId!.Value)
+                .FirstOrDefault();
+        }
+
+        return primaryCompWithData > 0 ? primaryCompWithData : _tenantService.CompanyId;
+    }
+
     [HttpGet("today")]
     public async Task<IActionResult> GetTodayStatus()
     {
@@ -269,10 +312,12 @@ public class AttendancesController : ControllerBase
 
     [HttpGet("summary")]
     [HttpGet("my-summary")]
-    public async Task<IActionResult> GetMySummary([FromQuery] int? month = null, [FromQuery] int? year = null)
+    public async Task<IActionResult> GetMySummary([FromQuery] int? month = null, [FromQuery] int? year = null, [FromQuery] string? userId = null)
     {
-        var userId = _tenantService.UserId;
-        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        var currentUserId = _tenantService.UserId;
+        if (string.IsNullOrEmpty(currentUserId)) return Unauthorized();
+
+        var targetUserId = _tenantService.IsAdmin && !string.IsNullOrEmpty(userId) ? userId : currentUserId;
 
         var now = DateTime.UtcNow;
         int targetMonth = month ?? now.Month;
@@ -280,7 +325,7 @@ public class AttendancesController : ControllerBase
 
         var records = await _context.Attendances
             .AsNoTracking()
-            .Where(a => a.UserId == userId && a.Date.Month == targetMonth && a.Date.Year == targetYear)
+            .Where(a => a.UserId == targetUserId && a.Date.Month == targetMonth && a.Date.Year == targetYear)
             .ToListAsync();
 
         int presentDays = records.Count(a => a.Type == AttendanceType.Present);
@@ -306,10 +351,12 @@ public class AttendancesController : ControllerBase
 
     [HttpGet]
     [HttpGet("my-history")]
-    public async Task<IActionResult> GetMyHistory([FromQuery] int? month = null, [FromQuery] int? year = null)
+    public async Task<IActionResult> GetMyHistory([FromQuery] int? month = null, [FromQuery] int? year = null, [FromQuery] string? userId = null)
     {
-        var userId = _tenantService.UserId;
-        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        var currentUserId = _tenantService.UserId;
+        if (string.IsNullOrEmpty(currentUserId)) return Unauthorized();
+
+        var targetUserId = _tenantService.IsAdmin && !string.IsNullOrEmpty(userId) ? userId : currentUserId;
 
         var now = DateTime.UtcNow;
         int targetMonth = month ?? now.Month;
@@ -318,7 +365,7 @@ public class AttendancesController : ControllerBase
         var records = await _context.Attendances
             .Include(a => a.User)
             .AsNoTracking()
-            .Where(a => a.UserId == userId && a.Date.Month == targetMonth && a.Date.Year == targetYear)
+            .Where(a => a.UserId == targetUserId && a.Date.Month == targetMonth && a.Date.Year == targetYear)
             .OrderByDescending(a => a.Date)
             .Select(a => new AttendanceHistoryDto(
                 a.Id,
@@ -345,24 +392,7 @@ public class AttendancesController : ControllerBase
         [FromQuery] int? companyId = null)
     {
         var targetDate = date ?? DateOnly.FromDateTime(DateTime.UtcNow);
-        int? targetCompany = null;
-        if (!_tenantService.IsAdmin)
-        {
-            targetCompany = _tenantService.CompanyId;
-        }
-        else if (companyId.HasValue)
-        {
-            targetCompany = companyId.Value;
-        }
-        else if (_tenantService.CompanyId.HasValue)
-        {
-            var adminComp = _tenantService.CompanyId.Value;
-            var hasMembersInAdminCompany = await _context.Users.AnyAsync(u => u.IsApproved && u.CompanyId == adminComp);
-            if (hasMembersInAdminCompany)
-            {
-                targetCompany = adminComp;
-            }
-        }
+        var targetCompany = ResolveTargetCompanyId(companyId);
 
         var records = await _context.Attendances
             .Include(a => a.User)
@@ -397,24 +427,7 @@ public class AttendancesController : ControllerBase
         var now = DateTime.UtcNow;
         int targetMonth = month ?? now.Month;
         int targetYear = year ?? now.Year;
-        int? targetCompany = null;
-        if (!_tenantService.IsAdmin)
-        {
-            targetCompany = _tenantService.CompanyId;
-        }
-        else if (companyId.HasValue)
-        {
-            targetCompany = companyId.Value;
-        }
-        else if (_tenantService.CompanyId.HasValue)
-        {
-            var adminComp = _tenantService.CompanyId.Value;
-            var hasMembersInAdminCompany = await _context.Users.AnyAsync(u => u.IsApproved && u.CompanyId == adminComp);
-            if (hasMembersInAdminCompany)
-            {
-                targetCompany = adminComp;
-            }
-        }
+        var targetCompany = ResolveTargetCompanyId(companyId);
 
         var membersQuery = _context.Users.AsNoTracking().Where(u => u.IsApproved);
         if (targetCompany.HasValue)
@@ -604,25 +617,7 @@ public class AttendancesController : ControllerBase
         if (string.IsNullOrEmpty(currentUserId)) return Unauthorized();
 
         var isAdmin = _tenantService.IsAdmin;
-        int? targetCompanyId = null;
-        if (!isAdmin)
-        {
-            targetCompanyId = _tenantService.CompanyId;
-        }
-        else if (companyId.HasValue)
-        {
-            targetCompanyId = companyId.Value;
-        }
-        else if (_tenantService.CompanyId.HasValue)
-        {
-            var adminComp = _tenantService.CompanyId.Value;
-            var hasMembers = await _context.Users.AnyAsync(u => u.IsApproved && u.CompanyId == adminComp);
-            if (hasMembers)
-            {
-                targetCompanyId = adminComp;
-            }
-        }
-
+        int? targetCompanyId = ResolveTargetCompanyId(companyId);
         string? targetUserId = isAdmin ? userId : currentUserId;
 
         var usersQuery = _context.Users.Where(u => u.IsApproved);

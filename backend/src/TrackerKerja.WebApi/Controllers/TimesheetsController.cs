@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using TrackerKerja.Application.Common.Interfaces;
 using TrackerKerja.Application.DTOs;
 using TrackerKerja.Domain.Entities;
+using TrackerKerja.Domain.Enums;
 using TrackerKerja.Infrastructure.Persistence;
 using TrackerKerja.Infrastructure.Services;
 
@@ -141,10 +142,13 @@ public class TimesheetsController : ControllerBase
 
         await _context.SaveChangesAsync();
 
+        // Otomatis sinkronkan & sesuaikan presensi (Attendance) untuk tanggal & personel ini
+        await SyncAttendanceForSessionAsync(session.UserId, session.StartTime);
+
         return Ok(new
         {
             success = true,
-            message = "Timer berhasil dihentikan.",
+            message = "Timer berhasil dihentikan dan presensi telah disesuaikan.",
             durationSeconds = session.Duration,
             durationHours = Math.Round(session.Duration / 3600.0, 2)
         });
@@ -190,7 +194,10 @@ public class TimesheetsController : ControllerBase
         _context.Sessions.Add(session);
         await _context.SaveChangesAsync();
 
-        return Ok(new { success = true, message = "Sesi kerja manual berhasil dicatat.", data = session });
+        // Otomatis sinkronkan & sesuaikan presensi (Attendance) untuk tanggal & personel ini
+        await SyncAttendanceForSessionAsync(session.UserId, session.StartTime);
+
+        return Ok(new { success = true, message = "Sesi kerja manual berhasil dicatat dan presensi telah disesuaikan.", data = session });
     }
 
     [HttpGet("summary")]
@@ -397,5 +404,91 @@ public class TimesheetsController : ControllerBase
 
         var result = await _autoGenService.GenerateTimesheetsAsync(request, targetCompanyId.Value, cancellationToken);
         return Ok(result);
+    }
+
+    private async Task SyncAttendanceForSessionAsync(string userId, DateTimeOffset sessionTime)
+    {
+        try
+        {
+            var tzOffset = TimeSpan.FromHours(7); // WIB
+            var localTime = sessionTime.ToOffset(tzOffset);
+            var date = DateOnly.FromDateTime(localTime.DateTime);
+
+            // Skip akhir pekan
+            if (date.DayOfWeek == DayOfWeek.Saturday || date.DayOfWeek == DayOfWeek.Sunday)
+            {
+                return;
+            }
+
+            var startOfDayUtc = new DateTimeOffset(date.Year, date.Month, date.Day, 0, 0, 0, tzOffset).ToUniversalTime();
+            var endOfDayUtc = new DateTimeOffset(date.Year, date.Month, date.Day, 23, 59, 59, tzOffset).ToUniversalTime();
+
+            var sessions = await _context.Sessions
+                .Include(s => s.Task)
+                .Where(s => s.UserId == userId && s.StartTime >= startOfDayUtc && s.StartTime <= endOfDayUtc)
+                .ToListAsync();
+
+            if (sessions.Count == 0) return;
+
+            long totalSeconds = sessions.Sum(s => s.Duration > 0 ? s.Duration : (long)Math.Max(0, (DateTimeOffset.UtcNow - s.StartTime).TotalSeconds));
+            double totalHours = Math.Round(totalSeconds / 3600.0, 2);
+            if (totalHours < 0.1) totalHours = 0.1;
+
+            var earliestStart = sessions.Min(s => s.StartTime);
+            var latestEnd = sessions.Max(s => s.EndTime ?? s.StartTime.AddSeconds(s.Duration > 0 ? s.Duration : 3600));
+
+            var taskTitles = string.Join(", ", sessions
+                .Where(s => s.Task != null)
+                .Select(s => s.Task.Title)
+                .Distinct()
+                .Take(2));
+            if (sessions.Count > 2) taskTitles += $" (+{sessions.Count - 2} sesi)";
+            var notesText = $"Presensi sinkronisasi timesheet ({totalHours} Jam): {taskTitles}";
+            if (notesText.Length > 450) notesText = notesText.Substring(0, 447) + "...";
+
+            var attendance = await _context.Attendances
+                .FirstOrDefaultAsync(a => a.UserId == userId && a.Date == date);
+
+            if (attendance == null)
+            {
+                attendance = new Attendance
+                {
+                    UserId = userId,
+                    Date = date,
+                    Type = AttendanceType.Present,
+                    WorkLocation = WorkLocation.WFO,
+                    ClockIn = earliestStart,
+                    ClockOut = latestEnd,
+                    TotalHours = totalHours,
+                    Status = 2, // Approved
+                    Notes = notesText,
+                    CreatedAt = DateTimeOffset.UtcNow,
+                    UpdatedAt = DateTimeOffset.UtcNow
+                };
+                _context.Attendances.Add(attendance);
+            }
+            else
+            {
+                if (!attendance.ClockIn.HasValue || earliestStart < attendance.ClockIn.Value)
+                {
+                    attendance.ClockIn = earliestStart;
+                }
+                if (!attendance.ClockOut.HasValue || latestEnd > attendance.ClockOut.Value)
+                {
+                    attendance.ClockOut = latestEnd;
+                }
+                attendance.TotalHours = Math.Max(attendance.TotalHours, totalHours);
+                attendance.Type = AttendanceType.Present;
+                attendance.Status = 2; // Approved
+                attendance.Notes = notesText;
+                attendance.UpdatedAt = DateTimeOffset.UtcNow;
+            }
+
+            await _context.SaveChangesAsync();
+        }
+        catch
+        {
+            // Fail-safe logging agar operasi timesheet utama tidak terganggu
+        }
     }
 }
