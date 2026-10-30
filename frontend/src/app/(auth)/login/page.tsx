@@ -293,7 +293,7 @@ function LoginForm() {
                         placeholder="Cari nama atau kode..."
                         value={companySearch}
                         onChange={(e) => setCompanySearch(e.target.value)}
-                        className="w-full rounded-xl border border-gray-200 bg-gray-50 py-1.5 pl-9 pr-3 text-xs outline-none focus:border-indigo-500 dark:border-gray-800 dark:bg-gray-800 dark:text-white"
+                        className="w-full rounded-xl border border-gray-200 bg-gray-50 py-1.5 pl-9 pr-3 text-xs text-gray-900 placeholder:text-gray-400 outline-none focus:border-indigo-500 dark:border-gray-800 dark:bg-gray-800 dark:text-white dark:placeholder:text-gray-500"
                       />
                     </div>
 

@@ -282,12 +282,12 @@
   --alert-default-button-text: #6b7280;
 
   /* ======== Input Color For Dark =========*/
-  --input-background: #ffffff0d;
-  --input-label-text: #9ca3af;
-  --input-disabled-text: #ffffff26;
-  --input-disabled-background: rgba(255, 255, 255, 0.03);
-  --input-disabled-border: rgba(255, 255, 255, 0.05);
-  --input-placeholder-text: #6b7280;
+  --input-background: #18181b;
+  --input-label-text: #e4e4e7;
+  --input-disabled-text: #71717a;
+  --input-disabled-background: #27272a;
+  --input-disabled-border: #3f3f46;
+  --input-placeholder-text: #71717a;
   --input-primary-focus-border: var(--primary-500);
   --input-error-focus-border: #b91c1c;
   --input-success-focus-border: #15803d;
@@ -459,7 +459,7 @@
   --background-gray-secondary: #18181b;
   --background-gray-tertiary: #27272a;
   --dropdowns-background: #27272a;
-  --input-background: rgba(255, 255, 255, 0.05);
+  --input-background: #18181b;
   --card-background: #171718;
   --background-white-secondary: #18181b;
   --card-surface-area: #0f0f0f;
@@ -510,7 +510,7 @@
   --icon-primary: #ffffff;
 
   /* borders */
-  --input-border: rgba(255, 255, 255, 0.05);
+  --input-border: #3f3f46;
   --card-border: #2b2c2e;
   --card-surface-border: #1d1d1f;
   --border-secondary-alt: #3f3f46;
