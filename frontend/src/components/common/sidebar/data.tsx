@@ -127,6 +127,7 @@ export const NAV_DATA = [
         title: "Audit Trail & Log",
         icon: <ShieldCheck className="h-5 w-5" />,
         url: "/audit-trail",
+        companyAdminOnly: true,
         items: [],
       },
       {

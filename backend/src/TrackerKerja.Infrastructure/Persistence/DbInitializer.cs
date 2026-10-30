@@ -294,18 +294,29 @@ public static class DbInitializer
             await context.SaveChangesAsync();
         }
 
-        // Pastikan Role Khusus: DataPurgeAdmin (Pembersihan & Purging Data)
-        var purgeAdminRole = await context.Roles.FirstOrDefaultAsync(r => r.Id == "r-purge-admin" || r.Name == "DataPurgeAdmin");
-        if (purgeAdminRole == null)
+        // Pastikan Master Peran Sistem (Admin, Project Manager, Staff/Member, DataPurgeAdmin)
+        var rolesToEnsure = new List<(string Id, string Name)>
         {
-            context.Roles.Add(new AppRole
+            ("r-admin", "Administrator"),
+            ("r-pm", "Project Manager"),
+            ("r-staff", "Staff"),
+            ("r-member", "Member"),
+            ("r-purge-admin", "DataPurgeAdmin")
+        };
+        foreach (var (rId, rName) in rolesToEnsure)
+        {
+            var roleExists = await context.Roles.FirstOrDefaultAsync(r => r.Id == rId || r.Name.ToLower() == rName.ToLower());
+            if (roleExists == null)
             {
-                Id = "r-purge-admin",
-                Name = "DataPurgeAdmin",
-                NormalizedName = "DATAPURGEADMIN"
-            });
-            await context.SaveChangesAsync();
+                context.Roles.Add(new AppRole
+                {
+                    Id = rId,
+                    Name = rName,
+                    NormalizedName = rName.ToUpperInvariant()
+                });
+            }
         }
+        await context.SaveChangesAsync();
 
         // 3. Pastikan Koleksi 70+ Master Badge Gaul & Modern Anak Muda (FSD 5.20.4 + Ekstensi Gamifikasi Kreatif)
         var badges = new List<MasterBadge>

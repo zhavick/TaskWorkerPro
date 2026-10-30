@@ -281,7 +281,8 @@ export default function DashboardPage() {
     { name: "Overdue", value: taskStats.overdue, color: "#EF4444" },
   ];
 
-  // Filter helper: Administrator tidak ditampilkan pada chart dashboard
+  // Filter helper: Admin sistem (perawatan aplikasi) tidak ditampilkan pada chart dashboard.
+  // Project Manager adalah admin perusahaan yang WAJIB ditampilkan sebagai anggota member di dashboard.
   const isAdministrator = (m: any) => {
     if (!m) return false;
     const title = (m.jobTitle || "").toLowerCase();
@@ -289,6 +290,17 @@ export default function DashboardPage() {
     const uname = (m.userName || "").toLowerCase();
     const uid = (m.userId || "").toLowerCase();
     const role = (m.role || "").toLowerCase();
+
+    // Project Manager wajib ditampilkan sebagai anggota member
+    if (
+      title.includes("project manager") ||
+      title === "pm" ||
+      role.includes("project manager") ||
+      role === "pm"
+    ) {
+      return false;
+    }
+
     return (
       title.includes("admin") ||
       name.includes("administrator") ||
@@ -296,7 +308,8 @@ export default function DashboardPage() {
       name.startsWith("admin ") ||
       uname === "admin" ||
       uid.includes("admin") ||
-      role.includes("admin")
+      role.includes("admin") ||
+      role.includes("administrator")
     );
   };
 

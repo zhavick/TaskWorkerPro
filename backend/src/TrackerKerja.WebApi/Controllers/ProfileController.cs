@@ -40,17 +40,22 @@ public class ProfileController : ControllerBase
 
         var isUserRoleAdmin = await _context.UserRoles.AnyAsync(ur => ur.UserId == user.Id && (ur.RoleId == "r-admin" || _context.Roles.Any(r => r.Id == ur.RoleId && r.Name == "Administrator")));
         var isPurgeRole = await _context.UserRoles.AnyAsync(ur => ur.UserId == user.Id && (ur.RoleId == "r-purge-admin" || _context.Roles.Any(r => r.Id == ur.RoleId && r.Name == "DataPurgeAdmin")));
+        var isPmRole = await _context.UserRoles.AnyAsync(ur => ur.UserId == user.Id && (ur.RoleId == "r-pm" || _context.Roles.Any(r => r.Id == ur.RoleId && (r.Name == "Project Manager" || r.Name == "ProjectManager")))) || user.JobTitle.Contains("Project Manager", StringComparison.OrdinalIgnoreCase);
         var isAdmin = _tenantService.IsAdmin
             || user.Id == "usr-superadmin"
             || isUserRoleAdmin
             || user.Email?.Equals("admin@trackerkerja.local", StringComparison.OrdinalIgnoreCase) == true
-            || user.JobTitle.Contains("Admin", StringComparison.OrdinalIgnoreCase)
+            || (user.JobTitle.Contains("Admin", StringComparison.OrdinalIgnoreCase) && !isPmRole)
             || user.JobTitle.Contains("Architect", StringComparison.OrdinalIgnoreCase);
 
         var roles = new List<string>();
         if (isAdmin) roles.Add("Administrator");
-        if (isPurgeRole && !isAdmin) roles.Add("DataPurgeAdmin");
-        if (roles.Count == 0) roles.Add("Member");
+        if (isPmRole && !isAdmin) roles.Add("Project Manager");
+        if (isPurgeRole && !isAdmin && !isPmRole) roles.Add("DataPurgeAdmin");
+        if (roles.Count == 0) {
+            roles.Add("Staff");
+            roles.Add("Member");
+        }
 
         var profile = new UserProfileDto(
             user.Id,

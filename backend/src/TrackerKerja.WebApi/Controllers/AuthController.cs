@@ -161,18 +161,20 @@ public class AuthController : ControllerBase
         user.AccessFailedCount = 0;
         user.LockoutEnd = null;
 
-        var isUserRoleAdmin = await _context.UserRoles.AnyAsync(ur => ur.UserId == user.Id && (ur.RoleId == "r-admin" || _context.Roles.Any(r => r.Id == ur.RoleId && r.Name == "Administrator")));
+        var isUserRoleAdmin = await _context.UserRoles.AnyAsync(ur => ur.UserId == user.Id && (ur.RoleId == "r-admin" || _context.Roles.Any(r => r.Id == ur.RoleId && (r.Name == "Administrator" || r.Name == "Admin" || r.Name == "SuperAdmin"))));
         var isPurgeRole = await _context.UserRoles.AnyAsync(ur => ur.UserId == user.Id && (ur.RoleId == "r-purge-admin" || _context.Roles.Any(r => r.Id == ur.RoleId && r.Name == "DataPurgeAdmin")));
+        var isPmRole = await _context.UserRoles.AnyAsync(ur => ur.UserId == user.Id && (ur.RoleId == "r-pm" || _context.Roles.Any(r => r.Id == ur.RoleId && (r.Name == "Project Manager" || r.Name == "ProjectManager")))) || user.JobTitle.Contains("Project Manager", StringComparison.OrdinalIgnoreCase);
         var isAdmin = user.Id == "usr-superadmin" 
             || isUserRoleAdmin
             || user.Email?.Equals("admin@trackerkerja.local", StringComparison.OrdinalIgnoreCase) == true
             || user.Email?.Equals("admin@trackerkerja.com", StringComparison.OrdinalIgnoreCase) == true
-            || user.JobTitle.Contains("Admin", StringComparison.OrdinalIgnoreCase)
+            || (user.JobTitle.Contains("Admin", StringComparison.OrdinalIgnoreCase) && !isPmRole)
             || user.JobTitle.Contains("Architect", StringComparison.OrdinalIgnoreCase);
         var roles = new List<string>();
-        if (isAdmin) roles.Add("Administrator");
-        if (isPurgeRole && !isAdmin) roles.Add("DataPurgeAdmin");
-        if (roles.Count == 0) roles.Add("Member");
+        if (isAdmin) { roles.Add("Administrator"); roles.Add("Admin"); }
+        if (isPmRole && !isAdmin) roles.Add("Project Manager");
+        if (isPurgeRole && !isAdmin && !isPmRole) roles.Add("DataPurgeAdmin");
+        if (roles.Count == 0) { roles.Add("Staff"); roles.Add("Member"); }
         var accessToken = _jwtService.GenerateAccessToken(user, roles, user.Company?.Code);
         var refreshToken = _jwtService.GenerateRefreshToken();
         var jwtId = _jwtService.GetJwtIdFromToken(accessToken);
@@ -240,16 +242,18 @@ public class AuthController : ControllerBase
 
         var isUserRoleAdmin = await _context.UserRoles.AnyAsync(ur => ur.UserId == user.Id && (ur.RoleId == "r-admin" || _context.Roles.Any(r => r.Id == ur.RoleId && (r.Name == "Administrator" || r.Name == "Admin" || r.Name == "SuperAdmin"))));
         var isPurgeRole = await _context.UserRoles.AnyAsync(ur => ur.UserId == user.Id && (ur.RoleId == "r-purge-admin" || _context.Roles.Any(r => r.Id == ur.RoleId && r.Name == "DataPurgeAdmin")));
+        var isPmRole = await _context.UserRoles.AnyAsync(ur => ur.UserId == user.Id && (ur.RoleId == "r-pm" || _context.Roles.Any(r => r.Id == ur.RoleId && (r.Name == "Project Manager" || r.Name == "ProjectManager")))) || user.JobTitle.Contains("Project Manager", StringComparison.OrdinalIgnoreCase);
         var isAdmin = user.Id == "usr-superadmin" 
             || isUserRoleAdmin
             || user.Email?.Equals("admin@trackerkerja.local", StringComparison.OrdinalIgnoreCase) == true
             || user.Email?.Equals("admin@trackerkerja.com", StringComparison.OrdinalIgnoreCase) == true
-            || user.JobTitle.Contains("Admin", StringComparison.OrdinalIgnoreCase)
+            || (user.JobTitle.Contains("Admin", StringComparison.OrdinalIgnoreCase) && !isPmRole)
             || user.JobTitle.Contains("Architect", StringComparison.OrdinalIgnoreCase);
         var roles = new List<string>();
-        if (isAdmin) roles.Add("Administrator");
-        if (isPurgeRole && !isAdmin) roles.Add("DataPurgeAdmin");
-        if (roles.Count == 0) roles.Add("Member");
+        if (isAdmin) { roles.Add("Administrator"); roles.Add("Admin"); }
+        if (isPmRole && !isAdmin) roles.Add("Project Manager");
+        if (isPurgeRole && !isAdmin && !isPmRole) roles.Add("DataPurgeAdmin");
+        if (roles.Count == 0) { roles.Add("Staff"); roles.Add("Member"); }
         var newAccessToken = _jwtService.GenerateAccessToken(user, roles, user.Company?.Code);
         var newRefreshToken = _jwtService.GenerateRefreshToken();
         var newJwtId = _jwtService.GetJwtIdFromToken(newAccessToken);
@@ -356,15 +360,17 @@ public class AuthController : ControllerBase
 
         var isUserRoleAdmin = await _context.UserRoles.AnyAsync(ur => ur.UserId == user.Id && (ur.RoleId == "r-admin" || _context.Roles.Any(r => r.Id == ur.RoleId && r.Name == "Administrator")));
         var isPurgeRole = await _context.UserRoles.AnyAsync(ur => ur.UserId == user.Id && (ur.RoleId == "r-purge-admin" || _context.Roles.Any(r => r.Id == ur.RoleId && r.Name == "DataPurgeAdmin")));
+        var isPmRole = await _context.UserRoles.AnyAsync(ur => ur.UserId == user.Id && (ur.RoleId == "r-pm" || _context.Roles.Any(r => r.Id == ur.RoleId && (r.Name == "Project Manager" || r.Name == "ProjectManager")))) || user.JobTitle.Contains("Project Manager", StringComparison.OrdinalIgnoreCase);
         var isAdmin = user.Id == "usr-superadmin" 
             || isUserRoleAdmin
             || user.Email?.Equals("admin@trackerkerja.local", StringComparison.OrdinalIgnoreCase) == true
-            || user.JobTitle.Contains("Admin", StringComparison.OrdinalIgnoreCase)
+            || (user.JobTitle.Contains("Admin", StringComparison.OrdinalIgnoreCase) && !isPmRole)
             || user.JobTitle.Contains("Architect", StringComparison.OrdinalIgnoreCase);
         var roles = new List<string>();
-        if (isAdmin) roles.Add("Administrator");
-        if (isPurgeRole && !isAdmin) roles.Add("DataPurgeAdmin");
-        if (roles.Count == 0) roles.Add("Member");
+        if (isAdmin) { roles.Add("Administrator"); roles.Add("Admin"); }
+        if (isPmRole && !isAdmin) roles.Add("Project Manager");
+        if (isPurgeRole && !isAdmin && !isPmRole) roles.Add("DataPurgeAdmin");
+        if (roles.Count == 0) { roles.Add("Staff"); roles.Add("Member"); }
 
         var profile = new UserProfileDto(
             user.Id,

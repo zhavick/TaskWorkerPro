@@ -446,6 +446,29 @@ public class TasksController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> CreateTask([FromBody] CreateTaskRequest request)
     {
+        var targetCompanyId = _tenantService.CompanyId ?? 1;
+        var cleanTitle = request.Title.Trim();
+        var assignedUserId = string.IsNullOrWhiteSpace(request.AssignedToUserId) ? null : request.AssignedToUserId.Trim();
+
+        // Aturan: Judul tugas yang sama diizinkan jika member berbeda. Jika member sama, tidak diizinkan duplikasi tugas.
+        var isDuplicateForSameMember = await _context.Tasks.AnyAsync(t =>
+            (t.CompanyId == targetCompanyId || t.CompanyId == null) &&
+            t.Title.ToLower() == cleanTitle.ToLower() &&
+            t.AssignedToUserId == assignedUserId);
+
+        if (isDuplicateForSameMember)
+        {
+            var picName = !string.IsNullOrEmpty(assignedUserId)
+                ? (await _context.Users.Where(u => u.Id == assignedUserId).Select(u => u.FullName).FirstOrDefaultAsync()) ?? "anggota terpilih"
+                : "status Belum Ditugaskan (Unassigned)";
+
+            return BadRequest(new
+            {
+                success = false,
+                message = $"Tugas dengan judul '{cleanTitle}' sudah ada untuk {picName}. Duplikasi nama tugas untuk anggota yang sama tidak diizinkan."
+            });
+        }
+
         var task = new WorkTask
         {
             Title = request.Title.Trim(),
@@ -1185,7 +1208,7 @@ public class TasksController : ControllerBase
 
     private bool CanUserModifyTask(WorkTask task)
     {
-        if (_tenantService.IsAdmin) return true;
+        if (_tenantService.IsAdmin || _tenantService.IsProjectManager) return true;
         if (!string.IsNullOrEmpty(task.CreatedByUserId))
         {
             return task.CreatedByUserId == _tenantService.UserId;

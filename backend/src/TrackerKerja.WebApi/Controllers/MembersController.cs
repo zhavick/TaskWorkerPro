@@ -81,16 +81,26 @@ public class MembersController : ControllerBase
             .Select(ur => ur.UserId)
             .ToListAsync();
 
+        var pmUserIds = await _context.UserRoles
+            .Where(ur => ur.RoleId == "r-pm" || _context.Roles.Any(r => r.Id == ur.RoleId && (r.Name == "Project Manager" || r.Name == "ProjectManager")))
+            .Select(ur => ur.UserId)
+            .ToListAsync();
+
         var members = users.Select(u => {
             var isUserAdmin = u.Id == "usr-superadmin" ||
                               adminUserIds.Contains(u.Id) ||
                               (u.Email != null && u.Email.Equals("admin@trackerkerja.local", StringComparison.OrdinalIgnoreCase)) ||
                               u.JobTitle.Contains("Admin", StringComparison.OrdinalIgnoreCase);
+            var isUserPm = pmUserIds.Contains(u.Id) || u.JobTitle.Contains("Project Manager", StringComparison.OrdinalIgnoreCase);
             var isUserPurgeAdmin = purgeAdminUserIds.Contains(u.Id);
             var memberRoles = new List<string>();
             if (isUserAdmin) memberRoles.Add("Administrator");
-            if (isUserPurgeAdmin && !isUserAdmin) memberRoles.Add("DataPurgeAdmin");
-            if (memberRoles.Count == 0) memberRoles.Add("Member");
+            if (isUserPm && !isUserAdmin) memberRoles.Add("Project Manager");
+            if (isUserPurgeAdmin && !isUserAdmin && !isUserPm) memberRoles.Add("DataPurgeAdmin");
+            if (memberRoles.Count == 0) {
+                memberRoles.Add("Staff");
+                memberRoles.Add("Member");
+            }
 
             var memberProjects = u.AssignedTasks
                 .Where(t => t.Project != null)
@@ -181,10 +191,15 @@ public class MembersController : ControllerBase
                           user.JobTitle.Contains("Admin", StringComparison.OrdinalIgnoreCase);
 
         var isUserPurgeAdmin = await _context.UserRoles.AnyAsync(ur => ur.UserId == user.Id && (ur.RoleId == "r-purge-admin" || _context.Roles.Any(r => r.Id == ur.RoleId && r.Name == "DataPurgeAdmin")));
+        var isUserPm = await _context.UserRoles.AnyAsync(ur => ur.UserId == user.Id && (ur.RoleId == "r-pm" || _context.Roles.Any(r => r.Id == ur.RoleId && (r.Name == "Project Manager" || r.Name == "ProjectManager")))) || user.JobTitle.Contains("Project Manager", StringComparison.OrdinalIgnoreCase);
         var memberRoles = new List<string>();
         if (isUserAdmin) memberRoles.Add("Administrator");
-        if (isUserPurgeAdmin && !isUserAdmin) memberRoles.Add("DataPurgeAdmin");
-        if (memberRoles.Count == 0) memberRoles.Add("Member");
+        if (isUserPm && !isUserAdmin) memberRoles.Add("Project Manager");
+        if (isUserPurgeAdmin && !isUserAdmin && !isUserPm) memberRoles.Add("DataPurgeAdmin");
+        if (memberRoles.Count == 0) {
+            memberRoles.Add("Staff");
+            memberRoles.Add("Member");
+        }
 
         var totalTasks = user.AssignedTasks.Count;
         var completedTasks = user.AssignedTasks.Count(t => t.Status == Domain.Enums.TaskStatus.Done);
@@ -388,40 +403,48 @@ public class MembersController : ControllerBase
             var currentAdminRole = await _context.UserRoles.FirstOrDefaultAsync(ur => ur.UserId == id && ur.RoleId == adminRoleId);
             var currentPurgeRole = await _context.UserRoles.FirstOrDefaultAsync(ur => ur.UserId == id && ur.RoleId == purgeRole.Id);
 
+            var pmRole = await _context.Roles.FirstOrDefaultAsync(r => r.Id == "r-pm" || r.Name == "Project Manager" || r.Name == "ProjectManager");
+            if (pmRole == null)
+            {
+                pmRole = new AppRole { Id = "r-pm", Name = "Project Manager", NormalizedName = "PROJECT MANAGER" };
+                _context.Roles.Add(pmRole);
+                await _context.SaveChangesAsync();
+            }
+            var currentPmRole = await _context.UserRoles.FirstOrDefaultAsync(ur => ur.UserId == id && ur.RoleId == pmRole.Id);
+
             var reqRole = request.Role?.Trim();
-            if (string.Equals(reqRole, "Administrator", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(reqRole, "Administrator", StringComparison.OrdinalIgnoreCase) || string.Equals(reqRole, "Admin", StringComparison.OrdinalIgnoreCase))
             {
                 if (currentAdminRole == null)
                 {
                     _context.UserRoles.Add(new AppUserRole { UserId = id, RoleId = adminRoleId });
                 }
-                if (currentPurgeRole != null)
+                if (currentPmRole != null) _context.UserRoles.Remove(currentPmRole);
+                if (currentPurgeRole != null) _context.UserRoles.Remove(currentPurgeRole);
+            }
+            else if (string.Equals(reqRole, "Project Manager", StringComparison.OrdinalIgnoreCase) || string.Equals(reqRole, "ProjectManager", StringComparison.OrdinalIgnoreCase) || string.Equals(reqRole, "PM", StringComparison.OrdinalIgnoreCase))
+            {
+                if (currentPmRole == null)
                 {
-                    _context.UserRoles.Remove(currentPurgeRole);
+                    _context.UserRoles.Add(new AppUserRole { UserId = id, RoleId = pmRole.Id });
                 }
+                if (currentAdminRole != null && !isTargetSuperAdmin) _context.UserRoles.Remove(currentAdminRole);
+                if (currentPurgeRole != null) _context.UserRoles.Remove(currentPurgeRole);
             }
             else if (string.Equals(reqRole, "DataPurgeAdmin", StringComparison.OrdinalIgnoreCase) || (request.CanPurgeData == true && reqRole != "Administrator"))
             {
-                // Memberikan hak akses setingkat admin namun terbatas hanya untuk urusan cleaning dan purging data
                 if (currentPurgeRole == null)
                 {
                     _context.UserRoles.Add(new AppUserRole { UserId = id, RoleId = purgeRole.Id });
                 }
-                if (currentAdminRole != null && !isTargetSuperAdmin)
-                {
-                    _context.UserRoles.Remove(currentAdminRole);
-                }
+                if (currentAdminRole != null && !isTargetSuperAdmin) _context.UserRoles.Remove(currentAdminRole);
+                if (currentPmRole != null) _context.UserRoles.Remove(currentPmRole);
             }
-            else if (string.Equals(reqRole, "Member", StringComparison.OrdinalIgnoreCase) || request.CanPurgeData == false)
+            else if (string.Equals(reqRole, "Staff", StringComparison.OrdinalIgnoreCase) || string.Equals(reqRole, "Member", StringComparison.OrdinalIgnoreCase) || request.CanPurgeData == false)
             {
-                if (currentPurgeRole != null)
-                {
-                    _context.UserRoles.Remove(currentPurgeRole);
-                }
-                if (currentAdminRole != null && !isTargetSuperAdmin)
-                {
-                    _context.UserRoles.Remove(currentAdminRole);
-                }
+                if (currentPurgeRole != null) _context.UserRoles.Remove(currentPurgeRole);
+                if (currentPmRole != null) _context.UserRoles.Remove(currentPmRole);
+                if (currentAdminRole != null && !isTargetSuperAdmin) _context.UserRoles.Remove(currentAdminRole);
             }
         }
 

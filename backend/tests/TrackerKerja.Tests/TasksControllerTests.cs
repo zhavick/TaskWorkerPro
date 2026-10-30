@@ -790,6 +790,51 @@ public class TasksControllerTests
         savedTask!.CompanyId.Should().Be(10);
     }
 
+    [Fact]
+    public async Task CreateTask_DuplicateTitle_AllowedForDifferentMember_ForbiddenForSameMember()
+    {
+        var tenant = new FakeTenantService(1, "WCH", "user-1", false);
+        var controller = new TasksController(_context, tenant);
+
+        var reqMemberA = new CreateTaskRequest(
+            Title: "Setup Database Sharding Unique",
+            Priority: TaskPriority.High,
+            Status: Domain.Enums.TaskStatus.Todo,
+            Progress: 0,
+            AssignedToUserId: "usr-member-A"
+        );
+
+        // 1. Create first task for Member A -> Should Succeed
+        var resultA = await controller.CreateTask(reqMemberA) as OkObjectResult;
+        resultA.Should().NotBeNull();
+        resultA!.StatusCode.Should().Be(200);
+
+        // 2. Create task with same title for Member B -> Should Succeed (Different member allowed)
+        var reqMemberB = new CreateTaskRequest(
+            Title: "Setup Database Sharding Unique",
+            Priority: TaskPriority.Medium,
+            Status: Domain.Enums.TaskStatus.Todo,
+            Progress: 0,
+            AssignedToUserId: "usr-member-B"
+        );
+        var resultB = await controller.CreateTask(reqMemberB) as OkObjectResult;
+        resultB.Should().NotBeNull();
+        resultB!.StatusCode.Should().Be(200);
+
+        // 3. Create task with same title AGAIN for Member A -> Should Fail (Same member duplicate forbidden)
+        var reqDuplicateMemberA = new CreateTaskRequest(
+            Title: "Setup Database Sharding Unique",
+            Priority: TaskPriority.Critical,
+            Status: Domain.Enums.TaskStatus.Todo,
+            Progress: 0,
+            AssignedToUserId: "usr-member-A"
+        );
+        var resultDuplicate = await controller.CreateTask(reqDuplicateMemberA) as BadRequestObjectResult;
+        resultDuplicate.Should().NotBeNull();
+        resultDuplicate!.StatusCode.Should().Be(400);
+        resultDuplicate.Value.ToString().Should().Contain("Duplikasi nama tugas untuk anggota yang sama tidak diizinkan");
+    }
+
     private class FakeTenantService : ICurrentTenantService
     {
         public FakeTenantService(int? companyId, string? companyCode, string? userId, bool isAdmin)

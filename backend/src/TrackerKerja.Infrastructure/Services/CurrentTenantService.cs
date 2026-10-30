@@ -44,6 +44,25 @@ public class CurrentTenantService : ICurrentTenantService
         }
     }
 
+    public bool IsProjectManager
+    {
+        get
+        {
+            if (IsAdmin) return true;
+            var user = _httpContextAccessor.HttpContext?.User;
+            if (user == null) return false;
+            if (user.IsInRole("Project Manager") || user.IsInRole("ProjectManager") || user.IsInRole("PM"))
+                return true;
+            var roleClaim = user.FindFirst(ClaimTypes.Role)?.Value;
+            if (!string.IsNullOrEmpty(roleClaim) && (roleClaim.Equals("Project Manager", StringComparison.OrdinalIgnoreCase) || roleClaim.Equals("ProjectManager", StringComparison.OrdinalIgnoreCase) || roleClaim.Equals("PM", StringComparison.OrdinalIgnoreCase)))
+                return true;
+            var jobTitle = user.FindFirst("jobTitle")?.Value;
+            if (!string.IsNullOrEmpty(jobTitle) && (jobTitle.Contains("Project Manager", StringComparison.OrdinalIgnoreCase) || jobTitle.Equals("PM", StringComparison.OrdinalIgnoreCase)))
+                return true;
+            return false;
+        }
+    }
+
     public bool IsPurgeAdmin
     {
         get

@@ -114,7 +114,7 @@ export default function MembersPage() {
   const [editPhoneNumber, setEditPhoneNumber] = useState("");
   const [editAvatarColor, setEditAvatarColor] = useState("#6366F1");
   const [editCompanyId, setEditCompanyId] = useState<number | undefined>(undefined);
-  const [editRole, setEditRole] = useState<"Member" | "DataPurgeAdmin" | "Administrator">("Member");
+  const [editRole, setEditRole] = useState<"Staff" | "Member" | "Project Manager" | "DataPurgeAdmin" | "Administrator">("Staff");
 
   const handleOpenDetail = (m: MemberItem) => {
     router.push(`/members/${m.id}`);
@@ -131,10 +131,12 @@ export default function MembersPage() {
 
     if (m.roles?.includes("Administrator") || m.id === "usr-superadmin") {
       setEditRole("Administrator");
+    } else if (m.roles?.includes("Project Manager") || m.jobTitle?.toLowerCase().includes("project manager")) {
+      setEditRole("Project Manager");
     } else if (m.roles?.includes("DataPurgeAdmin") || m.canPurgeData) {
       setEditRole("DataPurgeAdmin");
     } else {
-      setEditRole("Member");
+      setEditRole("Staff");
     }
     setIsEditingMember(true);
   };
@@ -1195,10 +1197,10 @@ export default function MembersPage() {
                         </div>
                       ) : (
                         <div className="space-y-2">
-                          {/* Member */}
+                          {/* Staff (Member) */}
                           <label
                             className={`flex items-start gap-3 rounded-xl border p-3 cursor-pointer transition-colors ${
-                              editRole === "Member"
+                              editRole === "Staff" || editRole === "Member"
                                 ? "border-indigo-500 bg-indigo-50/50 dark:border-indigo-500 dark:bg-indigo-950/30"
                                 : "border-gray-200 hover:bg-gray-50/60 dark:border-gray-700 dark:hover:bg-gray-800/40"
                             }`}
@@ -1206,15 +1208,73 @@ export default function MembersPage() {
                             <input
                               type="radio"
                               name="editMemberRole"
-                              value="Member"
-                              checked={editRole === "Member"}
-                              onChange={() => setEditRole("Member")}
+                              value="Staff"
+                              checked={editRole === "Staff" || editRole === "Member"}
+                              onChange={() => setEditRole("Staff")}
                               className="mt-0.5 text-indigo-600 focus:ring-indigo-500"
                             />
                             <div className="min-w-0 flex-1 text-xs">
-                              <div className="font-bold text-gray-900 dark:text-white">Pengguna Biasa (Member)</div>
+                              <div className="font-bold text-gray-900 dark:text-white">Staff (Pengguna Operasional)</div>
                               <p className="text-gray-500 text-[11px] leading-relaxed">
-                                Akses operasional standar: tugas harian, pencatatan log waktu aktivitas, dan profil diri.
+                                Anggota pelaksana non-admin. Menu disesuaikan khusus aktivitas kerja: tugas, timesheet, presensi, kalender, catatan, dan profil.
+                              </p>
+                            </div>
+                          </label>
+
+                          {/* Project Manager */}
+                          <label
+                            className={`flex items-start gap-3 rounded-xl border p-3 cursor-pointer transition-colors ${
+                              editRole === "Project Manager"
+                                ? "border-purple-500 bg-purple-50/50 dark:border-purple-500 dark:bg-purple-950/30"
+                                : "border-gray-200 hover:bg-gray-50/60 dark:border-gray-700 dark:hover:bg-gray-800/40"
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              name="editMemberRole"
+                              value="Project Manager"
+                              checked={editRole === "Project Manager"}
+                              onChange={() => setEditRole("Project Manager")}
+                              className="mt-0.5 text-purple-600 focus:ring-purple-500"
+                            />
+                            <div className="min-w-0 flex-1 text-xs">
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-gray-900 dark:text-white">Project Manager</span>
+                                <span className="rounded-full bg-purple-100 px-1.5 py-0.2 text-[9px] font-extrabold text-purple-800 dark:bg-purple-900/60 dark:text-purple-300">
+                                  Admin Perusahaan (Tampil di Dashboard)
+                                </span>
+                              </div>
+                              <p className="text-gray-500 text-[11px] leading-relaxed">
+                                Admin untuk perusahaan ini. Memiliki kebijakan seperti admin (kelola proyek, tugas tim, approval anggota, audit trail), wajib ditampilkan di dashboard sebagai anggota, kecuali menu Konfigurasi Sistem.
+                              </p>
+                            </div>
+                          </label>
+
+                          {/* Administrator */}
+                          <label
+                            className={`flex items-start gap-3 rounded-xl border p-3 cursor-pointer transition-colors ${
+                              editRole === "Administrator"
+                                ? "border-indigo-600 bg-indigo-50/60 dark:border-indigo-500 dark:bg-indigo-950/40"
+                                : "border-gray-200 hover:bg-gray-50/60 dark:border-gray-700 dark:hover:bg-gray-800/40"
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              name="editMemberRole"
+                              value="Administrator"
+                              checked={editRole === "Administrator"}
+                              onChange={() => setEditRole("Administrator")}
+                              className="mt-0.5 text-indigo-600 focus:ring-indigo-500"
+                            />
+                            <div className="min-w-0 flex-1 text-xs">
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-gray-900 dark:text-white">Admin (Perawatan Aplikasi)</span>
+                                <span className="rounded-full bg-indigo-100 px-1.5 py-0.2 text-[9px] font-extrabold text-indigo-800 dark:bg-indigo-900/60 dark:text-indigo-300">
+                                  System Admin Penuh
+                                </span>
+                              </div>
+                              <p className="text-gray-500 text-[11px] leading-relaxed">
+                                Berfokus pada perawatan aplikasi & konfigurasi enterprise menyeluruh. Datanya tidak diikutsertakan pada chart dashboard performa kerja.
                               </p>
                             </div>
                           </label>
@@ -1245,31 +1305,7 @@ export default function MembersPage() {
                                 </span>
                               </div>
                               <p className="text-gray-500 text-[11px] leading-relaxed">
-                                Diberikan hak akses ke menu Konfigurasi &gt; Pembersihan Data untuk monitoring statistik storage database, VACUUM maintenance, dan purging data log lama. Dibatasi dari pengaturan umum, keamanan, SMTP, dan master data.
-                              </p>
-                            </div>
-                          </label>
-
-                          {/* Administrator */}
-                          <label
-                            className={`flex items-start gap-3 rounded-xl border p-3 cursor-pointer transition-colors ${
-                              editRole === "Administrator"
-                                ? "border-indigo-600 bg-indigo-50/60 dark:border-indigo-500 dark:bg-indigo-950/40"
-                                : "border-gray-200 hover:bg-gray-50/60 dark:border-gray-700 dark:hover:bg-gray-800/40"
-                            }`}
-                          >
-                            <input
-                              type="radio"
-                              name="editMemberRole"
-                              value="Administrator"
-                              checked={editRole === "Administrator"}
-                              onChange={() => setEditRole("Administrator")}
-                              className="mt-0.5 text-indigo-600 focus:ring-indigo-500"
-                            />
-                            <div className="min-w-0 flex-1 text-xs">
-                              <div className="font-bold text-gray-900 dark:text-white">Administrator Penuh (System Admin)</div>
-                              <p className="text-gray-500 text-[11px] leading-relaxed">
-                                Hak akses administratif menyeluruh ke seluruh modul sistem: manajemen pengguna, konfigurasi perusahaan, audit log, keamanan, dan pengaturan sistem.
+                                Diberikan hak akses ke menu Konfigurasi &gt; Pembersihan Data untuk monitoring storage database, VACUUM maintenance, dan purging data log lama.
                               </p>
                             </div>
                           </label>
@@ -2153,8 +2189,12 @@ function MemberCard({
           {/* Status Badges */}
           <div className="shrink-0 flex items-center gap-1">
             {m.roles?.includes("Administrator") || m.roles?.includes("SuperAdmin") || m.id === "usr-superadmin" ? (
-              <span className="rounded-full bg-indigo-100 px-2.5 py-0.5 text-[10px] font-extrabold text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-400">
+              <span className="rounded-full bg-blue-100 px-2.5 py-0.5 text-[10px] font-extrabold text-blue-700 dark:bg-blue-950/60 dark:text-blue-400">
                 Admin
+              </span>
+            ) : m.roles?.includes("Project Manager") || m.jobTitle?.toLowerCase().includes("project manager") ? (
+              <span className="rounded-full bg-purple-100 px-2.5 py-0.5 text-[10px] font-extrabold text-purple-700 dark:bg-purple-950/60 dark:text-purple-400">
+                Project Manager
               </span>
             ) : m.roles?.includes("DataPurgeAdmin") || m.canPurgeData ? (
               <span
@@ -2163,7 +2203,11 @@ function MemberCard({
               >
                 Purge Admin
               </span>
-            ) : null}
+            ) : (
+              <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-[10px] font-bold text-gray-600 dark:bg-gray-800 dark:text-gray-400">
+                Staff
+              </span>
+            )}
             {!m.isApproved ? (
               <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-[10px] font-extrabold text-amber-700 dark:bg-amber-950/60 dark:text-amber-400">
                 Pending

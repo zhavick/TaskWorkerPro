@@ -342,9 +342,10 @@ public class TaskExcelImportService : ITaskExcelImportService
             .Where(t => !companyId.HasValue || t.CompanyId == companyId || t.CompanyId == null)
             .ToListAsync(cancellationToken);
 
-        // Pre-build existing task lookup indexes
+        // Pre-build existing task lookup indexes with member isolation
         var dbTaskByCode = new Dictionary<string, WorkTask>(StringComparer.OrdinalIgnoreCase);
-        var dbTaskByProjAndTitle = new Dictionary<string, WorkTask>(StringComparer.OrdinalIgnoreCase);
+        var dbTaskByUserAndProjAndTitle = new Dictionary<string, WorkTask>(StringComparer.OrdinalIgnoreCase);
+        var dbTaskByUserAndTitle = new Dictionary<string, WorkTask>(StringComparer.OrdinalIgnoreCase);
         var dbTaskByTitle = new Dictionary<string, WorkTask>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var t in existingTasks)
@@ -368,10 +369,12 @@ public class TaskExcelImportService : ITaskExcelImportService
                     }
                 }
             }
+            var userKey = !string.IsNullOrEmpty(t.AssignedToUserId) ? t.AssignedToUserId : (!string.IsNullOrEmpty(t.AssignedToUser?.FullName) ? NormalizePersonName(t.AssignedToUser.FullName) : "UNASSIGNED");
             if (t.ProjectId.HasValue)
             {
-                dbTaskByProjAndTitle[$"{t.ProjectId.Value}|{NormalizeTitle(t.Title)}"] = t;
+                dbTaskByUserAndProjAndTitle[$"{userKey}|{t.ProjectId.Value}|{NormalizeTitle(t.Title)}"] = t;
             }
+            dbTaskByUserAndTitle[$"{userKey}|{NormalizeTitle(t.Title)}"] = t;
             dbTaskByTitle[NormalizeTitle(t.Title)] = t;
         }
 
@@ -625,14 +628,23 @@ public class TaskExcelImportService : ITaskExcelImportService
                     dbTaskByCode.TryGetValue(taskCode.Trim(), out matchedExistingTask);
                 }
 
-                if (matchedExistingTask == null && matchedProjectId.HasValue && !string.IsNullOrWhiteSpace(title))
-                {
-                    dbTaskByProjAndTitle.TryGetValue($"{matchedProjectId.Value}|{NormalizeTitle(title)}", out matchedExistingTask);
-                }
+                var picLookupKey = !string.IsNullOrWhiteSpace(matchedUserId) ? matchedUserId : (!string.IsNullOrWhiteSpace(picToMatch) ? NormalizePersonName(picToMatch) : "UNASSIGNED");
 
                 if (matchedExistingTask == null && !string.IsNullOrWhiteSpace(title))
                 {
-                    dbTaskByTitle.TryGetValue(NormalizeTitle(title), out matchedExistingTask);
+                    // Rule: Nama tugas sama diizinkan jika member berbeda. Jika member sama, lakukan pembaruan tugas yang sudah ada.
+                    if (matchedProjectId.HasValue)
+                    {
+                        dbTaskByUserAndProjAndTitle.TryGetValue($"{picLookupKey}|{matchedProjectId.Value}|{NormalizeTitle(title)}", out matchedExistingTask);
+                    }
+                    if (matchedExistingTask == null)
+                    {
+                        dbTaskByUserAndTitle.TryGetValue($"{picLookupKey}|{NormalizeTitle(title)}", out matchedExistingTask);
+                    }
+                    if (matchedExistingTask == null && picLookupKey == "UNASSIGNED")
+                    {
+                        dbTaskByTitle.TryGetValue(NormalizeTitle(title), out matchedExistingTask);
+                    }
                 }
 
                 if (matchedExistingTask != null)
@@ -727,10 +739,10 @@ public class TaskExcelImportService : ITaskExcelImportService
                     }
                 }
 
-                // Deteksi Duplikasi di dalam File Excel itu sendiri
+                // Deteksi Duplikasi di dalam File Excel itu sendiri (member berbeda diizinkan nama task sama)
                 var identityKey = !string.IsNullOrWhiteSpace(taskCode)
                     ? "CODE:" + taskCode.Trim().ToUpperInvariant()
-                    : "TITLE:" + (projectName?.Trim().ToUpperInvariant() ?? "DEF") + "|" + NormalizeTitle(title);
+                    : "TITLE_USER:" + picLookupKey + "|" + (projectName?.Trim().ToUpperInvariant() ?? "DEF") + "|" + NormalizeTitle(title);
 
                 if (seenBatchKeys.TryGetValue(identityKey, out var previousRowIdx))
                 {
@@ -870,9 +882,10 @@ public class TaskExcelImportService : ITaskExcelImportService
             .Where(t => !companyId.HasValue || t.CompanyId == companyId || t.CompanyId == null)
             .ToListAsync(cancellationToken);
 
-        // Pre-build existing task lookup indexes
+        // Pre-build existing task lookup indexes with member isolation
         var dbTaskByCode = new Dictionary<string, WorkTask>(StringComparer.OrdinalIgnoreCase);
-        var dbTaskByProjAndTitle = new Dictionary<string, WorkTask>(StringComparer.OrdinalIgnoreCase);
+        var dbTaskByUserAndProjAndTitle = new Dictionary<string, WorkTask>(StringComparer.OrdinalIgnoreCase);
+        var dbTaskByUserAndTitle = new Dictionary<string, WorkTask>(StringComparer.OrdinalIgnoreCase);
         var dbTaskByTitle = new Dictionary<string, WorkTask>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var t in existingTasks)
@@ -896,10 +909,12 @@ public class TaskExcelImportService : ITaskExcelImportService
                     }
                 }
             }
+            var userKey = !string.IsNullOrEmpty(t.AssignedToUserId) ? t.AssignedToUserId : (!string.IsNullOrEmpty(t.AssignedToUser?.FullName) ? NormalizePersonName(t.AssignedToUser.FullName) : "UNASSIGNED");
             if (t.ProjectId.HasValue)
             {
-                dbTaskByProjAndTitle[$"{t.ProjectId.Value}|{NormalizeTitle(t.Title)}"] = t;
+                dbTaskByUserAndProjAndTitle[$"{userKey}|{t.ProjectId.Value}|{NormalizeTitle(t.Title)}"] = t;
             }
+            dbTaskByUserAndTitle[$"{userKey}|{NormalizeTitle(t.Title)}"] = t;
             dbTaskByTitle[NormalizeTitle(t.Title)] = t;
         }
 
@@ -968,9 +983,10 @@ public class TaskExcelImportService : ITaskExcelImportService
         foreach (var row in candidateRows)
         {
             totalProcessed++;
+            var rowPicKey = !string.IsNullOrWhiteSpace(row.MatchedUserId) ? row.MatchedUserId : (!string.IsNullOrWhiteSpace(row.PicIdentifier) ? NormalizePersonName(row.PicIdentifier) : "UNASSIGNED");
             var identityKey = !string.IsNullOrWhiteSpace(row.TaskCode)
                 ? "CODE:" + row.TaskCode.Trim().ToUpperInvariant()
-                : "TITLE:" + (row.ProjectName?.Trim().ToUpperInvariant() ?? "DEF") + "|" + NormalizeTitle(row.Title);
+                : "TITLE_USER:" + rowPicKey + "|" + (row.ProjectName?.Trim().ToUpperInvariant() ?? "DEF") + "|" + NormalizeTitle(row.Title);
 
             if (batchIdentityMap.TryGetValue(identityKey, out var existingRowInBatch))
             {
@@ -1247,13 +1263,22 @@ public class TaskExcelImportService : ITaskExcelImportService
             {
                 dbTaskByCode.TryGetValue(row.TaskCode.Trim(), out targetTask);
             }
-            if (targetTask == null && project != null && !string.IsNullOrWhiteSpace(row.Title))
-            {
-                dbTaskByProjAndTitle.TryGetValue($"{project.Id}|{NormalizeTitle(row.Title)}", out targetTask);
-            }
+            var rowPicKey = !string.IsNullOrWhiteSpace(row.MatchedUserId) ? row.MatchedUserId : (!string.IsNullOrWhiteSpace(row.PicIdentifier) ? NormalizePersonName(row.PicIdentifier) : "UNASSIGNED");
+            var targetPicKey = !string.IsNullOrEmpty(assignedUserId) ? assignedUserId : rowPicKey;
             if (targetTask == null && !string.IsNullOrWhiteSpace(row.Title))
             {
-                dbTaskByTitle.TryGetValue(NormalizeTitle(row.Title), out targetTask);
+                if (project != null)
+                {
+                    dbTaskByUserAndProjAndTitle.TryGetValue($"{targetPicKey}|{project.Id}|{NormalizeTitle(row.Title)}", out targetTask);
+                }
+                if (targetTask == null)
+                {
+                    dbTaskByUserAndTitle.TryGetValue($"{targetPicKey}|{NormalizeTitle(row.Title)}", out targetTask);
+                }
+                if (targetTask == null && targetPicKey == "UNASSIGNED")
+                {
+                    dbTaskByTitle.TryGetValue(NormalizeTitle(row.Title), out targetTask);
+                }
             }
 
             if (targetTask != null)
