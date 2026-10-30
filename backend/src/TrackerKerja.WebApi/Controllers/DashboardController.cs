@@ -416,8 +416,8 @@ public class DashboardController : ControllerBase
         var allTasks = await tasksQuery.ToListAsync();
         var totalCount = allTasks.Count;
 
-        // 1. By Project
-        var byProject = allTasks
+        // 1. By Project (Top 5 + Proyek Lainnya jika ada)
+        var allProjectGroups = allTasks
             .GroupBy(t => t.Project?.Name ?? "Tanpa Proyek")
             .Select(g =>
             {
@@ -435,8 +435,29 @@ public class DashboardController : ControllerBase
                 };
             })
             .OrderByDescending(p => p.value)
-            .Take(6)
             .ToList();
+
+        var byProject = new List<object>();
+        if (allProjectGroups.Count <= 6)
+        {
+            byProject.AddRange(allProjectGroups);
+        }
+        else
+        {
+            byProject.AddRange(allProjectGroups.Take(5));
+            var remaining = allProjectGroups.Skip(5).ToList();
+            var remainingCount = remaining.Sum(r => r.value);
+            var remainingDone = remaining.Sum(r => r.doneCount);
+            var remainingPct = totalCount > 0 ? Math.Round((double)remainingCount / totalCount * 100, 1) : 0;
+            byProject.Add(new
+            {
+                name = "Proyek Lainnya",
+                color = "#8B5CF6",
+                value = remainingCount,
+                percentage = remainingPct,
+                doneCount = remainingDone
+            });
+        }
 
         // 2. By Status
         var byStatus = new List<object>
@@ -463,10 +484,16 @@ public class DashboardController : ControllerBase
             "#8B5CF6", "#06B6D4", "#F43F5E", "#14B8A6", "#84CC16"
         };
 
+        var assignedUserIds = allTasks
+            .Where(t => !string.IsNullOrEmpty(t.AssignedToUserId))
+            .Select(t => t.AssignedToUserId!)
+            .Distinct()
+            .ToList();
+
         var usersQuery = _context.Users.AsNoTracking().Where(u => u.IsApproved);
         if (targetCompanyId.HasValue)
         {
-            usersQuery = usersQuery.Where(u => u.CompanyId == targetCompanyId.Value || u.CompanyId == null || allTasks.Any(t => t.AssignedToUserId == u.Id));
+            usersQuery = usersQuery.Where(u => u.CompanyId == targetCompanyId.Value || u.CompanyId == null || assignedUserIds.Contains(u.Id));
         }
         var companyUsers = await usersQuery.ToListAsync();
 
@@ -589,12 +616,58 @@ public class DashboardController : ControllerBase
             });
         }
 
-        // Top 6 projects for member vs project workload matrix
+        // Include other tasks assigned to excluded users (e.g., pure system admin) if any, to keep total in sync
+        var coveredMemberIds = dashboardMembers.Select(m => m.Id).ToHashSet();
+        var otherAssignedTasks = allTasks
+            .Where(t => !string.IsNullOrEmpty(t.AssignedToUserId) && !coveredMemberIds.Contains(t.AssignedToUserId!))
+            .ToList();
+
+        if (otherAssignedTasks.Count > 0)
+        {
+            var otherCount = otherAssignedTasks.Count;
+            var otherDone = otherAssignedTasks.Count(t => t.Status == Domain.Enums.TaskStatus.Done);
+            var otherInProgress = otherAssignedTasks.Count(t => t.Status == Domain.Enums.TaskStatus.InProgress);
+            var otherPct = totalCount > 0 ? Math.Round((double)otherCount / totalCount * 100, 1) : 0;
+            var otherProjects = otherAssignedTasks
+                .Where(t => t.Project != null)
+                .Select(t => t.Project!.Name)
+                .Distinct()
+                .ToList();
+
+            var otherProjectBreakdown = otherAssignedTasks
+                .GroupBy(t => t.Project != null ? t.Project.Name : "Tanpa Proyek")
+                .Select(g => new
+                {
+                    projectName = g.Key,
+                    count = g.Count(),
+                    color = g.First().Project?.Color ?? "#64748B"
+                })
+                .OrderByDescending(p => p.count)
+                .ToList();
+
+            byMember.Add(new
+            {
+                userId = "other-admins",
+                name = "Admin / Lainnya",
+                userName = (string?)null,
+                jobTitle = "Administrator Sistem",
+                avatarUrl = (string?)null,
+                color = "#64748B",
+                value = otherCount,
+                inProgressCount = otherInProgress,
+                doneCount = otherDone,
+                percentage = otherPct,
+                projects = otherProjects,
+                projectBreakdown = otherProjectBreakdown
+            });
+        }
+
+        // Top 5 projects for member vs project workload matrix
         var topProjectsList = allTasks
             .Where(t => t.Project != null)
             .GroupBy(t => t.Project!.Name)
             .OrderByDescending(g => g.Count())
-            .Take(6)
+            .Take(5)
             .Select(g => g.Key)
             .ToList();
 

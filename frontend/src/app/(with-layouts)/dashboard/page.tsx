@@ -281,46 +281,12 @@ export default function DashboardPage() {
     { name: "Overdue", value: taskStats.overdue, color: "#EF4444" },
   ];
 
-  // Filter helper: Admin sistem (perawatan aplikasi) tidak ditampilkan pada chart dashboard.
-  // Project Manager adalah admin perusahaan yang WAJIB ditampilkan sebagai anggota member di dashboard.
-  const isAdministrator = (m: any) => {
-    if (!m) return false;
-    const title = (m.jobTitle || "").toLowerCase();
-    const name = (m.name || "").toLowerCase();
-    const uname = (m.userName || "").toLowerCase();
-    const uid = (m.userId || "").toLowerCase();
-    const role = (m.role || "").toLowerCase();
-
-    // Project Manager wajib ditampilkan sebagai anggota member
-    if (
-      title.includes("project manager") ||
-      title === "pm" ||
-      role.includes("project manager") ||
-      role === "pm"
-    ) {
-      return false;
-    }
-
-    return (
-      title.includes("admin") ||
-      name.includes("administrator") ||
-      name === "admin" ||
-      name.startsWith("admin ") ||
-      uname === "admin" ||
-      uid.includes("admin") ||
-      role.includes("admin") ||
-      role.includes("administrator")
-    );
-  };
-
   const rawMemberDistribution = distributionData?.byMember || [];
   const memberDistribution = useMemo(() => {
-    return rawMemberDistribution.filter((m: any) => !isAdministrator(m));
+    return rawMemberDistribution;
   }, [rawMemberDistribution]);
 
-  const memberChartData = useMemo(() => {
-    return memberDistribution.filter((m: any) => !isAdministrator(m));
-  }, [memberDistribution]);
+  const memberChartData = memberDistribution;
 
   const currentPieData =
     activeDistributionTab === "project"
@@ -335,21 +301,18 @@ export default function DashboardPage() {
     : [{ name: "Belum Ada Data", value: 1, color: "#94A3B8" }];
 
   const doughnutTotalTasks = useMemo(() => {
-    if (activeDistributionTab === "member") {
-      return memberDistribution.reduce((acc: number, d: any) => acc + (d.value || 0), 0);
+    if (hasPieData) {
+      return currentPieData.reduce((acc: number, d: any) => acc + (d.value || 0), 0);
     }
     if (distributionData?.totalTasks !== undefined && distributionData?.totalTasks !== null) {
       return distributionData.totalTasks;
     }
-    if (hasPieData) {
-      return currentPieData.reduce((acc: number, d: any) => acc + (d.value || 0), 0);
-    }
     return taskStats.total;
-  }, [activeDistributionTab, memberDistribution, distributionData?.totalTasks, hasPieData, currentPieData, taskStats.total]);
+  }, [hasPieData, currentPieData, distributionData?.totalTasks, taskStats.total]);
 
   const memberProjectData = useMemo(() => {
     if (distributionData?.byMemberProject && distributionData.byMemberProject.length > 0) {
-      return distributionData.byMemberProject.filter((m: any) => !isAdministrator(m));
+      return distributionData.byMemberProject;
     }
     return memberChartData.map((m: any) => {
       const row: Record<string, any> = {
