@@ -237,7 +237,7 @@ public class DocumentsController : ControllerBase
             FileName = safeFileName,
             FileStoragePath = fullFilePath,
             FileSize = file.Length,
-            ContentType = string.IsNullOrWhiteSpace(file.ContentType) ? "application/octet-stream" : file.ContentType,
+            ContentType = ResolveContentType(safeFileName, file.ContentType),
             Category = string.IsNullOrWhiteSpace(category) ? "Umum" : category.Trim(),
             CompanyId = targetCompanyId.Value,
             ProjectId = projectId,
@@ -265,6 +265,35 @@ public class DocumentsController : ControllerBase
         }
     }
 
+    private static string ResolveContentType(string fileName, string? currentContentType)
+    {
+        var ext = Path.GetExtension(fileName).ToLowerInvariant();
+        return ext switch
+        {
+            ".pdf" => "application/pdf",
+            ".png" => "image/png",
+            ".jpg" or ".jpeg" => "image/jpeg",
+            ".webp" => "image/webp",
+            ".gif" => "image/gif",
+            ".svg" => "image/svg+xml",
+            ".ico" => "image/x-icon",
+            ".bmp" => "image/bmp",
+            ".txt" => "text/plain; charset=utf-8",
+            ".csv" => "text/csv; charset=utf-8",
+            ".md" => "text/markdown; charset=utf-8",
+            ".json" => "application/json; charset=utf-8",
+            ".xml" => "application/xml; charset=utf-8",
+            ".yaml" or ".yml" => "text/yaml; charset=utf-8",
+            ".sql" => "text/plain; charset=utf-8",
+            ".log" => "text/plain; charset=utf-8",
+            ".html" or ".htm" => "text/html; charset=utf-8",
+            ".css" => "text/css; charset=utf-8",
+            ".js" => "text/javascript; charset=utf-8",
+            ".ts" or ".tsx" => "text/plain; charset=utf-8",
+            _ => string.IsNullOrWhiteSpace(currentContentType) ? "application/octet-stream" : currentContentType
+        };
+    }
+
     [HttpGet("{id:int}/download")]
     public async Task<IActionResult> DownloadDocument(int id)
     {
@@ -286,7 +315,37 @@ public class DocumentsController : ControllerBase
         }
 
         var fileBytes = await System.IO.File.ReadAllBytesAsync(doc.FileStoragePath);
-        return File(fileBytes, doc.ContentType, doc.FileName);
+        var contentType = ResolveContentType(doc.FileName, doc.ContentType);
+        return File(fileBytes, contentType, doc.FileName);
+    }
+
+    [HttpGet("{id:int}/preview")]
+    public async Task<IActionResult> PreviewDocument(int id)
+    {
+        var doc = await _context.Documents.AsNoTracking().FirstOrDefaultAsync(d => d.Id == id);
+        if (doc == null)
+        {
+            return NotFound(new { success = false, message = "Dokumen tidak ditemukan." });
+        }
+
+        var userCompanyId = await GetUserCompanyIdAsync();
+        if (!_tenantService.IsAdmin && userCompanyId.HasValue && doc.CompanyId != userCompanyId.Value)
+        {
+            return StatusCode(403, new { success = false, message = "Anda tidak berhak melihat pratinjau dokumen ini." });
+        }
+
+        if (!System.IO.File.Exists(doc.FileStoragePath))
+        {
+            return NotFound(new { success = false, message = "Berkas fisik tidak ditemukan di server." });
+        }
+
+        var fileBytes = await System.IO.File.ReadAllBytesAsync(doc.FileStoragePath);
+        var contentType = ResolveContentType(doc.FileName, doc.ContentType);
+        if (Response != null)
+        {
+            Response.Headers["Content-Disposition"] = "inline";
+        }
+        return File(fileBytes, contentType);
     }
 
     [HttpPut("{id:int}")]

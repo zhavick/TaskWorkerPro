@@ -13,6 +13,7 @@ import {
   FileText,
   FileSpreadsheet,
   FileImage,
+  FileCode,
   File,
   Building2,
   Briefcase,
@@ -22,6 +23,14 @@ import {
   CheckCircle2,
   FolderArchive,
   HardDrive,
+  Eye,
+  ExternalLink,
+  Copy,
+  Check,
+  ZoomIn,
+  ZoomOut,
+  AlertCircle,
+  RefreshCw,
 } from "lucide-react";
 import { Button } from "@/components/tailgrids/core/button";
 import { Input } from "@/components/tailgrids/core/input";
@@ -48,18 +57,78 @@ function formatBytes(bytes: number, decimals = 1): string {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + " " + sizes[i];
 }
 
+export type PreviewType = "image" | "pdf" | "text" | "unsupported";
+
+export function getPreviewType(fileName: string, contentType = ""): PreviewType {
+  const ext = fileName.split(".").pop()?.toLowerCase() || "";
+  const ct = contentType.toLowerCase();
+
+  if (ext === "pdf" || ct.includes("pdf")) {
+    return "pdf";
+  }
+
+  const imageExts = ["png", "jpg", "jpeg", "webp", "gif", "svg", "bmp", "ico", "avif"];
+  if (imageExts.includes(ext) || ct.startsWith("image/")) {
+    return "image";
+  }
+
+  const textExts = [
+    "txt", "md", "markdown", "csv", "json", "xml", "log", "sql", "yaml", "yml",
+    "ini", "conf", "env", "sh", "bat", "ps1", "js", "jsx", "ts", "tsx", "html", "css"
+  ];
+  if (textExts.includes(ext) || ct.startsWith("text/") || ct.includes("json") || ct.includes("xml")) {
+    return "text";
+  }
+
+  return "unsupported";
+}
+
 function getFileIcon(fileName: string, contentType: string) {
-  const ext = fileName.split(".").pop()?.toLowerCase();
-  if (ext === "pdf" || contentType.includes("pdf")) {
+  const ext = fileName.split(".").pop()?.toLowerCase() || "";
+  const type = getPreviewType(fileName, contentType);
+
+  if (type === "pdf") {
     return <FileText className="h-6 w-6 text-rose-500" />;
   }
-  if (["xls", "xlsx", "csv"].includes(ext || "") || contentType.includes("sheet") || contentType.includes("excel")) {
-    return <FileSpreadsheet className="h-6 w-6 text-emerald-500" />;
-  }
-  if (["png", "jpg", "jpeg", "svg", "webp"].includes(ext || "") || contentType.includes("image")) {
+  if (type === "image") {
     return <FileImage className="h-6 w-6 text-purple-500" />;
   }
+  if (type === "text") {
+    return <FileCode className="h-6 w-6 text-emerald-500" />;
+  }
+  if (["xls", "xlsx"].includes(ext) || contentType.includes("sheet") || contentType.includes("excel")) {
+    return <FileSpreadsheet className="h-6 w-6 text-teal-500" />;
+  }
   return <File className="h-6 w-6 text-indigo-500" />;
+}
+
+function getPreviewBadge(fileName: string, contentType = "") {
+  const type = getPreviewType(fileName, contentType);
+  if (type === "pdf") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-600 dark:bg-rose-950/40 dark:text-rose-400">
+        <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
+        PDF
+      </span>
+    );
+  }
+  if (type === "image") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-purple-50 px-2 py-0.5 text-[10px] font-bold text-purple-600 dark:bg-purple-950/40 dark:text-purple-400">
+        <span className="h-1.5 w-1.5 rounded-full bg-purple-500" />
+        Gambar
+      </span>
+    );
+  }
+  if (type === "text") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400">
+        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+        Teks
+      </span>
+    );
+  }
+  return null;
 }
 
 export default function DocumentsPage() {
@@ -70,6 +139,16 @@ export default function DocumentsPage() {
   const [selectedCategory, setSelectedCategory] = useState("Semua");
   const [companyFilter, setCompanyFilter] = useState<string>("all");
   const [projectFilter, setProjectFilter] = useState<string>("all");
+
+  // Document Preview Modal State
+  const [previewModalOpen, setPreviewModalOpen] = useState(false);
+  const [previewDoc, setPreviewDoc] = useState<any | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewText, setPreviewText] = useState<string>("");
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [copiedText, setCopiedText] = useState(false);
+  const [imageZoom, setImageZoom] = useState(false);
 
   // Upload Modal State
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
@@ -190,6 +269,70 @@ export default function DocumentsPage() {
       window.URL.revokeObjectURL(url);
     } catch (err: any) {
       toast.error("Gagal mengunduh dokumen.");
+    }
+  };
+
+  // 7. Open Document Preview Handler
+  const handleOpenPreview = async (doc: any) => {
+    if (previewUrl) {
+      window.URL.revokeObjectURL(previewUrl);
+      setPreviewUrl(null);
+    }
+    setPreviewDoc(doc);
+    setPreviewText("");
+    setPreviewError(null);
+    setImageZoom(false);
+    setPreviewLoading(true);
+    setPreviewModalOpen(true);
+
+    const type = getPreviewType(doc.fileName, doc.contentType);
+
+    try {
+      const response = await apiClient.get(`/documents/${doc.id}/preview`, {
+        responseType: "blob",
+      });
+
+      const mimeType = doc.contentType || (type === "pdf" ? "application/pdf" : "application/octet-stream");
+      const blob = new Blob([response.data], { type: mimeType });
+
+      if (type === "text") {
+        const text = await blob.text();
+        setPreviewText(text);
+      }
+
+      const objUrl = window.URL.createObjectURL(blob);
+      setPreviewUrl(objUrl);
+    } catch (err: any) {
+      console.error("Preview load error:", err);
+      setPreviewError(err.response?.data?.message || "Gagal memuat pratinjau berkas.");
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  // 8. Close Preview Handler
+  const handleClosePreview = () => {
+    setPreviewModalOpen(false);
+    if (previewUrl) {
+      window.URL.revokeObjectURL(previewUrl);
+      setPreviewUrl(null);
+    }
+    setPreviewDoc(null);
+    setPreviewText("");
+    setPreviewError(null);
+    setImageZoom(false);
+  };
+
+  // 9. Copy Text Handler
+  const handleCopyText = async () => {
+    if (!previewText) return;
+    try {
+      await navigator.clipboard.writeText(previewText);
+      setCopiedText(true);
+      toast.success("Isi dokumen berhasil disalin ke clipboard!");
+      setTimeout(() => setCopiedText(false), 2000);
+    } catch {
+      toast.error("Gagal menyalin teks ke clipboard.");
     }
   };
 
@@ -343,22 +486,29 @@ export default function DocumentsPage() {
             className="flex flex-col justify-between rounded-2xl border border-gray-200/80 bg-white p-5 shadow-xs transition hover:border-indigo-300 hover:shadow-md dark:border-gray-800 dark:bg-gray-900"
           >
             <div>
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-xl bg-gray-50 dark:bg-gray-800 flex items-center justify-center shrink-0">
+              <div
+                className="flex items-start justify-between gap-3 cursor-pointer group"
+                onClick={() => handleOpenPreview(doc)}
+                title="Klik untuk membuka pratinjau berkas"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="h-10 w-10 rounded-xl bg-gray-50 dark:bg-gray-800 flex items-center justify-center shrink-0 group-hover:scale-105 group-hover:shadow-xs transition-transform">
                     {getFileIcon(doc.fileName, doc.contentType)}
                   </div>
-                  <div>
-                    <h3 className="font-bold text-sm text-gray-900 dark:text-white line-clamp-1">
+                  <div className="min-w-0">
+                    <h3 className="font-bold text-sm text-gray-900 dark:text-white line-clamp-1 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
                       {doc.title}
                     </h3>
                     <p className="text-[11px] text-gray-400 font-mono line-clamp-1">{doc.fileName}</p>
                   </div>
                 </div>
 
-                <span className="rounded-md bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-400 shrink-0">
-                  {doc.category}
-                </span>
+                <div className="flex flex-col items-end gap-1 shrink-0">
+                  <span className="rounded-md bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-400">
+                    {doc.category}
+                  </span>
+                  {getPreviewBadge(doc.fileName, doc.contentType)}
+                </div>
               </div>
 
               {doc.description && (
@@ -405,11 +555,22 @@ export default function DocumentsPage() {
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => handleDownload(doc)}
+                  onClick={() => handleOpenPreview(doc)}
                   className="gap-1.5 text-xs text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 font-semibold"
+                  title="Lihat Pratinjau Berkas"
+                >
+                  <Eye className="h-3.5 w-3.5" />
+                  Pratinjau
+                </Button>
+
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleDownload(doc)}
+                  className="gap-1 text-xs text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+                  title="Unduh Berkas"
                 >
                   <Download className="h-3.5 w-3.5" />
-                  Unduh
                 </Button>
 
                 {(isAdmin || isProjectManager || doc.uploadedByUserId === user?.id) && (
@@ -422,6 +583,7 @@ export default function DocumentsPage() {
                       }
                     }}
                     className="text-xs text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30"
+                    title="Hapus Dokumen"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </Button>
@@ -479,7 +641,7 @@ export default function DocumentsPage() {
                       Klik untuk memilih berkas
                     </p>
                     <p className="text-[10px] text-gray-400 mt-0.5">
-                      PDF, DOCX, XLSX, PNG, JPG (Maks. 25MB)
+                      Bebas semua format berkas (PDF, Gambar, Teks/Kode, Dokumen Kantor, ZIP, dsb. Maks. 50MB)
                     </p>
                   </div>
                 )}
@@ -598,6 +760,220 @@ export default function DocumentsPage() {
               </Button>
             </div>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Pratinjau Dokumen Popup */}
+      <Dialog
+        open={previewModalOpen}
+        onOpenChange={(isOpen) => {
+          if (!isOpen) handleClosePreview();
+        }}
+        className="sm:max-w-5xl sm:h-[90vh] sm:p-0 overflow-hidden bg-white dark:bg-gray-900 flex flex-col rounded-2xl"
+      >
+        <DialogContent className="p-0 space-y-0 h-full flex flex-col overflow-hidden max-h-none">
+          {previewDoc && (
+            <>
+              {/* Preview Header Bar */}
+              <div className="flex items-center justify-between border-b border-gray-200 px-5 py-3.5 dark:border-gray-800 shrink-0 bg-gray-50/70 dark:bg-gray-900/80 backdrop-blur-xs">
+                <div className="flex items-center gap-3 min-w-0 pr-4">
+                  <div className="h-10 w-10 rounded-xl bg-white dark:bg-gray-800 shadow-xs flex items-center justify-center shrink-0 border border-gray-200 dark:border-gray-700">
+                    {getFileIcon(previewDoc.fileName, previewDoc.contentType)}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-bold text-sm text-gray-900 dark:text-white truncate">
+                        {previewDoc.title}
+                      </h3>
+                      {getPreviewBadge(previewDoc.fileName, previewDoc.contentType)}
+                    </div>
+                    <div className="flex items-center gap-2 text-[11px] text-gray-400 font-mono mt-0.5">
+                      <span className="truncate max-w-[200px] sm:max-w-xs">{previewDoc.fileName}</span>
+                      <span>•</span>
+                      <span>{formatBytes(previewDoc.fileSize)}</span>
+                      {previewDoc.companyName && (
+                        <>
+                          <span>•</span>
+                          <span className="font-sans text-gray-500 dark:text-gray-400 hidden sm:inline">
+                            {previewDoc.companyName}
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Preview Toolbar Actions */}
+                <div className="flex items-center gap-2 shrink-0">
+                  {getPreviewType(previewDoc.fileName, previewDoc.contentType) === "text" && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleCopyText}
+                      disabled={previewLoading || !previewText}
+                      className="gap-1.5 text-xs font-medium"
+                      title="Salin isi teks ke clipboard"
+                    >
+                      {copiedText ? (
+                        <>
+                          <Check className="h-3.5 w-3.5 text-emerald-500" />
+                          <span className="text-emerald-600 dark:text-emerald-400">Tersalin</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="h-3.5 w-3.5" />
+                          <span className="hidden sm:inline">Salin Teks</span>
+                        </>
+                      )}
+                    </Button>
+                  )}
+
+                  {getPreviewType(previewDoc.fileName, previewDoc.contentType) === "image" && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setImageZoom(!imageZoom)}
+                      className="gap-1.5 text-xs font-medium"
+                      title={imageZoom ? "Sesuaikan dengan layar" : "Perbesar ke ukuran asli"}
+                    >
+                      {imageZoom ? (
+                        <>
+                          <ZoomOut className="h-3.5 w-3.5" />
+                          <span className="hidden sm:inline">Fit Layar</span>
+                        </>
+                      ) : (
+                        <>
+                          <ZoomIn className="h-3.5 w-3.5" />
+                          <span className="hidden sm:inline">Ukuran Asli</span>
+                        </>
+                      )}
+                    </Button>
+                  )}
+
+                  {previewUrl && (
+                    <a
+                      href={previewUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 shadow-xs hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 transition"
+                      title="Buka berkas di tab baru"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      <span className="hidden sm:inline">Tab Baru</span>
+                    </a>
+                  )}
+
+                  <Button
+                    size="sm"
+                    onClick={() => handleDownload(previewDoc)}
+                    className="gap-1.5 bg-indigo-600 text-white hover:bg-indigo-700 text-xs font-semibold shadow-xs"
+                    title="Unduh berkas ke komputer"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">Unduh</span>
+                  </Button>
+                </div>
+              </div>
+
+              {/* Preview Body Content */}
+              <div className="flex-1 min-h-0 relative overflow-hidden bg-gray-100/70 dark:bg-gray-950 flex flex-col items-center justify-center">
+                {previewLoading ? (
+                  <div className="flex flex-col items-center justify-center gap-3 p-8">
+                    <RefreshCw className="h-8 w-8 animate-spin text-indigo-600" />
+                    <p className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                      Memuat pratinjau berkas...
+                    </p>
+                    <p className="text-xs text-gray-400 font-mono">{previewDoc.fileName}</p>
+                  </div>
+                ) : previewError ? (
+                  <div className="flex flex-col items-center justify-center gap-3 p-8 text-center max-w-md">
+                    <AlertCircle className="h-10 w-10 text-rose-500" />
+                    <h4 className="font-bold text-gray-900 dark:text-white">Gagal Menampilkan Pratinjau</h4>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">{previewError}</p>
+                    <div className="mt-3 flex gap-2">
+                      <Button size="sm" variant="outline" onClick={() => handleOpenPreview(previewDoc)}>
+                        <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+                        Coba Lagi
+                      </Button>
+                      <Button size="sm" onClick={() => handleDownload(previewDoc)} className="bg-indigo-600 text-white">
+                        <Download className="mr-1.5 h-3.5 w-3.5" />
+                        Unduh Berkas
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    {/* PDF Viewer */}
+                    {getPreviewType(previewDoc.fileName, previewDoc.contentType) === "pdf" && previewUrl && (
+                      <iframe
+                        src={previewUrl}
+                        className="w-full h-full border-0 bg-white"
+                        title={previewDoc.title}
+                      />
+                    )}
+
+                    {/* Image Viewer */}
+                    {getPreviewType(previewDoc.fileName, previewDoc.contentType) === "image" && previewUrl && (
+                      <div className="w-full h-full overflow-auto flex items-center justify-center p-4 select-none">
+                        <img
+                          src={previewUrl}
+                          alt={previewDoc.title}
+                          className={`rounded-lg transition-all duration-200 shadow-md ${
+                            imageZoom
+                              ? "max-w-none cursor-zoom-out"
+                              : "max-h-full max-w-full object-contain cursor-zoom-in"
+                          }`}
+                          onClick={() => setImageZoom(!imageZoom)}
+                        />
+                      </div>
+                    )}
+
+                    {/* Text / Code Viewer */}
+                    {getPreviewType(previewDoc.fileName, previewDoc.contentType) === "text" && (
+                      <div className="w-full h-full flex flex-col bg-gray-950 text-gray-100 overflow-hidden">
+                        <div className="flex items-center justify-between px-4 py-2 bg-gray-900/90 border-b border-gray-800 text-[11px] text-gray-400 font-mono">
+                          <span>
+                            {previewText.split("\n").length} baris • {previewText.length} karakter
+                          </span>
+                          <span className="text-emerald-400 font-semibold">UTF-8 Monospace</span>
+                        </div>
+                        <div className="flex-1 overflow-auto p-4">
+                          <pre className="font-mono text-xs leading-relaxed text-emerald-400 select-text whitespace-pre tab-4">
+                            <code>{previewText}</code>
+                          </pre>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Unsupported Binary Format */}
+                    {getPreviewType(previewDoc.fileName, previewDoc.contentType) === "unsupported" && (
+                      <div className="flex flex-col items-center justify-center p-8 text-center max-w-lg">
+                        <div className="h-16 w-16 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 flex items-center justify-center text-indigo-600 dark:text-indigo-400 mb-4 shadow-sm">
+                          {getFileIcon(previewDoc.fileName, previewDoc.contentType)}
+                        </div>
+                        <h4 className="text-base font-bold text-gray-900 dark:text-white">
+                          Format Berkas Siap Diunduh
+                        </h4>
+                        <p className="mt-2 text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
+                          Pratinjau interaktif langsung di peramban saat ini dioptimalkan untuk berkas <strong>PDF</strong>, <strong>Gambar</strong>, dan <strong>Teks / Script Dokumen</strong>. Anda dapat mengunduh berkas ini untuk membukanya secara penuh dengan aplikasi di perangkat Anda.
+                        </p>
+
+                        <div className="mt-5 flex flex-wrap justify-center gap-2">
+                          <Button
+                            onClick={() => handleDownload(previewDoc)}
+                            className="gap-2 bg-indigo-600 font-semibold text-white hover:bg-indigo-700 shadow-md shadow-indigo-500/20"
+                          >
+                            <Download className="h-4 w-4" />
+                            Unduh Berkas Sekarang ({formatBytes(previewDoc.fileSize)})
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </>
+          )}
         </DialogContent>
       </Dialog>
     </div>

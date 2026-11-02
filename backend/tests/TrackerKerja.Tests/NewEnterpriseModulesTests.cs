@@ -390,6 +390,34 @@ public class NewEnterpriseModulesTests : IDisposable
     }
 
     [Fact]
+    public async Task PreviewDocument_ExistingFile_ShouldReturnInlineFileResult()
+    {
+        var dummyPath = Path.Combine(_testTempDir, "test_preview.png");
+        await File.WriteAllBytesAsync(dummyPath, new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 });
+
+        var doc = new CompanyDocument
+        {
+            Title = "Preview Test Image",
+            FileName = "test_preview.png",
+            FileStoragePath = dummyPath,
+            ContentType = "image/png",
+            Category = "Desain",
+            CompanyId = 1,
+            UploadedByUserId = "usr-pm"
+        };
+        _context.Documents.Add(doc);
+        await _context.SaveChangesAsync();
+
+        var controller = new DocumentsController(_context, _pmTenantService, _env);
+
+        var fileResult = await controller.PreviewDocument(doc.Id) as FileContentResult;
+        fileResult.Should().NotBeNull();
+        fileResult!.ContentType.Should().Be("image/png");
+        fileResult.FileDownloadName.Should().BeNullOrEmpty();
+        fileResult.FileContents.Length.Should().Be(8);
+    }
+
+    [Fact]
     public async Task DeleteDocument_ShouldRemovePhysicalFileAndRecord()
     {
         var dummyPath = Path.Combine(_testTempDir, "to_delete.txt");
