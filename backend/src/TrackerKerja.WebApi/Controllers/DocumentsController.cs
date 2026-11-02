@@ -17,11 +17,55 @@ public class DocumentsController : ControllerBase
     private readonly ICurrentTenantService _tenantService;
     private readonly IWebHostEnvironment _environment;
 
+    private static bool _tablesChecked = false;
+    private static readonly SemaphoreSlim _tableLock = new(1, 1);
+
     public DocumentsController(AppDbContext context, ICurrentTenantService tenantService, IWebHostEnvironment environment)
     {
         _context = context;
         _tenantService = tenantService;
         _environment = environment;
+    }
+
+    private async Task EnsureDocumentTablesAsync()
+    {
+        if (_tablesChecked) return;
+        await _tableLock.WaitAsync();
+        try
+        {
+            if (_tablesChecked) return;
+            if (_context.Database.IsRelational())
+            {
+                await _context.Database.ExecuteSqlRawAsync(@"
+                    CREATE TABLE IF NOT EXISTS documents (
+                        id SERIAL PRIMARY KEY,
+                        title VARCHAR(255) NOT NULL,
+                        description TEXT,
+                        file_name VARCHAR(255) NOT NULL,
+                        file_storage_path VARCHAR(500) NOT NULL,
+                        file_size BIGINT NOT NULL DEFAULT 0,
+                        content_type VARCHAR(100) NOT NULL DEFAULT 'application/octet-stream',
+                        category VARCHAR(100) NOT NULL DEFAULT 'Umum',
+                        company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+                        project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+                        uploaded_by_user_id VARCHAR(450) REFERENCES asp_net_users(id) ON DELETE SET NULL,
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    );
+                    CREATE INDEX IF NOT EXISTS ix_documents_company_id ON documents(company_id);
+                    CREATE INDEX IF NOT EXISTS ix_documents_category ON documents(category);
+                ");
+            }
+            _tablesChecked = true;
+        }
+        catch
+        {
+            // Ignore if already created or using in-memory provider
+        }
+        finally
+        {
+            _tableLock.Release();
+        }
     }
 
     private async Task<int?> GetUserCompanyIdAsync()
@@ -42,6 +86,7 @@ public class DocumentsController : ControllerBase
         [FromQuery] string? category = null,
         [FromQuery] string? search = null)
     {
+        await EnsureDocumentTablesAsync();
         var userCompanyId = await GetUserCompanyIdAsync();
         var query = _context.Documents
             .Include(d => d.Company)
@@ -165,6 +210,24 @@ public class DocumentsController : ControllerBase
             await file.CopyToAsync(stream);
         }
 
+        await EnsureDocumentTablesAsync();
+
+        string? validUploadedByUserId = null;
+        var userExists = await _context.Users.AnyAsync(u => u.Id == currentUserId);
+        if (userExists)
+        {
+            validUploadedByUserId = currentUserId;
+        }
+        else
+        {
+            var emailClaim = User?.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value;
+            if (!string.IsNullOrEmpty(emailClaim))
+            {
+                var userByEmail = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Email == emailClaim);
+                if (userByEmail != null) validUploadedByUserId = userByEmail.Id;
+            }
+        }
+
         var docTitle = string.IsNullOrWhiteSpace(title) ? Path.GetFileNameWithoutExtension(safeFileName) : title.Trim();
 
         var document = new CompanyDocument
@@ -178,15 +241,28 @@ public class DocumentsController : ControllerBase
             Category = string.IsNullOrWhiteSpace(category) ? "Umum" : category.Trim(),
             CompanyId = targetCompanyId.Value,
             ProjectId = projectId,
-            UploadedByUserId = currentUserId,
+            UploadedByUserId = validUploadedByUserId,
             CreatedAt = DateTimeOffset.UtcNow,
             UpdatedAt = DateTimeOffset.UtcNow
         };
 
-        _context.Documents.Add(document);
-        await _context.SaveChangesAsync();
+        try
+        {
+            _context.Documents.Add(document);
+            await _context.SaveChangesAsync();
 
-        return Ok(new { success = true, message = "Dokumen berhasil diunggah.", data = document });
+            return Ok(new { success = true, message = "Dokumen berhasil diunggah.", data = document });
+        }
+        catch (Exception ex)
+        {
+            var innerMsg = ex.InnerException?.Message ?? ex.Message;
+            return StatusCode(500, new
+            {
+                success = false,
+                message = $"Gagal menyimpan dokumen: {innerMsg}",
+                detail = ex.ToString()
+            });
+        }
     }
 
     [HttpGet("{id:int}/download")]

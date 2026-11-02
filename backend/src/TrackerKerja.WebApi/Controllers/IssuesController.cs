@@ -16,10 +16,65 @@ public class IssuesController : ControllerBase
     private readonly AppDbContext _context;
     private readonly ICurrentTenantService _tenantService;
 
+    private static bool _tablesChecked = false;
+    private static readonly SemaphoreSlim _tableLock = new(1, 1);
+
     public IssuesController(AppDbContext context, ICurrentTenantService tenantService)
     {
         _context = context;
         _tenantService = tenantService;
+    }
+
+    private async Task EnsureIssueTablesAsync()
+    {
+        if (_tablesChecked) return;
+        await _tableLock.WaitAsync();
+        try
+        {
+            if (_tablesChecked) return;
+            if (_context.Database.IsRelational())
+            {
+                await _context.Database.ExecuteSqlRawAsync(@"
+                    CREATE TABLE IF NOT EXISTS issue_tickets (
+                        id SERIAL PRIMARY KEY,
+                        ticket_code VARCHAR(50) NOT NULL,
+                        title VARCHAR(255) NOT NULL,
+                        description TEXT,
+                        status INTEGER NOT NULL DEFAULT 0,
+                        priority INTEGER NOT NULL DEFAULT 1,
+                        category VARCHAR(100),
+                        company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+                        project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+                        reported_by_user_id VARCHAR(450) REFERENCES asp_net_users(id) ON DELETE SET NULL,
+                        assigned_to_user_id VARCHAR(450) REFERENCES asp_net_users(id) ON DELETE SET NULL,
+                        resolved_at TIMESTAMPTZ,
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    );
+                    CREATE INDEX IF NOT EXISTS ix_issue_tickets_company_id ON issue_tickets(company_id);
+                    CREATE INDEX IF NOT EXISTS ix_issue_tickets_project_id ON issue_tickets(project_id);
+                    CREATE INDEX IF NOT EXISTS ix_issue_tickets_status ON issue_tickets(status);
+
+                    CREATE TABLE IF NOT EXISTS issue_ticket_comments (
+                        id SERIAL PRIMARY KEY,
+                        ticket_id INTEGER NOT NULL REFERENCES issue_tickets(id) ON DELETE CASCADE,
+                        user_id VARCHAR(450) NOT NULL REFERENCES asp_net_users(id) ON DELETE CASCADE,
+                        message TEXT NOT NULL,
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    );
+                    CREATE INDEX IF NOT EXISTS ix_issue_ticket_comments_ticket_id ON issue_ticket_comments(ticket_id);
+                ");
+            }
+            _tablesChecked = true;
+        }
+        catch
+        {
+            // Ignore if already created or using in-memory provider
+        }
+        finally
+        {
+            _tableLock.Release();
+        }
     }
 
     private async Task<int?> GetUserCompanyIdAsync()
@@ -41,6 +96,7 @@ public class IssuesController : ControllerBase
         [FromQuery] IssuePriority? priority = null,
         [FromQuery] string? search = null)
     {
+        await EnsureIssueTablesAsync();
         var userCompanyId = await GetUserCompanyIdAsync();
         var query = _context.IssueTickets
             .Include(i => i.Company)
@@ -178,10 +234,35 @@ public class IssuesController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> CreateIssue([FromBody] CreateIssueTicketRequest request)
     {
+        await EnsureIssueTablesAsync();
+
         var currentUserId = _tenantService.UserId;
         if (string.IsNullOrEmpty(currentUserId))
         {
             return Unauthorized(new { success = false, message = "Pengguna tidak terautentikasi." });
+        }
+
+        string? validReportedByUserId = null;
+        var userExists = await _context.Users.AnyAsync(u => u.Id == currentUserId);
+        if (userExists)
+        {
+            validReportedByUserId = currentUserId;
+        }
+        else
+        {
+            var emailClaim = User?.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value;
+            if (!string.IsNullOrEmpty(emailClaim))
+            {
+                var userByEmail = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Email == emailClaim);
+                if (userByEmail != null) validReportedByUserId = userByEmail.Id;
+            }
+        }
+
+        string? validAssignedToUserId = null;
+        if (!string.IsNullOrEmpty(request.AssignedToUserId))
+        {
+            var assignedExists = await _context.Users.AnyAsync(u => u.Id == request.AssignedToUserId);
+            if (assignedExists) validAssignedToUserId = request.AssignedToUserId;
         }
 
         var userCompanyId = await GetUserCompanyIdAsync();
@@ -226,16 +307,29 @@ public class IssuesController : ControllerBase
             Category = request.Category?.Trim() ?? "Bug",
             CompanyId = targetCompanyId.Value,
             ProjectId = request.ProjectId,
-            ReportedByUserId = currentUserId,
-            AssignedToUserId = request.AssignedToUserId,
+            ReportedByUserId = validReportedByUserId,
+            AssignedToUserId = validAssignedToUserId,
             CreatedAt = DateTimeOffset.UtcNow,
             UpdatedAt = DateTimeOffset.UtcNow
         };
 
-        _context.IssueTickets.Add(ticket);
-        await _context.SaveChangesAsync();
+        try
+        {
+            _context.IssueTickets.Add(ticket);
+            await _context.SaveChangesAsync();
 
-        return Ok(new { success = true, message = "Tiket issue berhasil dibuat.", data = ticket });
+            return Ok(new { success = true, message = "Tiket issue berhasil dibuat.", data = ticket });
+        }
+        catch (Exception ex)
+        {
+            var innerMsg = ex.InnerException?.Message ?? ex.Message;
+            return StatusCode(500, new
+            {
+                success = false,
+                message = $"Gagal menyimpan tiket issue: {innerMsg}",
+                detail = ex.ToString()
+            });
+        }
     }
 
     [HttpPut("{id:int}")]

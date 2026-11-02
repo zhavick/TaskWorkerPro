@@ -16,10 +16,71 @@ public class InvoicesController : ControllerBase
     private readonly AppDbContext _context;
     private readonly ICurrentTenantService _tenantService;
 
+    private static bool _tablesChecked = false;
+    private static readonly SemaphoreSlim _tableLock = new(1, 1);
+
     public InvoicesController(AppDbContext context, ICurrentTenantService tenantService)
     {
         _context = context;
         _tenantService = tenantService;
+    }
+
+    private async Task EnsureInvoiceTablesAsync()
+    {
+        if (_tablesChecked) return;
+        await _tableLock.WaitAsync();
+        try
+        {
+            if (_tablesChecked) return;
+            if (_context.Database.IsRelational())
+            {
+                await _context.Database.ExecuteSqlRawAsync(@"
+                    CREATE TABLE IF NOT EXISTS invoices (
+                        id SERIAL PRIMARY KEY,
+                        invoice_number VARCHAR(50) NOT NULL,
+                        company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+                        project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+                        client_name VARCHAR(255) NOT NULL,
+                        client_email VARCHAR(255),
+                        client_address TEXT,
+                        issue_date TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        due_date TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        status INTEGER NOT NULL DEFAULT 0,
+                        tax_rate_percent NUMERIC(5,2) NOT NULL DEFAULT 11.00,
+                        discount_amount NUMERIC(18,2) NOT NULL DEFAULT 0.00,
+                        sub_total NUMERIC(18,2) NOT NULL DEFAULT 0.00,
+                        tax_amount NUMERIC(18,2) NOT NULL DEFAULT 0.00,
+                        total_amount NUMERIC(18,2) NOT NULL DEFAULT 0.00,
+                        notes TEXT,
+                        created_by_user_id VARCHAR(450) REFERENCES asp_net_users(id) ON DELETE SET NULL,
+                        paid_at TIMESTAMPTZ,
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    );
+                    CREATE INDEX IF NOT EXISTS ix_invoices_company_id ON invoices(company_id);
+                    CREATE INDEX IF NOT EXISTS ix_invoices_status ON invoices(status);
+
+                    CREATE TABLE IF NOT EXISTS invoice_items (
+                        id SERIAL PRIMARY KEY,
+                        invoice_id INTEGER NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
+                        description VARCHAR(500) NOT NULL,
+                        quantity NUMERIC(18,2) NOT NULL DEFAULT 1.00,
+                        unit_price NUMERIC(18,2) NOT NULL DEFAULT 0.00,
+                        amount NUMERIC(18,2) NOT NULL DEFAULT 0.00
+                    );
+                    CREATE INDEX IF NOT EXISTS ix_invoice_items_invoice_id ON invoice_items(invoice_id);
+                ");
+            }
+            _tablesChecked = true;
+        }
+        catch
+        {
+            // Ignore if already created or using in-memory provider
+        }
+        finally
+        {
+            _tableLock.Release();
+        }
     }
 
     private async Task<int?> GetUserCompanyIdAsync()
@@ -40,6 +101,7 @@ public class InvoicesController : ControllerBase
         [FromQuery] InvoiceStatus? status = null,
         [FromQuery] string? search = null)
     {
+        await EnsureInvoiceTablesAsync();
         var userCompanyId = await GetUserCompanyIdAsync();
         var query = _context.Invoices
             .Include(inv => inv.Company)
@@ -211,10 +273,32 @@ public class InvoicesController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> CreateInvoice([FromBody] CreateInvoiceRequest request)
     {
+        await EnsureInvoiceTablesAsync();
+
         var currentUserId = _tenantService.UserId;
         if (string.IsNullOrEmpty(currentUserId))
         {
             return Unauthorized(new { success = false, message = "Pengguna tidak terautentikasi." });
+        }
+
+        // Validasi keberadaan pengguna di database agar relasi FK aman
+        string? validUserId = null;
+        var userExists = await _context.Users.AnyAsync(u => u.Id == currentUserId);
+        if (userExists)
+        {
+            validUserId = currentUserId;
+        }
+        else
+        {
+            var emailClaim = User?.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value;
+            if (!string.IsNullOrEmpty(emailClaim))
+            {
+                var userByEmail = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Email == emailClaim);
+                if (userByEmail != null)
+                {
+                    validUserId = userByEmail.Id;
+                }
+            }
         }
 
         var userCompanyId = await GetUserCompanyIdAsync();
@@ -285,8 +369,8 @@ public class InvoicesController : ControllerBase
             ClientName = request.ClientName.Trim(),
             ClientEmail = request.ClientEmail?.Trim(),
             ClientAddress = request.ClientAddress?.Trim(),
-            IssueDate = request.IssueDate,
-            DueDate = request.DueDate,
+            IssueDate = request.IssueDate.ToUniversalTime(),
+            DueDate = request.DueDate.ToUniversalTime(),
             Status = InvoiceStatus.Draft,
             TaxRatePercent = taxRate,
             DiscountAmount = discount,
@@ -294,16 +378,29 @@ public class InvoicesController : ControllerBase
             TaxAmount = taxAmount,
             TotalAmount = totalAmount,
             Notes = request.Notes?.Trim(),
-            CreatedByUserId = currentUserId,
+            CreatedByUserId = validUserId,
             CreatedAt = DateTimeOffset.UtcNow,
             UpdatedAt = DateTimeOffset.UtcNow,
             Items = invoiceItems
         };
 
-        _context.Invoices.Add(invoice);
-        await _context.SaveChangesAsync();
+        try
+        {
+            _context.Invoices.Add(invoice);
+            await _context.SaveChangesAsync();
 
-        return Ok(new { success = true, message = "Invoice berhasil dibuat.", data = invoice });
+            return Ok(new { success = true, message = "Invoice berhasil dibuat.", data = invoice });
+        }
+        catch (Exception ex)
+        {
+            var innerMsg = ex.InnerException?.Message ?? ex.Message;
+            return StatusCode(500, new
+            {
+                success = false,
+                message = $"Gagal menyimpan invoice ke basis data: {innerMsg}",
+                detail = ex.ToString()
+            });
+        }
     }
 
     [HttpPut("{id:int}")]
@@ -330,8 +427,8 @@ public class InvoicesController : ControllerBase
         invoice.ClientName = request.ClientName.Trim();
         invoice.ClientEmail = request.ClientEmail?.Trim();
         invoice.ClientAddress = request.ClientAddress?.Trim();
-        invoice.IssueDate = request.IssueDate;
-        invoice.DueDate = request.DueDate;
+        invoice.IssueDate = request.IssueDate.ToUniversalTime();
+        invoice.DueDate = request.DueDate.ToUniversalTime();
         invoice.Status = request.Status;
         invoice.Notes = request.Notes?.Trim();
 
@@ -370,9 +467,21 @@ public class InvoicesController : ControllerBase
         invoice.TotalAmount = Math.Max(0, subTotal + invoice.TaxAmount - invoice.DiscountAmount);
         invoice.UpdatedAt = DateTimeOffset.UtcNow;
 
-        await _context.SaveChangesAsync();
-
-        return Ok(new { success = true, message = "Invoice berhasil diperbarui.", data = invoice });
+        try
+        {
+            await _context.SaveChangesAsync();
+            return Ok(new { success = true, message = "Invoice berhasil diperbarui.", data = invoice });
+        }
+        catch (Exception ex)
+        {
+            var innerMsg = ex.InnerException?.Message ?? ex.Message;
+            return StatusCode(500, new
+            {
+                success = false,
+                message = $"Gagal memperbarui invoice: {innerMsg}",
+                detail = ex.ToString()
+            });
+        }
     }
 
     [HttpPatch("{id:int}/status")]

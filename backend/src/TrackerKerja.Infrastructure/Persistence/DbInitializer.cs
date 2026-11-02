@@ -61,6 +61,18 @@ public static class DbInitializer
                         IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'sql_histories') THEN 
                             ALTER TABLE sql_histories ADD COLUMN IF NOT EXISTS user_id VARCHAR(450);
                         END IF;
+
+                        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'invoices') THEN 
+                            ALTER TABLE invoices ALTER COLUMN created_by_user_id DROP NOT NULL;
+                        END IF;
+
+                        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'issue_tickets') THEN 
+                            ALTER TABLE issue_tickets ALTER COLUMN reported_by_user_id DROP NOT NULL;
+                        END IF;
+
+                        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'documents') THEN 
+                            ALTER TABLE documents ALTER COLUMN uploaded_by_user_id DROP NOT NULL;
+                        END IF;
                     END $$;
 
                     CREATE TABLE IF NOT EXISTS user_badge_snapshots (
@@ -186,7 +198,7 @@ public static class DbInitializer
                 // Ignore DDL errors if unsupported or already managed
             }
 
-            // Tabel Timesheet Periods & Company Timesheet Configs
+            // 1. Tabel Timesheet Periods & Company Timesheet Configs
             try
             {
                 await context.Database.ExecuteSqlRawAsync(@"
@@ -224,7 +236,14 @@ public static class DbInitializer
                         updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
                     );
                     CREATE INDEX IF NOT EXISTS ix_company_timesheet_configs_company_id ON company_timesheet_configs(company_id);
+                ");
+            }
+            catch { }
 
+            // 2. Tabel Holidays
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(@"
                     CREATE TABLE IF NOT EXISTS holidays (
                         id SERIAL PRIMARY KEY,
                         date DATE NOT NULL,
@@ -237,44 +256,14 @@ public static class DbInitializer
                     );
                     CREATE INDEX IF NOT EXISTS ix_holidays_date ON holidays(date);
                     CREATE INDEX IF NOT EXISTS ix_holidays_company_id ON holidays(company_id);
-                    CREATE UNIQUE INDEX IF NOT EXISTS uq_holiday_date_company ON holidays(date, COALESCE(company_id, 0));
+                ");
+            }
+            catch { }
 
-                    -- Pastikan seluruh presensi kehadiran sinkron 8 jam kerja dan berstatus Approved
-                    UPDATE attendances 
-                    SET total_hours = 8.0, status = 2, notes = 'Presensi sinkronisasi 8 jam tugas harian' 
-                    WHERE (total_hours = 0 OR status = 1) AND type = 1;
-
-                    -- Tabel Issues & Ticketing
-                    CREATE TABLE IF NOT EXISTS issue_tickets (
-                        id SERIAL PRIMARY KEY,
-                        ticket_code VARCHAR(50) NOT NULL,
-                        title VARCHAR(255) NOT NULL,
-                        description TEXT,
-                        status INTEGER NOT NULL DEFAULT 0,
-                        priority INTEGER NOT NULL DEFAULT 1,
-                        category VARCHAR(100),
-                        company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
-                        project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
-                        reported_by_user_id VARCHAR(450) NOT NULL REFERENCES asp_net_users(id) ON DELETE CASCADE,
-                        assigned_to_user_id VARCHAR(450) REFERENCES asp_net_users(id) ON DELETE SET NULL,
-                        resolved_at TIMESTAMPTZ,
-                        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-                    );
-                    CREATE INDEX IF NOT EXISTS ix_issue_tickets_company_id ON issue_tickets(company_id);
-                    CREATE INDEX IF NOT EXISTS ix_issue_tickets_project_id ON issue_tickets(project_id);
-                    CREATE INDEX IF NOT EXISTS ix_issue_tickets_status ON issue_tickets(status);
-
-                    CREATE TABLE IF NOT EXISTS issue_ticket_comments (
-                        id SERIAL PRIMARY KEY,
-                        ticket_id INTEGER NOT NULL REFERENCES issue_tickets(id) ON DELETE CASCADE,
-                        user_id VARCHAR(450) NOT NULL REFERENCES asp_net_users(id) ON DELETE CASCADE,
-                        message TEXT NOT NULL,
-                        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-                    );
-                    CREATE INDEX IF NOT EXISTS ix_issue_ticket_comments_ticket_id ON issue_ticket_comments(ticket_id);
-
-                    -- Tabel Invoices & Items
+            // 3. Tabel Invoices & Items (Enterprise Module)
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(@"
                     CREATE TABLE IF NOT EXISTS invoices (
                         id SERIAL PRIMARY KEY,
                         invoice_number VARCHAR(50) NOT NULL,
@@ -292,7 +281,7 @@ public static class DbInitializer
                         tax_amount NUMERIC(18,2) NOT NULL DEFAULT 0.00,
                         total_amount NUMERIC(18,2) NOT NULL DEFAULT 0.00,
                         notes TEXT,
-                        created_by_user_id VARCHAR(450) NOT NULL REFERENCES asp_net_users(id) ON DELETE CASCADE,
+                        created_by_user_id VARCHAR(450) REFERENCES asp_net_users(id) ON DELETE SET NULL,
                         paid_at TIMESTAMPTZ,
                         created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
                         updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -309,8 +298,50 @@ public static class DbInitializer
                         amount NUMERIC(18,2) NOT NULL DEFAULT 0.00
                     );
                     CREATE INDEX IF NOT EXISTS ix_invoice_items_invoice_id ON invoice_items(invoice_id);
+                ");
+            }
+            catch { }
 
-                    -- Tabel Documents (DMS)
+            // 4. Tabel Issues & Ticketing (Enterprise Module)
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(@"
+                    CREATE TABLE IF NOT EXISTS issue_tickets (
+                        id SERIAL PRIMARY KEY,
+                        ticket_code VARCHAR(50) NOT NULL,
+                        title VARCHAR(255) NOT NULL,
+                        description TEXT,
+                        status INTEGER NOT NULL DEFAULT 0,
+                        priority INTEGER NOT NULL DEFAULT 1,
+                        category VARCHAR(100),
+                        company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+                        project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+                        reported_by_user_id VARCHAR(450) REFERENCES asp_net_users(id) ON DELETE SET NULL,
+                        assigned_to_user_id VARCHAR(450) REFERENCES asp_net_users(id) ON DELETE SET NULL,
+                        resolved_at TIMESTAMPTZ,
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    );
+                    CREATE INDEX IF NOT EXISTS ix_issue_tickets_company_id ON issue_tickets(company_id);
+                    CREATE INDEX IF NOT EXISTS ix_issue_tickets_project_id ON issue_tickets(project_id);
+                    CREATE INDEX IF NOT EXISTS ix_issue_tickets_status ON issue_tickets(status);
+
+                    CREATE TABLE IF NOT EXISTS issue_ticket_comments (
+                        id SERIAL PRIMARY KEY,
+                        ticket_id INTEGER NOT NULL REFERENCES issue_tickets(id) ON DELETE CASCADE,
+                        user_id VARCHAR(450) NOT NULL REFERENCES asp_net_users(id) ON DELETE CASCADE,
+                        message TEXT NOT NULL,
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    );
+                    CREATE INDEX IF NOT EXISTS ix_issue_ticket_comments_ticket_id ON issue_ticket_comments(ticket_id);
+                ");
+            }
+            catch { }
+
+            // 5. Tabel Documents / DMS (Enterprise Module)
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(@"
                     CREATE TABLE IF NOT EXISTS documents (
                         id SERIAL PRIMARY KEY,
                         title VARCHAR(255) NOT NULL,
@@ -322,7 +353,7 @@ public static class DbInitializer
                         category VARCHAR(100) NOT NULL DEFAULT 'Umum',
                         company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
                         project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
-                        uploaded_by_user_id VARCHAR(450) NOT NULL REFERENCES asp_net_users(id) ON DELETE CASCADE,
+                        uploaded_by_user_id VARCHAR(450) REFERENCES asp_net_users(id) ON DELETE SET NULL,
                         created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
                         updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
                     );
@@ -330,10 +361,18 @@ public static class DbInitializer
                     CREATE INDEX IF NOT EXISTS ix_documents_category ON documents(category);
                 ");
             }
-            catch
+            catch { }
+
+            // 6. Sinkronisasi Status Presensi Tugas Harian
+            try
             {
-                // Ignore DDL errors if unsupported or already managed
+                await context.Database.ExecuteSqlRawAsync(@"
+                    UPDATE attendances 
+                    SET total_hours = 8.0, status = 2, notes = 'Presensi sinkronisasi 8 jam tugas harian' 
+                    WHERE (total_hours = 0 OR status = 1) AND type = 1;
+                ");
             }
+            catch { }
         }
 
         // 1. Pastikan Perusahaan Default (HQ Tenant)

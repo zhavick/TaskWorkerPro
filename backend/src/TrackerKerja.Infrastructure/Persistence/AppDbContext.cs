@@ -188,6 +188,85 @@ public class AppDbContext : DbContext
             .HasForeignKey(a => a.ApprovedByUserId)
             .OnDelete(DeleteBehavior.SetNull);
 
+        // Enterprise Modules Relationships
+        modelBuilder.Entity<Invoice>()
+            .HasOne(i => i.Company)
+            .WithMany()
+            .HasForeignKey(i => i.CompanyId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<Invoice>()
+            .HasOne(i => i.Project)
+            .WithMany()
+            .HasForeignKey(i => i.ProjectId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<Invoice>()
+            .HasOne(i => i.CreatedByUser)
+            .WithMany()
+            .HasForeignKey(i => i.CreatedByUserId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<Invoice>()
+            .HasMany(i => i.Items)
+            .WithOne(it => it.Invoice)
+            .HasForeignKey(it => it.InvoiceId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<IssueTicket>()
+            .HasOne(t => t.Company)
+            .WithMany()
+            .HasForeignKey(t => t.CompanyId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<IssueTicket>()
+            .HasOne(t => t.Project)
+            .WithMany()
+            .HasForeignKey(t => t.ProjectId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<IssueTicket>()
+            .HasOne(t => t.ReportedByUser)
+            .WithMany()
+            .HasForeignKey(t => t.ReportedByUserId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<IssueTicket>()
+            .HasOne(t => t.AssignedToUser)
+            .WithMany()
+            .HasForeignKey(t => t.AssignedToUserId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<IssueTicket>()
+            .HasMany(t => t.Comments)
+            .WithOne(c => c.Ticket)
+            .HasForeignKey(c => c.TicketId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<IssueTicketComment>()
+            .HasOne(c => c.User)
+            .WithMany()
+            .HasForeignKey(c => c.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<CompanyDocument>()
+            .HasOne(d => d.Company)
+            .WithMany()
+            .HasForeignKey(d => d.CompanyId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<CompanyDocument>()
+            .HasOne(d => d.Project)
+            .WithMany()
+            .HasForeignKey(d => d.ProjectId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<CompanyDocument>()
+            .HasOne(d => d.UploadedByUser)
+            .WithMany()
+            .HasForeignKey(d => d.UploadedByUserId)
+            .OnDelete(DeleteBehavior.SetNull);
+
         // 4. Multi-Tenancy Global Query Filter
         modelBuilder.Entity<WorkTask>().HasQueryFilter(t =>
             IsCurrentUserAdmin || CurrentCompanyId == null || t.CompanyId == null || t.CompanyId == CurrentCompanyId);

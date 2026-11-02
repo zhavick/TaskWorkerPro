@@ -42,9 +42,8 @@ public class IssueTicket
     public int CompanyId { get; set; }
     public int? ProjectId { get; set; }
 
-    [Required]
     [MaxLength(450)]
-    public string ReportedByUserId { get; set; } = string.Empty;
+    public string? ReportedByUserId { get; set; }
 
     [MaxLength(450)]
     public string? AssignedToUserId { get; set; }
@@ -131,9 +130,8 @@ public class Invoice
 
     public string? Notes { get; set; }
 
-    [Required]
     [MaxLength(450)]
-    public string CreatedByUserId { get; set; } = string.Empty;
+    public string? CreatedByUserId { get; set; }
 
     public DateTimeOffset? PaidAt { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
@@ -197,9 +195,8 @@ public class CompanyDocument
     public int CompanyId { get; set; }
     public int? ProjectId { get; set; }
 
-    [Required]
     [MaxLength(450)]
-    public string UploadedByUserId { get; set; } = string.Empty;
+    public string? UploadedByUserId { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
