@@ -48,6 +48,11 @@ public class AppDbContext : DbContext
     public DbSet<TimesheetPeriod> TimesheetPeriods => Set<TimesheetPeriod>();
     public DbSet<CompanyTimesheetConfig> CompanyTimesheetConfigs => Set<CompanyTimesheetConfig>();
     public DbSet<Holiday> Holidays => Set<Holiday>();
+    public DbSet<IssueTicket> IssueTickets => Set<IssueTicket>();
+    public DbSet<IssueTicketComment> IssueTicketComments => Set<IssueTicketComment>();
+    public DbSet<Invoice> Invoices => Set<Invoice>();
+    public DbSet<InvoiceItem> InvoiceItems => Set<InvoiceItem>();
+    public DbSet<CompanyDocument> Documents => Set<CompanyDocument>();
 
     public int? CurrentCompanyId => _tenantService?.CompanyId;
     public bool IsCurrentUserAdmin => _tenantService?.IsAdmin ?? false;
@@ -91,6 +96,11 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<SqlHistory>().ToTable("sql_histories");
         modelBuilder.Entity<SyncHistory>().ToTable("sync_histories");
         modelBuilder.Entity<ImportLog>().ToTable("import_logs");
+        modelBuilder.Entity<IssueTicket>().ToTable("issue_tickets");
+        modelBuilder.Entity<IssueTicketComment>().ToTable("issue_ticket_comments");
+        modelBuilder.Entity<Invoice>().ToTable("invoices");
+        modelBuilder.Entity<InvoiceItem>().ToTable("invoice_items");
+        modelBuilder.Entity<CompanyDocument>().ToTable("documents");
 
         // 2. Primary Keys & Unique Constraints
         modelBuilder.Entity<SystemSetting>().HasKey(s => s.Key);
