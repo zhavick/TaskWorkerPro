@@ -237,6 +237,91 @@ public static class DbInitializer
                     UPDATE attendances 
                     SET total_hours = 8.0, status = 2, notes = 'Presensi sinkronisasi 8 jam tugas harian' 
                     WHERE (total_hours = 0 OR status = 1) AND type = 1;
+
+                    -- Tabel Issues & Ticketing
+                    CREATE TABLE IF NOT EXISTS issue_tickets (
+                        id SERIAL PRIMARY KEY,
+                        ticket_code VARCHAR(50) NOT NULL,
+                        title VARCHAR(255) NOT NULL,
+                        description TEXT,
+                        status INTEGER NOT NULL DEFAULT 0,
+                        priority INTEGER NOT NULL DEFAULT 1,
+                        category VARCHAR(100),
+                        company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+                        project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+                        reported_by_user_id VARCHAR(450) NOT NULL REFERENCES asp_net_users(id) ON DELETE CASCADE,
+                        assigned_to_user_id VARCHAR(450) REFERENCES asp_net_users(id) ON DELETE SET NULL,
+                        resolved_at TIMESTAMPTZ,
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    );
+                    CREATE INDEX IF NOT EXISTS ix_issue_tickets_company_id ON issue_tickets(company_id);
+                    CREATE INDEX IF NOT EXISTS ix_issue_tickets_project_id ON issue_tickets(project_id);
+                    CREATE INDEX IF NOT EXISTS ix_issue_tickets_status ON issue_tickets(status);
+
+                    CREATE TABLE IF NOT EXISTS issue_ticket_comments (
+                        id SERIAL PRIMARY KEY,
+                        ticket_id INTEGER NOT NULL REFERENCES issue_tickets(id) ON DELETE CASCADE,
+                        user_id VARCHAR(450) NOT NULL REFERENCES asp_net_users(id) ON DELETE CASCADE,
+                        message TEXT NOT NULL,
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    );
+                    CREATE INDEX IF NOT EXISTS ix_issue_ticket_comments_ticket_id ON issue_ticket_comments(ticket_id);
+
+                    -- Tabel Invoices & Items
+                    CREATE TABLE IF NOT EXISTS invoices (
+                        id SERIAL PRIMARY KEY,
+                        invoice_number VARCHAR(50) NOT NULL,
+                        company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+                        project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+                        client_name VARCHAR(255) NOT NULL,
+                        client_email VARCHAR(255),
+                        client_address TEXT,
+                        issue_date TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        due_date TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        status INTEGER NOT NULL DEFAULT 0,
+                        tax_rate_percent NUMERIC(5,2) NOT NULL DEFAULT 11.00,
+                        discount_amount NUMERIC(18,2) NOT NULL DEFAULT 0.00,
+                        sub_total NUMERIC(18,2) NOT NULL DEFAULT 0.00,
+                        tax_amount NUMERIC(18,2) NOT NULL DEFAULT 0.00,
+                        total_amount NUMERIC(18,2) NOT NULL DEFAULT 0.00,
+                        notes TEXT,
+                        created_by_user_id VARCHAR(450) NOT NULL REFERENCES asp_net_users(id) ON DELETE CASCADE,
+                        paid_at TIMESTAMPTZ,
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    );
+                    CREATE INDEX IF NOT EXISTS ix_invoices_company_id ON invoices(company_id);
+                    CREATE INDEX IF NOT EXISTS ix_invoices_status ON invoices(status);
+
+                    CREATE TABLE IF NOT EXISTS invoice_items (
+                        id SERIAL PRIMARY KEY,
+                        invoice_id INTEGER NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
+                        description VARCHAR(500) NOT NULL,
+                        quantity NUMERIC(18,2) NOT NULL DEFAULT 1.00,
+                        unit_price NUMERIC(18,2) NOT NULL DEFAULT 0.00,
+                        amount NUMERIC(18,2) NOT NULL DEFAULT 0.00
+                    );
+                    CREATE INDEX IF NOT EXISTS ix_invoice_items_invoice_id ON invoice_items(invoice_id);
+
+                    -- Tabel Documents (DMS)
+                    CREATE TABLE IF NOT EXISTS documents (
+                        id SERIAL PRIMARY KEY,
+                        title VARCHAR(255) NOT NULL,
+                        description TEXT,
+                        file_name VARCHAR(255) NOT NULL,
+                        file_storage_path VARCHAR(500) NOT NULL,
+                        file_size BIGINT NOT NULL DEFAULT 0,
+                        content_type VARCHAR(100) NOT NULL DEFAULT 'application/octet-stream',
+                        category VARCHAR(100) NOT NULL DEFAULT 'Umum',
+                        company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+                        project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+                        uploaded_by_user_id VARCHAR(450) NOT NULL REFERENCES asp_net_users(id) ON DELETE CASCADE,
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    );
+                    CREATE INDEX IF NOT EXISTS ix_documents_company_id ON documents(company_id);
+                    CREATE INDEX IF NOT EXISTS ix_documents_category ON documents(category);
                 ");
             }
             catch

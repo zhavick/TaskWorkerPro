@@ -209,3 +209,4 @@ public class CompanyDocument
     public Project? Project { get; set; }
     public AppUser? UploadedByUser { get; set; }
 }
+
