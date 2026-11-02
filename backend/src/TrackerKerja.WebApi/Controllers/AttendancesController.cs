@@ -38,19 +38,19 @@ public class AttendancesController : ControllerBase
         }
 
         // Untuk Administrator:
-        // Cek apakah _tenantService.CompanyId memiliki data operasional (tugas/absensi)
+        // Cek apakah _tenantService.CompanyId memiliki data operasional (tugas atau pengguna)
         if (_tenantService.CompanyId.HasValue)
         {
             var adminComp = _tenantService.CompanyId.Value;
             var hasOperationalData = _context.Tasks.Any(t => t.CompanyId == adminComp) ||
-                                     _context.Attendances.Any(a => a.User.CompanyId == adminComp);
+                                     _context.Users.Any(u => u.CompanyId == adminComp);
             if (hasOperationalData)
             {
                 return adminComp;
             }
         }
 
-        // Jika holding/company admin tidak memiliki data, arahkan ke primary company operasional
+        // Jika holding/company admin tidak memiliki data, arahkan ke primary company operasional dari Tasks atau Users
         var primaryCompWithData = _context.Tasks
             .Where(t => t.CompanyId.HasValue)
             .Select(t => t.CompanyId!.Value)
@@ -58,9 +58,9 @@ public class AttendancesController : ControllerBase
 
         if (primaryCompWithData == 0)
         {
-            primaryCompWithData = _context.Attendances
-                .Where(a => a.User.CompanyId.HasValue)
-                .Select(a => a.User.CompanyId!.Value)
+            primaryCompWithData = _context.Users
+                .Where(u => u.CompanyId.HasValue)
+                .Select(u => u.CompanyId!.Value)
                 .FirstOrDefault();
         }
 
@@ -616,180 +616,223 @@ public class AttendancesController : ControllerBase
         var currentUserId = _tenantService.UserId;
         if (string.IsNullOrEmpty(currentUserId)) return Unauthorized();
 
-        var isAdmin = _tenantService.IsAdmin;
-        int? targetCompanyId = ResolveTargetCompanyId(companyId);
-        string? targetUserId = isAdmin ? userId : currentUserId;
-
-        var usersQuery = _context.Users.Where(u => u.IsApproved);
-        if (targetCompanyId.HasValue)
+        try
         {
-            usersQuery = usersQuery.Where(u => u.CompanyId == targetCompanyId.Value || u.CompanyId == null);
-        }
-        if (!string.IsNullOrEmpty(targetUserId))
-        {
-            usersQuery = usersQuery.Where(u => u.Id == targetUserId);
-        }
+            var isAdmin = _tenantService.IsAdmin;
+            int? targetCompanyId = ResolveTargetCompanyId(companyId);
+            string? targetUserId = isAdmin ? userId : currentUserId;
 
-        var users = await usersQuery.ToListAsync();
-        if (users.Count == 0)
-        {
-            return Ok(new { success = true, message = "Tidak ada pengguna yang memenuhi kriteria sinkronisasi.", syncedCount = 0 });
-        }
-
-        var holidays = await _context.Holidays.AsNoTracking().ToListAsync();
-        var holidaySet = holidays.Select(h => h.Date).ToHashSet();
-        var tzOffset = TimeSpan.FromHours(7);
-
-        int totalSynced = 0;
-
-        foreach (var user in users)
-        {
-            var userTasks = await _context.Tasks
-                .AsNoTracking()
-                .Where(t => t.AssignedToUserId == user.Id)
-                .ToListAsync();
-
-            if (userTasks.Count == 0) continue;
-
-            // Collect active dates for user
-            var dateTaskMap = new Dictionary<DateOnly, List<WorkTask>>();
-
-            foreach (var task in userTasks)
+            var usersQuery = _context.Users.Where(u => u.IsApproved);
+            if (targetCompanyId.HasValue)
             {
-                DateOnly taskStart;
-                DateOnly taskDue;
+                usersQuery = usersQuery.Where(u => u.CompanyId == targetCompanyId.Value || u.CompanyId == null);
+            }
+            if (!string.IsNullOrEmpty(targetUserId))
+            {
+                usersQuery = usersQuery.Where(u => u.Id == targetUserId);
+            }
 
-                if (task.StartDate.HasValue && task.DueDate.HasValue)
-                {
-                    taskStart = DateOnly.FromDateTime(task.StartDate.Value.ToOffset(tzOffset).DateTime);
-                    taskDue = DateOnly.FromDateTime(task.DueDate.Value.ToOffset(tzOffset).DateTime);
-                }
-                else if (task.StartDate.HasValue)
-                {
-                    taskStart = DateOnly.FromDateTime(task.StartDate.Value.ToOffset(tzOffset).DateTime);
-                    taskDue = taskStart;
-                }
-                else if (task.DueDate.HasValue)
-                {
-                    taskDue = DateOnly.FromDateTime(task.DueDate.Value.ToOffset(tzOffset).DateTime);
-                    taskStart = taskDue;
-                }
-                else
-                {
-                    var created = DateOnly.FromDateTime(task.CreatedAt.ToOffset(tzOffset).DateTime);
-                    taskStart = created;
-                    taskDue = created;
-                }
+            var users = await usersQuery.ToListAsync();
+            if (users.Count == 0)
+            {
+                return Ok(new { success = true, message = "Tidak ada pengguna yang memenuhi kriteria sinkronisasi.", syncedCount = 0 });
+            }
 
-                if (taskStart > taskDue)
-                {
-                    var tmp = taskStart;
-                    taskStart = taskDue;
-                    taskDue = tmp;
-                }
+            HashSet<DateOnly> holidaySet;
+            try
+            {
+                var holidays = await _context.Holidays.AsNoTracking().ToListAsync();
+                holidaySet = holidays.Select(h => h.Date).ToHashSet();
+            }
+            catch
+            {
+                // Fallback anggun jika tabel libur belum terpasang atau terjadi kendala query
+                var defaultHolidays = DbInitializer.GetDefaultNationalHolidays(DateTime.UtcNow.Year);
+                holidaySet = defaultHolidays.Select(h => h.Date).ToHashSet();
+            }
 
-                // Jika tugas masih berjalan (belum selesai) dan dueDate di masa lampau, anggap berlanjut hingga hari ini
-                var today = DateOnly.FromDateTime(DateTime.UtcNow.Add(tzOffset));
-                if (task.Status != Domain.Enums.TaskStatus.Done)
+            var tzOffset = TimeSpan.FromHours(7);
+            var today = DateOnly.FromDateTime(DateTime.UtcNow.Add(tzOffset));
+            var minAllowedDate = new DateOnly(2020, 1, 1);
+            var maxAllowedDate = new DateOnly(2035, 12, 31);
+
+            int totalSynced = 0;
+
+            foreach (var user in users)
+            {
+                var userTasks = await _context.Tasks
+                    .AsNoTracking()
+                    .Where(t => t.AssignedToUserId == user.Id)
+                    .ToListAsync();
+
+                if (userTasks.Count == 0) continue;
+
+                // Collect active dates for user
+                var dateTaskMap = new Dictionary<DateOnly, List<WorkTask>>();
+
+                foreach (var task in userTasks)
                 {
-                    if (taskDue < today && taskStart <= today)
+                    DateOnly taskStart;
+                    DateOnly taskDue;
+
+                    if (task.StartDate.HasValue && task.DueDate.HasValue)
                     {
-                        taskDue = today;
+                        taskStart = DateOnly.FromDateTime(task.StartDate.Value.ToOffset(tzOffset).DateTime);
+                        taskDue = DateOnly.FromDateTime(task.DueDate.Value.ToOffset(tzOffset).DateTime);
+                    }
+                    else if (task.StartDate.HasValue)
+                    {
+                        taskStart = DateOnly.FromDateTime(task.StartDate.Value.ToOffset(tzOffset).DateTime);
+                        taskDue = taskStart;
+                    }
+                    else if (task.DueDate.HasValue)
+                    {
+                        taskDue = DateOnly.FromDateTime(task.DueDate.Value.ToOffset(tzOffset).DateTime);
+                        taskStart = taskDue;
+                    }
+                    else
+                    {
+                        var created = DateOnly.FromDateTime(task.CreatedAt.ToOffset(tzOffset).DateTime);
+                        taskStart = created;
+                        taskDue = created;
+                    }
+
+                    if (taskStart > taskDue)
+                    {
+                        var tmp = taskStart;
+                        taskStart = taskDue;
+                        taskDue = tmp;
+                    }
+
+                    // Jika tugas masih berjalan (belum selesai) dan dueDate di masa lampau, anggap berlanjut hingga hari ini
+                    if (task.Status != Domain.Enums.TaskStatus.Done)
+                    {
+                        if (taskDue < today && taskStart <= today)
+                        {
+                            taskDue = today;
+                        }
+                    }
+
+                    // Batasi ke rentang tanggal yang valid dan wajar
+                    if (taskStart < minAllowedDate) taskStart = minAllowedDate;
+                    if (taskDue > maxAllowedDate) taskDue = maxAllowedDate;
+                    if (taskStart > taskDue) taskStart = taskDue;
+
+                    // If specific date requested, clamp or filter
+                    if (date.HasValue)
+                    {
+                        if (date.Value < taskStart || date.Value > taskDue) continue;
+                        taskStart = date.Value;
+                        taskDue = date.Value;
+                    }
+                    else if (month.HasValue && year.HasValue)
+                    {
+                        var mStart = new DateOnly(year.Value, month.Value, 1);
+                        var mEnd = new DateOnly(year.Value, month.Value, DateTime.DaysInMonth(year.Value, month.Value));
+                        if (taskDue < mStart || taskStart > mEnd) continue;
+                        taskStart = taskStart < mStart ? mStart : taskStart;
+                        taskDue = taskDue > mEnd ? mEnd : taskDue;
+                    }
+
+                    for (var cur = taskStart; cur <= taskDue; cur = cur.AddDays(1))
+                    {
+                        // Skip weekends & holidays
+                        if (cur.DayOfWeek == DayOfWeek.Saturday || cur.DayOfWeek == DayOfWeek.Sunday || holidaySet.Contains(cur))
+                        {
+                            continue;
+                        }
+
+                        if (!dateTaskMap.ContainsKey(cur))
+                        {
+                            dateTaskMap[cur] = new List<WorkTask>();
+                        }
+                        if (!dateTaskMap[cur].Any(t => t.Id == task.Id))
+                        {
+                            dateTaskMap[cur].Add(task);
+                        }
                     }
                 }
 
-                // If specific date requested, clamp or filter
-                if (date.HasValue)
-                {
-                    if (date.Value < taskStart || date.Value > taskDue) continue;
-                    taskStart = date.Value;
-                    taskDue = date.Value;
-                }
-                else if (month.HasValue && year.HasValue)
-                {
-                    var mStart = new DateOnly(year.Value, month.Value, 1);
-                    var mEnd = new DateOnly(year.Value, month.Value, DateTime.DaysInMonth(year.Value, month.Value));
-                    if (taskDue < mStart || taskStart > mEnd) continue;
-                    taskStart = taskStart < mStart ? mStart : taskStart;
-                    taskDue = taskDue > mEnd ? mEnd : taskDue;
-                }
+                if (dateTaskMap.Count == 0) continue;
 
-                for (var cur = taskStart; cur <= taskDue; cur = cur.AddDays(1))
-                {
-                    // Skip weekends & holidays
-                    if (cur.DayOfWeek == DayOfWeek.Saturday || cur.DayOfWeek == DayOfWeek.Sunday || holidaySet.Contains(cur))
-                    {
-                        continue;
-                    }
+                // Load existing attendances for this user in batch (O(1) memory lookup)
+                var userActiveDates = dateTaskMap.Keys.ToList();
+                var minDate = userActiveDates.Min();
+                var maxDate = userActiveDates.Max();
 
-                    if (!dateTaskMap.ContainsKey(cur))
+                var existingAttendances = await _context.Attendances
+                    .Where(a => a.UserId == user.Id && a.Date >= minDate && a.Date <= maxDate)
+                    .ToListAsync();
+
+                var existingAttMap = existingAttendances
+                    .GroupBy(a => a.Date)
+                    .ToDictionary(g => g.Key, g => g.First());
+
+                foreach (var kvp in dateTaskMap)
+                {
+                    var curDate = kvp.Key;
+                    var tasksOnDate = kvp.Value;
+
+                    var clockIn = new DateTimeOffset(curDate.Year, curDate.Month, curDate.Day, 8, 0, 0, tzOffset);
+                    var clockOut = new DateTimeOffset(curDate.Year, curDate.Month, curDate.Day, 17, 10, 0, tzOffset);
+                    var taskTitles = string.Join(", ", tasksOnDate.Take(2).Select(t => t.Title.Length > 80 ? t.Title.Substring(0, 77) + "..." : t.Title));
+                    if (tasksOnDate.Count > 2) taskTitles += $" (+{tasksOnDate.Count - 2} lainnya)";
+                    var notesText = $"Presensi sinkronisasi tugas harian (8 Jam): {taskTitles}";
+                    if (notesText.Length > 450) notesText = notesText.Substring(0, 447) + "...";
+
+                    if (!existingAttMap.TryGetValue(curDate, out var existingAtt))
                     {
-                        dateTaskMap[cur] = new List<WorkTask>();
+                        existingAtt = new Attendance
+                        {
+                            UserId = user.Id,
+                            Date = curDate,
+                            Type = AttendanceType.Present,
+                            WorkLocation = WorkLocation.WFO,
+                            ClockIn = clockIn.ToUniversalTime(),
+                            ClockOut = clockOut.ToUniversalTime(),
+                            TotalHours = 8.0,
+                            Status = 2, // Approved
+                            Notes = notesText,
+                            CreatedAt = DateTimeOffset.UtcNow,
+                            UpdatedAt = DateTimeOffset.UtcNow
+                        };
+                        _context.Attendances.Add(existingAtt);
+                        existingAttMap[curDate] = existingAtt;
+                        totalSynced++;
                     }
-                    if (!dateTaskMap[cur].Any(t => t.Id == task.Id))
+                    else
                     {
-                        dateTaskMap[cur].Add(task);
+                        existingAtt.Type = AttendanceType.Present;
+                        existingAtt.WorkLocation = WorkLocation.WFO;
+                        existingAtt.ClockIn = clockIn.ToUniversalTime();
+                        existingAtt.ClockOut = clockOut.ToUniversalTime();
+                        existingAtt.TotalHours = 8.0;
+                        existingAtt.Status = 2; // Approved
+                        existingAtt.Notes = notesText;
+                        existingAtt.UpdatedAt = DateTimeOffset.UtcNow;
+                        totalSynced++;
                     }
                 }
             }
 
-            foreach (var kvp in dateTaskMap)
+            await _context.SaveChangesAsync();
+
+            return Ok(new
             {
-                var curDate = kvp.Key;
-                var tasksOnDate = kvp.Value;
-
-                var clockIn = new DateTimeOffset(curDate.Year, curDate.Month, curDate.Day, 8, 0, 0, tzOffset);
-                var clockOut = new DateTimeOffset(curDate.Year, curDate.Month, curDate.Day, 17, 10, 0, tzOffset);
-                var taskTitles = string.Join(", ", tasksOnDate.Take(2).Select(t => t.Title.Length > 80 ? t.Title.Substring(0, 77) + "..." : t.Title));
-                if (tasksOnDate.Count > 2) taskTitles += $" (+{tasksOnDate.Count - 2} lainnya)";
-                var notesText = $"Presensi sinkronisasi tugas harian (8 Jam): {taskTitles}";
-                if (notesText.Length > 450) notesText = notesText.Substring(0, 447) + "...";
-
-                var existingAtt = await _context.Attendances
-                    .FirstOrDefaultAsync(a => a.UserId == user.Id && a.Date == curDate);
-
-                if (existingAtt == null)
-                {
-                    existingAtt = new Attendance
-                    {
-                        UserId = user.Id,
-                        Date = curDate,
-                        Type = AttendanceType.Present,
-                        WorkLocation = WorkLocation.WFO,
-                        ClockIn = clockIn.ToUniversalTime(),
-                        ClockOut = clockOut.ToUniversalTime(),
-                        TotalHours = 8.0,
-                        Status = 2, // Approved
-                        Notes = notesText,
-                        CreatedAt = DateTimeOffset.UtcNow,
-                        UpdatedAt = DateTimeOffset.UtcNow
-                    };
-                    _context.Attendances.Add(existingAtt);
-                    totalSynced++;
-                }
-                else
-                {
-                    existingAtt.Type = AttendanceType.Present;
-                    existingAtt.WorkLocation = WorkLocation.WFO;
-                    existingAtt.ClockIn = clockIn.ToUniversalTime();
-                    existingAtt.ClockOut = clockOut.ToUniversalTime();
-                    existingAtt.TotalHours = 8.0;
-                    existingAtt.Status = 2; // Approved
-                    existingAtt.Notes = notesText;
-                    existingAtt.UpdatedAt = DateTimeOffset.UtcNow;
-                    totalSynced++;
-                }
-            }
+                success = true,
+                message = $"Presensi berhasil disinkronkan: {totalSynced} entri kehadiran (8 Jam/hari) diperbarui untuk {users.Count} personel.",
+                syncedCount = totalSynced,
+                usersCount = users.Count
+            });
         }
-
-        await _context.SaveChangesAsync();
-
-        return Ok(new
+        catch (Exception ex)
         {
-            success = true,
-            message = $"Presensi berhasil disinkronkan: {totalSynced} entri kehadiran (8 Jam/hari) diperbarui untuk {users.Count} personel.",
-            syncedCount = totalSynced,
-            usersCount = users.Count
-        });
+            return StatusCode(500, new
+            {
+                success = false,
+                message = $"Gagal sinkronisasi presensi: {ex.Message}",
+                error = ex.ToString()
+            });
+        }
     }
 }

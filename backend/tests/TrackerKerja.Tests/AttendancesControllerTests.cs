@@ -391,6 +391,42 @@ public class AttendancesControllerTests : IDisposable
     }
 
     [Fact]
+    public async Task SyncFromTasks_WithNoParameters_ResolvesDefaultCompanyAndSyncsSuccessfully()
+    {
+        // Arrange
+        var tzOffset = TimeSpan.FromHours(7);
+        var targetDate = new DateOnly(2026, 9, 4); // Friday
+        var task = new WorkTask
+        {
+            Id = 556,
+            Title = "Task Sinkronisasi Otomatis Global",
+            CompanyId = 1,
+            AssignedToUserId = "user-2",
+            StartDate = new DateTimeOffset(2026, 9, 4, 8, 0, 0, tzOffset),
+            DueDate = new DateTimeOffset(2026, 9, 4, 17, 0, 0, tzOffset),
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        _context.Tasks.Add(task);
+        await _context.SaveChangesAsync();
+
+        // Act: Panggil tanpa query parameters (seperti tombol sinkronisasi presensi)
+        var result = await _controller.SyncFromTasks() as OkObjectResult;
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal(200, result.StatusCode);
+
+        var json = ToJsonElement(result.Value);
+        Assert.True(json.GetProperty("success").GetBoolean());
+        Assert.True(json.GetProperty("syncedCount").GetInt32() >= 1);
+
+        var att = await _context.Attendances.FirstOrDefaultAsync(a => a.UserId == "user-2" && a.Date == targetDate);
+        Assert.NotNull(att);
+        Assert.Equal(8.0, att!.TotalHours);
+        Assert.Equal(2, att.Status);
+    }
+
+    [Fact]
     public async Task GetTodayStatus_WhenUserHasActiveTasksToday_ShouldAutoReflectEightHoursAttendance()
     {
         // Arrange
