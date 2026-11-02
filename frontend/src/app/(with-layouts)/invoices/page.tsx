@@ -37,7 +37,7 @@ interface InvoiceItemRow {
 
 export default function InvoicesPage() {
   const queryClient = useQueryClient();
-  const { user, isAdmin, isProjectManager } = useCurrentUser();
+  const { user, isAdmin, isProjectManager, enableInvoicing } = useCurrentUser();
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -270,7 +270,23 @@ export default function InvoicesPage() {
   const getStatusBadge = (s: number) => {
     switch (s) {
       case 2:
-        return (
+        if (!isAdmin && !enableInvoicing) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] text-center p-8">
+        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400 mb-4 shadow-sm">
+          <Receipt className="h-8 w-8" />
+        </div>
+        <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+          Modul Invoice Management Dinonaktifkan
+        </h2>
+        <p className="mt-2 max-w-md text-sm text-gray-500 dark:text-gray-400">
+          Modul Invoice Management dinonaktifkan untuk perusahaan <strong>{user?.companyName || "Anda"}</strong>. Silakan hubungi Administrator jika perusahaan Anda memerlukan akses ke modul ini.
+        </p>
+      </div>
+    );
+  }
+
+  return (
           <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-[10px] font-extrabold text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">
             Lunas (Paid)
           </span>

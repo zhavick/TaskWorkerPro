@@ -31,7 +31,7 @@ import { useCurrentUser } from "@/hooks/use-current-user";
 
 export default function IssuesPage() {
   const queryClient = useQueryClient();
-  const { user, isAdmin, isProjectManager } = useCurrentUser();
+  const { user, isAdmin, isProjectManager, enableTicketing } = useCurrentUser();
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -230,7 +230,23 @@ export default function IssuesPage() {
   const getPriorityBadge = (p: number) => {
     switch (p) {
       case 3:
-        return (
+        if (!isAdmin && !enableTicketing) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] text-center p-8">
+        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400 mb-4 shadow-sm">
+          <ShieldAlert className="h-8 w-8" />
+        </div>
+        <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+          Modul Issues &amp; Ticketing Dinonaktifkan
+        </h2>
+        <p className="mt-2 max-w-md text-sm text-gray-500 dark:text-gray-400">
+          Modul Ticketing System dinonaktifkan untuk perusahaan <strong>{user?.companyName || "Anda"}</strong>. Silakan hubungi Administrator jika perusahaan Anda memerlukan akses ke modul ini.
+        </p>
+      </div>
+    );
+  }
+
+  return (
           <span className="flex items-center gap-1 rounded-md bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-600 dark:bg-rose-950/40 dark:text-rose-400">
             <Flame className="h-3 w-3" /> Critical
           </span>

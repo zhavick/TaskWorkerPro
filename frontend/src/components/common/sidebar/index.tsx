@@ -29,7 +29,7 @@ export default function Sidebar({
     const pathname = usePathname();
     const { theme } = useTheme();
     const { appName } = useAppSettings();
-    const { isAdmin, canManageCompany, isPurgeAdmin } = useCurrentUser();
+    const { isAdmin, canManageCompany, isPurgeAdmin, enableDms, enableTicketing, enableInvoicing } = useCurrentUser();
 
     // Filter navigasi berdasarkan 3 Role: Admin (Perawatan), Project Manager (Admin Perusahaan), Staff (Pengguna Biasa)
     const filteredNavData = useMemo(() => {
@@ -42,10 +42,15 @@ export default function Sidebar({
                 if (item.companyAdminOnly) {
                     return canManageCompany;
                 }
+                if (!isAdmin) {
+                    if (item.url === '/issues' && !enableTicketing) return false;
+                    if (item.url === '/invoices' && !enableInvoicing) return false;
+                    if (item.url === '/documents' && !enableDms) return false;
+                }
                 return true;
             }),
         })).filter((section) => section.items.length > 0);
-    }, [isAdmin, canManageCompany, isPurgeAdmin]);
+    }, [isAdmin, canManageCompany, isPurgeAdmin, enableDms, enableTicketing, enableInvoicing]);
 
     // Compute which group should be open based on the current route
     const activeGroupKey = useMemo(

@@ -14,7 +14,10 @@ public record UserProfileDto(
     bool IsApproved,
     IList<string> Roles,
     string? PhoneNumber = null,
-    DateTimeOffset? CreatedAt = null
+    DateTimeOffset? CreatedAt = null,
+    bool EnableDms = true,
+    bool EnableTicketing = true,
+    bool EnableInvoicing = true
 );
 
 public record MemberListItemDto(

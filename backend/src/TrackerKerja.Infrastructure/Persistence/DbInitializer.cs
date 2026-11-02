@@ -48,6 +48,12 @@ public static class DbInitializer
                             ALTER TABLE announcements ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP;
                         END IF;
 
+                        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'companies') THEN 
+                            ALTER TABLE companies ADD COLUMN IF NOT EXISTS enable_dms BOOLEAN NOT NULL DEFAULT TRUE;
+                            ALTER TABLE companies ADD COLUMN IF NOT EXISTS enable_ticketing BOOLEAN NOT NULL DEFAULT TRUE;
+                            ALTER TABLE companies ADD COLUMN IF NOT EXISTS enable_invoicing BOOLEAN NOT NULL DEFAULT TRUE;
+                        END IF;
+
                         IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'json_histories') THEN 
                             ALTER TABLE json_histories ADD COLUMN IF NOT EXISTS user_id VARCHAR(450);
                         END IF;

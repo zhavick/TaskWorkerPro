@@ -418,6 +418,126 @@ public class NewEnterpriseModulesTests : IDisposable
         File.Exists(dummyPath).Should().BeFalse();
     }
 
+    [Fact]
+    public async Task GetModuleMatrix_And_UpdateCompanyModules_WorksCorrectly()
+    {
+        var controller = new CompaniesController(_context, _adminTenantService);
+
+        // Get initial matrix
+        var matrixResult = await controller.GetModuleMatrix() as OkObjectResult;
+        matrixResult.Should().NotBeNull();
+        var items = matrixResult!.Value?.GetType().GetProperty("data")?.GetValue(matrixResult.Value) as List<CompanyModuleMatrixDto>;
+        items.Should().NotBeNull();
+        items!.Should().HaveCount(2);
+
+        // Update company 1 modules (disable ticketing and invoicing)
+        var updateRequest = new UpdateCompanyModulesRequest(
+            EnableDms: true,
+            EnableTicketing: false,
+            EnableInvoicing: false
+        );
+
+        var updateResult = await controller.UpdateCompanyModules(1, updateRequest) as OkObjectResult;
+        updateResult.Should().NotBeNull();
+
+        var updatedCompany = await _context.Companies.FindAsync(1);
+        updatedCompany.Should().NotBeNull();
+        updatedCompany!.EnableDms.Should().BeTrue();
+        updatedCompany.EnableTicketing.Should().BeFalse();
+        updatedCompany.EnableInvoicing.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task CreateIssue_WhenTicketingDisabled_Returns403Forbidden()
+    {
+        var company = await _context.Companies.FindAsync(1);
+        company!.EnableTicketing = false;
+        await _context.SaveChangesAsync();
+
+        var controller = new IssuesController(_context, _pmTenantService);
+        var request = new CreateIssueTicketRequest(
+            "Bug Ticket Saat Modul Disabled",
+            "Deskripsi",
+            IssuePriority.High,
+            "Bug",
+            1,
+            101,
+            "usr-pm"
+        );
+
+        var result = await controller.CreateIssue(request) as ObjectResult;
+        result.Should().NotBeNull();
+        result!.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+
+        // Restore
+        company.EnableTicketing = true;
+        await _context.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task CreateInvoice_WhenInvoicingDisabled_Returns403Forbidden()
+    {
+        var company = await _context.Companies.FindAsync(1);
+        company!.EnableInvoicing = false;
+        await _context.SaveChangesAsync();
+
+        var controller = new InvoicesController(_context, _pmTenantService);
+        var request = new CreateInvoiceRequest(
+            null,
+            1,
+            101,
+            "PT Klien",
+            "client@test.com",
+            "Jakarta",
+            DateTimeOffset.UtcNow,
+            DateTimeOffset.UtcNow.AddDays(14),
+            11.0m,
+            0m,
+            "Catatan",
+            new List<CreateInvoiceItemRequest> { new CreateInvoiceItemRequest("Item 1", 1, 5000000m) }
+        );
+
+        var result = await controller.CreateInvoice(request) as ObjectResult;
+        result.Should().NotBeNull();
+        result!.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+
+        // Restore
+        company.EnableInvoicing = true;
+        await _context.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task UploadDocument_WhenDmsDisabled_Returns403Forbidden()
+    {
+        var company = await _context.Companies.FindAsync(1);
+        company!.EnableDms = false;
+        await _context.SaveChangesAsync();
+
+        var controller = new DocumentsController(_context, _pmTenantService, _env);
+        var bytes = Encoding.UTF8.GetBytes("Konten tes");
+        using var stream = new MemoryStream(bytes);
+        var mockFormFile = new FormFile(stream, 0, bytes.Length, "file", "test_disabled.pdf")
+        {
+            Headers = new HeaderDictionary(),
+            ContentType = "application/pdf"
+        };
+
+        var result = await controller.UploadDocument(
+            mockFormFile,
+            "Dokumen Saat Disabled",
+            "Deskripsi",
+            "Kontrak",
+            1,
+            101
+        ) as ObjectResult;
+        result.Should().NotBeNull();
+        result!.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+
+        // Restore
+        company.EnableDms = true;
+        await _context.SaveChangesAsync();
+    }
+
     // Helper fake classes
     private class FakeTenantService : ICurrentTenantService
     {
@@ -448,3 +568,4 @@ public class NewEnterpriseModulesTests : IDisposable
         public string EnvironmentName { get; set; } = "Development";
     }
 }
+

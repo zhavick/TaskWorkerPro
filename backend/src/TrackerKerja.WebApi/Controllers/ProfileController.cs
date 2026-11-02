@@ -71,7 +71,10 @@ public class ProfileController : ControllerBase
             user.IsApproved,
             roles,
             user.PhoneNumber,
-            user.CreatedAt
+            user.CreatedAt,
+            user.Company?.EnableDms ?? true,
+            user.Company?.EnableTicketing ?? true,
+            user.Company?.EnableInvoicing ?? true
         );
 
         return Ok(new { success = true, data = profile });

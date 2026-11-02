@@ -192,10 +192,14 @@ public class IssuesController : ControllerBase
             return BadRequest(new { success = false, message = "Perusahaan wajib ditentukan untuk membuat tiket." });
         }
 
-        var companyExists = await _context.Companies.AnyAsync(c => c.Id == targetCompanyId.Value);
-        if (!companyExists)
+        var company = await _context.Companies.FirstOrDefaultAsync(c => c.Id == targetCompanyId.Value);
+        if (company == null)
         {
             return BadRequest(new { success = false, message = "Perusahaan tidak valid." });
+        }
+        if (!company.EnableTicketing)
+        {
+            return StatusCode(403, new { success = false, message = "Modul Issues & Ticketing System dinonaktifkan untuk perusahaan ini. Hubungi Administrator untuk mengaktifkan modul." });
         }
 
         if (request.ProjectId.HasValue)

@@ -64,7 +64,7 @@ function getFileIcon(fileName: string, contentType: string) {
 
 export default function DocumentsPage() {
   const queryClient = useQueryClient();
-  const { user, isAdmin, isProjectManager } = useCurrentUser();
+  const { user, isAdmin, isProjectManager, enableDms } = useCurrentUser();
 
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("Semua");
@@ -197,6 +197,22 @@ export default function DocumentsPage() {
   const totalStorageBytes = useMemo(() => {
     return documents.reduce((sum, d) => sum + (Number(d.fileSize) || 0), 0);
   }, [documents]);
+
+  if (!isAdmin && !enableDms) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] text-center p-8">
+        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400 mb-4 shadow-sm">
+          <FolderArchive className="h-8 w-8" />
+        </div>
+        <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+          Modul Dokumen (DMS) Dinonaktifkan
+        </h2>
+        <p className="mt-2 max-w-md text-sm text-gray-500 dark:text-gray-400">
+          Modul Document Management System dinonaktifkan untuk perusahaan <strong>{user?.companyName || "Anda"}</strong>. Silakan hubungi Administrator jika perusahaan Anda memerlukan akses ke modul ini.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 px-2 py-4 lg:px-6">

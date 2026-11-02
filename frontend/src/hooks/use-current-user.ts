@@ -19,6 +19,9 @@ export interface UserProfileInfo {
   roles: string[];
   phoneNumber?: string | null;
   createdAt?: string;
+  enableDms?: boolean;
+  enableTicketing?: boolean;
+  enableInvoicing?: boolean;
 }
 
 export function useCurrentUser() {
@@ -87,6 +90,9 @@ export function useCurrentUser() {
     isStaff,
     canManageCompany,
     isPurgeAdmin,
+    enableDms: user?.enableDms ?? true,
+    enableTicketing: user?.enableTicketing ?? true,
+    enableInvoicing: user?.enableInvoicing ?? true,
     isLoading: isLoading && !user,
   };
 }

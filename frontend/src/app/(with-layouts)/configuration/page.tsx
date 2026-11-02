@@ -70,6 +70,7 @@ import {
 } from "@/components/sync/sync-progress-modal";
 import { TimesheetTemplateManager } from "@/components/configuration/timesheet-template-manager";
 import { MasterHolidaysManager } from "@/components/configuration/master-holidays-manager";
+import { CompanyModuleMatrixManager } from "@/components/configuration/company-module-matrix-manager";
 
 const COLOR_PRESETS = [
   "#6366F1", // Indigo
@@ -89,7 +90,7 @@ export default function ConfigurationPage() {
   const isPurgeOnly = isPurgeAdmin && !isAdmin;
 
   const [activeTab, setActiveTab] = useState<
-    "general" | "security" | "smtp" | "audit" | "master" | "sync" | "maintenance"
+    "general" | "security" | "smtp" | "audit" | "master" | "sync" | "maintenance" | "matrix"
   >("general");
 
   useEffect(() => {
@@ -1218,6 +1219,18 @@ export default function ConfigurationPage() {
             >
               <RefreshCw className="h-4 w-4" />
               Sinkronisasi Host Induk
+            </button>
+
+            <button
+              onClick={() => setActiveTab("matrix")}
+              className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition ${
+                activeTab === "matrix"
+                  ? "bg-indigo-600 text-white shadow-xs"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300"
+              }`}
+            >
+              <Building2 className="h-4 w-4" />
+              Matriks Modul Perusahaan
             </button>
           </>
         ) : null}
@@ -3342,6 +3355,13 @@ export default function ConfigurationPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* TAB 8: MATRIKS MODUL PERUSAHAAN */}
+      {/* ======================================================== */}
+      {activeTab === "matrix" && (
+        <CompanyModuleMatrixManager />
       )}
 
       {/* ======================================================== */}
