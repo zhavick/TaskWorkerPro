@@ -48,7 +48,6 @@ public class CurrentTenantService : ICurrentTenantService
     {
         get
         {
-            if (IsAdmin) return true;
             var user = _httpContextAccessor.HttpContext?.User;
             if (user == null) return false;
             if (user.IsInRole("Project Manager") || user.IsInRole("ProjectManager") || user.IsInRole("PM"))

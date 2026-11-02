@@ -30,14 +30,19 @@ public class ProjectsController : ControllerBase
         [FromQuery] string? search = null)
     {
         var query = _context.Projects
+            .Include(p => p.Company)
             .Include(p => p.ProjectManager)
             .Include(p => p.Tasks)
             .AsNoTracking()
             .AsQueryable();
 
-        if (companyId.HasValue && _tenantService.IsAdmin)
+        if (companyId.HasValue && (_tenantService.IsAdmin || _tenantService.IsProjectManager))
         {
             query = query.Where(p => p.CompanyId == companyId.Value);
+        }
+        else if (!_tenantService.IsAdmin && _tenantService.CompanyId.HasValue)
+        {
+            query = query.Where(p => p.CompanyId == _tenantService.CompanyId.Value);
         }
 
         if (status.HasValue)
@@ -85,7 +90,10 @@ public class ProjectsController : ControllerBase
                 completedTasks,
                 progress,
                 p.Deadline,
-                p.CreatedAt
+                p.CreatedAt,
+                p.CompanyId,
+                p.Company?.Name,
+                p.Company?.Code
             );
         }).ToList();
 
@@ -196,6 +204,7 @@ public class ProjectsController : ControllerBase
     public async Task<IActionResult> GetProjectById(int id)
     {
         var project = await _context.Projects
+            .Include(p => p.Company)
             .Include(p => p.ProjectManager)
             .Include(p => p.Tasks)
                 .ThenInclude(t => t.AssignedToUser)
@@ -271,18 +280,43 @@ public class ProjectsController : ControllerBase
             totalDurationSeconds,
             project.Deadline,
             project.CreatedAt,
-            taskItems
+            taskItems,
+            project.CompanyId,
+            project.Company?.Name,
+            project.Company?.Code
         );
 
         return Ok(new { success = true, data = dto });
     }
 
-    private async Task<bool> IsUserAuthorizedForProjectAdminAsync(string? userId)
+    private async Task<bool> IsUserProjectManagerAsync(string? userId)
+    {
+        if (_tenantService.IsProjectManager) return true;
+        if (string.IsNullOrEmpty(userId)) return false;
+
+        var isDbPm = await _context.UserRoles.AnyAsync(ur => ur.UserId == userId && 
+            (ur.RoleId == "r-project-manager" || _context.Roles.Any(r => r.Id == ur.RoleId && (r.Name == "Project Manager" || r.Name == "ProjectManager" || r.Name == "PM"))));
+        if (isDbPm) return true;
+
+        var user = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId);
+        if (user != null)
+        {
+            if (user.JobTitle.Contains("Project Manager", StringComparison.OrdinalIgnoreCase) || user.JobTitle.Equals("PM", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private async Task<bool> IsUserSystemAdminAsync(string? userId)
     {
         if (_tenantService.IsAdmin) return true;
         if (string.IsNullOrEmpty(userId)) return false;
 
-        var isDbAdmin = await _context.UserRoles.AnyAsync(ur => ur.UserId == userId && (ur.RoleId == "r-admin" || _context.Roles.Any(r => r.Id == ur.RoleId && (r.Name == "Administrator" || r.Name == "Admin" || r.Name == "SuperAdmin"))));
+        var isDbAdmin = await _context.UserRoles.AnyAsync(ur => ur.UserId == userId && 
+            (ur.RoleId == "r-admin" || _context.Roles.Any(r => r.Id == ur.RoleId && (r.Name == "Administrator" || r.Name == "Admin" || r.Name == "SuperAdmin"))));
         if (isDbAdmin) return true;
 
         var user = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId);
@@ -306,10 +340,56 @@ public class ProjectsController : ControllerBase
     public async Task<IActionResult> CreateProject([FromBody] CreateProjectRequest request)
     {
         var currentUserId = _tenantService.UserId;
-        var isAuthorized = await IsUserAuthorizedForProjectAdminAsync(currentUserId);
-        if (!isAuthorized)
+        var isPm = await IsUserProjectManagerAsync(currentUserId);
+        var isSystemAdmin = await IsUserSystemAdminAsync(currentUserId);
+
+        // Aturan 2: Admin sistem yang berfokus pada perawatan aplikasi tidak dapat membuat proyek
+        if (isSystemAdmin && !isPm)
         {
-            return StatusCode(403, new { success = false, message = "Hanya Administrator yang berwenang menambahkan proyek baru." });
+            return StatusCode(403, new { success = false, message = "Administrator sistem berfokus pada perawatan aplikasi dan tidak dapat membuat proyek. Pembuatan proyek didelegasikan kepada Project Manager perusahaan." });
+        }
+
+        if (!isPm)
+        {
+            return StatusCode(403, new { success = false, message = "Hanya Project Manager perusahaan yang berwenang menambahkan proyek baru." });
+        }
+
+        // Tentukan target CompanyId
+        int? targetCompanyId = request.CompanyId ?? _tenantService.CompanyId;
+        if (!targetCompanyId.HasValue && !string.IsNullOrEmpty(currentUserId))
+        {
+            var currentUser = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == currentUserId);
+            targetCompanyId = currentUser?.CompanyId;
+        }
+
+        if (!targetCompanyId.HasValue)
+        {
+            return BadRequest(new { success = false, message = "Perusahaan wajib dipilih untuk membuat proyek." });
+        }
+
+        var companyExists = await _context.Companies.AnyAsync(c => c.Id == targetCompanyId.Value);
+        if (!companyExists)
+        {
+            return BadRequest(new { success = false, message = "Perusahaan yang dipilih tidak valid." });
+        }
+
+        // Validasi ProjectManagerId: harus member dari perusahaan tersebut
+        string? projectManagerId = request.ProjectManagerId;
+        if (!string.IsNullOrEmpty(projectManagerId))
+        {
+            var pmUser = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == projectManagerId);
+            if (pmUser == null)
+            {
+                return BadRequest(new { success = false, message = "Project Manager yang dipilih tidak ditemukan." });
+            }
+            if (pmUser.CompanyId != targetCompanyId.Value)
+            {
+                return BadRequest(new { success = false, message = "Project Manager harus merupakan anggota dari perusahaan proyek tersebut." });
+            }
+        }
+        else
+        {
+            projectManagerId = currentUserId;
         }
 
         var project = new Project
@@ -318,9 +398,9 @@ public class ProjectsController : ControllerBase
             Description = request.Description,
             Color = request.Color,
             Status = request.Status,
-            CompanyId = _tenantService.CompanyId,
+            CompanyId = targetCompanyId,
             ClientName = request.ClientName,
-            ProjectManagerId = request.ProjectManagerId,
+            ProjectManagerId = projectManagerId,
             Budget = request.Budget,
             ActualCost = request.ActualCost,
             Deadline = request.Deadline,
@@ -341,10 +421,41 @@ public class ProjectsController : ControllerBase
         var project = await _context.Projects.FirstOrDefaultAsync(p => p.Id == id);
         if (project == null) return NotFound(new { success = false, message = "Proyek tidak ditemukan." });
 
-        var isAuthorized = await IsUserAuthorizedForProjectAdminAsync(currentUserId) || (currentUserId != null && project.ProjectManagerId == currentUserId);
+        var isPm = await IsUserProjectManagerAsync(currentUserId);
+        var isAuthorized = isPm || (currentUserId != null && project.ProjectManagerId == currentUserId);
         if (!isAuthorized)
         {
-            return StatusCode(403, new { success = false, message = "Hanya Administrator atau Project Manager yang berwenang mengubah data proyek." });
+            return StatusCode(403, new { success = false, message = "Hanya Project Manager yang berwenang mengubah data proyek." });
+        }
+
+        int? targetCompanyId = request.CompanyId ?? project.CompanyId ?? _tenantService.CompanyId;
+        if (targetCompanyId.HasValue)
+        {
+            var companyExists = await _context.Companies.AnyAsync(c => c.Id == targetCompanyId.Value);
+            if (!companyExists)
+            {
+                return BadRequest(new { success = false, message = "Perusahaan yang dipilih tidak valid." });
+            }
+            project.CompanyId = targetCompanyId.Value;
+        }
+
+        // Validasi ProjectManagerId jika diubah
+        if (!string.IsNullOrEmpty(request.ProjectManagerId))
+        {
+            var pmUser = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == request.ProjectManagerId);
+            if (pmUser == null)
+            {
+                return BadRequest(new { success = false, message = "Project Manager yang dipilih tidak ditemukan." });
+            }
+            if (project.CompanyId.HasValue && pmUser.CompanyId != project.CompanyId.Value)
+            {
+                return BadRequest(new { success = false, message = "Project Manager harus merupakan anggota dari perusahaan proyek tersebut." });
+            }
+            project.ProjectManagerId = request.ProjectManagerId;
+        }
+        else
+        {
+            project.ProjectManagerId = null;
         }
 
         project.Name = request.Name.Trim();
@@ -352,7 +463,6 @@ public class ProjectsController : ControllerBase
         project.Color = request.Color;
         project.Status = request.Status;
         project.ClientName = request.ClientName;
-        project.ProjectManagerId = request.ProjectManagerId;
         project.Budget = request.Budget;
         project.ActualCost = request.ActualCost;
         project.Deadline = request.Deadline;
@@ -367,14 +477,15 @@ public class ProjectsController : ControllerBase
     public async Task<IActionResult> DeleteProject(int id)
     {
         var currentUserId = _tenantService.UserId;
-        var isAuthorized = await IsUserAuthorizedForProjectAdminAsync(currentUserId);
-        if (!isAuthorized)
-        {
-            return StatusCode(403, new { success = false, message = "Hanya Administrator yang berwenang menghapus proyek." });
-        }
-
         var project = await _context.Projects.FirstOrDefaultAsync(p => p.Id == id);
         if (project == null) return NotFound(new { success = false, message = "Proyek tidak ditemukan." });
+
+        var isPm = await IsUserProjectManagerAsync(currentUserId);
+        var isAuthorized = isPm || (currentUserId != null && project.ProjectManagerId == currentUserId);
+        if (!isAuthorized)
+        {
+            return StatusCode(403, new { success = false, message = "Hanya Project Manager yang berwenang menghapus proyek." });
+        }
 
         _context.Projects.Remove(project);
         await _context.SaveChangesAsync();
@@ -385,9 +496,19 @@ public class ProjectsController : ControllerBase
     [HttpGet("{id}/unassigned-tasks")]
     public async Task<IActionResult> GetUnassignedTasks(int id)
     {
-        var tasks = await _context.Tasks
+        var project = await _context.Projects.AsNoTracking().FirstOrDefaultAsync(p => p.Id == id);
+        if (project == null) return NotFound(new { success = false, message = "Proyek tidak ditemukan." });
+
+        var query = _context.Tasks
             .AsNoTracking()
-            .Where(t => t.ProjectId == null)
+            .Where(t => t.ProjectId == null);
+
+        if (project.CompanyId.HasValue)
+        {
+            query = query.Where(t => t.CompanyId == project.CompanyId.Value);
+        }
+
+        var tasks = await query
             .Select(t => new { t.Id, t.Title, t.Priority, t.Status, t.Progress, t.DueDate })
             .ToListAsync();
 
@@ -406,7 +527,15 @@ public class ProjectsController : ControllerBase
 
         foreach (var task in tasksToAssign)
         {
+            if (project.CompanyId.HasValue && task.CompanyId.HasValue && task.CompanyId != project.CompanyId)
+            {
+                return BadRequest(new { success = false, message = $"Tugas \"{task.Title}\" tidak berasal dari perusahaan yang sama dengan proyek ini." });
+            }
             task.ProjectId = project.Id;
+            if (project.CompanyId.HasValue && !task.CompanyId.HasValue)
+            {
+                task.CompanyId = project.CompanyId;
+            }
             task.UpdatedAt = DateTimeOffset.UtcNow;
         }
 

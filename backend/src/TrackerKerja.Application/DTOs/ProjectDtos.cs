@@ -19,7 +19,10 @@ public record ProjectListDto(
     int CompletedTasks,
     int ProgressPercent,
     DateTimeOffset? Deadline,
-    DateTimeOffset CreatedAt
+    DateTimeOffset CreatedAt,
+    int? CompanyId = null,
+    string? CompanyName = null,
+    string? CompanyCode = null
 );
 
 public record CreateProjectRequest(
@@ -31,7 +34,8 @@ public record CreateProjectRequest(
     string? ProjectManagerId,
     decimal Budget,
     decimal ActualCost,
-    DateTimeOffset? Deadline
+    DateTimeOffset? Deadline,
+    int? CompanyId = null
 );
 
 public record UpdateProjectRequest(
@@ -43,7 +47,8 @@ public record UpdateProjectRequest(
     string? ProjectManagerId,
     decimal Budget,
     decimal ActualCost,
-    DateTimeOffset? Deadline
+    DateTimeOffset? Deadline,
+    int? CompanyId = null
 );
 
 public record BulkAssignTasksRequest(
@@ -88,5 +93,8 @@ public record ProjectDetailDto(
     long TotalWorkDurationSeconds,
     DateTimeOffset? Deadline,
     DateTimeOffset CreatedAt,
-    List<ProjectTaskItemDto> Tasks
+    List<ProjectTaskItemDto> Tasks,
+    int? CompanyId = null,
+    string? CompanyName = null,
+    string? CompanyCode = null
 );
