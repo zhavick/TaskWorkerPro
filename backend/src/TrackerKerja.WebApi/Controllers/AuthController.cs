@@ -41,17 +41,22 @@ public class AuthController : ControllerBase
 
         if (request.CompanyOption.Equals("existing", StringComparison.OrdinalIgnoreCase))
         {
-            if (string.IsNullOrWhiteSpace(request.ExistingCompanyCode))
+            var code = request.ResolvedCompanyCode?.Trim();
+            if (string.IsNullOrWhiteSpace(code))
             {
                 return BadRequest(new { success = false, message = "Kode perusahaan wajib diisi." });
             }
 
             var company = await _context.Companies
-                .FirstOrDefaultAsync(c => c.Code.ToUpper() == request.ExistingCompanyCode.Trim().ToUpper());
+                .FirstOrDefaultAsync(c => c.Code.ToUpper() == code.ToUpper());
 
             if (company == null)
             {
-                return BadRequest(new { success = false, message = "Kode perusahaan tidak ditemukan atau tidak valid." });
+                return BadRequest(new
+                {
+                    success = false,
+                    message = $"Kode perusahaan '{code.ToUpper()}' tidak ditemukan. Silakan periksa kembali kode perusahaan Anda atau pilih opsi 'Perusahaan Baru' jika ingin mendaftarkan workspace korporat baru."
+                });
             }
 
             companyId = company.Id;
