@@ -566,6 +566,108 @@ public class NewEnterpriseModulesTests : IDisposable
         await _context.SaveChangesAsync();
     }
 
+    [Fact]
+    public async Task CreateMember_AsAdmin_ShouldCreateActiveUserWithAssignments()
+    {
+        var task = new WorkTask
+        {
+            Title = "Task For New Member",
+            Description = "Desc",
+            Status = Domain.Enums.TaskStatus.Todo,
+            Priority = Domain.Enums.TaskPriority.Medium,
+            CompanyId = 1
+        };
+        _context.Tasks.Add(task);
+        await _context.SaveChangesAsync();
+
+        var controller = new MembersController(_context, _adminTenantService);
+        var request = new CreateMemberRequest(
+            FullName: "Budi Santoso",
+            Email: "budi.santoso@wahanainsurance.com",
+            Password: "Password123!",
+            JobTitle: "Lead DevOps Engineer",
+            CompanyId: 1,
+            PhoneNumber: "08123456789",
+            Role: "Staff",
+            AssignedTaskIds: new List<int> { task.Id }
+        );
+
+        var result = await controller.CreateMember(request) as OkObjectResult;
+        result.Should().NotBeNull();
+        result!.StatusCode.Should().Be(200);
+
+        var createdUser = await _context.Users.FirstOrDefaultAsync(u => u.Email == "budi.santoso@wahanainsurance.com");
+        createdUser.Should().NotBeNull();
+        createdUser!.FullName.Should().Be("Budi Santoso");
+        createdUser.IsApproved.Should().BeTrue();
+        createdUser.IsActive.Should().BeTrue();
+        createdUser.JobTitle.Should().Be("Lead DevOps Engineer");
+
+        var updatedTask = await _context.Tasks.FirstOrDefaultAsync(t => t.Id == task.Id);
+        updatedTask.Should().NotBeNull();
+        updatedTask!.AssignedToUserId.Should().Be(createdUser.Id);
+    }
+
+    [Fact]
+    public async Task DeactivateMember_AsProjectManager_ShouldSetIsActiveFalseAndResignedAt()
+    {
+        var targetUser = new AppUser
+        {
+            Id = "usr-resign-test",
+            FullName = "Andi Resign",
+            Email = "andi.resign@wahanainsurance.com",
+            JobTitle = "Staff",
+            CompanyId = 1,
+            IsApproved = true,
+            IsActive = true
+        };
+        _context.Users.Add(targetUser);
+        await _context.SaveChangesAsync();
+
+        var controller = new MembersController(_context, _pmTenantService);
+        var result = await controller.DeactivateMember(targetUser.Id, new DeactivateMemberRequest("Karyawan resign sukarela")) as OkObjectResult;
+
+        result.Should().NotBeNull();
+        result!.StatusCode.Should().Be(200);
+
+        var updatedUser = await _context.Users.FirstOrDefaultAsync(u => u.Id == targetUser.Id);
+        updatedUser.Should().NotBeNull();
+        updatedUser!.IsActive.Should().BeFalse();
+        updatedUser.ResignedAt.Should().NotBeNull();
+        updatedUser.ResignationReason.Should().Be("Karyawan resign sukarela");
+    }
+
+    [Fact]
+    public async Task ActivateMember_AsProjectManager_ShouldReactivateUser()
+    {
+        var targetUser = new AppUser
+        {
+            Id = "usr-reactivate-test",
+            FullName = "Siti Kembali",
+            Email = "siti.kembali@wahanainsurance.com",
+            JobTitle = "Staff",
+            CompanyId = 1,
+            IsApproved = true,
+            IsActive = false,
+            ResignedAt = DateTimeOffset.UtcNow,
+            ResignationReason = "Resign"
+        };
+        _context.Users.Add(targetUser);
+        await _context.SaveChangesAsync();
+
+        var controller = new MembersController(_context, _pmTenantService);
+        var result = await controller.ActivateMember(targetUser.Id) as OkObjectResult;
+
+        result.Should().NotBeNull();
+        result!.StatusCode.Should().Be(200);
+
+        var updatedUser = await _context.Users.FirstOrDefaultAsync(u => u.Id == targetUser.Id);
+        updatedUser.Should().NotBeNull();
+        updatedUser!.IsActive.Should().BeTrue();
+        updatedUser.ResignedAt.Should().BeNull();
+        updatedUser.ResignationReason.Should().BeNull();
+    }
+
     // Helper fake classes
     private class FakeTenantService : ICurrentTenantService
     {

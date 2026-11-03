@@ -29,6 +29,9 @@ public class AppUser
     public DateTimeOffset? ApprovedAt { get; set; }
     public string? ApprovedByUserId { get; set; }
     public string? RejectionReason { get; set; }
+    public bool IsActive { get; set; } = true;
+    public DateTimeOffset? ResignedAt { get; set; }
+    public string? ResignationReason { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 
     // Navigation properties

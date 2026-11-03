@@ -16,6 +16,8 @@ public class MembersController : ControllerBase
 {
     private readonly AppDbContext _context;
     private readonly ICurrentTenantService _tenantService;
+    private static bool _schemaChecked = false;
+    private static readonly SemaphoreSlim _schemaLock = new(1, 1);
 
     public MembersController(AppDbContext context, ICurrentTenantService tenantService)
     {
@@ -23,12 +25,100 @@ public class MembersController : ControllerBase
         _tenantService = tenantService;
     }
 
+    private async Task EnsureUserSchemaAsync()
+    {
+        if (_schemaChecked) return;
+        await _schemaLock.WaitAsync();
+        try
+        {
+            if (_schemaChecked) return;
+            if (_context.Database.IsRelational())
+            {
+                await _context.Database.ExecuteSqlRawAsync(@"
+                    DO $$ 
+                    BEGIN 
+                        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'asp_net_users') THEN 
+                            ALTER TABLE asp_net_users ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;
+                            ALTER TABLE asp_net_users ADD COLUMN IF NOT EXISTS resigned_at TIMESTAMPTZ;
+                            ALTER TABLE asp_net_users ADD COLUMN IF NOT EXISTS resignation_reason VARCHAR(500);
+                        END IF;
+                    END $$;
+                ");
+            }
+            _schemaChecked = true;
+        }
+        catch
+        {
+            // Ignore for in-memory provider
+        }
+        finally
+        {
+            _schemaLock.Release();
+        }
+    }
+
+    private async Task<bool> IsUserProjectManagerOrAdminAsync()
+    {
+        if (_tenantService.IsAdmin || _tenantService.IsProjectManager) return true;
+        var userId = _tenantService.UserId;
+        if (string.IsNullOrEmpty(userId)) return false;
+
+        var isPmRole = await _context.UserRoles.AnyAsync(ur => ur.UserId == userId &&
+            (ur.RoleId == "r-pm" || _context.Roles.Any(r => r.Id == ur.RoleId && (r.Name == "Project Manager" || r.Name == "ProjectManager"))));
+        if (isPmRole) return true;
+
+        var user = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId);
+        if (user != null && (user.JobTitle.Contains("Project Manager", StringComparison.OrdinalIgnoreCase) ||
+                             user.JobTitle.Equals("PM", StringComparison.OrdinalIgnoreCase) ||
+                             user.JobTitle.Contains("Admin", StringComparison.OrdinalIgnoreCase)))
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    private async Task<bool> IsUserSystemAdminAsync()
+    {
+        if (_tenantService.IsAdmin) return true;
+        var userId = _tenantService.UserId;
+        if (string.IsNullOrEmpty(userId)) return false;
+
+        var isDbAdmin = await _context.UserRoles.AnyAsync(ur => ur.UserId == userId &&
+            (ur.RoleId == "r-admin" || _context.Roles.Any(r => r.Id == ur.RoleId && (r.Name == "Administrator" || r.Name == "Admin"))));
+        if (isDbAdmin) return true;
+
+        var user = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId);
+        if (user != null && (user.Id == "usr-superadmin" ||
+                             user.Email?.Equals("admin@trackerkerja.local", StringComparison.OrdinalIgnoreCase) == true ||
+                             user.JobTitle.Contains("Admin", StringComparison.OrdinalIgnoreCase)))
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    private async Task<int?> GetUserCompanyIdAsync()
+    {
+        if (_tenantService.CompanyId.HasValue) return _tenantService.CompanyId.Value;
+        if (!string.IsNullOrEmpty(_tenantService.UserId))
+        {
+            var user = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == _tenantService.UserId);
+            return user?.CompanyId;
+        }
+        return null;
+    }
+
     [HttpGet]
     public async Task<IActionResult> GetMembers(
         [FromQuery] int? companyId = null,
         [FromQuery] bool? isApproved = null,
+        [FromQuery] bool? isActive = null,
         [FromQuery] string? search = null)
     {
+        await EnsureUserSchemaAsync();
+
         var query = _context.Users
             .Include(u => u.Company)
             .AsNoTracking()
@@ -53,6 +143,11 @@ public class MembersController : ControllerBase
         if (isApproved.HasValue)
         {
             query = query.Where(u => u.IsApproved == isApproved.Value);
+        }
+
+        if (isActive.HasValue)
+        {
+            query = query.Where(u => u.IsActive == isActive.Value);
         }
 
         if (!string.IsNullOrWhiteSpace(search))
@@ -130,7 +225,10 @@ public class MembersController : ControllerBase
                 u.PhoneNumber,
                 memberProjects,
                 u.CoverPictureUrl,
-                CanPurgeData: isUserAdmin || isUserPurgeAdmin
+                CanPurgeData: isUserAdmin || isUserPurgeAdmin,
+                IsActive: u.IsActive,
+                ResignedAt: u.ResignedAt,
+                ResignationReason: u.ResignationReason
             );
         }).ToList();
 
@@ -290,6 +388,9 @@ public class MembersController : ControllerBase
                 canPurgeData = isUserAdmin || isUserPurgeAdmin,
                 phoneNumber = user.PhoneNumber,
                 createdAt = user.CreatedAt,
+                isActive = user.IsActive,
+                resignedAt = user.ResignedAt,
+                resignationReason = user.ResignationReason,
                 kpi = new
                 {
                     totalTasks,
@@ -775,6 +876,289 @@ public class MembersController : ControllerBase
             message = $"{users.Count} anggota dan {tasks.Count} tugas berhasil dipindahkan ke {targetCompany.Name} ({targetCompany.Code}).",
             updatedUserCount = users.Count,
             updatedTaskCount = tasks.Count
+        });
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> CreateMember([FromBody] CreateMemberRequest request)
+    {
+        await EnsureUserSchemaAsync();
+
+        var isSystemAdmin = await IsUserSystemAdminAsync();
+        if (!isSystemAdmin)
+        {
+            return StatusCode(403, new { success = false, message = "Hanya Administrator aplikasi yang dapat menambahkan anggota tim langsung." });
+        }
+
+        if (string.IsNullOrWhiteSpace(request.FullName))
+        {
+            return BadRequest(new { success = false, message = "Nama lengkap anggota tim wajib diisi." });
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Email) || !request.Email.Contains('@'))
+        {
+            return BadRequest(new { success = false, message = "Alamat email korporat tidak valid." });
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Password) || request.Password.Length < 6)
+        {
+            return BadRequest(new { success = false, message = "Kata sandi awal minimal 6 karakter." });
+        }
+
+        if (string.IsNullOrWhiteSpace(request.JobTitle))
+        {
+            return BadRequest(new { success = false, message = "Jabatan atau posisi wajib diisi." });
+        }
+
+        if (request.CompanyId <= 0)
+        {
+            return BadRequest(new { success = false, message = "Perusahaan korporat wajib dipilih." });
+        }
+
+        var company = await _context.Companies.FirstOrDefaultAsync(c => c.Id == request.CompanyId);
+        if (company == null)
+        {
+            return BadRequest(new { success = false, message = "Perusahaan tidak ditemukan." });
+        }
+
+        var cleanEmail = request.Email.Trim().ToLowerInvariant();
+        var emailExists = await _context.Users.AnyAsync(u => u.Email != null && u.Email.ToLower() == cleanEmail);
+        if (emailExists)
+        {
+            return BadRequest(new { success = false, message = $"Alamat email '{cleanEmail}' sudah digunakan oleh pengguna lain." });
+        }
+
+        var newUserId = Guid.NewGuid().ToString();
+        var newUser = new AppUser
+        {
+            Id = newUserId,
+            FullName = request.FullName.Trim(),
+            Email = cleanEmail,
+            NormalizedEmail = cleanEmail.ToUpperInvariant(),
+            UserName = cleanEmail,
+            NormalizedUserName = cleanEmail.ToUpperInvariant(),
+            JobTitle = request.JobTitle.Trim(),
+            CompanyId = request.CompanyId,
+            PhoneNumber = string.IsNullOrWhiteSpace(request.PhoneNumber) ? null : request.PhoneNumber.Trim(),
+            AvatarColor = string.IsNullOrWhiteSpace(request.AvatarColor) ? "#6366F1" : request.AvatarColor.Trim(),
+            PasswordHash = PasswordHasher.HashPassword(request.Password),
+            IsApproved = true,
+            ApprovedAt = DateTimeOffset.UtcNow,
+            ApprovedByUserId = _tenantService.UserId,
+            IsActive = true,
+            CreatedAt = DateTimeOffset.UtcNow,
+            EmailConfirmed = true
+        };
+
+        _context.Users.Add(newUser);
+
+        // Assign Role
+        var role = request.Role?.Trim() ?? "Staff";
+        if (role.Equals("Administrator", StringComparison.OrdinalIgnoreCase) || role.Equals("Admin", StringComparison.OrdinalIgnoreCase))
+        {
+            var adminRole = await _context.Roles.FirstOrDefaultAsync(r => r.Id == "r-admin" || r.Name == "Administrator");
+            var adminRoleId = adminRole?.Id ?? "r-admin";
+            _context.UserRoles.Add(new AppUserRole { UserId = newUserId, RoleId = adminRoleId });
+        }
+        else if (role.Equals("Project Manager", StringComparison.OrdinalIgnoreCase) || role.Equals("ProjectManager", StringComparison.OrdinalIgnoreCase) || role.Equals("PM", StringComparison.OrdinalIgnoreCase))
+        {
+            var pmRole = await _context.Roles.FirstOrDefaultAsync(r => r.Id == "r-pm" || r.Name == "Project Manager" || r.Name == "ProjectManager");
+            var pmRoleId = pmRole?.Id ?? "r-pm";
+            _context.UserRoles.Add(new AppUserRole { UserId = newUserId, RoleId = pmRoleId });
+        }
+        else if (role.Equals("DataPurgeAdmin", StringComparison.OrdinalIgnoreCase))
+        {
+            var purgeRole = await _context.Roles.FirstOrDefaultAsync(r => r.Id == "r-purge-admin" || r.Name == "DataPurgeAdmin");
+            var purgeRoleId = purgeRole?.Id ?? "r-purge-admin";
+            _context.UserRoles.Add(new AppUserRole { UserId = newUserId, RoleId = purgeRoleId });
+        }
+
+        // Direct Task Assignments
+        var assignedTasksCount = 0;
+        if (request.AssignedTaskIds != null && request.AssignedTaskIds.Count > 0)
+        {
+            var tasksToAssign = await _context.Tasks
+                .Where(t => request.AssignedTaskIds.Contains(t.Id))
+                .ToListAsync();
+
+            foreach (var t in tasksToAssign)
+            {
+                t.AssignedToUserId = newUserId;
+                t.CompanyId = request.CompanyId;
+                assignedTasksCount++;
+            }
+        }
+
+        await _context.SaveChangesAsync();
+
+        return Ok(new
+        {
+            success = true,
+            message = $"Anggota tim {newUser.FullName} berhasil didaftarkan dan diaktifkan langsung ke {company.Name} ({company.Code})." +
+                      (assignedTasksCount > 0 ? $" ({assignedTasksCount} tugas langsung dialokasikan)." : ""),
+            data = new
+            {
+                newUser.Id,
+                newUser.FullName,
+                newUser.Email,
+                newUser.JobTitle,
+                newUser.CompanyId,
+                companyName = company.Name,
+                companyCode = company.Code,
+                newUser.IsApproved,
+                newUser.IsActive,
+                assignedTasksCount
+            }
+        });
+    }
+
+    [HttpPost("{id}/deactivate")]
+    public async Task<IActionResult> DeactivateMember(string id, [FromBody] DeactivateMemberRequest? request = null)
+    {
+        await EnsureUserSchemaAsync();
+
+        var isAuthorized = await IsUserProjectManagerOrAdminAsync();
+        if (!isAuthorized)
+        {
+            return StatusCode(403, new { success = false, message = "Hanya Project Manager dan Administrator yang dapat menonaktifkan akun anggota tim." });
+        }
+
+        if (id == "usr-superadmin" || id == _tenantService.UserId)
+        {
+            return BadRequest(new { success = false, message = "Akun Super Administrator atau akun Anda sendiri tidak dapat dinonaktifkan." });
+        }
+
+        var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == id);
+        if (user == null)
+        {
+            return NotFound(new { success = false, message = "Pengguna tidak ditemukan." });
+        }
+
+        // Isolasi multi-tenant bagi Project Manager
+        if (!_tenantService.IsAdmin)
+        {
+            var myCompanyId = await GetUserCompanyIdAsync();
+            if (myCompanyId.HasValue && user.CompanyId.HasValue && user.CompanyId != myCompanyId)
+            {
+                return StatusCode(403, new { success = false, message = "Project Manager hanya dapat menonaktifkan staf dalam perusahaan Anda sendiri." });
+            }
+        }
+
+        user.IsActive = false;
+        user.ResignedAt = DateTimeOffset.UtcNow;
+        user.ResignationReason = string.IsNullOrWhiteSpace(request?.Reason) ? "Resign / Dinonaktifkan" : request.Reason.Trim();
+        user.LockoutEnd = DateTimeOffset.UtcNow.AddYears(100);
+
+        await _context.SaveChangesAsync();
+
+        return Ok(new
+        {
+            success = true,
+            message = $"Akun {user.FullName} telah berhasil dinonaktifkan dengan status Resign.",
+            data = new
+            {
+                user.Id,
+                user.FullName,
+                user.IsActive,
+                user.ResignedAt,
+                user.ResignationReason
+            }
+        });
+    }
+
+    [HttpPost("{id}/activate")]
+    public async Task<IActionResult> ActivateMember(string id)
+    {
+        await EnsureUserSchemaAsync();
+
+        var isAuthorized = await IsUserProjectManagerOrAdminAsync();
+        if (!isAuthorized)
+        {
+            return StatusCode(403, new { success = false, message = "Hanya Project Manager dan Administrator yang dapat mengaktifkan kembali akun anggota tim." });
+        }
+
+        var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == id);
+        if (user == null)
+        {
+            return NotFound(new { success = false, message = "Pengguna tidak ditemukan." });
+        }
+
+        // Isolasi multi-tenant bagi Project Manager
+        if (!_tenantService.IsAdmin)
+        {
+            var myCompanyId = await GetUserCompanyIdAsync();
+            if (myCompanyId.HasValue && user.CompanyId.HasValue && user.CompanyId != myCompanyId)
+            {
+                return StatusCode(403, new { success = false, message = "Project Manager hanya dapat mengaktifkan staf dalam perusahaan Anda sendiri." });
+            }
+        }
+
+        user.IsActive = true;
+        user.ResignedAt = null;
+        user.ResignationReason = null;
+        user.LockoutEnd = null;
+        user.AccessFailedCount = 0;
+
+        await _context.SaveChangesAsync();
+
+        return Ok(new
+        {
+            success = true,
+            message = $"Akun {user.FullName} telah berhasil diaktifkan kembali.",
+            data = new
+            {
+                user.Id,
+                user.FullName,
+                user.IsActive
+            }
+        });
+    }
+
+    [HttpPost("{id}/assign-tasks")]
+    public async Task<IActionResult> AssignMemberTasks(string id, [FromBody] AssignMemberProjectsTasksRequest request)
+    {
+        var isAuthorized = await IsUserProjectManagerOrAdminAsync();
+        if (!isAuthorized)
+        {
+            return StatusCode(403, new { success = false, message = "Hanya Project Manager dan Administrator yang dapat melakukan penugasan (assignment) tugas." });
+        }
+
+        var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == id);
+        if (user == null)
+        {
+            return NotFound(new { success = false, message = "Pengguna tidak ditemukan." });
+        }
+
+        if (!_tenantService.IsAdmin)
+        {
+            var myCompanyId = await GetUserCompanyIdAsync();
+            if (myCompanyId.HasValue && user.CompanyId.HasValue && user.CompanyId != myCompanyId)
+            {
+                return StatusCode(403, new { success = false, message = "Project Manager hanya dapat memberikan assignment kepada staf dalam perusahaan Anda sendiri." });
+            }
+        }
+
+        var assignedCount = 0;
+        if (request.TaskIds != null && request.TaskIds.Count > 0)
+        {
+            var tasks = await _context.Tasks.Where(t => request.TaskIds.Contains(t.Id)).ToListAsync();
+            foreach (var t in tasks)
+            {
+                t.AssignedToUserId = user.Id;
+                if (user.CompanyId.HasValue)
+                {
+                    t.CompanyId = user.CompanyId.Value;
+                }
+                assignedCount++;
+            }
+            await _context.SaveChangesAsync();
+        }
+
+        return Ok(new
+        {
+            success = true,
+            message = $"{assignedCount} tugas berhasil dialokasikan kepada {user.FullName}.",
+            assignedCount
         });
     }
 }

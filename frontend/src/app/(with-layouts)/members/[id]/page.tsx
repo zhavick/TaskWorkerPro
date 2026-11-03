@@ -97,6 +97,9 @@ interface MemberDetailData {
   isApproved: boolean;
   roles: string[];
   phoneNumber?: string | null;
+  isActive?: boolean;
+  resignedAt?: string | null;
+  resignationReason?: string | null;
   createdAt: string;
   kpi: {
     totalTasks: number;
@@ -391,6 +394,11 @@ export default function MemberSpecialProfilePage() {
                   {memberData.isApproved && (
                     <span title="Akun Terverifikasi">
                       <CheckCircle2 className="h-5 w-5 text-emerald-500 shrink-0" />
+                    </span>
+                  )}
+                  {memberData.isActive === false && (
+                    <span className="rounded-full bg-slate-200 border border-slate-400 px-2.5 py-0.5 text-[10px] font-black text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                      Resign
                     </span>
                   )}
                   {memberData.roles?.includes("Administrator") && (

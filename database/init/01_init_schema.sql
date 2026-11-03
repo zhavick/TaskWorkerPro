@@ -52,6 +52,9 @@ CREATE TABLE IF NOT EXISTS asp_net_users (
     approved_at TIMESTAMPTZ,
     approved_by_user_id VARCHAR(450),
     rejection_reason VARCHAR(500),
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    resigned_at TIMESTAMPTZ,
+    resignation_reason VARCHAR(500),
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 

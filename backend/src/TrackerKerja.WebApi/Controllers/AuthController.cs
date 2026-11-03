@@ -162,6 +162,16 @@ public class AuthController : ControllerBase
             });
         }
 
+        // Cek Status Keaktifan (Resign / Non-aktif)
+        if (!user.IsActive)
+        {
+            return StatusCode(403, new
+            {
+                success = false,
+                message = "Akun Anda telah dinonaktifkan (status resign / tidak aktif). Hubungi Project Manager atau Administrator untuk informasi lebih lanjut."
+            });
+        }
+
         // Reset Counter Gagal
         user.AccessFailedCount = 0;
         user.LockoutEnd = null;

@@ -20,6 +20,12 @@ public static class DbInitializer
                     -- Auto-migrate columns & types for PostgreSQL
                     DO $$ 
                     BEGIN 
+                        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'asp_net_users') THEN 
+                            ALTER TABLE asp_net_users ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;
+                            ALTER TABLE asp_net_users ADD COLUMN IF NOT EXISTS resigned_at TIMESTAMPTZ;
+                            ALTER TABLE asp_net_users ADD COLUMN IF NOT EXISTS resignation_reason VARCHAR(500);
+                        END IF;
+
                         IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'tasks') THEN 
                             ALTER TABLE tasks ALTER COLUMN title TYPE VARCHAR(500);
                             ALTER TABLE tasks ADD COLUMN IF NOT EXISTS tags VARCHAR(200);
