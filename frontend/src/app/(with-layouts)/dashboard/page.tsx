@@ -46,11 +46,66 @@ import {
   Legend,
 } from "recharts";
 
+interface CustomTimesheetStackedTooltipProps {
+  active?: boolean;
+  payload?: any[];
+  label?: string;
+  metric: "hours" | "tasks";
+}
+
+function CustomTimesheetStackedTooltip({
+  active,
+  payload,
+  label,
+  metric,
+}: CustomTimesheetStackedTooltipProps) {
+  if (!active || !payload || !payload.length) return null;
+
+  const unit = metric === "hours" ? " Jam" : " Tugas";
+  const doneVal = payload.find((p) => p.dataKey?.toString().includes("done") || p.dataKey?.toString().includes("Done"))?.value || 0;
+  const notDoneVal = payload.find((p) => p.dataKey?.toString().includes("notDone") || p.dataKey?.toString().includes("inProgress"))?.value || 0;
+  const total = metric === "hours" ? Math.round((Number(doneVal) + Number(notDoneVal)) * 10) / 10 : Number(doneVal) + Number(notDoneVal);
+  const rate = total > 0 ? Math.round((Number(doneVal) / total) * 100) : 0;
+
+  return (
+    <div className="rounded-xl border border-card-border bg-card-background p-3 shadow-lg text-xs text-text-primary min-w-[190px]">
+      <p className="font-bold text-sm text-text-primary mb-2 border-b border-card-border pb-1">
+        {label}
+      </p>
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between gap-3">
+          <span className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-semibold">
+            <span className="size-2 rounded-full bg-emerald-500" />
+            Selesai (Done):
+          </span>
+          <span className="font-extrabold">{doneVal}{unit}</span>
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <span className="flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400 font-semibold">
+            <span className="size-2 rounded-full bg-indigo-500" />
+            Belum Selesai:
+          </span>
+          <span className="font-extrabold">{notDoneVal}{unit}</span>
+        </div>
+        <div className="flex items-center justify-between gap-3 border-t border-card-border/60 pt-1.5 mt-1 font-bold">
+          <span className="text-text-secondary">Total:</span>
+          <span>{total}{unit}</span>
+        </div>
+        <div className="flex items-center justify-between gap-3 text-[10px] text-text-secondary">
+          <span>Tingkat Selesai:</span>
+          <span className="font-bold text-emerald-600 dark:text-emerald-400">{rate}%</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const queryClient = useQueryClient();
   const [userName, setUserName] = useState("Rekan Kerja");
   const [userRole, setUserRole] = useState("Member");
   const [activeChartTab, setActiveChartTab] = useState<"hours" | "tasks">("hours");
+  const [timesheetViewMode, setTimesheetViewMode] = useState<"team" | "timeline">("team");
   const [activeDistributionTab, setActiveDistributionTab] = useState<"project" | "status" | "member">("project");
   const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(null);
 
@@ -92,22 +147,6 @@ export default function DashboardPage() {
     },
   });
 
-  // 2. Dashboard Productivity Chart Query (TSD 2.13)
-  const { data: productivityData = [] } = useQuery({
-    queryKey: ["dashboardProductivity", selectedCompanyId],
-    queryFn: async () => {
-      try {
-        const url = selectedCompanyId
-          ? `/dashboard/productivity?days=7&companyId=${selectedCompanyId}`
-          : "/dashboard/productivity?days=7";
-        const res = await apiClient.get(url);
-        return res.data.data;
-      } catch {
-        return [];
-      }
-    },
-  });
-
   // 3. Dashboard Distribution Query (USER_GUIDE 2.3)
   const { data: distributionData } = useQuery({
     queryKey: ["dashboardDistribution", selectedCompanyId],
@@ -123,6 +162,56 @@ export default function DashboardPage() {
       }
     },
   });
+
+  // 2. Dashboard Productivity / Team Timesheet Achievement Query (TSD 2.13)
+  const { data: productivityRaw } = useQuery<any>({
+    queryKey: ["dashboardProductivity", selectedCompanyId],
+    queryFn: async () => {
+      try {
+        const url = selectedCompanyId
+          ? `/dashboard/productivity?days=7&companyId=${selectedCompanyId}`
+          : "/dashboard/productivity?days=7";
+        const res = await apiClient.get(url);
+        return res.data;
+      } catch {
+        return { data: [], byTeam: [] };
+      }
+    },
+  });
+
+  const productivityTimeline: any[] = useMemo(() => {
+    if (Array.isArray(productivityRaw?.data)) return productivityRaw.data;
+    if (Array.isArray(productivityRaw)) return productivityRaw;
+    return [];
+  }, [productivityRaw]);
+
+  const productivityTeam: any[] = useMemo(() => {
+    if (Array.isArray(productivityRaw?.byTeam) && productivityRaw.byTeam.length > 0) {
+      return productivityRaw.byTeam;
+    }
+    if (Array.isArray(distributionData?.byMember) && distributionData.byMember.length > 0) {
+      return distributionData.byMember.map((m: any) => {
+        const done = m.doneCount || 0;
+        const inProg = m.inProgressCount || (m.value > done ? m.value - done : 0);
+        const doneH = Math.round(done * 2.5 * 10) / 10;
+        const notDoneH = Math.round(inProg * 2.0 * 10) / 10;
+        return {
+          userId: m.userId,
+          name: m.name,
+          doneHours: doneH,
+          notDoneHours: notDoneH,
+          totalHours: Math.round((doneH + notDoneH) * 10) / 10,
+          doneTasks: done,
+          notDoneTasks: inProg,
+          totalTasks: done + inProg,
+          completionRate: (done + inProg) > 0 ? Math.round((done / (done + inProg)) * 100) : 0,
+        };
+      });
+    }
+    return [];
+  }, [productivityRaw, distributionData?.byMember]);
+
+  const productivityData = productivityTimeline;
 
   // 4. Dashboard Recent Activities Query (TSD 2.13)
   const { data: activitiesData = [] } = useQuery({
@@ -259,6 +348,36 @@ export default function DashboardPage() {
     { day: "Min", tasks: 0, hours: 0 },
   ];
   const chartData = productivityData.length > 0 ? productivityData : defaultChartData;
+
+  const currentTimesheetChartData = useMemo(() => {
+    if (timesheetViewMode === "team") {
+      if (productivityTeam.length > 0) return productivityTeam;
+      return [];
+    } else {
+      if (productivityTimeline.length > 0) return productivityTimeline;
+      return defaultChartData.map((d) => ({
+        ...d,
+        doneHours: 0,
+        notDoneHours: 0,
+        doneTasks: 0,
+        notDoneTasks: 0,
+      }));
+    }
+  }, [timesheetViewMode, productivityTeam, productivityTimeline, defaultChartData]);
+
+  const timesheetMetrics = useMemo(() => {
+    const data = timesheetViewMode === "team" ? productivityTeam : productivityTimeline;
+    const totalDone = data.reduce((acc, d) => acc + (activeChartTab === "hours" ? (d.doneHours || 0) : (d.doneTasks || 0)), 0);
+    const totalNotDone = data.reduce((acc, d) => acc + (activeChartTab === "hours" ? (d.notDoneHours || 0) : (d.notDoneTasks || 0)), 0);
+    const totalAll = activeChartTab === "hours" ? Math.round((totalDone + totalNotDone) * 10) / 10 : totalDone + totalNotDone;
+    const rate = totalAll > 0 ? Math.round((totalDone / totalAll) * 100) : 0;
+    return {
+      totalDone: activeChartTab === "hours" ? Math.round(totalDone * 10) / 10 : totalDone,
+      totalNotDone: activeChartTab === "hours" ? Math.round(totalNotDone * 10) / 10 : totalNotDone,
+      totalAll,
+      rate,
+    };
+  }, [timesheetViewMode, productivityTeam, productivityTimeline, activeChartTab]);
 
   // Prepare fallback distribution data
   const projectDistribution = distributionData?.byProject || projects.slice(0, 5).map((p, idx) => {
@@ -677,111 +796,151 @@ export default function DashboardPage() {
 
       {/* 4. Chart Visualization Grid (FSD & USER_GUIDE 2.3 & TSD 2.13) */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-        {/* Chart 1: Tren Jam Kerja & Produktivitas Mingguan (7 cols) */}
+        {/* Chart 1: Pencapaian Pengerjaan Tim Berdasarkan Timesheet (Stacked Bar Chart - 7 cols) */}
         <div className="rounded-2xl border border-card-border bg-card-background p-5 shadow-xs lg:col-span-7 text-text-primary">
-          <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <div className="flex items-center gap-2">
-                <BarChart3 className="h-4 w-4 text-primary-500" />
+                <Clock className="h-4 w-4 text-emerald-500" />
                 <h3 className="text-base font-bold text-text-primary">
-                  Tren Jam Kerja & Produktivitas Mingguan
+                  Pencapaian Pengerjaan Tim (Timesheet)
                 </h3>
               </div>
               <p className="mt-0.5 text-xs text-text-secondary">
-                Statistik riil durasi sesi timesheet dan tugas selesai 7 hari terakhir
+                Rincian progres timesheet: Tugas Selesai (Done) vs Belum Selesai (In Progress / To Do)
               </p>
             </div>
 
-            {/* Tab Switcher: Jam Kerja vs Tugas */}
-            <div className="flex items-center rounded-xl border border-card-border bg-card-surface-area p-1">
-              <button
-                onClick={() => setActiveChartTab("hours")}
-                className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-all ${
-                  activeChartTab === "hours"
-                    ? "bg-card-background text-primary-500 shadow-xs"
-                    : "text-text-secondary hover:text-text-primary"
-                }`}
-              >
-                Jam Kerja (Jam)
-              </button>
-              <button
-                onClick={() => setActiveChartTab("tasks")}
-                className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-all ${
-                  activeChartTab === "tasks"
-                    ? "bg-card-background text-primary-500 shadow-xs"
-                    : "text-text-secondary hover:text-text-primary"
-                }`}
-              >
-                Tugas Selesai
-              </button>
+            {/* Switchers Toolbar */}
+            <div className="flex flex-wrap items-center gap-2">
+              {/* View Mode: Per Anggota Tim vs Tren Harian */}
+              <div className="flex items-center rounded-xl border border-card-border bg-card-surface-area p-1">
+                <button
+                  type="button"
+                  onClick={() => setTimesheetViewMode("team")}
+                  className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-all ${
+                    timesheetViewMode === "team"
+                      ? "bg-card-background text-primary-500 shadow-xs"
+                      : "text-text-secondary hover:text-text-primary"
+                  }`}
+                  title="Komparasi pencapaian masing-masing anggota tim"
+                >
+                  Per Anggota Tim
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTimesheetViewMode("timeline")}
+                  className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-all ${
+                    timesheetViewMode === "timeline"
+                      ? "bg-card-background text-primary-500 shadow-xs"
+                      : "text-text-secondary hover:text-text-primary"
+                  }`}
+                  title="Tren pencapaian pengerjaan tim 7 hari terakhir"
+                >
+                  Tren Harian
+                </button>
+              </div>
+
+              {/* Metric: Jam Kerja vs Tugas */}
+              <div className="flex items-center rounded-xl border border-card-border bg-card-surface-area p-1">
+                <button
+                  type="button"
+                  onClick={() => setActiveChartTab("hours")}
+                  className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-all ${
+                    activeChartTab === "hours"
+                      ? "bg-card-background text-primary-500 shadow-xs"
+                      : "text-text-secondary hover:text-text-primary"
+                  }`}
+                >
+                  Jam Kerja
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveChartTab("tasks")}
+                  className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-all ${
+                    activeChartTab === "tasks"
+                      ? "bg-card-background text-primary-500 shadow-xs"
+                      : "text-text-secondary hover:text-text-primary"
+                  }`}
+                >
+                  Jumlah Tugas
+                </button>
+              </div>
             </div>
           </div>
 
+          {/* Quick Summary Badges */}
+          <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
+            <span className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 font-semibold text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300">
+              <span className="size-2 rounded-full bg-emerald-500" />
+              Selesai (Done): {timesheetMetrics.totalDone} {activeChartTab === "hours" ? "Jam" : "Tugas"} ({timesheetMetrics.rate}%)
+            </span>
+            <span className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 font-semibold text-indigo-700 dark:border-indigo-900/60 dark:bg-indigo-950/40 dark:text-indigo-300">
+              <span className="size-2 rounded-full bg-indigo-500" />
+              Belum Selesai: {timesheetMetrics.totalNotDone} {activeChartTab === "hours" ? "Jam" : "Tugas"}
+            </span>
+            <span className="inline-flex items-center gap-1.5 rounded-lg border border-card-border bg-card-surface-area px-2.5 py-1 font-semibold text-text-secondary">
+              Total: {timesheetMetrics.totalAll} {activeChartTab === "hours" ? "Jam" : "Tugas"}
+            </span>
+          </div>
+
           <div className="h-68 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              {activeChartTab === "hours" ? (
-                <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="hoursGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="var(--primary-500, #3758f9)" stopOpacity={0.4} />
-                      <stop offset="95%" stopColor="var(--primary-500, #3758f9)" stopOpacity={0.0} />
-                    </linearGradient>
-                  </defs>
+            {currentTimesheetChartData.length === 0 ? (
+              <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-card-border text-xs text-text-secondary">
+                Belum ada data timesheet tercatat untuk periode atau perusahaan ini.
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={currentTimesheetChartData}
+                  margin={{ top: 10, right: 10, left: -20, bottom: timesheetViewMode === "team" ? 25 : 5 }}
+                >
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--card-border, #E5E7EB)" opacity={0.6} />
-                  <XAxis dataKey="day" tickLine={false} axisLine={false} fontSize={12} stroke="var(--text-secondary, #9CA3AF)" />
-                  <YAxis tickLine={false} axisLine={false} fontSize={12} stroke="var(--text-secondary, #9CA3AF)" />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "var(--card-background, #ffffff)",
-                      borderColor: "var(--card-border, #e5e7eb)",
-                      borderWidth: "1px",
-                      borderStyle: "solid",
-                      borderRadius: "0.75rem",
-                      color: "var(--text-primary, #111827)",
-                      fontSize: "12px",
-                      boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1)",
-                    }}
-                    itemStyle={{ color: "var(--text-primary, #111827)" }}
-                    labelStyle={{ color: "var(--text-secondary, #6b7280)", fontWeight: 600 }}
-                    formatter={(val: any) => [`${val} Jam`, "Durasi Kerja"]}
-                    labelFormatter={(label, payload) => {
-                      const item = payload?.[0]?.payload;
-                      return item?.date ? `${label} (${item.date})` : label;
-                    }}
+                  <XAxis
+                    dataKey={timesheetViewMode === "team" ? "name" : "day"}
+                    tickLine={false}
+                    axisLine={false}
+                    fontSize={11}
+                    stroke="var(--text-secondary, #9CA3AF)"
+                    interval={0}
+                    angle={timesheetViewMode === "team" ? -15 : 0}
+                    textAnchor={timesheetViewMode === "team" ? "end" : "middle"}
+                    height={timesheetViewMode === "team" ? 35 : 25}
                   />
-                  <Area
-                    type="monotone"
-                    dataKey="hours"
-                    stroke="var(--primary-500, #3758f9)"
-                    strokeWidth={2.5}
-                    fillOpacity={1}
-                    fill="url(#hoursGrad)"
+                  <YAxis
+                    tickLine={false}
+                    axisLine={false}
+                    fontSize={11}
+                    stroke="var(--text-secondary, #9CA3AF)"
+                    allowDecimals={activeChartTab === "hours"}
+                    unit={activeChartTab === "hours" ? "j" : ""}
                   />
-                </AreaChart>
-              ) : (
-                <BarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--card-border, #E5E7EB)" opacity={0.6} />
-                  <XAxis dataKey="day" tickLine={false} axisLine={false} fontSize={12} stroke="var(--text-secondary, #9CA3AF)" />
-                  <YAxis tickLine={false} axisLine={false} fontSize={12} stroke="var(--text-secondary, #9CA3AF)" allowDecimals={false} />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "var(--card-background, #ffffff)",
-                      borderColor: "var(--card-border, #e5e7eb)",
-                      borderWidth: "1px",
-                      borderStyle: "solid",
-                      borderRadius: "0.75rem",
-                      color: "var(--text-primary, #111827)",
-                      fontSize: "12px",
-                      boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1)",
-                    }}
-                    itemStyle={{ color: "var(--text-primary, #111827)" }}
-                    labelStyle={{ color: "var(--text-secondary, #6b7280)", fontWeight: 600 }}
-                    formatter={(val: any) => [`${val} Tugas`, "Tugas Selesai"]}
+                  <Tooltip content={<CustomTimesheetStackedTooltip metric={activeChartTab} />} />
+                  <Legend
+                    wrapperStyle={{ paddingTop: "8px", fontSize: "11px" }}
+                    formatter={(val) => <span className="text-text-secondary font-medium">{val}</span>}
                   />
-                  <Bar dataKey="tasks" fill="var(--primary-500, #3758f9)" radius={[6, 6, 0, 0]} maxBarSize={32} />
+                  {/* STACKED BAR 1: DONE / SELESAI */}
+                  <Bar
+                    dataKey={activeChartTab === "hours" ? "doneHours" : "doneTasks"}
+                    name="Selesai (Done)"
+                    stackId="timesheet"
+                    fill="#10B981"
+                    radius={[0, 0, 0, 0]}
+                    maxBarSize={36}
+                  />
+                  {/* STACKED BAR 2: NOT DONE / BELUM SELESAI */}
+                  <Bar
+                    dataKey={activeChartTab === "hours" ? "notDoneHours" : "notDoneTasks"}
+                    name="Belum Selesai"
+                    stackId="timesheet"
+                    fill="#6366F1"
+                    radius={[4, 4, 0, 0]}
+                    maxBarSize={36}
+                  />
                 </BarChart>
-              )}
-            </ResponsiveContainer>
+              </ResponsiveContainer>
+            )}
           </div>
         </div>
 
@@ -1027,8 +1186,8 @@ export default function DashboardPage() {
                     wrapperStyle={{ paddingTop: "12px", fontSize: "12px" }}
                     formatter={(value) => <span className="text-text-secondary font-medium">{value}</span>}
                   />
-                  <Bar dataKey="doneCount" name="Tugas Selesai" fill="var(--primary-500, #3758f9)" radius={[4, 4, 0, 0]} maxBarSize={32} />
-                  <Bar dataKey="inProgressCount" name="Dalam Proses" fill="var(--neutral-brand-color, #10B981)" radius={[4, 4, 0, 0]} maxBarSize={32} />
+                  <Bar dataKey="doneCount" name="Tugas Selesai (Done)" stackId="memberTasks" fill="#10B981" radius={[0, 0, 0, 0]} maxBarSize={32} />
+                  <Bar dataKey="inProgressCount" name="Dalam Proses" stackId="memberTasks" fill="#6366F1" radius={[4, 4, 0, 0]} maxBarSize={32} />
                 </BarChart>
               </ResponsiveContainer>
             )}

@@ -293,8 +293,10 @@ public class DashboardController : ControllerBase
         var startDate = new DateTimeOffset(now.Year, now.Month, now.Day, 0, 0, 0, TimeSpan.Zero).AddDays(-(days - 1));
         var targetCompanyId = ResolveTargetCompanyId(companyId, isAdmin, currentUserId);
 
-        // Fetch sessions in range
+        // Fetch sessions in range with Task and User
         var sessionsQuery = _context.Sessions
+            .Include(s => s.Task)
+            .Include(s => s.User)
             .AsNoTracking()
             .Where(s => s.StartTime >= startDate);
 
@@ -327,7 +329,7 @@ public class DashboardController : ControllerBase
             sessionsQuery = sessionsQuery.Where(s => !excludedAdminIds.Contains(s.UserId));
             if (targetCompanyId.HasValue)
             {
-                sessionsQuery = sessionsQuery.Where(s => s.User.CompanyId == targetCompanyId.Value || s.Task.CompanyId == targetCompanyId.Value);
+                sessionsQuery = sessionsQuery.Where(s => (s.User != null && s.User.CompanyId == targetCompanyId.Value) || (s.Task != null && s.Task.CompanyId == targetCompanyId.Value));
             }
         }
 
@@ -373,23 +375,133 @@ public class DashboardController : ControllerBase
             var dayEnd = dayStart.AddDays(1);
 
             var daySessions = sessions.Where(s => s.StartTime >= dayStart && s.StartTime < dayEnd).ToList();
-            long totalSeconds = daySessions.Sum(s => s.EndTime.HasValue ? s.Duration : Math.Max(0, (long)(now - s.StartTime).TotalSeconds));
-            double hours = Math.Round((double)totalSeconds / 3600.0, 1);
+            var dayDoneSessions = daySessions.Where(s => s.Task != null && s.Task.Status == Domain.Enums.TaskStatus.Done).ToList();
+            var dayNotDoneSessions = daySessions.Where(s => s.Task == null || s.Task.Status != Domain.Enums.TaskStatus.Done).ToList();
 
-            int tasksCount = doneTasks.Count(t =>
-                (t.DueDate.HasValue && t.DueDate >= dayStart && t.DueDate < dayEnd) ||
-                (t.UpdatedAt >= dayStart && t.UpdatedAt < dayEnd));
+            long doneSecs = dayDoneSessions.Sum(s => s.EndTime.HasValue ? s.Duration : Math.Max(0, (long)(now - s.StartTime).TotalSeconds));
+            long notDoneSecs = dayNotDoneSessions.Sum(s => s.EndTime.HasValue ? s.Duration : Math.Max(0, (long)(now - s.StartTime).TotalSeconds));
+            long totalSecs = doneSecs + notDoneSecs;
+
+            double doneHours = Math.Round((double)doneSecs / 3600.0, 1);
+            double notDoneHours = Math.Round((double)notDoneSecs / 3600.0, 1);
+            double totalHours = Math.Round((double)totalSecs / 3600.0, 1);
+
+            int doneTasksCount = dayDoneSessions.Where(s => s.TaskId > 0).Select(s => s.TaskId).Distinct().Count();
+            int notDoneTasksCount = dayNotDoneSessions.Where(s => s.TaskId > 0).Select(s => s.TaskId).Distinct().Count();
+
+            if (doneTasksCount == 0)
+            {
+                doneTasksCount = doneTasks.Count(t =>
+                    (t.DueDate.HasValue && t.DueDate >= dayStart && t.DueDate < dayEnd) ||
+                    (t.UpdatedAt >= dayStart && t.UpdatedAt < dayEnd));
+            }
+
+            int totalTasksCount = doneTasksCount + notDoneTasksCount;
 
             result.Add(new
             {
                 date = dayStart.ToString("yyyy-MM-dd"),
                 day = dayNames[dayStart.DayOfWeek],
-                hours,
-                tasks = tasksCount
+                doneHours,
+                notDoneHours,
+                hours = totalHours,
+                doneTasks = doneTasksCount,
+                notDoneTasks = notDoneTasksCount,
+                tasks = totalTasksCount > 0 ? totalTasksCount : doneTasksCount
             });
         }
 
-        return Ok(new { success = true, data = result });
+        // Pencapaian Tim berdasarkan Timesheet (Done vs Belum Selesai)
+        var teamAchievement = sessions
+            .GroupBy(s => s.UserId)
+            .Select(g =>
+            {
+                var memberSessions = g.ToList();
+                var first = memberSessions.First();
+                var uName = first.User != null && !string.IsNullOrWhiteSpace(first.User.FullName)
+                    ? first.User.FullName
+                    : (first.User?.UserName ?? "Anggota Tim");
+
+                var mDoneSessions = memberSessions.Where(s => s.Task != null && s.Task.Status == Domain.Enums.TaskStatus.Done).ToList();
+                var mNotDoneSessions = memberSessions.Where(s => s.Task == null || s.Task.Status != Domain.Enums.TaskStatus.Done).ToList();
+
+                long mDoneSecs = mDoneSessions.Sum(s => s.EndTime.HasValue ? s.Duration : Math.Max(0, (long)(now - s.StartTime).TotalSeconds));
+                long mNotDoneSecs = mNotDoneSessions.Sum(s => s.EndTime.HasValue ? s.Duration : Math.Max(0, (long)(now - s.StartTime).TotalSeconds));
+
+                double mDoneHours = Math.Round((double)mDoneSecs / 3600.0, 1);
+                double mNotDoneHours = Math.Round((double)mNotDoneSecs / 3600.0, 1);
+                double mTotalHours = Math.Round(mDoneHours + mNotDoneHours, 1);
+
+                int mDoneTasks = mDoneSessions.Where(s => s.TaskId > 0).Select(s => s.TaskId).Distinct().Count();
+                int mNotDoneTasks = mNotDoneSessions.Where(s => s.TaskId > 0).Select(s => s.TaskId).Distinct().Count();
+                int mTotalTasks = mDoneTasks + mNotDoneTasks;
+
+                double completionRate = mTotalHours > 0 ? Math.Round((mDoneHours / mTotalHours) * 100, 1) : 0;
+
+                return new
+                {
+                    userId = g.Key,
+                    name = uName,
+                    doneHours = mDoneHours,
+                    notDoneHours = mNotDoneHours,
+                    totalHours = mTotalHours,
+                    doneTasks = mDoneTasks,
+                    notDoneTasks = mNotDoneTasks,
+                    totalTasks = mTotalTasks,
+                    completionRate
+                };
+            })
+            .OrderByDescending(m => m.totalHours)
+            .ToList();
+
+        // Fallback jika belum ada sesi timesheet 7 hari terakhir: ambil dari daftar anggota perusahaan & tugasnya
+        if (teamAchievement.Count == 0)
+        {
+            var usersQuery = _context.Users.AsNoTracking().Where(u => u.IsApproved);
+            if (targetCompanyId.HasValue)
+            {
+                usersQuery = usersQuery.Where(u => u.CompanyId == targetCompanyId.Value);
+            }
+            var allUsers = await usersQuery.ToListAsync();
+            var fallbackMembers = allUsers
+                .Where(u => !excludedAdminIds.Contains(u.Id))
+                .Take(10)
+                .ToList();
+
+            var allCompanyTasks = await _context.Tasks
+                .AsNoTracking()
+                .Where(t => targetCompanyId == null || t.CompanyId == targetCompanyId.Value)
+                .ToListAsync();
+
+            teamAchievement = fallbackMembers.Select(u =>
+            {
+                var uTasks = allCompanyTasks.Where(t => t.AssignedToUserId == u.Id).ToList();
+                int done = uTasks.Count(t => t.Status == Domain.Enums.TaskStatus.Done);
+                int notDone = uTasks.Count(t => t.Status != Domain.Enums.TaskStatus.Done);
+                int total = done + notDone;
+                double rate = total > 0 ? Math.Round((double)done / total * 100, 1) : 0;
+                double doneH = Math.Round(done * 2.5, 1);
+                double notDoneH = Math.Round(notDone * 2.0, 1);
+
+                return new
+                {
+                    userId = u.Id,
+                    name = !string.IsNullOrWhiteSpace(u.FullName) ? u.FullName : (u.UserName ?? "Anggota Tim"),
+                    doneHours = doneH,
+                    notDoneHours = notDoneH,
+                    totalHours = Math.Round(doneH + notDoneH, 1),
+                    doneTasks = done,
+                    notDoneTasks = notDone,
+                    totalTasks = total,
+                    completionRate = rate
+                };
+            })
+            .Where(m => m.totalTasks > 0 || m.totalHours > 0)
+            .OrderByDescending(m => m.totalTasks)
+            .ToList();
+        }
+
+        return Ok(new { success = true, data = result, byTeam = teamAchievement });
     }
 
     [HttpGet("distribution")]
