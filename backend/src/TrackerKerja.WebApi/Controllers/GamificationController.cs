@@ -213,12 +213,17 @@ public class GamificationController : ControllerBase
     public async Task<IActionResult> GetLeaderboard()
     {
         var companyId = _tenantService.CompanyId;
+        if (!companyId.HasValue && !string.IsNullOrEmpty(_tenantService.UserId))
+        {
+            var me = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == _tenantService.UserId);
+            companyId = me?.CompanyId;
+        }
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
         var currentMonth = today.Month;
         var currentYear = today.Year;
 
         var users = await _context.Users
-            .Where(u => u.IsApproved && (!companyId.HasValue || u.CompanyId == companyId.Value))
+            .Where(u => u.IsApproved && (_tenantService.IsSuperAdmin && !companyId.HasValue ? true : u.CompanyId == companyId))
             .Include(u => u.DailyCheckIns.Where(c => c.CheckInDate.Month == currentMonth && c.CheckInDate.Year == currentYear))
             .Include(u => u.Badges).ThenInclude(b => b.Badge)
             .ToListAsync();

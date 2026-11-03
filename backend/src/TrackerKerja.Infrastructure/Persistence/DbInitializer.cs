@@ -665,6 +665,7 @@ public static class DbInitializer
             "/app/seed-data/Task Tracker v2.xlsx",
             Path.Combine(AppContext.BaseDirectory, "seed-data/Task Tracker v2.xlsx"),
             Path.Combine(Directory.GetCurrentDirectory(), "Sample Source DB/Task Tracker v2.xlsx"),
+            Path.Combine(AppContext.BaseDirectory, "../../../../../../Sample Source DB/Task Tracker v2.xlsx"),
             Path.Combine(AppContext.BaseDirectory, "../../../../../Sample Source DB/Task Tracker v2.xlsx"),
             Path.Combine(AppContext.BaseDirectory, "../../../../Sample Source DB/Task Tracker v2.xlsx"),
             "/Users/mac/Projects/2026/taskpro/TaskWorkerPro/Sample Source DB/Task Tracker v2.xlsx"

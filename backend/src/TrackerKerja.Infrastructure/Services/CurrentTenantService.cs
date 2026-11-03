@@ -26,6 +26,22 @@ public class CurrentTenantService : ICurrentTenantService
 
     public string? UserId => _httpContextAccessor.HttpContext?.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
 
+    public bool IsSuperAdmin
+    {
+        get
+        {
+            var user = _httpContextAccessor.HttpContext?.User;
+            if (user == null) return false;
+            if (user.IsInRole("SuperAdmin")) return true;
+            var roleClaim = user.FindFirst(ClaimTypes.Role)?.Value;
+            if (!string.IsNullOrEmpty(roleClaim) && roleClaim.Equals("SuperAdmin", StringComparison.OrdinalIgnoreCase))
+                return true;
+            var userId = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (userId == "usr-superadmin" || userId == "usr-admin") return true;
+            return false;
+        }
+    }
+
     public bool IsAdmin
     {
         get

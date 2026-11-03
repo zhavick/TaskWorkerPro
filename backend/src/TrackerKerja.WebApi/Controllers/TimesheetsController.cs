@@ -342,6 +342,11 @@ public class TimesheetsController : ControllerBase
         [FromQuery] string? userId = null,
         [FromQuery] int? companyId = null)
     {
+        if (!_tenantService.IsSuperAdmin && _tenantService.CompanyId.HasValue && companyId.HasValue && companyId.Value != _tenantService.CompanyId.Value)
+        {
+            return Forbid();
+        }
+
         var targetCompanyId = companyId ?? _tenantService.CompanyId;
         if (!targetCompanyId.HasValue)
         {
@@ -395,6 +400,10 @@ public class TimesheetsController : ControllerBase
         CancellationToken cancellationToken)
     {
         if (!_tenantService.IsAdmin) return Forbid();
+        if (!_tenantService.IsSuperAdmin && _tenantService.CompanyId.HasValue && request.CompanyId.HasValue && request.CompanyId.Value != _tenantService.CompanyId.Value)
+        {
+            return Forbid();
+        }
 
         var targetCompanyId = request.CompanyId ?? _tenantService.CompanyId;
         if (!targetCompanyId.HasValue)

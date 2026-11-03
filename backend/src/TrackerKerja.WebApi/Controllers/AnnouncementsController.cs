@@ -84,6 +84,11 @@ public class AnnouncementsController : ControllerBase
         var announcement = await _context.Announcements.FirstOrDefaultAsync(a => a.Id == id);
         if (announcement == null) return NotFound(new { success = false, message = "Pengumuman tidak ditemukan." });
 
+        if (!_tenantService.IsSuperAdmin && _tenantService.CompanyId.HasValue && announcement.CompanyId.HasValue && announcement.CompanyId.Value != _tenantService.CompanyId.Value)
+        {
+            return StatusCode(403, new { success = false, message = "Anda tidak berhak mengelola pengumuman di luar korporasi Anda." });
+        }
+
         var read = await _context.UserAnnouncementReads
             .FirstOrDefaultAsync(r => r.AnnouncementId == id && r.UserId == userId);
 
@@ -145,7 +150,12 @@ public class AnnouncementsController : ControllerBase
     [Authorize(Roles = "Administrator")]
     public async Task<IActionResult> GetTargetCompanies()
     {
-        var companies = await _context.Companies
+        var query = _context.Companies.AsNoTracking().AsQueryable();
+        if (!_tenantService.IsSuperAdmin && _tenantService.CompanyId.HasValue)
+        {
+            query = query.Where(c => c.Id == _tenantService.CompanyId.Value);
+        }
+        var companies = await query
             .AsNoTracking()
             .OrderBy(c => c.Name)
             .Select(c => new
@@ -165,6 +175,11 @@ public class AnnouncementsController : ControllerBase
     {
         var announcement = await _context.Announcements.FirstOrDefaultAsync(a => a.Id == id);
         if (announcement == null) return NotFound(new { success = false, message = "Pengumuman tidak ditemukan." });
+
+        if (!_tenantService.IsSuperAdmin && _tenantService.CompanyId.HasValue && announcement.CompanyId.HasValue && announcement.CompanyId.Value != _tenantService.CompanyId.Value)
+        {
+            return StatusCode(403, new { success = false, message = "Anda tidak berhak mengelola pengumuman di luar korporasi Anda." });
+        }
 
         var readers = await _context.UserAnnouncementReads
             .Include(r => r.User)
@@ -191,7 +206,11 @@ public class AnnouncementsController : ControllerBase
     public async Task<IActionResult> CreateAnnouncement([FromBody] CreateAnnouncementRequest request)
     {
         int? targetCompanyId = null;
-        if (request.CompanyId.HasValue && request.CompanyId.Value > 0)
+        if (!_tenantService.IsSuperAdmin)
+        {
+            targetCompanyId = _tenantService.CompanyId;
+        }
+        else if (request.CompanyId.HasValue && request.CompanyId.Value > 0)
         {
             targetCompanyId = request.CompanyId.Value;
         }
@@ -239,8 +258,17 @@ public class AnnouncementsController : ControllerBase
         var announcement = await _context.Announcements.FirstOrDefaultAsync(a => a.Id == id);
         if (announcement == null) return NotFound(new { success = false, message = "Pengumuman tidak ditemukan." });
 
+        if (!_tenantService.IsSuperAdmin && _tenantService.CompanyId.HasValue && announcement.CompanyId.HasValue && announcement.CompanyId.Value != _tenantService.CompanyId.Value)
+        {
+            return StatusCode(403, new { success = false, message = "Anda tidak berhak mengelola pengumuman di luar korporasi Anda." });
+        }
+
         int? targetCompanyId = null;
-        if (request.CompanyId.HasValue && request.CompanyId.Value > 0)
+        if (!_tenantService.IsSuperAdmin)
+        {
+            targetCompanyId = _tenantService.CompanyId;
+        }
+        else if (request.CompanyId.HasValue && request.CompanyId.Value > 0)
         {
             targetCompanyId = request.CompanyId.Value;
         }
@@ -265,6 +293,11 @@ public class AnnouncementsController : ControllerBase
         var announcement = await _context.Announcements.FirstOrDefaultAsync(a => a.Id == id);
         if (announcement == null) return NotFound(new { success = false, message = "Pengumuman tidak ditemukan." });
 
+        if (!_tenantService.IsSuperAdmin && _tenantService.CompanyId.HasValue && announcement.CompanyId.HasValue && announcement.CompanyId.Value != _tenantService.CompanyId.Value)
+        {
+            return StatusCode(403, new { success = false, message = "Anda tidak berhak mengelola pengumuman di luar korporasi Anda." });
+        }
+
         announcement.IsActive = !announcement.IsActive;
         await _context.SaveChangesAsync();
 
@@ -277,6 +310,11 @@ public class AnnouncementsController : ControllerBase
     {
         var announcement = await _context.Announcements.FirstOrDefaultAsync(a => a.Id == id);
         if (announcement == null) return NotFound(new { success = false, message = "Pengumuman tidak ditemukan." });
+
+        if (!_tenantService.IsSuperAdmin && _tenantService.CompanyId.HasValue && announcement.CompanyId.HasValue && announcement.CompanyId.Value != _tenantService.CompanyId.Value)
+        {
+            return StatusCode(403, new { success = false, message = "Anda tidak berhak mengelola pengumuman di luar korporasi Anda." });
+        }
 
         _context.Announcements.Remove(announcement);
         await _context.SaveChangesAsync();

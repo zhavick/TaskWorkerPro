@@ -24,31 +24,26 @@ public class DashboardController : ControllerBase
 
     private int? ResolveTargetCompanyId(int? requestCompanyId, bool isAdmin, string currentUserId)
     {
-        if (requestCompanyId.HasValue && requestCompanyId.Value > 0)
+        // Only SuperAdmin can view arbitrary companies:
+        if (_tenantService.IsSuperAdmin)
         {
-            return requestCompanyId.Value;
+            if (requestCompanyId.HasValue && requestCompanyId.Value > 0)
+            {
+                return requestCompanyId.Value;
+            }
+            if (_tenantService.CompanyId.HasValue && _context.Tasks.Any(t => t.CompanyId == _tenantService.CompanyId.Value))
+            {
+                return _tenantService.CompanyId.Value;
+            }
+            var primaryCompanyId = _context.Tasks
+                .Where(t => t.CompanyId.HasValue)
+                .Select(t => t.CompanyId!.Value)
+                .FirstOrDefault();
+            return primaryCompanyId > 0 ? primaryCompanyId : _tenantService.CompanyId;
         }
 
-        if (!isAdmin)
-        {
-            return _tenantService.CompanyId;
-        }
-
-        // For Administrator:
-        // 1. If explicit requestCompanyId is passed, it is used.
-        // 2. If null, check if _tenantService.CompanyId has tasks.
-        // 3. If _tenantService.CompanyId has no tasks, default to primary operational company with tasks!
-        if (_tenantService.CompanyId.HasValue && _context.Tasks.Any(t => t.CompanyId == _tenantService.CompanyId.Value))
-        {
-            return _tenantService.CompanyId.Value;
-        }
-
-        var primaryCompanyId = _context.Tasks
-            .Where(t => t.CompanyId.HasValue)
-            .Select(t => t.CompanyId!.Value)
-            .FirstOrDefault();
-
-        return primaryCompanyId > 0 ? primaryCompanyId : _tenantService.CompanyId;
+        // For non-superadmin (including corporate admins): strictly their own corporation!
+        return _tenantService.CompanyId;
     }
 
     private async Task<HashSet<string>> GetImportedUserIdsAsync()

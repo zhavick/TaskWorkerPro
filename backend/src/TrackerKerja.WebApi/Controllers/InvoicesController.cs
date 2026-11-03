@@ -111,9 +111,12 @@ public class InvoicesController : ControllerBase
             .AsNoTracking()
             .AsQueryable();
 
-        if (!_tenantService.IsAdmin && userCompanyId.HasValue)
+        if (!_tenantService.IsSuperAdmin)
         {
-            query = query.Where(inv => inv.CompanyId == userCompanyId.Value);
+            if (userCompanyId.HasValue)
+            {
+                query = query.Where(inv => inv.CompanyId == userCompanyId.Value);
+            }
         }
         else if (companyId.HasValue)
         {
@@ -183,9 +186,12 @@ public class InvoicesController : ControllerBase
         var userCompanyId = await GetUserCompanyIdAsync();
         var query = _context.Invoices.AsNoTracking().AsQueryable();
 
-        if (!_tenantService.IsAdmin && userCompanyId.HasValue)
+        if (!_tenantService.IsSuperAdmin)
         {
-            query = query.Where(inv => inv.CompanyId == userCompanyId.Value);
+            if (userCompanyId.HasValue)
+            {
+                query = query.Where(inv => inv.CompanyId == userCompanyId.Value);
+            }
         }
         else if (companyId.HasValue)
         {
@@ -230,7 +236,7 @@ public class InvoicesController : ControllerBase
         }
 
         var userCompanyId = await GetUserCompanyIdAsync();
-        if (!_tenantService.IsAdmin && userCompanyId.HasValue && inv.CompanyId != userCompanyId.Value)
+        if (!_tenantService.IsSuperAdmin && userCompanyId.HasValue && inv.CompanyId != userCompanyId.Value)
         {
             return StatusCode(403, new { success = false, message = "Anda tidak berhak mengakses invoice ini." });
         }
@@ -302,7 +308,23 @@ public class InvoicesController : ControllerBase
         }
 
         var userCompanyId = await GetUserCompanyIdAsync();
-        int? targetCompanyId = request.CompanyId ?? userCompanyId;
+        int? targetCompanyId;
+        if (!_tenantService.IsSuperAdmin)
+        {
+            if (!userCompanyId.HasValue)
+            {
+                return BadRequest(new { success = false, message = "Pengguna tidak terhubung dengan perusahaan manapun." });
+            }
+            if (request.CompanyId.HasValue && request.CompanyId.Value != userCompanyId.Value)
+            {
+                return StatusCode(403, new { success = false, message = "Anda tidak diizinkan membuat invoice untuk perusahaan lain." });
+            }
+            targetCompanyId = userCompanyId.Value;
+        }
+        else
+        {
+            targetCompanyId = request.CompanyId ?? userCompanyId;
+        }
 
         if (!targetCompanyId.HasValue)
         {
@@ -413,7 +435,7 @@ public class InvoicesController : ControllerBase
         }
 
         var userCompanyId = await GetUserCompanyIdAsync();
-        if (!_tenantService.IsAdmin && userCompanyId.HasValue && invoice.CompanyId != userCompanyId.Value)
+        if (!_tenantService.IsSuperAdmin && userCompanyId.HasValue && invoice.CompanyId != userCompanyId.Value)
         {
             return StatusCode(403, new { success = false, message = "Anda tidak berhak mengubah invoice ini." });
         }
@@ -494,7 +516,7 @@ public class InvoicesController : ControllerBase
         }
 
         var userCompanyId = await GetUserCompanyIdAsync();
-        if (!_tenantService.IsAdmin && userCompanyId.HasValue && invoice.CompanyId != userCompanyId.Value)
+        if (!_tenantService.IsSuperAdmin && userCompanyId.HasValue && invoice.CompanyId != userCompanyId.Value)
         {
             return StatusCode(403, new { success = false, message = "Anda tidak berhak mengubah status invoice ini." });
         }
@@ -525,7 +547,7 @@ public class InvoicesController : ControllerBase
         }
 
         var userCompanyId = await GetUserCompanyIdAsync();
-        if (!_tenantService.IsAdmin && userCompanyId.HasValue && invoice.CompanyId != userCompanyId.Value)
+        if (!_tenantService.IsSuperAdmin && userCompanyId.HasValue && invoice.CompanyId != userCompanyId.Value)
         {
             return StatusCode(403, new { success = false, message = "Anda tidak berhak menghapus invoice ini." });
         }

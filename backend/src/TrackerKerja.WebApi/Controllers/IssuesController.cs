@@ -108,9 +108,12 @@ public class IssuesController : ControllerBase
             .AsQueryable();
 
         // Multi-tenant isolation
-        if (!_tenantService.IsAdmin && userCompanyId.HasValue)
+        if (!_tenantService.IsSuperAdmin)
         {
-            query = query.Where(i => i.CompanyId == userCompanyId.Value);
+            if (userCompanyId.HasValue)
+            {
+                query = query.Where(i => i.CompanyId == userCompanyId.Value);
+            }
         }
         else if (companyId.HasValue)
         {
@@ -189,7 +192,7 @@ public class IssuesController : ControllerBase
         }
 
         var userCompanyId = await GetUserCompanyIdAsync();
-        if (!_tenantService.IsAdmin && userCompanyId.HasValue && issue.CompanyId != userCompanyId.Value)
+        if (!_tenantService.IsSuperAdmin && userCompanyId.HasValue && issue.CompanyId != userCompanyId.Value)
         {
             return StatusCode(403, new { success = false, message = "Anda tidak memiliki akses ke tiket perusahaan lain." });
         }
@@ -258,19 +261,42 @@ public class IssuesController : ControllerBase
             }
         }
 
-        string? validAssignedToUserId = null;
-        if (!string.IsNullOrEmpty(request.AssignedToUserId))
-        {
-            var assignedExists = await _context.Users.AnyAsync(u => u.Id == request.AssignedToUserId);
-            if (assignedExists) validAssignedToUserId = request.AssignedToUserId;
-        }
-
         var userCompanyId = await GetUserCompanyIdAsync();
-        int? targetCompanyId = request.CompanyId ?? userCompanyId;
+        int? targetCompanyId;
+        if (!_tenantService.IsSuperAdmin)
+        {
+            if (!userCompanyId.HasValue)
+            {
+                return BadRequest(new { success = false, message = "Pengguna tidak terhubung dengan perusahaan manapun." });
+            }
+            if (request.CompanyId.HasValue && request.CompanyId.Value != userCompanyId.Value)
+            {
+                return StatusCode(403, new { success = false, message = "Anda tidak diizinkan membuat tiket untuk perusahaan lain." });
+            }
+            targetCompanyId = userCompanyId.Value;
+        }
+        else
+        {
+            targetCompanyId = request.CompanyId ?? userCompanyId;
+        }
 
         if (!targetCompanyId.HasValue)
         {
             return BadRequest(new { success = false, message = "Perusahaan wajib ditentukan untuk membuat tiket." });
+        }
+
+        string? validAssignedToUserId = null;
+        if (!string.IsNullOrEmpty(request.AssignedToUserId))
+        {
+            var assignedUser = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == request.AssignedToUserId);
+            if (assignedUser != null)
+            {
+                if (assignedUser.CompanyId.HasValue && assignedUser.CompanyId.Value != targetCompanyId.Value)
+                {
+                    return BadRequest(new { success = false, message = "Pengguna yang ditugaskan bukan anggota dari perusahaan ini." });
+                }
+                validAssignedToUserId = request.AssignedToUserId;
+            }
         }
 
         var company = await _context.Companies.FirstOrDefaultAsync(c => c.Id == targetCompanyId.Value);
@@ -342,9 +368,27 @@ public class IssuesController : ControllerBase
         }
 
         var userCompanyId = await GetUserCompanyIdAsync();
-        if (!_tenantService.IsAdmin && userCompanyId.HasValue && ticket.CompanyId != userCompanyId.Value)
+        if (!_tenantService.IsSuperAdmin && userCompanyId.HasValue && ticket.CompanyId != userCompanyId.Value)
         {
             return StatusCode(403, new { success = false, message = "Anda tidak berwenang memperbarui tiket ini." });
+        }
+
+        if (!string.IsNullOrEmpty(request.AssignedToUserId))
+        {
+            var assignedUser = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == request.AssignedToUserId);
+            if (assignedUser != null && assignedUser.CompanyId.HasValue && assignedUser.CompanyId.Value != ticket.CompanyId)
+            {
+                return BadRequest(new { success = false, message = "Pengguna yang ditugaskan bukan anggota dari perusahaan tiket ini." });
+            }
+        }
+
+        if (request.ProjectId.HasValue)
+        {
+            var project = await _context.Projects.AsNoTracking().FirstOrDefaultAsync(p => p.Id == request.ProjectId.Value);
+            if (project != null && project.CompanyId.HasValue && project.CompanyId.Value != ticket.CompanyId)
+            {
+                return BadRequest(new { success = false, message = "Proyek yang dipilih tidak berasal dari perusahaan yang sama." });
+            }
         }
 
         ticket.Title = request.Title.Trim();
@@ -387,7 +431,7 @@ public class IssuesController : ControllerBase
         var isReporter = ticket.ReportedByUserId == currentUserId;
         var canDelete = _tenantService.IsAdmin || _tenantService.IsProjectManager || isReporter;
 
-        if (!canDelete || (!_tenantService.IsAdmin && userCompanyId.HasValue && ticket.CompanyId != userCompanyId.Value))
+        if (!canDelete || (!_tenantService.IsSuperAdmin && userCompanyId.HasValue && ticket.CompanyId != userCompanyId.Value))
         {
             return StatusCode(403, new { success = false, message = "Anda tidak memiliki wewenang untuk menghapus tiket ini." });
         }
@@ -405,6 +449,12 @@ public class IssuesController : ControllerBase
         if (ticket == null)
         {
             return NotFound(new { success = false, message = "Tiket issue tidak ditemukan." });
+        }
+
+        var userCompanyId = await GetUserCompanyIdAsync();
+        if (!_tenantService.IsSuperAdmin && userCompanyId.HasValue && ticket.CompanyId != userCompanyId.Value)
+        {
+            return StatusCode(403, new { success = false, message = "Anda tidak berhak berkomentar pada tiket perusahaan lain." });
         }
 
         var currentUserId = _tenantService.UserId;

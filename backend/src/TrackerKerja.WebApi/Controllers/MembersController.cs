@@ -124,15 +124,10 @@ public class MembersController : ControllerBase
             .AsNoTracking()
             .AsQueryable();
 
-        // Isolasi multi-tenant jika bukan admin (1 perusahaan yang sama)
-        if (!_tenantService.IsAdmin)
+        // Isolasi multi-tenant jika bukan superadmin (1 perusahaan yang sama)
+        if (!_tenantService.IsSuperAdmin)
         {
-            var userCompanyId = _tenantService.CompanyId;
-            if (!userCompanyId.HasValue && !string.IsNullOrEmpty(_tenantService.UserId))
-            {
-                var me = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == _tenantService.UserId);
-                userCompanyId = me?.CompanyId;
-            }
+            var userCompanyId = await GetUserCompanyIdAsync();
             query = query.Where(u => u.CompanyId == userCompanyId);
         }
         else if (companyId.HasValue)
@@ -269,14 +264,9 @@ public class MembersController : ControllerBase
         }
 
         // Validasi isolasi tenant
-        if (!_tenantService.IsAdmin)
+        if (!_tenantService.IsSuperAdmin)
         {
-            var userCompanyId = _tenantService.CompanyId;
-            if (!userCompanyId.HasValue && !string.IsNullOrEmpty(_tenantService.UserId))
-            {
-                var me = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == _tenantService.UserId);
-                userCompanyId = me?.CompanyId;
-            }
+            var userCompanyId = await GetUserCompanyIdAsync();
             if (userCompanyId.HasValue && user.CompanyId.HasValue && user.CompanyId != userCompanyId)
             {
                 return Forbid();
@@ -427,8 +417,9 @@ public class MembersController : ControllerBase
             return Forbid();
         }
 
-        // Validasi tenant bagi non-admin
-        if (!_tenantService.IsAdmin && user.CompanyId != _tenantService.CompanyId)
+        // Validasi tenant bagi non-superadmin
+        var userCompanyId = await GetUserCompanyIdAsync();
+        if (!_tenantService.IsSuperAdmin && userCompanyId.HasValue && user.CompanyId.HasValue && user.CompanyId != userCompanyId)
         {
             return Forbid();
         }
@@ -463,9 +454,13 @@ public class MembersController : ControllerBase
             user.NormalizedUserName = cleanEmail.ToUpperInvariant();
         }
 
-        // Hanya Admin yang dapat memindahkan / mengubah CompanyId
-        if (_tenantService.IsAdmin && request.CompanyId.HasValue && request.CompanyId.Value > 0)
+        // Hanya SuperAdmin yang dapat memindahkan / mengubah CompanyId
+        if (request.CompanyId.HasValue && request.CompanyId.Value > 0 && request.CompanyId.Value != user.CompanyId)
         {
+            if (!_tenantService.IsSuperAdmin)
+            {
+                return StatusCode(403, new { success = false, message = "Hanya Super Administrator yang dapat memindahkan anggota ke perusahaan lain." });
+            }
             var companyExists = await _context.Companies.AnyAsync(c => c.Id == request.CompanyId.Value);
             if (!companyExists)
             {
@@ -587,6 +582,12 @@ public class MembersController : ControllerBase
         var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == id);
         if (user == null) return NotFound(new { success = false, message = "Pengguna tidak ditemukan." });
 
+        var userCompanyId = await GetUserCompanyIdAsync();
+        if (!_tenantService.IsSuperAdmin && userCompanyId.HasValue && user.CompanyId.HasValue && user.CompanyId != userCompanyId)
+        {
+            return Forbid();
+        }
+
         user.IsApproved = true;
         user.ApprovedAt = DateTimeOffset.UtcNow;
         user.ApprovedByUserId = _tenantService.UserId;
@@ -603,6 +604,12 @@ public class MembersController : ControllerBase
         var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == id);
         if (user == null) return NotFound(new { success = false, message = "Pengguna tidak ditemukan." });
 
+        var userCompanyId = await GetUserCompanyIdAsync();
+        if (!_tenantService.IsSuperAdmin && userCompanyId.HasValue && user.CompanyId.HasValue && user.CompanyId != userCompanyId)
+        {
+            return Forbid();
+        }
+
         user.RejectionReason = request.RejectionReason;
         user.IsApproved = false;
 
@@ -617,6 +624,12 @@ public class MembersController : ControllerBase
     {
         var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == id);
         if (user == null) return NotFound(new { success = false, message = "Pengguna tidak ditemukan." });
+
+        var userCompanyId = await GetUserCompanyIdAsync();
+        if (!_tenantService.IsSuperAdmin && userCompanyId.HasValue && user.CompanyId.HasValue && user.CompanyId != userCompanyId)
+        {
+            return Forbid();
+        }
 
         user.AccessFailedCount = 0;
         user.LockoutEnd = null;
@@ -638,6 +651,12 @@ public class MembersController : ControllerBase
         var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == id);
         if (user == null) return NotFound(new { success = false, message = "Pengguna tidak ditemukan." });
 
+        var userCompanyId = await GetUserCompanyIdAsync();
+        if (!_tenantService.IsSuperAdmin && userCompanyId.HasValue && user.CompanyId.HasValue && user.CompanyId != userCompanyId)
+        {
+            return Forbid();
+        }
+
         user.PasswordHash = PasswordHasher.HashPassword(request.NewPassword);
         user.AccessFailedCount = 0;
         user.LockoutEnd = null;
@@ -658,6 +677,12 @@ public class MembersController : ControllerBase
 
         var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == id);
         if (user == null) return NotFound(new { success = false, message = "Pengguna tidak ditemukan." });
+
+        var userCompanyId = await GetUserCompanyIdAsync();
+        if (!_tenantService.IsSuperAdmin && userCompanyId.HasValue && user.CompanyId.HasValue && user.CompanyId != userCompanyId)
+        {
+            return Forbid();
+        }
 
         if (request != null && !string.IsNullOrWhiteSpace(request.TargetFullName))
         {
@@ -692,9 +717,17 @@ public class MembersController : ControllerBase
             .Select(ur => ur.UserId)
             .ToListAsync();
 
-        var adminUsers = await _context.Users
+        var adminQuery = _context.Users
             .AsNoTracking()
-            .Where(u => adminUserIds.Contains(u.Id) || u.Id == "usr-superadmin" || (u.Email != null && u.Email.ToLower() == "admin@trackerkerja.local") || u.JobTitle.Contains("Admin"))
+            .Where(u => adminUserIds.Contains(u.Id) || u.Id == "usr-superadmin" || (u.Email != null && u.Email.ToLower() == "admin@trackerkerja.local") || u.JobTitle.Contains("Admin"));
+
+        var userCompanyId = await GetUserCompanyIdAsync();
+        if (!_tenantService.IsSuperAdmin && userCompanyId.HasValue)
+        {
+            adminQuery = adminQuery.Where(u => u.CompanyId == userCompanyId.Value);
+        }
+
+        var adminUsers = await adminQuery
             .OrderBy(u => u.FullName)
             .Select(u => new AdminGroupMemberDto(
                 u.Id,
@@ -724,6 +757,12 @@ public class MembersController : ControllerBase
         if (targetUser == null)
         {
             return NotFound(new { success = false, message = $"Pengguna dengan email '{request.Email}' tidak ditemukan dalam sistem." });
+        }
+
+        var userCompanyId = await GetUserCompanyIdAsync();
+        if (!_tenantService.IsSuperAdmin && userCompanyId.HasValue && targetUser.CompanyId.HasValue && targetUser.CompanyId != userCompanyId)
+        {
+            return StatusCode(403, new { success = false, message = "Anda hanya dapat mengelola hak akses administrator dalam perusahaan Anda sendiri." });
         }
 
         var adminRole = await _context.Roles.FirstOrDefaultAsync(r => r.Name == "Administrator" || r.Id == "r-admin");
@@ -795,6 +834,12 @@ public class MembersController : ControllerBase
             return NotFound(new { success = false, message = $"Pengguna dengan email '{request.Email}' tidak ditemukan." });
         }
 
+        var userCompanyId = await GetUserCompanyIdAsync();
+        if (!_tenantService.IsSuperAdmin && userCompanyId.HasValue && targetUser.CompanyId.HasValue && targetUser.CompanyId != userCompanyId)
+        {
+            return StatusCode(403, new { success = false, message = "Anda hanya dapat mengelola hak akses administrator dalam perusahaan Anda sendiri." });
+        }
+
         if (targetUser.Id == "usr-superadmin" || targetUser.Id == _tenantService.UserId)
         {
             return BadRequest(new { success = false, message = "Anda tidak dapat mencabut hak akses administrator akun Anda sendiri." });
@@ -831,7 +876,7 @@ public class MembersController : ControllerBase
     [HttpPost("bulk-change-company")]
     public async Task<IActionResult> BulkChangeCompany([FromBody] BulkChangeCompanyRequest request)
     {
-        if (!_tenantService.IsAdmin) return Forbid();
+        if (!_tenantService.IsSuperAdmin) return Forbid();
 
         if (request.UserIds == null || request.UserIds.Count == 0)
         {
@@ -910,12 +955,27 @@ public class MembersController : ControllerBase
             return BadRequest(new { success = false, message = "Jabatan atau posisi wajib diisi." });
         }
 
-        if (request.CompanyId <= 0)
+        var userCompanyId = await GetUserCompanyIdAsync();
+        int targetCompanyId = request.CompanyId;
+        if (!_tenantService.IsSuperAdmin)
+        {
+            if (!userCompanyId.HasValue)
+            {
+                return BadRequest(new { success = false, message = "Pengguna tidak terhubung dengan perusahaan manapun." });
+            }
+            if (request.CompanyId > 0 && request.CompanyId != userCompanyId.Value)
+            {
+                return StatusCode(403, new { success = false, message = "Anda hanya dapat menambahkan anggota tim ke perusahaan Anda sendiri." });
+            }
+            targetCompanyId = userCompanyId.Value;
+        }
+
+        if (targetCompanyId <= 0)
         {
             return BadRequest(new { success = false, message = "Perusahaan korporat wajib dipilih." });
         }
 
-        var company = await _context.Companies.FirstOrDefaultAsync(c => c.Id == request.CompanyId);
+        var company = await _context.Companies.FirstOrDefaultAsync(c => c.Id == targetCompanyId);
         if (company == null)
         {
             return BadRequest(new { success = false, message = "Perusahaan tidak ditemukan." });
@@ -938,7 +998,7 @@ public class MembersController : ControllerBase
             UserName = cleanEmail,
             NormalizedUserName = cleanEmail.ToUpperInvariant(),
             JobTitle = request.JobTitle.Trim(),
-            CompanyId = request.CompanyId,
+            CompanyId = targetCompanyId,
             PhoneNumber = string.IsNullOrWhiteSpace(request.PhoneNumber) ? null : request.PhoneNumber.Trim(),
             AvatarColor = string.IsNullOrWhiteSpace(request.AvatarColor) ? "#6366F1" : request.AvatarColor.Trim(),
             PasswordHash = PasswordHasher.HashPassword(request.Password),
@@ -978,13 +1038,13 @@ public class MembersController : ControllerBase
         if (request.AssignedTaskIds != null && request.AssignedTaskIds.Count > 0)
         {
             var tasksToAssign = await _context.Tasks
-                .Where(t => request.AssignedTaskIds.Contains(t.Id))
+                .Where(t => request.AssignedTaskIds.Contains(t.Id) && (_tenantService.IsSuperAdmin || t.CompanyId == targetCompanyId))
                 .ToListAsync();
 
             foreach (var t in tasksToAssign)
             {
                 t.AssignedToUserId = newUserId;
-                t.CompanyId = request.CompanyId;
+                t.CompanyId = targetCompanyId;
                 assignedTasksCount++;
             }
         }
@@ -1034,13 +1094,13 @@ public class MembersController : ControllerBase
             return NotFound(new { success = false, message = "Pengguna tidak ditemukan." });
         }
 
-        // Isolasi multi-tenant bagi Project Manager
-        if (!_tenantService.IsAdmin)
+        // Isolasi multi-tenant bagi Project Manager & Corporate Administrator
+        if (!_tenantService.IsSuperAdmin)
         {
             var myCompanyId = await GetUserCompanyIdAsync();
             if (myCompanyId.HasValue && user.CompanyId.HasValue && user.CompanyId != myCompanyId)
             {
-                return StatusCode(403, new { success = false, message = "Project Manager hanya dapat menonaktifkan staf dalam perusahaan Anda sendiri." });
+                return StatusCode(403, new { success = false, message = "Anda hanya dapat menonaktifkan staf dalam perusahaan Anda sendiri." });
             }
         }
 
@@ -1083,13 +1143,13 @@ public class MembersController : ControllerBase
             return NotFound(new { success = false, message = "Pengguna tidak ditemukan." });
         }
 
-        // Isolasi multi-tenant bagi Project Manager
-        if (!_tenantService.IsAdmin)
+        // Isolasi multi-tenant bagi Project Manager & Corporate Administrator
+        if (!_tenantService.IsSuperAdmin)
         {
             var myCompanyId = await GetUserCompanyIdAsync();
             if (myCompanyId.HasValue && user.CompanyId.HasValue && user.CompanyId != myCompanyId)
             {
-                return StatusCode(403, new { success = false, message = "Project Manager hanya dapat mengaktifkan staf dalam perusahaan Anda sendiri." });
+                return StatusCode(403, new { success = false, message = "Anda hanya dapat mengaktifkan staf dalam perusahaan Anda sendiri." });
             }
         }
 
@@ -1129,19 +1189,21 @@ public class MembersController : ControllerBase
             return NotFound(new { success = false, message = "Pengguna tidak ditemukan." });
         }
 
-        if (!_tenantService.IsAdmin)
+        if (!_tenantService.IsSuperAdmin)
         {
             var myCompanyId = await GetUserCompanyIdAsync();
             if (myCompanyId.HasValue && user.CompanyId.HasValue && user.CompanyId != myCompanyId)
             {
-                return StatusCode(403, new { success = false, message = "Project Manager hanya dapat memberikan assignment kepada staf dalam perusahaan Anda sendiri." });
+                return StatusCode(403, new { success = false, message = "Anda hanya dapat memberikan assignment kepada staf dalam perusahaan Anda sendiri." });
             }
         }
 
         var assignedCount = 0;
         if (request.TaskIds != null && request.TaskIds.Count > 0)
         {
-            var tasks = await _context.Tasks.Where(t => request.TaskIds.Contains(t.Id)).ToListAsync();
+            var tasks = await _context.Tasks
+                .Where(t => request.TaskIds.Contains(t.Id) && (_tenantService.IsSuperAdmin || t.CompanyId == user.CompanyId))
+                .ToListAsync();
             foreach (var t in tasks)
             {
                 t.AssignedToUserId = user.Id;

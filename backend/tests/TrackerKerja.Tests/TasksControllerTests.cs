@@ -793,7 +793,7 @@ public class TasksControllerTests
     [Fact]
     public async Task CreateTask_DuplicateTitle_AllowedForDifferentMember_ForbiddenForSameMember()
     {
-        var tenant = new FakeTenantService(1, "WCH", "user-1", false);
+        var tenant = new FakeTenantService(10, "WCH", "user-1", false);
         var controller = new TasksController(_context, tenant);
 
         var reqMemberA = new CreateTaskRequest(

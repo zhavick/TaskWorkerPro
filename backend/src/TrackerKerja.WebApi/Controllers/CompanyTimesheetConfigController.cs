@@ -28,6 +28,10 @@ public class CompanyTimesheetConfigController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetConfig(int companyId)
     {
+        if (!_tenantService.IsSuperAdmin && _tenantService.CompanyId.HasValue && companyId != _tenantService.CompanyId.Value)
+        {
+            return Forbid();
+        }
         var config = await _context.CompanyTimesheetConfigs
             .AsNoTracking()
             .FirstOrDefaultAsync(c => c.CompanyId == companyId);
@@ -91,6 +95,7 @@ public class CompanyTimesheetConfigController : ControllerBase
     public async Task<IActionResult> UpdateConfig(int companyId, [FromBody] UpdateCompanyTimesheetConfigRequest request)
     {
         if (!_tenantService.IsAdmin) return Forbid();
+        if (!_tenantService.IsSuperAdmin && _tenantService.CompanyId.HasValue && companyId != _tenantService.CompanyId.Value) return Forbid();
 
         var config = await _context.CompanyTimesheetConfigs
             .FirstOrDefaultAsync(c => c.CompanyId == companyId);
@@ -142,6 +147,7 @@ public class CompanyTimesheetConfigController : ControllerBase
     public async Task<IActionResult> UploadTemplate(int companyId, IFormFile file)
     {
         if (!_tenantService.IsAdmin) return Forbid();
+        if (!_tenantService.IsSuperAdmin && _tenantService.CompanyId.HasValue && companyId != _tenantService.CompanyId.Value) return Forbid();
         if (file == null || file.Length == 0)
         {
             return BadRequest(new { success = false, message = "Silakan unggah file template .xlsx." });
@@ -190,6 +196,7 @@ public class CompanyTimesheetConfigController : ControllerBase
     public async Task<IActionResult> ResetDefault(int companyId)
     {
         if (!_tenantService.IsAdmin) return Forbid();
+        if (!_tenantService.IsSuperAdmin && _tenantService.CompanyId.HasValue && companyId != _tenantService.CompanyId.Value) return Forbid();
 
         var config = await _context.CompanyTimesheetConfigs.FirstOrDefaultAsync(c => c.CompanyId == companyId);
         if (config != null)

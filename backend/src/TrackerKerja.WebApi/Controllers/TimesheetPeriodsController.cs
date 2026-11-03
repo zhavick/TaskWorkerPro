@@ -38,6 +38,10 @@ public class TimesheetPeriodsController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetPeriods(int companyId)
     {
+        if (!_tenantService.IsSuperAdmin && _tenantService.CompanyId.HasValue && companyId != _tenantService.CompanyId.Value)
+        {
+            return Forbid();
+        }
         var periods = await _context.TimesheetPeriods
             .AsNoTracking()
             .Where(p => p.CompanyId == companyId)
@@ -65,6 +69,7 @@ public class TimesheetPeriodsController : ControllerBase
     public async Task<IActionResult> CreatePeriod(int companyId, [FromBody] CreateTimesheetPeriodRequest request)
     {
         if (!_tenantService.IsAdmin) return Forbid();
+        if (!_tenantService.IsSuperAdmin && _tenantService.CompanyId.HasValue && companyId != _tenantService.CompanyId.Value) return Forbid();
 
         if (request.EndDate < request.StartDate)
         {
@@ -97,6 +102,7 @@ public class TimesheetPeriodsController : ControllerBase
     public async Task<IActionResult> UpdatePeriod(int companyId, int periodId, [FromBody] UpdateTimesheetPeriodRequest request)
     {
         if (!_tenantService.IsAdmin) return Forbid();
+        if (!_tenantService.IsSuperAdmin && _tenantService.CompanyId.HasValue && companyId != _tenantService.CompanyId.Value) return Forbid();
 
         var period = await _context.TimesheetPeriods.FirstOrDefaultAsync(p => p.Id == periodId && p.CompanyId == companyId);
         if (period == null) return NotFound(new { success = false, message = "Periode tidak ditemukan." });
@@ -124,6 +130,7 @@ public class TimesheetPeriodsController : ControllerBase
     public async Task<IActionResult> DeletePeriod(int companyId, int periodId)
     {
         if (!_tenantService.IsAdmin) return Forbid();
+        if (!_tenantService.IsSuperAdmin && _tenantService.CompanyId.HasValue && companyId != _tenantService.CompanyId.Value) return Forbid();
 
         var period = await _context.TimesheetPeriods.FirstOrDefaultAsync(p => p.Id == periodId && p.CompanyId == companyId);
         if (period == null) return NotFound(new { success = false, message = "Periode tidak ditemukan." });
@@ -138,6 +145,7 @@ public class TimesheetPeriodsController : ControllerBase
     public async Task<IActionResult> ToggleClosePeriod(int companyId, int periodId)
     {
         if (!_tenantService.IsAdmin) return Forbid();
+        if (!_tenantService.IsSuperAdmin && _tenantService.CompanyId.HasValue && companyId != _tenantService.CompanyId.Value) return Forbid();
 
         var period = await _context.TimesheetPeriods.FirstOrDefaultAsync(p => p.Id == periodId && p.CompanyId == companyId);
         if (period == null) return NotFound(new { success = false, message = "Periode tidak ditemukan." });

@@ -20,7 +20,7 @@ public class DashboardControllerTests : IDisposable
             .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
             .Options;
 
-        _adminTenantService = new FakeTenantService(1, "TEST", "test-user-id", true);
+        _adminTenantService = new FakeTenantService(1, "TEST", "usr-admin", true);
         _context = new AppDbContext(options, _adminTenantService);
     }
 
@@ -355,5 +355,6 @@ public class DashboardControllerTests : IDisposable
         public string? CompanyCode { get; set; }
         public string? UserId { get; set; }
         public bool IsAdmin { get; set; }
+        public bool IsSuperAdmin => IsAdmin;
     }
 }

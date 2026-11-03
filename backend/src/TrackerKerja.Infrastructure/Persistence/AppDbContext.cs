@@ -56,6 +56,7 @@ public class AppDbContext : DbContext
 
     public int? CurrentCompanyId => _tenantService?.CompanyId;
     public bool IsCurrentUserAdmin => _tenantService?.IsAdmin ?? false;
+    public bool IsCurrentUserSuperAdmin => _tenantService?.IsSuperAdmin ?? false;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -268,17 +269,19 @@ public class AppDbContext : DbContext
             .OnDelete(DeleteBehavior.SetNull);
 
         // 4. Multi-Tenancy Global Query Filter
+        // SuperAdmin can see across companies when CurrentCompanyId == null,
+        // but any user with an assigned corporation (including Corporate Admin) is strictly restricted to their own corporation!
         modelBuilder.Entity<WorkTask>().HasQueryFilter(t =>
-            IsCurrentUserAdmin || CurrentCompanyId == null || t.CompanyId == null || t.CompanyId == CurrentCompanyId);
+            IsCurrentUserSuperAdmin || CurrentCompanyId == null || t.CompanyId == CurrentCompanyId);
 
         modelBuilder.Entity<Project>().HasQueryFilter(p =>
-            IsCurrentUserAdmin || CurrentCompanyId == null || p.CompanyId == null || p.CompanyId == CurrentCompanyId);
+            IsCurrentUserSuperAdmin || CurrentCompanyId == null || p.CompanyId == CurrentCompanyId);
 
         modelBuilder.Entity<WorkNote>().HasQueryFilter(n =>
-            IsCurrentUserAdmin || CurrentCompanyId == null || n.CompanyId == null || n.CompanyId == CurrentCompanyId);
+            IsCurrentUserSuperAdmin || CurrentCompanyId == null || n.CompanyId == CurrentCompanyId);
 
         modelBuilder.Entity<Announcement>().HasQueryFilter(a =>
-            IsCurrentUserAdmin || a.CompanyId == null || CurrentCompanyId == null || a.CompanyId == CurrentCompanyId);
+            IsCurrentUserSuperAdmin || a.CompanyId == null || CurrentCompanyId == null || a.CompanyId == CurrentCompanyId);
 
         modelBuilder.Entity<UserNotification>().ToTable("user_notifications");
         modelBuilder.Entity<UserNotification>()
@@ -294,7 +297,7 @@ public class AppDbContext : DbContext
             .OnDelete(DeleteBehavior.Cascade);
 
         modelBuilder.Entity<UserNotification>().HasQueryFilter(n =>
-            IsCurrentUserAdmin || CurrentCompanyId == null || n.CompanyId == CurrentCompanyId);
+            IsCurrentUserSuperAdmin || CurrentCompanyId == null || n.CompanyId == CurrentCompanyId);
 
         modelBuilder.Entity<TimesheetPeriod>().ToTable("timesheet_periods");
         modelBuilder.Entity<TimesheetPeriod>()
@@ -303,7 +306,7 @@ public class AppDbContext : DbContext
             .HasForeignKey(p => p.CompanyId)
             .OnDelete(DeleteBehavior.Cascade);
         modelBuilder.Entity<TimesheetPeriod>().HasQueryFilter(p =>
-            IsCurrentUserAdmin || CurrentCompanyId == null || p.CompanyId == CurrentCompanyId);
+            IsCurrentUserSuperAdmin || CurrentCompanyId == null || p.CompanyId == CurrentCompanyId);
 
         modelBuilder.Entity<CompanyTimesheetConfig>().ToTable("company_timesheet_configs");
         modelBuilder.Entity<CompanyTimesheetConfig>()
@@ -312,7 +315,7 @@ public class AppDbContext : DbContext
             .HasForeignKey<CompanyTimesheetConfig>(c => c.CompanyId)
             .OnDelete(DeleteBehavior.Cascade);
         modelBuilder.Entity<CompanyTimesheetConfig>().HasQueryFilter(c =>
-            IsCurrentUserAdmin || CurrentCompanyId == null || c.CompanyId == CurrentCompanyId);
+            IsCurrentUserSuperAdmin || CurrentCompanyId == null || c.CompanyId == CurrentCompanyId);
 
         modelBuilder.Entity<Holiday>().ToTable("holidays");
         modelBuilder.Entity<Holiday>()
@@ -321,6 +324,15 @@ public class AppDbContext : DbContext
             .HasForeignKey(h => h.CompanyId)
             .OnDelete(DeleteBehavior.Cascade);
         modelBuilder.Entity<Holiday>().HasQueryFilter(h =>
-            IsCurrentUserAdmin || h.CompanyId == null || CurrentCompanyId == null || h.CompanyId == CurrentCompanyId);
+            IsCurrentUserSuperAdmin || h.CompanyId == null || CurrentCompanyId == null || h.CompanyId == CurrentCompanyId);
+
+        modelBuilder.Entity<IssueTicket>().HasQueryFilter(i =>
+            IsCurrentUserSuperAdmin || CurrentCompanyId == null || i.CompanyId == CurrentCompanyId);
+
+        modelBuilder.Entity<Invoice>().HasQueryFilter(inv =>
+            IsCurrentUserSuperAdmin || CurrentCompanyId == null || inv.CompanyId == CurrentCompanyId);
+
+        modelBuilder.Entity<CompanyDocument>().HasQueryFilter(d =>
+            IsCurrentUserSuperAdmin || CurrentCompanyId == null || d.CompanyId == CurrentCompanyId);
     }
 }

@@ -38,6 +38,11 @@ public class CompaniesController : ControllerBase
             .AsNoTracking()
             .AsQueryable();
 
+        if (!_tenantService.IsSuperAdmin && _tenantService.CompanyId.HasValue)
+        {
+            query = query.Where(c => c.Id == _tenantService.CompanyId.Value);
+        }
+
         if (!string.IsNullOrWhiteSpace(search))
         {
             var s = search.Trim().ToLower();
@@ -81,6 +86,11 @@ public class CompaniesController : ControllerBase
             return NotFound(new { success = false, message = "Perusahaan tidak ditemukan." });
         }
 
+        if (!_tenantService.IsSuperAdmin && _tenantService.CompanyId.HasValue && id != _tenantService.CompanyId.Value)
+        {
+            return StatusCode(403, new { success = false, message = "Anda tidak berhak mengakses data perusahaan lain." });
+        }
+
         var dto = new CompanyDto(
             company.Id,
             company.Name,
@@ -103,7 +113,7 @@ public class CompaniesController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> CreateCompany([FromBody] CreateCompanyRequest request)
     {
-        if (!CheckIsAdmin())
+        if (!_tenantService.IsSuperAdmin)
         {
             return Forbid();
         }
@@ -175,6 +185,11 @@ public class CompaniesController : ControllerBase
             return NotFound(new { success = false, message = "Perusahaan tidak ditemukan." });
         }
 
+        if (!_tenantService.IsSuperAdmin && _tenantService.CompanyId.HasValue && id != _tenantService.CompanyId.Value)
+        {
+            return StatusCode(403, new { success = false, message = "Anda tidak berhak mengakses data perusahaan lain." });
+        }
+
         if (string.IsNullOrWhiteSpace(request.Name))
         {
             return BadRequest(new { success = false, message = "Nama perusahaan wajib diisi." });
@@ -211,7 +226,7 @@ public class CompaniesController : ControllerBase
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> DeleteCompany(int id)
     {
-        if (!CheckIsAdmin())
+        if (!_tenantService.IsSuperAdmin)
         {
             return Forbid();
         }
@@ -224,6 +239,11 @@ public class CompaniesController : ControllerBase
         if (company == null)
         {
             return NotFound(new { success = false, message = "Perusahaan tidak ditemukan." });
+        }
+
+        if (!_tenantService.IsSuperAdmin && _tenantService.CompanyId.HasValue && id != _tenantService.CompanyId.Value)
+        {
+            return StatusCode(403, new { success = false, message = "Anda tidak berhak mengakses data perusahaan lain." });
         }
 
         if (company.Users.Any() || company.Tasks.Any())
@@ -243,10 +263,18 @@ public class CompaniesController : ControllerBase
     [HttpGet("module-matrix")]
     public async Task<IActionResult> GetModuleMatrix()
     {
-        var matrix = await _context.Companies
+        var query = _context.Companies
             .Include(c => c.Users)
             .Include(c => c.Projects)
             .AsNoTracking()
+            .AsQueryable();
+
+        if (!_tenantService.IsSuperAdmin && _tenantService.CompanyId.HasValue)
+        {
+            query = query.Where(c => c.Id == _tenantService.CompanyId.Value);
+        }
+
+        var matrix = await query
             .OrderBy(c => c.Name)
             .Select(c => new CompanyModuleMatrixDto(
                 c.Id,
@@ -277,6 +305,11 @@ public class CompaniesController : ControllerBase
             return NotFound(new { success = false, message = "Perusahaan tidak ditemukan." });
         }
 
+        if (!_tenantService.IsSuperAdmin && _tenantService.CompanyId.HasValue && id != _tenantService.CompanyId.Value)
+        {
+            return StatusCode(403, new { success = false, message = "Anda tidak berhak mengakses data perusahaan lain." });
+        }
+
         company.EnableDms = request.EnableDms;
         company.EnableTicketing = request.EnableTicketing;
         company.EnableInvoicing = request.EnableInvoicing;
@@ -301,7 +334,7 @@ public class CompaniesController : ControllerBase
     [HttpPut("module-matrix")]
     public async Task<IActionResult> BulkUpdateModuleMatrix([FromBody] BulkUpdateCompanyModuleMatrixRequest request)
     {
-        if (!CheckIsAdmin() && !_tenantService.IsProjectManager)
+        if (!_tenantService.IsSuperAdmin)
         {
             return Forbid();
         }

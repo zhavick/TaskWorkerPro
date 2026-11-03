@@ -6,6 +6,7 @@ public interface ICurrentTenantService
     string? CompanyCode { get; }
     string? UserId { get; }
     bool IsAdmin { get; }
+    bool IsSuperAdmin => UserId == "usr-superadmin" || UserId == "usr-admin";
     bool IsProjectManager => false;
     bool IsPurgeAdmin => IsAdmin;
 }

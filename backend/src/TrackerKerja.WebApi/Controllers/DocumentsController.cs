@@ -95,9 +95,12 @@ public class DocumentsController : ControllerBase
             .AsNoTracking()
             .AsQueryable();
 
-        if (!_tenantService.IsAdmin && userCompanyId.HasValue)
+        if (!_tenantService.IsSuperAdmin)
         {
-            query = query.Where(d => d.CompanyId == userCompanyId.Value);
+            if (userCompanyId.HasValue)
+            {
+                query = query.Where(d => d.CompanyId == userCompanyId.Value);
+            }
         }
         else if (companyId.HasValue)
         {
@@ -168,7 +171,23 @@ public class DocumentsController : ControllerBase
         }
 
         var userCompanyId = await GetUserCompanyIdAsync();
-        int? targetCompanyId = companyId ?? userCompanyId;
+        int? targetCompanyId;
+        if (!_tenantService.IsSuperAdmin)
+        {
+            if (!userCompanyId.HasValue)
+            {
+                return BadRequest(new { success = false, message = "Pengguna tidak terhubung dengan perusahaan manapun." });
+            }
+            if (companyId.HasValue && companyId.Value != userCompanyId.Value)
+            {
+                return StatusCode(403, new { success = false, message = "Anda tidak diizinkan mengunggah dokumen ke perusahaan lain." });
+            }
+            targetCompanyId = userCompanyId.Value;
+        }
+        else
+        {
+            targetCompanyId = companyId ?? userCompanyId;
+        }
 
         if (!targetCompanyId.HasValue)
         {
@@ -304,7 +323,7 @@ public class DocumentsController : ControllerBase
         }
 
         var userCompanyId = await GetUserCompanyIdAsync();
-        if (!_tenantService.IsAdmin && userCompanyId.HasValue && doc.CompanyId != userCompanyId.Value)
+        if (!_tenantService.IsSuperAdmin && userCompanyId.HasValue && doc.CompanyId != userCompanyId.Value)
         {
             return StatusCode(403, new { success = false, message = "Anda tidak berhak mengunduh dokumen ini." });
         }
@@ -329,7 +348,7 @@ public class DocumentsController : ControllerBase
         }
 
         var userCompanyId = await GetUserCompanyIdAsync();
-        if (!_tenantService.IsAdmin && userCompanyId.HasValue && doc.CompanyId != userCompanyId.Value)
+        if (!_tenantService.IsSuperAdmin && userCompanyId.HasValue && doc.CompanyId != userCompanyId.Value)
         {
             return StatusCode(403, new { success = false, message = "Anda tidak berhak melihat pratinjau dokumen ini." });
         }
@@ -358,7 +377,7 @@ public class DocumentsController : ControllerBase
         }
 
         var userCompanyId = await GetUserCompanyIdAsync();
-        if (!_tenantService.IsAdmin && userCompanyId.HasValue && doc.CompanyId != userCompanyId.Value)
+        if (!_tenantService.IsSuperAdmin && userCompanyId.HasValue && doc.CompanyId != userCompanyId.Value)
         {
             return StatusCode(403, new { success = false, message = "Anda tidak berhak mengubah dokumen ini." });
         }
@@ -388,7 +407,7 @@ public class DocumentsController : ControllerBase
         var isUploader = doc.UploadedByUserId == currentUserId;
         var canDelete = _tenantService.IsAdmin || _tenantService.IsProjectManager || isUploader;
 
-        if (!canDelete || (!_tenantService.IsAdmin && userCompanyId.HasValue && doc.CompanyId != userCompanyId.Value))
+        if (!canDelete || (!_tenantService.IsSuperAdmin && userCompanyId.HasValue && doc.CompanyId != userCompanyId.Value))
         {
             return StatusCode(403, new { success = false, message = "Anda tidak berhak menghapus dokumen ini." });
         }

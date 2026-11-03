@@ -65,6 +65,11 @@ public class TasksController : ControllerBase
             .AsNoTracking()
             .AsQueryable();
 
+        if (!_tenantService.IsSuperAdmin && _tenantService.CompanyId.HasValue)
+        {
+            query = query.Where(t => t.CompanyId == _tenantService.CompanyId.Value);
+        }
+
         // RBAC Scoping (User Requirement 4): Show all company tasks; only filter by user if filter == "mine"
         if (string.Equals(filter, "mine", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(_tenantService.UserId))
         {
@@ -233,6 +238,11 @@ public class TasksController : ControllerBase
             query = query.Where(t => t.ParentTaskId == null);
         }
 
+        if (!_tenantService.IsSuperAdmin && _tenantService.CompanyId.HasValue)
+        {
+            query = query.Where(t => t.CompanyId == _tenantService.CompanyId.Value);
+        }
+
         // RBAC Scoping (User Requirement 4): Show all company tasks; only filter by user if filter == "mine"
         if (string.Equals(filter, "mine", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(_tenantService.UserId))
         {
@@ -354,7 +364,7 @@ public class TasksController : ControllerBase
         {
             query = query.Where(t => t.AssignedToUserId == _tenantService.UserId);
         }
-        else if (!_tenantService.IsAdmin && _tenantService.CompanyId.HasValue)
+        else if (!_tenantService.IsSuperAdmin && _tenantService.CompanyId.HasValue)
         {
             query = query.Where(t => t.CompanyId == _tenantService.CompanyId.Value ||
                                      (t.Project != null && t.Project.CompanyId == _tenantService.CompanyId.Value));
@@ -457,6 +467,24 @@ public class TasksController : ControllerBase
         var cleanTitle = request.Title.Trim();
         var assignedUserId = string.IsNullOrWhiteSpace(request.AssignedToUserId) ? null : request.AssignedToUserId.Trim();
 
+        if (!string.IsNullOrWhiteSpace(assignedUserId))
+        {
+            var assignedUser = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == assignedUserId);
+            if (assignedUser != null && assignedUser.CompanyId.HasValue && assignedUser.CompanyId.Value != targetCompanyId)
+            {
+                return BadRequest(new { success = false, message = "Anggota yang ditugaskan bukan bagian dari perusahaan ini." });
+            }
+        }
+
+        if (request.ProjectId.HasValue)
+        {
+            var project = await _context.Projects.AsNoTracking().FirstOrDefaultAsync(p => p.Id == request.ProjectId.Value);
+            if (project != null && project.CompanyId.HasValue && project.CompanyId.Value != targetCompanyId)
+            {
+                return BadRequest(new { success = false, message = "Proyek yang dipilih bukan bagian dari perusahaan ini." });
+            }
+        }
+
         // Aturan: Judul tugas yang sama diizinkan jika member berbeda. Jika member sama, tidak diizinkan duplikasi tugas.
         var isDuplicateForSameMember = await _context.Tasks.AnyAsync(t =>
             (t.CompanyId == targetCompanyId || t.CompanyId == null) &&
@@ -531,6 +559,24 @@ public class TasksController : ControllerBase
 
         var previousAssignedUserId = task.AssignedToUserId;
 
+        if (!string.IsNullOrWhiteSpace(request.AssignedToUserId))
+        {
+            var assignedUser = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == request.AssignedToUserId.Trim());
+            if (assignedUser != null && assignedUser.CompanyId.HasValue && task.CompanyId.HasValue && assignedUser.CompanyId.Value != task.CompanyId.Value)
+            {
+                return BadRequest(new { success = false, message = "Anggota yang ditugaskan bukan bagian dari perusahaan tugas ini." });
+            }
+        }
+
+        if (request.ProjectId.HasValue)
+        {
+            var project = await _context.Projects.AsNoTracking().FirstOrDefaultAsync(p => p.Id == request.ProjectId.Value);
+            if (project != null && project.CompanyId.HasValue && task.CompanyId.HasValue && project.CompanyId.Value != task.CompanyId.Value)
+            {
+                return BadRequest(new { success = false, message = "Proyek yang dipilih bukan bagian dari perusahaan tugas ini." });
+            }
+        }
+
         task.Title = request.Title.Trim();
         task.Description = !string.IsNullOrWhiteSpace(request.Description) ? request.Description.Trim() : request.Title.Trim();
         if (request.Priority.HasValue) task.Priority = request.Priority.Value;
@@ -590,6 +636,24 @@ public class TasksController : ControllerBase
                 }
 
                 var previousAssignedUserId = task.AssignedToUserId;
+
+        if (!string.IsNullOrWhiteSpace(request.AssignedToUserId))
+        {
+            var assignedUser = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == request.AssignedToUserId.Trim());
+            if (assignedUser != null && assignedUser.CompanyId.HasValue && task.CompanyId.HasValue && assignedUser.CompanyId.Value != task.CompanyId.Value)
+            {
+                return BadRequest(new { success = false, message = "Anggota yang ditugaskan bukan bagian dari perusahaan tugas ini." });
+            }
+        }
+
+        if (request.ProjectId.HasValue)
+        {
+            var project = await _context.Projects.AsNoTracking().FirstOrDefaultAsync(p => p.Id == request.ProjectId.Value);
+            if (project != null && project.CompanyId.HasValue && task.CompanyId.HasValue && project.CompanyId.Value != task.CompanyId.Value)
+            {
+                return BadRequest(new { success = false, message = "Proyek yang dipilih bukan bagian dari perusahaan tugas ini." });
+            }
+        }
                 var previousStatus = task.Status;
 
                 // 1. Update task properties
@@ -798,7 +862,7 @@ public class TasksController : ControllerBase
             return NotFound(new { success = false, message = "Tugas yang dipilih tidak ditemukan." });
         }
 
-        if (!_tenantService.IsAdmin)
+        if (!_tenantService.IsSuperAdmin)
         {
             var nonModifiable = tasks.Where(t => !CanUserModifyTask(t)).ToList();
             if (nonModifiable.Any())
@@ -844,7 +908,7 @@ public class TasksController : ControllerBase
             return NotFound(new { success = false, message = "Tugas yang dipilih tidak ditemukan." });
         }
 
-        if (!_tenantService.IsAdmin)
+        if (!_tenantService.IsSuperAdmin)
         {
             var nonModifiable = tasks.Where(t => !CanUserModifyTask(t)).ToList();
             if (nonModifiable.Any())
@@ -900,7 +964,7 @@ public class TasksController : ControllerBase
         }
 
         // Item 4: Check if non-admin is trying to delete others' tasks
-        if (!_tenantService.IsAdmin)
+        if (!_tenantService.IsSuperAdmin)
         {
             var nonModifiable = tasks.Where(t => !CanUserModifyTask(t)).ToList();
             if (nonModifiable.Any())
@@ -1215,6 +1279,10 @@ public class TasksController : ControllerBase
 
     private bool CanUserModifyTask(WorkTask task)
     {
+        if (!_tenantService.IsSuperAdmin && _tenantService.CompanyId.HasValue && task.CompanyId.HasValue && task.CompanyId != _tenantService.CompanyId)
+        {
+            return false;
+        }
         if (_tenantService.IsAdmin || _tenantService.IsProjectManager) return true;
         if (!string.IsNullOrEmpty(task.CreatedByUserId))
         {

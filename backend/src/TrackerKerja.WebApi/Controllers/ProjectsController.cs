@@ -36,11 +36,14 @@ public class ProjectsController : ControllerBase
             .AsNoTracking()
             .AsQueryable();
 
-        if (companyId.HasValue && (_tenantService.IsAdmin || _tenantService.IsProjectManager))
+        if (_tenantService.IsSuperAdmin)
         {
-            query = query.Where(p => p.CompanyId == companyId.Value);
+            if (companyId.HasValue)
+            {
+                query = query.Where(p => p.CompanyId == companyId.Value);
+            }
         }
-        else if (!_tenantService.IsAdmin && _tenantService.CompanyId.HasValue)
+        else if (_tenantService.CompanyId.HasValue)
         {
             query = query.Where(p => p.CompanyId == _tenantService.CompanyId.Value);
         }
@@ -108,11 +111,14 @@ public class ProjectsController : ControllerBase
             .AsNoTracking()
             .AsQueryable();
 
-        if (companyId.HasValue && _tenantService.IsAdmin)
+        if (_tenantService.IsSuperAdmin)
         {
-            query = query.Where(p => p.CompanyId == companyId.Value);
+            if (companyId.HasValue)
+            {
+                query = query.Where(p => p.CompanyId == companyId.Value);
+            }
         }
-        else if (!_tenantService.IsAdmin && _tenantService.CompanyId.HasValue)
+        else if (_tenantService.CompanyId.HasValue)
         {
             query = query.Where(p => p.CompanyId == _tenantService.CompanyId.Value);
         }
@@ -167,6 +173,11 @@ public class ProjectsController : ControllerBase
             return NotFound(new { success = false, message = "Proyek tidak ditemukan." });
         }
 
+        if (!_tenantService.IsSuperAdmin && _tenantService.CompanyId.HasValue && project.CompanyId.HasValue && project.CompanyId != _tenantService.CompanyId)
+        {
+            return StatusCode(403, new { success = false, message = "Anda tidak berhak mengakses proyek perusahaan lain." });
+        }
+
         var tasks = await _context.Tasks
             .Include(t => t.AssignedToUser)
             .Include(t => t.Category)
@@ -216,6 +227,11 @@ public class ProjectsController : ControllerBase
         if (project == null)
         {
             return NotFound(new { success = false, message = "Proyek tidak ditemukan." });
+        }
+
+        if (!_tenantService.IsSuperAdmin && _tenantService.CompanyId.HasValue && project.CompanyId.HasValue && project.CompanyId != _tenantService.CompanyId)
+        {
+            return StatusCode(403, new { success = false, message = "Anda tidak berhak mengakses proyek perusahaan lain." });
         }
 
         var totalTasks = project.Tasks.Count;
@@ -355,11 +371,28 @@ public class ProjectsController : ControllerBase
         }
 
         // Tentukan target CompanyId
-        int? targetCompanyId = request.CompanyId ?? _tenantService.CompanyId;
-        if (!targetCompanyId.HasValue && !string.IsNullOrEmpty(currentUserId))
+        int? targetCompanyId;
+        if (!_tenantService.IsSuperAdmin)
         {
-            var currentUser = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == currentUserId);
-            targetCompanyId = currentUser?.CompanyId;
+            var myComp = _tenantService.CompanyId;
+            if (!myComp.HasValue && !string.IsNullOrEmpty(currentUserId))
+            {
+                var currentUser = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == currentUserId);
+                myComp = currentUser?.CompanyId;
+            }
+            if (!myComp.HasValue)
+            {
+                return BadRequest(new { success = false, message = "Pengguna tidak terhubung dengan perusahaan manapun." });
+            }
+            if (request.CompanyId.HasValue && request.CompanyId.Value != myComp.Value)
+            {
+                return StatusCode(403, new { success = false, message = "Anda tidak diizinkan membuat proyek untuk perusahaan lain." });
+            }
+            targetCompanyId = myComp.Value;
+        }
+        else
+        {
+            targetCompanyId = request.CompanyId ?? _tenantService.CompanyId;
         }
 
         if (!targetCompanyId.HasValue)
@@ -428,6 +461,16 @@ public class ProjectsController : ControllerBase
             return StatusCode(403, new { success = false, message = "Hanya Project Manager yang berwenang mengubah data proyek." });
         }
 
+        if (!_tenantService.IsSuperAdmin && _tenantService.CompanyId.HasValue && project.CompanyId.HasValue && project.CompanyId != _tenantService.CompanyId)
+        {
+            return StatusCode(403, new { success = false, message = "Anda tidak berhak mengubah proyek perusahaan lain." });
+        }
+
+        if (!_tenantService.IsSuperAdmin && request.CompanyId.HasValue && request.CompanyId.Value != project.CompanyId)
+        {
+            return StatusCode(403, new { success = false, message = "Anda tidak diizinkan memindahkan proyek ke perusahaan lain." });
+        }
+
         int? targetCompanyId = request.CompanyId ?? project.CompanyId ?? _tenantService.CompanyId;
         if (targetCompanyId.HasValue)
         {
@@ -487,6 +530,11 @@ public class ProjectsController : ControllerBase
             return StatusCode(403, new { success = false, message = "Hanya Project Manager yang berwenang menghapus proyek." });
         }
 
+        if (!_tenantService.IsSuperAdmin && _tenantService.CompanyId.HasValue && project.CompanyId.HasValue && project.CompanyId != _tenantService.CompanyId)
+        {
+            return StatusCode(403, new { success = false, message = "Anda tidak berhak menghapus proyek perusahaan lain." });
+        }
+
         _context.Projects.Remove(project);
         await _context.SaveChangesAsync();
 
@@ -498,6 +546,11 @@ public class ProjectsController : ControllerBase
     {
         var project = await _context.Projects.AsNoTracking().FirstOrDefaultAsync(p => p.Id == id);
         if (project == null) return NotFound(new { success = false, message = "Proyek tidak ditemukan." });
+
+        if (!_tenantService.IsSuperAdmin && _tenantService.CompanyId.HasValue && project.CompanyId.HasValue && project.CompanyId != _tenantService.CompanyId)
+        {
+            return StatusCode(403, new { success = false, message = "Anda tidak berhak mengakses proyek perusahaan lain." });
+        }
 
         var query = _context.Tasks
             .AsNoTracking()
@@ -520,6 +573,11 @@ public class ProjectsController : ControllerBase
     {
         var project = await _context.Projects.FirstOrDefaultAsync(p => p.Id == id);
         if (project == null) return NotFound(new { success = false, message = "Proyek tidak ditemukan." });
+
+        if (!_tenantService.IsSuperAdmin && _tenantService.CompanyId.HasValue && project.CompanyId.HasValue && project.CompanyId != _tenantService.CompanyId)
+        {
+            return StatusCode(403, new { success = false, message = "Anda tidak berhak mengakses proyek perusahaan lain." });
+        }
 
         var tasksToAssign = await _context.Tasks
             .Where(t => request.TaskIds.Contains(t.Id))

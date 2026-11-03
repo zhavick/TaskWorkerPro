@@ -26,45 +26,46 @@ public class AttendancesController : ControllerBase
 
     private int? ResolveTargetCompanyId(int? requestCompanyId)
     {
-        if (requestCompanyId.HasValue)
+        if (_tenantService.IsSuperAdmin)
         {
-            if (requestCompanyId.Value == -1) return null; // -1 = Semua Perusahaan (Admin)
-            if (requestCompanyId.Value > 0) return requestCompanyId.Value;
-        }
-
-        if (!_tenantService.IsAdmin)
-        {
-            return _tenantService.CompanyId;
-        }
-
-        // Untuk Administrator:
-        // Cek apakah _tenantService.CompanyId memiliki data operasional (tugas atau pengguna)
-        if (_tenantService.CompanyId.HasValue)
-        {
-            var adminComp = _tenantService.CompanyId.Value;
-            var hasOperationalData = _context.Tasks.Any(t => t.CompanyId == adminComp) ||
-                                     _context.Users.Any(u => u.CompanyId == adminComp);
-            if (hasOperationalData)
+            if (requestCompanyId.HasValue)
             {
-                return adminComp;
+                if (requestCompanyId.Value == -1) return null; // -1 = Semua Perusahaan (SuperAdmin)
+                if (requestCompanyId.Value > 0) return requestCompanyId.Value;
             }
-        }
 
-        // Jika holding/company admin tidak memiliki data, arahkan ke primary company operasional dari Tasks atau Users
-        var primaryCompWithData = _context.Tasks
-            .Where(t => t.CompanyId.HasValue)
-            .Select(t => t.CompanyId!.Value)
-            .FirstOrDefault();
+            // Untuk SuperAdmin:
+            // Cek apakah _tenantService.CompanyId memiliki data operasional (tugas atau pengguna)
+            if (_tenantService.CompanyId.HasValue)
+            {
+                var adminComp = _tenantService.CompanyId.Value;
+                var hasOperationalData = _context.Tasks.Any(t => t.CompanyId == adminComp) ||
+                                         _context.Users.Any(u => u.CompanyId == adminComp);
+                if (hasOperationalData)
+                {
+                    return adminComp;
+                }
+            }
 
-        if (primaryCompWithData == 0)
-        {
-            primaryCompWithData = _context.Users
-                .Where(u => u.CompanyId.HasValue)
-                .Select(u => u.CompanyId!.Value)
+            // Jika holding/company admin tidak memiliki data, arahkan ke primary company operasional dari Tasks atau Users
+            var primaryCompWithData = _context.Tasks
+                .Where(t => t.CompanyId.HasValue)
+                .Select(t => t.CompanyId!.Value)
                 .FirstOrDefault();
+
+            if (primaryCompWithData == 0)
+            {
+                primaryCompWithData = _context.Users
+                    .Where(u => u.CompanyId.HasValue)
+                    .Select(u => u.CompanyId!.Value)
+                    .FirstOrDefault();
+            }
+
+            return primaryCompWithData > 0 ? primaryCompWithData : _tenantService.CompanyId;
         }
 
-        return primaryCompWithData > 0 ? primaryCompWithData : _tenantService.CompanyId;
+        // Non-superadmin: strictly restricted to their own corporation!
+        return _tenantService.CompanyId;
     }
 
     [HttpGet("today")]
