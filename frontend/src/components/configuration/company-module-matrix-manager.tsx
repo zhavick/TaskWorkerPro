@@ -457,22 +457,19 @@ export function CompanyModuleMatrixManager() {
                           <button
                             type="button"
                             onClick={() => handleToggle(item.companyId, "enableDms")}
-                            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${
-                              item.enableDms ? "bg-amber-500" : "bg-gray-200 dark:bg-gray-700"
-                            }`}
+                            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${item.enableDms ? "bg-amber-500" : "bg-gray-200 dark:bg-gray-700"
+                              }`}
                           >
                             <span
-                              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
-                                item.enableDms ? "translate-x-5" : "translate-x-0"
-                              }`}
+                              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${item.enableDms ? "translate-x-5" : "translate-x-0"
+                                }`}
                             />
                           </button>
                           <span
-                            className={`text-[10px] font-semibold ${
-                              item.enableDms
+                            className={`text-[10px] font-semibold ${item.enableDms
                                 ? "text-amber-600 dark:text-amber-400"
                                 : "text-gray-400 dark:text-gray-500"
-                            }`}
+                              }`}
                           >
                             {item.enableDms ? "Aktif" : "Nonaktif"}
                           </span>
@@ -485,22 +482,19 @@ export function CompanyModuleMatrixManager() {
                           <button
                             type="button"
                             onClick={() => handleToggle(item.companyId, "enableTicketing")}
-                            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${
-                              item.enableTicketing ? "bg-rose-500" : "bg-gray-200 dark:bg-gray-700"
-                            }`}
+                            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${item.enableTicketing ? "bg-rose-500" : "bg-gray-200 dark:bg-gray-700"
+                              }`}
                           >
                             <span
-                              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
-                                item.enableTicketing ? "translate-x-5" : "translate-x-0"
-                              }`}
+                              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${item.enableTicketing ? "translate-x-5" : "translate-x-0"
+                                }`}
                             />
                           </button>
                           <span
-                            className={`text-[10px] font-semibold ${
-                              item.enableTicketing
+                            className={`text-[10px] font-semibold ${item.enableTicketing
                                 ? "text-rose-600 dark:text-rose-400"
                                 : "text-gray-400 dark:text-gray-500"
-                            }`}
+                              }`}
                           >
                             {item.enableTicketing ? "Aktif" : "Nonaktif"}
                           </span>
@@ -513,22 +507,19 @@ export function CompanyModuleMatrixManager() {
                           <button
                             type="button"
                             onClick={() => handleToggle(item.companyId, "enableInvoicing")}
-                            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${
-                              item.enableInvoicing ? "bg-emerald-500" : "bg-gray-200 dark:bg-gray-700"
-                            }`}
+                            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${item.enableInvoicing ? "bg-emerald-500" : "bg-gray-200 dark:bg-gray-700"
+                              }`}
                           >
                             <span
-                              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
-                                item.enableInvoicing ? "translate-x-5" : "translate-x-0"
-                              }`}
+                              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${item.enableInvoicing ? "translate-x-5" : "translate-x-0"
+                                }`}
                             />
                           </button>
                           <span
-                            className={`text-[10px] font-semibold ${
-                              item.enableInvoicing
+                            className={`text-[10px] font-semibold ${item.enableInvoicing
                                 ? "text-emerald-600 dark:text-emerald-400"
                                 : "text-gray-400 dark:text-gray-500"
-                            }`}
+                              }`}
                           >
                             {item.enableInvoicing ? "Aktif" : "Nonaktif"}
                           </span>
