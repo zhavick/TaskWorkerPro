@@ -53,6 +53,59 @@ interface CustomTimesheetStackedTooltipProps {
   metric: "hours" | "tasks";
 }
 
+interface CustomMemberPieTooltipProps {
+  active?: boolean;
+  payload?: any[];
+}
+
+function CustomMemberPieTooltip({ active, payload }: CustomMemberPieTooltipProps) {
+  if (!active || !payload || !payload.length) return null;
+  const data = payload[0]?.payload;
+  if (!data) return null;
+
+  const total = (data.doneCount || 0) + (data.inProgressCount || 0);
+  const completionRate = total > 0 ? Math.round(((data.doneCount || 0) / total) * 100) : 0;
+
+  return (
+    <div className="rounded-xl border border-card-border bg-card-background p-3 shadow-lg text-xs text-text-primary min-w-[200px]">
+      <div className="flex items-center gap-2 mb-2 border-b border-card-border pb-1.5">
+        <span
+          className="size-3 rounded-full shrink-0"
+          style={{ backgroundColor: data.color || "#6366F1" }}
+        />
+        <div className="truncate">
+          <p className="font-bold text-sm text-text-primary truncate">{data.name}</p>
+          <p className="text-[10px] text-text-secondary truncate">{data.jobTitle || "Anggota Tim"}</p>
+        </div>
+      </div>
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-text-secondary">Beban Tugas:</span>
+          <span className="font-extrabold">{data.value || total} Tugas ({data.percentage}%)</span>
+        </div>
+        <div className="flex items-center justify-between gap-3 text-emerald-600 dark:text-emerald-400">
+          <span className="flex items-center gap-1 font-semibold">
+            <span className="size-1.5 rounded-full bg-emerald-500" />
+            Tugas Selesai:
+          </span>
+          <span className="font-bold">{data.doneCount || 0}</span>
+        </div>
+        <div className="flex items-center justify-between gap-3 text-indigo-600 dark:text-indigo-400">
+          <span className="flex items-center gap-1 font-semibold">
+            <span className="size-1.5 rounded-full bg-indigo-500" />
+            Dalam Proses:
+          </span>
+          <span className="font-bold">{data.inProgressCount || 0}</span>
+        </div>
+        <div className="flex items-center justify-between gap-3 border-t border-card-border/60 pt-1 text-[11px] font-bold">
+          <span className="text-text-secondary">Rasio Tuntas:</span>
+          <span className="text-emerald-600 dark:text-emerald-400">{completionRate}% Selesai</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CustomTimesheetStackedTooltip({
   active,
   payload,
@@ -106,6 +159,7 @@ export default function DashboardPage() {
   const [userRole, setUserRole] = useState("Member");
   const [activeChartTab, setActiveChartTab] = useState<"hours" | "tasks">("hours");
   const [timesheetViewMode, setTimesheetViewMode] = useState<"team" | "timeline">("team");
+  const [memberChartShape, setMemberChartShape] = useState<"donut" | "pie">("donut");
   const [activeDistributionTab, setActiveDistributionTab] = useState<"project" | "status" | "member">("project");
   const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(null);
 
@@ -406,6 +460,10 @@ export default function DashboardPage() {
   }, [rawMemberDistribution]);
 
   const memberChartData = memberDistribution;
+
+  const totalMemberTasks = useMemo(() => {
+    return memberChartData.reduce((acc: number, m: any) => acc + (m.value || (m.doneCount || 0) + (m.inProgressCount || 0)), 0);
+  }, [memberChartData]);
 
   const currentPieData =
     activeDistributionTab === "project"
@@ -1127,74 +1185,118 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* 4.5 Section Khusus: Beban Kerja & Produktivitas Anggota Tim */}
+      {/* 4.5 Section Khusus: Beban Kerja & Distribusi Tugas Anggota Tim */}
       <div className="rounded-2xl border border-card-border bg-card-background p-5 shadow-xs text-text-primary">
         <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <div className="flex items-center gap-2">
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-500/10 text-primary-500">
-                <Users className="h-4.5 w-4.5" />
+                <PieChartIcon className="h-4.5 w-4.5" />
               </div>
               <h3 className="text-base font-bold text-text-primary">
                 Beban Kerja & Distribusi Tugas Anggota Tim
               </h3>
             </div>
             <p className="mt-0.5 text-xs text-text-secondary">
-              Komparasi kapasitas riil, penyelesaian tugas (Selesai vs Dalam Proses), dan alokasi proyek tiap anggota
+              Visualisasi donat / pie proporsi beban kerja per personel dan perbandingan penyelesaian tugas tim
             </p>
           </div>
 
-          <Link
-            href="/members"
-            className="flex items-center gap-1 text-xs font-semibold text-primary-500 hover:underline"
-          >
-            Direktori Tim <ArrowUpRight className="h-3.5 w-3.5" />
-          </Link>
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Toggle Bentuk Donat vs Pie */}
+            <div className="flex items-center rounded-xl border border-card-border bg-card-surface-area p-1">
+              <button
+                type="button"
+                onClick={() => setMemberChartShape("donut")}
+                className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-all ${
+                  memberChartShape === "donut"
+                    ? "bg-card-background text-primary-500 shadow-xs"
+                    : "text-text-secondary hover:text-text-primary"
+                }`}
+              >
+                Donat
+              </button>
+              <button
+                type="button"
+                onClick={() => setMemberChartShape("pie")}
+                className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-all ${
+                  memberChartShape === "pie"
+                    ? "bg-card-background text-primary-500 shadow-xs"
+                    : "text-text-secondary hover:text-text-primary"
+                }`}
+              >
+                Pie
+              </button>
+            </div>
+
+            <Link
+              href="/members"
+              className="flex items-center gap-1 text-xs font-semibold text-primary-500 hover:underline"
+            >
+              Direktori Tim <ArrowUpRight className="h-3.5 w-3.5" />
+            </Link>
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-          {/* Bar Chart Komparasi Tugas Anggota Tim (7 cols) */}
-          <div className="h-68 w-full lg:col-span-7">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-12 items-center">
+          {/* Donut / Pie Chart Komparasi Tugas Anggota Tim (6 cols) */}
+          <div className="relative h-72 w-full lg:col-span-6 flex items-center justify-center">
             {memberChartData.length === 0 ? (
-              <div className="flex h-full min-h-[220px] flex-col items-center justify-center rounded-xl border border-dashed border-card-border p-6 text-center text-xs text-text-secondary">
+              <div className="flex h-full w-full min-h-[220px] flex-col items-center justify-center rounded-xl border border-dashed border-card-border p-6 text-center text-xs text-text-secondary">
                 <Users className="mb-2 h-7 w-7 text-text-secondary/50" />
                 <p className="font-semibold text-text-primary">Belum Ada Data Tugas Anggota Tim</p>
                 <p className="mt-1 text-[11px]">Tidak ada tugas aktif atau anggota tim yang teralokasi pada filter perusahaan ini.</p>
               </div>
             ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={memberChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--card-border, #E5E7EB)" opacity={0.6} />
-                  <XAxis dataKey="name" tickLine={false} axisLine={false} fontSize={12} stroke="var(--text-secondary, #9CA3AF)" />
-                  <YAxis tickLine={false} axisLine={false} fontSize={12} stroke="var(--text-secondary, #9CA3AF)" allowDecimals={false} />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "var(--card-background, #ffffff)",
-                      borderColor: "var(--card-border, #e5e7eb)",
-                      borderWidth: "1px",
-                      borderStyle: "solid",
-                      borderRadius: "0.75rem",
-                      color: "var(--text-primary, #111827)",
-                      fontSize: "12px",
-                      boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1)",
-                    }}
-                    itemStyle={{ color: "var(--text-primary, #111827)" }}
-                    labelStyle={{ color: "var(--text-secondary, #6b7280)", fontWeight: 600 }}
-                    formatter={(val: any, name: any) => [`${val} Tugas`, name]}
-                  />
-                  <Legend
-                    wrapperStyle={{ paddingTop: "12px", fontSize: "12px" }}
-                    formatter={(value) => <span className="text-text-secondary font-medium">{value}</span>}
-                  />
-                  <Bar dataKey="doneCount" name="Tugas Selesai (Done)" stackId="memberTasks" fill="#10B981" radius={[0, 0, 0, 0]} maxBarSize={32} />
-                  <Bar dataKey="inProgressCount" name="Dalam Proses" stackId="memberTasks" fill="#6366F1" radius={[4, 4, 0, 0]} maxBarSize={32} />
-                </BarChart>
-              </ResponsiveContainer>
+              <div className="relative h-72 w-full flex items-center justify-center">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Tooltip content={<CustomMemberPieTooltip />} />
+                    <Pie
+                      data={memberChartData}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={memberChartShape === "donut" ? 68 : 0}
+                      outerRadius={100}
+                      paddingAngle={memberChartShape === "donut" ? 3 : 1}
+                      dataKey="value"
+                      nameKey="name"
+                      stroke="var(--card-background, #ffffff)"
+                      strokeWidth={2}
+                    >
+                      {memberChartData.map((entry: any, index: number) => {
+                        const fallbackColors = [
+                          "#6366F1", "#10B981", "#F59E0B", "#EC4899", "#3B82F6",
+                          "#8B5CF6", "#06B6D4", "#F43F5E", "#14B8A6", "#84CC16"
+                        ];
+                        return (
+                          <Cell
+                            key={`cell-${entry.userId || index}`}
+                            fill={entry.color || fallbackColors[index % fallbackColors.length]}
+                          />
+                        );
+                      })}
+                    </Pie>
+                  </PieChart>
+                </ResponsiveContainer>
+
+                {/* Center Badge inside Donut */}
+                {memberChartShape === "donut" && (
+                  <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
+                    <span className="text-3xl font-black text-text-primary">
+                      {totalMemberTasks}
+                    </span>
+                    <span className="text-[11px] font-semibold text-text-secondary">
+                      Total Tugas Tim
+                    </span>
+                  </div>
+                )}
+              </div>
             )}
           </div>
 
-          {/* Rincian Kartu Member (5 cols) */}
-          <div className="space-y-2.5 max-h-68 overflow-y-auto pr-1 lg:col-span-5">
+          {/* Rincian Kartu Member (6 cols) */}
+          <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1 lg:col-span-6">
             {memberChartData.length === 0 ? (
               <div className="flex h-full min-h-[220px] items-center justify-center rounded-xl border border-dashed border-card-border p-6 text-center text-xs text-text-secondary">
                 Belum ada anggota tim terdaftar untuk filter ini.
