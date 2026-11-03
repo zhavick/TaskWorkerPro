@@ -173,6 +173,7 @@ export default function KanbanPage() {
   const [search, setSearch] = useState("");
   const [selectedProjectId, setSelectedProjectId] = useState<string>("all");
   const [selectedPriority, setSelectedPriority] = useState<string>("all");
+  const [selectedMemberId, setSelectedMemberId] = useState<string>("all");
   const [scope, setScope] = useState<"mine" | "all">("all");
   const [selectedMobileColumn, setSelectedMobileColumn] =
     useState<"Todo" | "InProgress" | "Review" | "Done" | "Overdue">("InProgress");
@@ -259,6 +260,15 @@ export default function KanbanPage() {
     },
   });
 
+  // 2b. Fetch Members for team filter & all-member view
+  const { data: members = [] } = useQuery<any[]>({
+    queryKey: ["kanbanMembers"],
+    queryFn: async () => {
+      const res = await apiClient.get("/members");
+      return res.data.data || [];
+    },
+  });
+
   // 3. Query Active Timers for live badge on cards
   const { data: activeTimers = [] } = useQuery<ActiveTimer[]>({
     queryKey: ["activeTimers"],
@@ -297,6 +307,7 @@ export default function KanbanPage() {
     search,
     selectedProjectId,
     selectedPriority,
+    selectedMemberId,
     scope,
     doneFilterMode,
     activeMonth,
@@ -317,7 +328,12 @@ export default function KanbanPage() {
         params.append("projectId", selectedProjectId);
       if (selectedPriority !== "all")
         params.append("priority", selectedPriority);
-      if (scope) params.append("filter", scope);
+
+      if (selectedMemberId !== "all") {
+        params.append("assignedToUserId", selectedMemberId);
+      } else if (scope) {
+        params.append("filter", scope);
+      }
 
       if (doneFilterMode === "month") {
         params.append("month", activeMonth.toString());
@@ -334,7 +350,14 @@ export default function KanbanPage() {
       }
 
       const res = await apiClient.get(`/tasks/kanban?${params.toString()}`);
-      return res.data.data;
+      const raw = res.data?.data || {};
+      return {
+        Todo: raw.Todo || raw.todo || [],
+        InProgress: raw.InProgress || raw.inProgress || [],
+        Review: raw.Review || raw.review || [],
+        Done: raw.Done || raw.done || [],
+        Overdue: raw.Overdue || raw.overdue || [],
+      };
     },
   });
 
@@ -498,8 +521,9 @@ export default function KanbanPage() {
     search.trim() !== "" ||
     selectedProjectId !== "all" ||
     selectedPriority !== "all" ||
-    doneFilterMode !== "month" ||
-    !isCurrentMonth ||
+    selectedMemberId !== "all" ||
+    scope === "mine" ||
+    doneFilterMode !== "all" ||
     doneStartDate !== "" ||
     doneEndDate !== "";
 
@@ -507,7 +531,9 @@ export default function KanbanPage() {
     setSearch("");
     setSelectedProjectId("all");
     setSelectedPriority("all");
-    setDoneFilterMode("month");
+    setSelectedMemberId("all");
+    setScope("all");
+    setDoneFilterMode("all");
     setDoneStartDate("");
     setDoneEndDate("");
     goToCurrentMonth();
@@ -566,7 +592,7 @@ export default function KanbanPage() {
                 </span>
               </div>
               <p className="text-xs text-gray-500 dark:text-gray-400">
-                Data Todo &amp; InProgress ditampilkan lengkap sesuai data grid. Tugas Done difilter berdasarkan bulan aktif atau rentang waktu yang dipilih.
+                Papan Kanban interaktif dengan sinkronisasi langsung dua arah bersama Daftar Tugas. View default menampilkan seluruh anggota tim (All Members).
               </p>
             </div>
           </div>
@@ -758,35 +784,64 @@ export default function KanbanPage() {
               </select>
             </div>
 
-            {/* Scope Switcher (RBAC Admin: mine vs all) */}
-            {isAdmin && (
-              <div className="flex items-center rounded-xl bg-gray-100 p-0.5 dark:bg-gray-800">
-                <button
-                  type="button"
-                  onClick={() => setScope("all")}
-                  className={`flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-bold transition-all ${
-                    scope === "all"
-                      ? "bg-white text-indigo-600 shadow-xs dark:bg-gray-900 dark:text-indigo-400"
-                      : "text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
-                  }`}
-                >
-                  <Users className="h-3 w-3" />
-                  Semua Tim
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setScope("mine")}
-                  className={`flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-bold transition-all ${
-                    scope === "mine"
-                      ? "bg-white text-indigo-600 shadow-xs dark:bg-gray-900 dark:text-indigo-400"
-                      : "text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
-                  }`}
-                >
-                  <User className="h-3 w-3" />
-                  Tugas Saya
-                </button>
-              </div>
-            )}
+            {/* Filter Anggota Tim (Member) */}
+            <div className="flex items-center gap-1.5">
+              <Users className="h-3.5 w-3.5 text-gray-400" />
+              <select
+                value={selectedMemberId}
+                onChange={(e) => {
+                  setSelectedMemberId(e.target.value);
+                  if (e.target.value !== "all") {
+                    setScope("all");
+                  }
+                }}
+                className="rounded-xl border border-gray-200 bg-transparent px-2.5 py-1.5 text-xs font-medium text-gray-800 dark:border-gray-800 dark:text-gray-200"
+                title="Saring tugas berdasarkan anggota tim tertentu"
+              >
+                <option value="all">Semua Anggota Tim</option>
+                {members.map((m: any) => (
+                  <option key={m.id} value={m.id}>
+                    {m.fullName || m.userName} {m.jobTitle ? `(${m.jobTitle})` : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Scope Switcher: Semua Tim vs Tugas Saya (View untuk semua member) */}
+            <div className="flex items-center rounded-xl bg-gray-100 p-0.5 dark:bg-gray-800">
+              <button
+                type="button"
+                onClick={() => {
+                  setScope("all");
+                  setSelectedMemberId("all");
+                }}
+                className={`flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-bold transition-all ${
+                  scope === "all" && selectedMemberId === "all"
+                    ? "bg-white text-indigo-600 shadow-xs dark:bg-gray-900 dark:text-indigo-400"
+                    : "text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
+                }`}
+                title="Tampilkan tugas seluruh anggota tim (All Members)"
+              >
+                <Users className="h-3 w-3" />
+                Semua Tim
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setScope("mine");
+                  setSelectedMemberId("all");
+                }}
+                className={`flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-bold transition-all ${
+                  scope === "mine"
+                    ? "bg-white text-indigo-600 shadow-xs dark:bg-gray-900 dark:text-indigo-400"
+                    : "text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
+                }`}
+                title="Hanya tampilkan tugas saya pribadi"
+              >
+                <User className="h-3 w-3" />
+                Tugas Saya
+              </button>
+            </div>
 
             {/* Reset Button */}
             {hasActiveFilters && (

@@ -198,6 +198,7 @@ public class TasksController : ControllerBase
 
     [HttpGet("kanban")]
     public async Task<IActionResult> GetKanbanTasks(
+        [FromQuery] int? companyId = null,
         [FromQuery] int? projectId = null,
         [FromQuery] TaskPriority? priority = null,
         [FromQuery] string? search = null,
@@ -221,6 +222,11 @@ public class TasksController : ControllerBase
             .Include(t => t.Subtasks)
             .Include(t => t.Sessions)
             .AsNoTracking();
+
+        if (companyId.HasValue)
+        {
+            query = query.Where(t => t.CompanyId == companyId.Value);
+        }
 
         if (!includeSubtasks)
         {
@@ -246,7 +252,8 @@ public class TasksController : ControllerBase
         {
             var s = search.Trim().ToLower();
             query = query.Where(t => t.Title.ToLower().Contains(s) ||
-                                     (t.Description != null && t.Description.ToLower().Contains(s)));
+                                     (t.Description != null && t.Description.ToLower().Contains(s)) ||
+                                     (t.Project != null && t.Project.Name.ToLower().Contains(s)));
         }
 
         // Done status filter: Only filter by date if explicitly requested (month, custom range, or dates)
