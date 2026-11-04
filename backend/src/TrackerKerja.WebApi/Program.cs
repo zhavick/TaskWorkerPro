@@ -108,7 +108,21 @@ builder.Services.AddCors(options =>
         var origins = builder.Configuration.GetSection("CorsSettings:AllowedOrigins").Get<string[]>() 
             ?? new[] { "http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:3005", "http://127.0.0.1:3005" };
 
-        policy.WithOrigins(origins)
+                policy.SetIsOriginAllowed(origin =>
+            {
+                if (string.IsNullOrWhiteSpace(origin)) return false;
+                if (origins.Contains(origin, StringComparer.OrdinalIgnoreCase)) return true;
+                if (origins.Contains("*")) return true;
+                if (origin.StartsWith("http://localhost:") || origin.StartsWith("https://localhost:") ||
+                    origin.StartsWith("http://127.0.0.1:") || origin.StartsWith("https://127.0.0.1:")) return true;
+                try
+                {
+                    var uri = new Uri(origin);
+                    if (uri.Port == 3000 || uri.Port == 3005) return true;
+                }
+                catch { }
+                return false;
+            })
             .AllowAnyHeader()
             .AllowAnyMethod()
             .AllowCredentials()

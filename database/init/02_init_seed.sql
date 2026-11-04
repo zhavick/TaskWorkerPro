@@ -30,7 +30,7 @@ INSERT INTO asp_net_users (
     'admin@trackerkerja.local',
     'ADMIN@TRACKERKERJA.LOCAL',
     true,
-    'AQAAAAIAAYagAAAAEO9zR+qVqZ1E10aZ4KzD+nU/F6iK3hX5oYw1v9L9wB7yX+q8A1b2C3d4E5f6G7h8==', -- Seed hash placeholder (akan diupdate via EF Seeder)
+    '4zi3OUgjotjAs2nzBYuI+Q==:nQMCnhgNIE49LiIXV5vY8fZotmG7z3Dh+OWJ06hiXwA=', -- Valid PBKDF2 hash: AdminSecurePassword2026!
     gen_random_uuid()::text,
     gen_random_uuid()::text,
     '081234567890',
@@ -40,7 +40,7 @@ INSERT INTO asp_net_users (
     1,
     true,
     CURRENT_TIMESTAMP
-) ON CONFLICT (id) DO NOTHING;
+) ON CONFLICT (id) DO UPDATE SET password_hash = EXCLUDED.password_hash, is_approved = true;
 
 -- Assign Admin Role
 INSERT INTO asp_net_user_roles (user_id, role_id) VALUES
