@@ -21,7 +21,7 @@ if docker ps --format '{{.Names}}' | grep -q '^trackerkerja_postgres$'; then
   mkdir -p "$BACKUP_DIR"
   backup_file="$BACKUP_DIR/trackerkerja_$(date +%Y%m%d_%H%M%S).dump"
   echo "==> Backup database ke $backup_file"
-  docker exec trackerkerja_postgres pg_dump -U tracker_admin -d trackerkerja_db -F c > "$backup_file"
+  docker exec trackerkerja_postgres pg_dump -p 5571 -U tracker_admin -d trackerkerja_db -F c > "$backup_file"
   ls -1t "$BACKUP_DIR"/trackerkerja_*.dump | tail -n +$((KEEP_BACKUPS + 1)) | xargs -r rm -f
 fi
 

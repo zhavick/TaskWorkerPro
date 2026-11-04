@@ -628,7 +628,7 @@ export default function TaskStudioPage() {
                   value={solution}
                   disabled={!canEdit}
                   onChange={(e) => setSolution(e.target.value)}
-                  placeholder="Contoh: Koordinasi dengan tim devops untuk pembukaan firewall port 5432..."
+                  placeholder="Contoh: Koordinasi dengan tim devops untuk pembukaan firewall port 5571..."
                   className="mt-2 w-full rounded-xl border border-emerald-200 bg-white/90 p-2.5 text-xs text-gray-900 dark:border-emerald-900/60 dark:bg-gray-900 dark:text-white disabled:opacity-60 disabled:cursor-not-allowed"
                 />
               </div>

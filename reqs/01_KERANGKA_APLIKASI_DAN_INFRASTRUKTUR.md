@@ -150,7 +150,7 @@ services:
       POSTGRES_PASSWORD: TrackerSecurePassword2026!
       PGDATA: /var/lib/postgresql/data/pgdata
     ports:
-      - "5432:5432"
+      - "5571:5571"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./database/seeders:/docker-entrypoint-initdb.d
@@ -204,5 +204,5 @@ docker compose ps
 | **Frontend Next.js** | `3000` | `3000` | `http://localhost:3000` |
 | **Backend .NET Web API** | `5000` / `5001` (HTTPS) | `5000` | `http://localhost:5000/api` |
 | **Swagger UI** | `5000` | `5000` | `http://localhost:5000/swagger` |
-| **PostgreSQL 16** | `5432` | `5432` | `localhost:5432 (trackerkerja_db)` |
+| **PostgreSQL 16** | `5571` | `5571` | `localhost:5571 (trackerkerja_db)` |
 | **pgAdmin 4 (Opsional)** | `5050` | `80` | `http://localhost:5050` |

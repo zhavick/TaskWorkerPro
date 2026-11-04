@@ -1215,7 +1215,7 @@ Modal popup pengumuman (`AnnouncementModal`) memiliki pencegah visual overlap:
 
 #### A. Multi-Container Topologi & Orchestration
 1. **Layanan Docker Compose (`docker-compose.yml`)**:
-   - `postgres`: Image `postgres:16-alpine`, port 5432, volume `pgdata`.
+   - `postgres`: Image `postgres:16-alpine`, port 5571, volume `pgdata`.
    - `backend`: Image multi-stage build .NET 8 SDK & ASP.NET Core Runtime, port 5008, volume `backend_uploads`.
    - `frontend`: Image multi-stage build Node 20 Alpine, standalone Next.js 16 TurboPack, port 3000.
 2. **Helper Scripts Operasional**:

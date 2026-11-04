@@ -173,7 +173,7 @@ npm run dev
 - **Frontend Web Application**: [http://localhost:3005](http://localhost:3005)
 - **Backend Swagger REST API Documentation**: [http://localhost:5010/swagger](http://localhost:5010/swagger)
 - **OpenAPI JSON Spec**: [http://localhost:5010/swagger/v1/swagger.json](http://localhost:5010/swagger/v1/swagger.json)
-- **PostgreSQL Database**: Port `5432` (`trackerkerja_db`)
+- **PostgreSQL Database**: Port `5571` (`trackerkerja_db`)
 
 ---
 

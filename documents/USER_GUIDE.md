@@ -961,7 +961,7 @@ Pengguna sistem operasi Windows dapat mengoperasikan aplikasi secara instan meng
 ### 18.2 Akses Aplikasi
 - **Frontend Web UI**: [http://localhost:3005](http://localhost:3005)
 - **Backend API & Swagger**: [http://localhost:5010/swagger](http://localhost:5010/swagger)
-- **PostgreSQL Database**: Port `5432` (`trackerkerja_db`)
+- **PostgreSQL Database**: Port `5571` (`trackerkerja_db`)
 
 ---
 

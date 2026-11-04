@@ -23,7 +23,7 @@ Sistem dijalankan dalam arsitektur multi-container yang terisolasi dalam satu br
      │   (Next.js 16 Turbo)  │──────────────▶│ (ASP.NET Core 8 API)  │
      └───────────────────────┘               └───────────────────────┘
                                                          │
-                                                         ▼ (Port 5432)
+                                                         ▼ (Port 5571)
                                              ┌───────────────────────┐
                                              │  trackerkerja_postgres│
                                              │   (PostgreSQL 16 DB)  │
@@ -38,7 +38,7 @@ Sistem dijalankan dalam arsitektur multi-container yang terisolasi dalam satu br
 ### Rincian Layanan Kontainer
 | Layanan Kontainer | Image / Dockerfile | Port Internal | Port Eksternal | Persistent Volume |
 |:---|:---|:---:|:---:|:---|
-| **`postgres`** | `postgres:16-alpine` | `5432` | `5432` | `pgdata:/var/lib/postgresql/data` |
+| **`postgres`** | `postgres:16-alpine` | `5571` | `5571` | `pgdata:/var/lib/postgresql/data` |
 | **`backend`** | Multi-Stage .NET 8 SDK & ASP.NET Runtime | `5010` | `5010` | `backend_uploads:/app/uploads` |
 | **`frontend`** | Multi-Stage Node.js 20 Alpine & Standalone Next.js | `3005` | `3005` | — |
 
@@ -74,7 +74,7 @@ Berkas konfigurasi utama: [`docker-compose.yml`](docker-compose.yml)
 # Backend Environment
 ASPNETCORE_ENVIRONMENT=Production
 ASPNETCORE_URLS=http://+:5010
-ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=trackerkerja_db;Username=tracker_admin;Password=TrackerSecurePassword2026!;Maximum Pool Size=100;Minimum Pool Size=10;
+ConnectionStrings__DefaultConnection=Host=postgres;Port=5571;Database=trackerkerja_db;Username=tracker_admin;Password=TrackerSecurePassword2026!;Maximum Pool Size=100;Minimum Pool Size=10;
 JwtSettings__SecretKey=SUPER_SECRET_KEY_FOR_TRACKER_KERJA_2026_MINIMUM_32_BYTES_STRONG!
 JwtSettings__Issuer=https://api.trackerkerja.local
 JwtSettings__Audience=https://app.trackerkerja.local
