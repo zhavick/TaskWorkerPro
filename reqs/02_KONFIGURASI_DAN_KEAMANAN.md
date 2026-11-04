@@ -22,7 +22,7 @@ Pada proyek `TrackerKerja.WebApi`, buat file `appsettings.json` dengan struktur 
   },
   "AllowedHosts": "*",
   "ConnectionStrings": {
-    "DefaultConnection": "Host=localhost;Port=5432;Database=trackerkerja_db;Username=tracker_admin;Password=TrackerSecurePassword2026!;Maximum Pool Size=100;Minimum Pool Size=10;Connection Lifetime=300;Include Error Detail=true;"
+    "DefaultConnection": "Host=localhost;Port=5571;Database=trackerkerja_db;Username=tracker_admin;Password=TrackerSecurePassword2026!;Maximum Pool Size=100;Minimum Pool Size=10;Connection Lifetime=300;Include Error Detail=true;"
   },
   "JwtSettings": {
     "SecretKey": "SUPER_SECRET_KEY_FOR_TRACKER_KERJA_2026_MINIMUM_32_BYTES_STRONG!",

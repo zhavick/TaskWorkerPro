@@ -37,7 +37,7 @@ switch ($Command) {
         Write-Host "[SUKSES] Seluruh kontainer berhasil dijalankan!" -ForegroundColor Green
         Write-Host "  - Frontend Web UI : http://localhost:3005" -ForegroundColor White
         Write-Host "  - Backend REST API: http://localhost:5010/swagger" -ForegroundColor White
-        Write-Host "  - Database Postgres: localhost:5432 (trackerkerja_db)" -ForegroundColor White
+        Write-Host "  - Database Postgres: localhost:5571 (trackerkerja_db)" -ForegroundColor White
     }
 
     "build" {
@@ -75,7 +75,7 @@ switch ($Command) {
 
         Write-Host "[2/3] Memeriksa status kesehatan PostgreSQL (pg_isready)..." -ForegroundColor Yellow
         try {
-            docker exec -it trackerkerja_postgres pg_isready -U tracker_admin -d trackerkerja_db
+            docker exec -it trackerkerja_postgres pg_isready -p 5571 -U tracker_admin -d trackerkerja_db
             Write-Host "[OK] Basis data PostgreSQL siap menerima koneksi." -ForegroundColor Green
         } catch {
             Write-Host "[PERINGATAN] Kontainer trackerkerja_postgres belum berjalan atau belum siap." -ForegroundColor Red

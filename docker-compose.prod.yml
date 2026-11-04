@@ -11,14 +11,16 @@ services:
       POSTGRES_USER: tracker_admin
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD wajib diisi di .env}
       PGDATA: /var/lib/postgresql/data/pgdata
-    # Sengaja tanpa "ports": backend mengakses lewat jaringan Docker (Host=postgres),
-    # dan port 5432 di host bisa bentrok dengan PostgreSQL bawaan aaPanel.
-    # Akses manual: docker exec -it trackerkerja_postgres psql -U tracker_admin -d trackerkerja_db
+      PGPORT: 5571
+    command: -p 5571
+    # Port 5571 digunakan agar tidak bentrok dengan PostgreSQL sistem/aaPanel di port 5432.
+    ports:
+      - "5571:5571"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./database/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U tracker_admin -d trackerkerja_db"]
+      test: ["CMD-SHELL", "pg_isready -p 5571 -U tracker_admin -d trackerkerja_db"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -37,7 +39,7 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:5010
-      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=trackerkerja_db;Username=tracker_admin;Password=${POSTGRES_PASSWORD};Maximum Pool Size=100;Minimum Pool Size=10;
+      ConnectionStrings__DefaultConnection: Host=postgres;Port=5571;Database=trackerkerja_db;Username=tracker_admin;Password=${POSTGRES_PASSWORD};Maximum Pool Size=100;Minimum Pool Size=10;
       JwtSettings__SecretKey: ${JWT_SECRET:?JWT_SECRET wajib diisi di .env}
       JwtSettings__Issuer: ${APP_URL:?APP_URL wajib diisi di .env}
       JwtSettings__Audience: ${APP_URL}

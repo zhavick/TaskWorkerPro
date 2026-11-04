@@ -35,7 +35,7 @@
 
 **Interfaces:**
 - Consumes: Specifications from `reqs/01_KERANGKA_APLIKASI_DAN_INFRASTRUKTUR.md` & `reqs/03_SKEMA_DATABASE_POSTGRESQL.md`.
-- Produces: Running PostgreSQL service on port `5432` with preloaded `trackerkerja_db` schema.
+- Produces: Running PostgreSQL service on port `5571` with preloaded `trackerkerja_db` schema.
 
 - [x] **Step 1: Create `docker-compose.yml` with PostgreSQL 16 and backend/frontend service templates**
 - [x] **Step 2: Create `database/init/01_init_schema.sql` containing full 21+ tables DDL**
