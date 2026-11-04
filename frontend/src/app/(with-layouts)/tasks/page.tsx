@@ -36,6 +36,7 @@ import {
   ChevronDown,
   ChevronUp,
   CalendarDays,
+  User,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -77,6 +78,7 @@ export default function TasksListPage() {
 
   // Search & Filter state
   const [search, setSearch] = useState("");
+  const [onlyMyTasks, setOnlyMyTasks] = useState(false);
   const [priorityFilter, setPriorityFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [projectFilter, setProjectFilter] = useState<string>("all");
@@ -132,6 +134,8 @@ export default function TasksListPage() {
     queryKey: [
       "tasksList",
       search,
+      onlyMyTasks,
+      currentUserId,
       priorityFilter,
       statusFilter,
       projectFilter,
@@ -148,6 +152,7 @@ export default function TasksListPage() {
       if (statusFilter !== "all") params.append("status", statusFilter);
       if (projectFilter !== "all") params.append("projectId", projectFilter);
       if (dateFilter !== "all") params.append("dateFilter", dateFilter);
+      if (onlyMyTasks && currentUserId) params.append("assignedToUserId", currentUserId);
       params.append("page", String(page));
       params.append("pageSize", String(pageSize));
       params.append("sortBy", sortBy);
@@ -430,6 +435,7 @@ export default function TasksListPage() {
 
   const isFilterActive =
     search.trim() !== "" ||
+    onlyMyTasks ||
     priorityFilter !== "all" ||
     statusFilter !== "all" ||
     projectFilter !== "all" ||
@@ -437,6 +443,7 @@ export default function TasksListPage() {
 
   const handleResetFilters = () => {
     setSearch("");
+    setOnlyMyTasks(false);
     setPriorityFilter("all");
     setStatusFilter("all");
     setProjectFilter("all");
@@ -791,30 +798,51 @@ export default function TasksListPage() {
       {/* Filter & Search Bar */}
       <div className="rounded-2xl border border-gray-200/80 bg-white p-4 shadow-xs dark:border-gray-800 dark:bg-gray-900 space-y-3.5">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          {/* Live Search */}
-          <div className="relative flex-1 max-w-md">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-            <Input
-              placeholder="Cari tugas berdasarkan judul, deskripsi, atau nama proyek..."
-              value={search}
-              onChange={(e) => {
-                setSearch(e.target.value);
-                setPage(1);
-              }}
-              className="pl-9 pr-8 text-xs"
-            />
-            {search && (
-              <button
-                type="button"
-                onClick={() => {
-                  setSearch("");
+          {/* Live Search & Filter Anggota Sendiri */}
+          <div className="flex flex-1 flex-wrap items-center gap-2.5 max-w-2xl">
+            <div className="relative flex-1 min-w-[240px]">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+              <Input
+                placeholder="Cari tugas berdasarkan judul, deskripsi, atau nama proyek..."
+                value={search}
+                onChange={(e) => {
+                  setSearch(e.target.value);
                   setPage(1);
                 }}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            )}
+                className="pl-9 pr-8 text-xs"
+              />
+              {search && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearch("");
+                    setPage(1);
+                  }}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Ceklist: Filter tugas berdasarkan member itu sendiri */}
+            <label className={`flex items-center gap-2 cursor-pointer select-none rounded-xl border px-3 py-2 text-xs font-semibold transition ${
+              onlyMyTasks
+                ? "border-indigo-500 bg-indigo-50/80 text-indigo-700 shadow-xs dark:border-indigo-500 dark:bg-indigo-950/40 dark:text-indigo-300"
+                : "border-gray-200 bg-gray-50/80 text-gray-700 hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-800/80 dark:text-gray-300 dark:hover:bg-gray-800"
+            }`}>
+              <input
+                type="checkbox"
+                checked={onlyMyTasks}
+                onChange={(e) => {
+                  setOnlyMyTasks(e.target.checked);
+                  setPage(1);
+                }}
+                className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700"
+              />
+              <User className="h-3.5 w-3.5 text-indigo-500 shrink-0" />
+              <span className="whitespace-nowrap">Tugas Saya Sendiri</span>
+            </label>
           </div>
 
           {/* Dropdown Filters */}

@@ -61,6 +61,8 @@ export default function AttendancePage() {
 
   // Tab & Filter states
   const [activeTab, setActiveTab] = useState<"personal" | "reconciliation">("personal");
+  const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(null);
+  const [selectedMemberId, setSelectedMemberId] = useState<string>("");
 
   const [selectedMonth, setSelectedMonth] = useState(currentDate.getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(currentDate.getFullYear());
@@ -183,34 +185,74 @@ export default function AttendancePage() {
     }
   }, [todayStatus]);
 
-  // 2. Personal History
-  const { data: myHistory = [] } = useQuery<any[]>({
-    queryKey: ["attendanceMyHistory", selectedMonth, selectedYear],
+  // 0. Query Available Companies for Multi-tenant Selector
+  const { data: companies = [] } = useQuery<any[]>({
+    queryKey: ["attendanceCompanies"],
     queryFn: async () => {
+      try {
+        const res = await apiClient.get("/companies");
+        return res.data?.data || [];
+      } catch {
+        return [];
+      }
+    },
+    enabled: isAdmin,
+  });
+
+  // Query All Members for Admin View Selector
+  const { data: allMembers = [] } = useQuery<any[]>({
+    queryKey: ["allMembersForAttendance", selectedCompanyId],
+    queryFn: async () => {
+      try {
+        const url = selectedCompanyId ? `/members?companyId=${selectedCompanyId}` : "/members";
+        const res = await apiClient.get(url);
+        return res.data?.data || [];
+      } catch {
+        return [];
+      }
+    },
+    enabled: isAdmin,
+  });
+
+  // 2. Personal History
+  const {
+    data: myHistory = [],
+    isLoading: loadingHistory,
+    isFetching: fetchingHistory,
+  } = useQuery<any[]>({
+    queryKey: ["attendanceMyHistory", selectedMonth, selectedYear, selectedMemberId],
+    queryFn: async () => {
+      const userParam = selectedMemberId ? `&userId=${selectedMemberId}` : "";
       const res = await apiClient.get(
-        `/attendances/my-history?month=${selectedMonth}&year=${selectedYear}`
+        `/attendances/my-history?month=${selectedMonth}&year=${selectedYear}${userParam}`
       );
       return res.data.data;
     },
   });
 
   // 3. Personal Monthly Summary
-  const { data: mySummary } = useQuery<any>({
-    queryKey: ["attendanceMySummary", selectedMonth, selectedYear],
+  const { data: mySummary, isLoading: loadingSummary } = useQuery<any>({
+    queryKey: ["attendanceMySummary", selectedMonth, selectedYear, selectedMemberId],
     queryFn: async () => {
+      const userParam = selectedMemberId ? `&userId=${selectedMemberId}` : "";
       const res = await apiClient.get(
-        `/attendances/my-summary?month=${selectedMonth}&year=${selectedYear}`
+        `/attendances/my-summary?month=${selectedMonth}&year=${selectedYear}${userParam}`
       );
       return res.data.data;
     },
   });
 
   // 4. Team Daily Reconciliation (Admin)
-  const { data: reconciliation = [] } = useQuery<any[]>({
-    queryKey: ["attendanceReconciliation", reconcileDate],
+  const {
+    data: reconciliation = [],
+    isLoading: loadingReconciliation,
+    isFetching: fetchingReconciliation,
+  } = useQuery<any[]>({
+    queryKey: ["attendanceReconciliation", reconcileDate, selectedCompanyId],
     queryFn: async () => {
+      const compParam = selectedCompanyId ? `&companyId=${selectedCompanyId}` : "";
       const res = await apiClient.get(
-        `/attendances/reconciliation?date=${reconcileDate}`
+        `/attendances/reconciliation?date=${reconcileDate}${compParam}`
       );
       return res.data.data;
     },
@@ -218,11 +260,16 @@ export default function AttendancePage() {
   });
 
   // 5. Team Monthly Reconciliation Report (Admin)
-  const { data: teamMonthlyReport, isLoading: loadingMonthly } = useQuery<any>({
-    queryKey: ["teamMonthlyAttendance", reconcileMonth, reconcileYear],
+  const {
+    data: teamMonthlyReport,
+    isLoading: loadingMonthly,
+    isFetching: fetchingMonthly,
+  } = useQuery<any>({
+    queryKey: ["teamMonthlyAttendance", reconcileMonth, reconcileYear, selectedCompanyId],
     queryFn: async () => {
+      const compParam = selectedCompanyId ? `&companyId=${selectedCompanyId}` : "";
       const res = await apiClient.get(
-        `/attendances/monthly?month=${reconcileMonth}&year=${reconcileYear}`
+        `/attendances/monthly?month=${reconcileMonth}&year=${reconcileYear}${compParam}`
       );
       return res.data.data;
     },
@@ -402,7 +449,8 @@ export default function AttendancePage() {
   // Sync Attendance from Tasks Mutation (8 Jam/hari)
   const syncFromTasksMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiClient.post("/attendances/sync-from-tasks", {});
+      const compParam = selectedCompanyId ? `?companyId=${selectedCompanyId}` : "";
+      const res = await apiClient.post(`/attendances/sync-from-tasks${compParam}`, {});
       return res.data;
     },
     onSuccess: (data) => {
@@ -433,8 +481,27 @@ export default function AttendancePage() {
           </p>
         </div>
 
-        {/* Actions & Tab Switcher */}
+        {/* Actions, Company Selector & Tab Switcher */}
         <div className="flex flex-wrap items-center gap-2.5">
+          {/* Company Selector for Administrator */}
+          {isAdmin && companies.length > 0 && (
+            <div className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-1.5 shadow-2xs dark:border-gray-800 dark:bg-gray-900">
+              <Building className="h-3.5 w-3.5 text-gray-500 dark:text-gray-400 shrink-0" />
+              <select
+                value={selectedCompanyId ?? ""}
+                onChange={(e) => setSelectedCompanyId(e.target.value ? Number(e.target.value) : null)}
+                className="bg-transparent text-xs font-semibold text-gray-700 outline-none dark:text-gray-200"
+              >
+                <option value="">Semua Perusahaan</option>
+                {companies.map((c: any) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name} ({c.code})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           <Button
             onClick={() => syncFromTasksMutation.mutate()}
             disabled={syncFromTasksMutation.isPending}
@@ -475,6 +542,19 @@ export default function AttendancePage() {
           </div>
         </div>
       </div>
+
+      {/* Global Processing / Loading Banner saat proses sinkronisasi berjalan */}
+      {syncFromTasksMutation.isPending && (
+        <div className="flex items-center gap-3 rounded-2xl border border-emerald-300 bg-emerald-50/90 p-4 text-emerald-900 shadow-xs dark:border-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200 animate-pulse">
+          <Loader2 className="h-5 w-5 animate-spin text-emerald-600 dark:text-emerald-400 shrink-0" />
+          <div className="space-y-0.5">
+            <p className="text-xs font-bold">Sedang memproses sinkronisasi presensi dari tugas tim (8 Jam/hari)...</p>
+            <p className="text-[11px] text-emerald-700 dark:text-emerald-300">
+              Sistem sedang memetakan seluruh tugas aktif personel, menghitung jam kerja harian, dan menghasilkan data kehadiran kerja secara otomatis.
+            </p>
+          </div>
+        </div>
+      )}
 
       {activeTab === "personal" ? (
         <div className="space-y-6">
@@ -705,9 +785,30 @@ export default function AttendancePage() {
 
               {/* Month/Year Picker and Manual Entry Action */}
               <div className="flex flex-wrap items-center gap-2">
+                {/* Personel Selector for Admin in Personal Tab */}
+                {isAdmin && (
+                  <div className="flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-2.5 py-1.5 shadow-2xs dark:border-gray-800 dark:bg-gray-900">
+                    <User className="h-3.5 w-3.5 text-gray-500 dark:text-gray-400 shrink-0" />
+                    <select
+                      value={selectedMemberId}
+                      onChange={(e) => setSelectedMemberId(e.target.value)}
+                      className="bg-transparent text-xs font-semibold text-gray-700 outline-none dark:text-gray-200"
+                    >
+                      <option value="">Saya Sendiri ({currentUser?.fullName || "Admin"})</option>
+                      {allMembers
+                        .filter((m: any) => m.id !== currentUserId)
+                        .map((m: any) => (
+                          <option key={m.id} value={m.id}>
+                            {m.fullName || m.userName} ({m.jobTitle || "Anggota"})
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+                )}
+
                 <Button
                   size="sm"
-                  onClick={() => openManualModal()}
+                  onClick={() => openManualModal(selectedMemberId || undefined)}
                   className="gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-xs"
                 >
                   <Plus className="h-3.5 w-3.5" />
@@ -754,7 +855,21 @@ export default function AttendancePage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                  {myHistory.map((h: any) => {
+                  {loadingHistory || fetchingHistory ? (
+                    <tr>
+                      <td colSpan={7} className="py-12 text-center">
+                        <div className="flex flex-col items-center justify-center gap-2">
+                          <Loader2 className="h-6 w-6 animate-spin text-indigo-600" />
+                          <p className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                            Sedang memuat data riwayat kehadiran...
+                          </p>
+                          <p className="text-[11px] text-gray-400">
+                            Mengambil catatan kehadiran {monthNames[selectedMonth - 1]} {selectedYear}
+                          </p>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : myHistory.map((h: any) => {
                     const typeConfig = attendanceTypeLabels[h.type] || attendanceTypeLabels[1];
                     return (
                       <tr key={h.id} className="transition hover:bg-gray-50/60 dark:hover:bg-gray-800/40">
@@ -787,7 +902,7 @@ export default function AttendancePage() {
                     );
                   })}
 
-                  {myHistory.length === 0 && (
+                  {!loadingHistory && !fetchingHistory && myHistory.length === 0 && (
                     <tr>
                       <td colSpan={7} className="py-8 text-center text-gray-400">
                         Belum ada riwayat kehadiran untuk periode ini.
@@ -1179,7 +1294,24 @@ export default function AttendancePage() {
                         );
                       })}
 
-                      {(!teamMonthlyReport?.members || teamMonthlyReport.members.length === 0) && (
+                      {loadingMonthly || fetchingMonthly ? (
+                        <tr>
+                          <td
+                            colSpan={7 + (teamMonthlyReport?.daysInMonth || 31)}
+                            className="py-16 text-center"
+                          >
+                            <div className="flex flex-col items-center justify-center gap-2.5">
+                              <Loader2 className="h-8 w-8 animate-spin text-primary-600" />
+                              <p className="text-xs font-bold text-text-primary">
+                                Sedang memuat data matriks rekapitulasi kehadiran tim ({monthNames[reconcileMonth - 1]} {reconcileYear})...
+                              </p>
+                              <p className="text-[11px] text-text-secondary">
+                                Menghitung akumulasi jam kerja, kehadiran per hari, dan status rekonsiliasi seluruh personel.
+                              </p>
+                            </div>
+                          </td>
+                        </tr>
+                      ) : (!teamMonthlyReport?.members || teamMonthlyReport.members.length === 0) ? (
                         <tr>
                           <td
                             colSpan={7 + (teamMonthlyReport?.daysInMonth || 31)}
@@ -1188,7 +1320,7 @@ export default function AttendancePage() {
                             Tidak ada data presensi tim untuk periode ini.
                           </td>
                         </tr>
-                      )}
+                      ) : null}
                     </tbody>
                   </table>
                 </div>
@@ -1225,7 +1357,21 @@ export default function AttendancePage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                    {reconciliation.map((r: any) => {
+                    {loadingReconciliation || fetchingReconciliation ? (
+                      <tr>
+                        <td colSpan={9} className="py-12 text-center">
+                          <div className="flex flex-col items-center justify-center gap-2">
+                            <Loader2 className="h-6 w-6 animate-spin text-indigo-600" />
+                            <p className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                              Sedang memuat data audit presensi tim...
+                            </p>
+                            <p className="text-[11px] text-gray-400">
+                              Mengambil log kehadiran pada tanggal {reconcileDate}
+                            </p>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : reconciliation.map((r: any) => {
                       const typeConfig = attendanceTypeLabels[r.type] || attendanceTypeLabels[1];
                       return (
                         <tr key={r.id} className="transition hover:bg-gray-50/60 dark:hover:bg-gray-800/40">
@@ -1287,7 +1433,7 @@ export default function AttendancePage() {
                       );
                     })}
 
-                    {reconciliation.length === 0 && (
+                    {!loadingReconciliation && !fetchingReconciliation && reconciliation.length === 0 && (
                       <tr>
                         <td colSpan={9} className="py-8 text-center text-gray-400">
                           Tidak ada catatan presensi pada tanggal {reconcileDate}.

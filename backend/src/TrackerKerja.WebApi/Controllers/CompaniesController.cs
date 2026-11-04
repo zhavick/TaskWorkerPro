@@ -38,6 +38,11 @@ public class CompaniesController : ControllerBase
             .AsNoTracking()
             .AsQueryable();
 
+        if (!_tenantService.IsSuperAdmin && _tenantService.CompanyId.HasValue)
+        {
+            query = query.Where(c => c.Id == _tenantService.CompanyId.Value);
+        }
+
         if (!string.IsNullOrWhiteSpace(search))
         {
             var s = search.Trim().ToLower();
@@ -56,7 +61,10 @@ public class CompaniesController : ControllerBase
                 c.CreatedAt,
                 c.Users.Count(u => u.IsApproved),
                 c.Projects.Count(),
-                c.Tasks.Count()
+                c.Tasks.Count(),
+                c.EnableDms,
+                c.EnableTicketing,
+                c.EnableInvoicing
             ))
             .ToListAsync();
 
@@ -78,6 +86,11 @@ public class CompaniesController : ControllerBase
             return NotFound(new { success = false, message = "Perusahaan tidak ditemukan." });
         }
 
+        if (!_tenantService.IsSuperAdmin && _tenantService.CompanyId.HasValue && id != _tenantService.CompanyId.Value)
+        {
+            return StatusCode(403, new { success = false, message = "Anda tidak berhak mengakses data perusahaan lain." });
+        }
+
         var dto = new CompanyDto(
             company.Id,
             company.Name,
@@ -88,7 +101,10 @@ public class CompaniesController : ControllerBase
             company.CreatedAt,
             company.Users.Count(u => u.IsApproved),
             company.Projects.Count(),
-            company.Tasks.Count()
+            company.Tasks.Count(),
+            company.EnableDms,
+            company.EnableTicketing,
+            company.EnableInvoicing
         );
 
         return Ok(new { success = true, data = dto });
@@ -97,7 +113,7 @@ public class CompaniesController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> CreateCompany([FromBody] CreateCompanyRequest request)
     {
-        if (!CheckIsAdmin())
+        if (!_tenantService.IsSuperAdmin)
         {
             return Forbid();
         }
@@ -127,6 +143,9 @@ public class CompaniesController : ControllerBase
             Description = request.Description?.Trim(),
             Address = request.Address?.Trim(),
             ContactEmail = request.ContactEmail?.Trim(),
+            EnableDms = request.EnableDms,
+            EnableTicketing = request.EnableTicketing,
+            EnableInvoicing = request.EnableInvoicing,
             CreatedAt = DateTimeOffset.UtcNow
         };
 
@@ -143,7 +162,10 @@ public class CompaniesController : ControllerBase
             company.CreatedAt,
             0,
             0,
-            0
+            0,
+            company.EnableDms,
+            company.EnableTicketing,
+            company.EnableInvoicing
         );
 
         return CreatedAtAction(nameof(GetCompanyById), new { id = company.Id }, new { success = true, data = dto, message = "Perusahaan berhasil ditambahkan." });
@@ -161,6 +183,11 @@ public class CompaniesController : ControllerBase
         if (company == null)
         {
             return NotFound(new { success = false, message = "Perusahaan tidak ditemukan." });
+        }
+
+        if (!_tenantService.IsSuperAdmin && _tenantService.CompanyId.HasValue && id != _tenantService.CompanyId.Value)
+        {
+            return StatusCode(403, new { success = false, message = "Anda tidak berhak mengakses data perusahaan lain." });
         }
 
         if (string.IsNullOrWhiteSpace(request.Name))
@@ -199,7 +226,7 @@ public class CompaniesController : ControllerBase
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> DeleteCompany(int id)
     {
-        if (!CheckIsAdmin())
+        if (!_tenantService.IsSuperAdmin)
         {
             return Forbid();
         }
@@ -212,6 +239,11 @@ public class CompaniesController : ControllerBase
         if (company == null)
         {
             return NotFound(new { success = false, message = "Perusahaan tidak ditemukan." });
+        }
+
+        if (!_tenantService.IsSuperAdmin && _tenantService.CompanyId.HasValue && id != _tenantService.CompanyId.Value)
+        {
+            return StatusCode(403, new { success = false, message = "Anda tidak berhak mengakses data perusahaan lain." });
         }
 
         if (company.Users.Any() || company.Tasks.Any())
@@ -227,5 +259,111 @@ public class CompaniesController : ControllerBase
         await _context.SaveChangesAsync();
 
         return Ok(new { success = true, message = "Perusahaan berhasil dihapus." });
+    }
+    [HttpGet("module-matrix")]
+    public async Task<IActionResult> GetModuleMatrix()
+    {
+        var query = _context.Companies
+            .Include(c => c.Users)
+            .Include(c => c.Projects)
+            .AsNoTracking()
+            .AsQueryable();
+
+        if (!_tenantService.IsSuperAdmin && _tenantService.CompanyId.HasValue)
+        {
+            query = query.Where(c => c.Id == _tenantService.CompanyId.Value);
+        }
+
+        var matrix = await query
+            .OrderBy(c => c.Name)
+            .Select(c => new CompanyModuleMatrixDto(
+                c.Id,
+                c.Name,
+                c.Code,
+                c.EnableDms,
+                c.EnableTicketing,
+                c.EnableInvoicing,
+                c.Users.Count(u => u.IsApproved),
+                c.Projects.Count()
+            ))
+            .ToListAsync();
+
+        return Ok(new { success = true, data = matrix });
+    }
+
+    [HttpPut("{id:int}/modules")]
+    public async Task<IActionResult> UpdateCompanyModules(int id, [FromBody] UpdateCompanyModulesRequest request)
+    {
+        if (!CheckIsAdmin() && !_tenantService.IsProjectManager)
+        {
+            return Forbid();
+        }
+
+        var company = await _context.Companies.FirstOrDefaultAsync(c => c.Id == id);
+        if (company == null)
+        {
+            return NotFound(new { success = false, message = "Perusahaan tidak ditemukan." });
+        }
+
+        if (!_tenantService.IsSuperAdmin && _tenantService.CompanyId.HasValue && id != _tenantService.CompanyId.Value)
+        {
+            return StatusCode(403, new { success = false, message = "Anda tidak berhak mengakses data perusahaan lain." });
+        }
+
+        company.EnableDms = request.EnableDms;
+        company.EnableTicketing = request.EnableTicketing;
+        company.EnableInvoicing = request.EnableInvoicing;
+
+        await _context.SaveChangesAsync();
+
+        return Ok(new
+        {
+            success = true,
+            message = $"Pengaturan modul perusahaan '{company.Name}' berhasil diperbarui.",
+            data = new CompanyModuleMatrixDto(
+                company.Id,
+                company.Name,
+                company.Code,
+                company.EnableDms,
+                company.EnableTicketing,
+                company.EnableInvoicing
+            )
+        });
+    }
+
+    [HttpPut("module-matrix")]
+    public async Task<IActionResult> BulkUpdateModuleMatrix([FromBody] BulkUpdateCompanyModuleMatrixRequest request)
+    {
+        if (!_tenantService.IsSuperAdmin)
+        {
+            return Forbid();
+        }
+
+        if (request?.Items == null || request.Items.Count == 0)
+        {
+            return BadRequest(new { success = false, message = "Data matriks tidak boleh kosong." });
+        }
+
+        var companyIds = request.Items.Select(i => i.CompanyId).ToList();
+        var companies = await _context.Companies.Where(c => companyIds.Contains(c.Id)).ToListAsync();
+
+        foreach (var item in request.Items)
+        {
+            var company = companies.FirstOrDefault(c => c.Id == item.CompanyId);
+            if (company != null)
+            {
+                company.EnableDms = item.EnableDms;
+                company.EnableTicketing = item.EnableTicketing;
+                company.EnableInvoicing = item.EnableInvoicing;
+            }
+        }
+
+        await _context.SaveChangesAsync();
+
+        return Ok(new
+        {
+            success = true,
+            message = $"Matriks modul untuk {companies.Count} perusahaan berhasil diperbarui."
+        });
     }
 }

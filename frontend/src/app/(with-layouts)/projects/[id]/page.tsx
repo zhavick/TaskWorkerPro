@@ -45,6 +45,7 @@ import {
 import { toast } from "sonner";
 import Link from "next/link";
 import { parseTaskStatus } from "@/utils/task-status";
+import { useCurrentUser } from "@/hooks/use-current-user";
 
 const COLOR_PRESETS = [
   "#6366F1", // Indigo
@@ -163,16 +164,7 @@ export default function ProjectStudioDetailPage() {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
 
   // 1. Fetch User Profile to check RBAC role
-  const { data: userProfile } = useQuery<any>({
-    queryKey: ["currentUserProfile"],
-    queryFn: async () => {
-      const res = await apiClient.get("/profile");
-      return res.data.data;
-    },
-  });
-  const isAdmin =
-    userProfile?.roles?.includes("Administrator") ||
-    userProfile?.role === "Administrator";
+  const { user, isAdmin: isSystemAdmin, isProjectManager } = useCurrentUser();
 
   // 2. Fetch Project Detail
   const {
@@ -187,6 +179,10 @@ export default function ProjectStudioDetailPage() {
     },
     enabled: !isNaN(projectId) && projectId > 0,
   });
+
+  // Project Manager perusahaan atau pemilik PM proyek yang berwenang mengelola proyek
+  const canManage = isProjectManager || (user?.id && project?.projectManagerId === user.id);
+  const isAdmin = canManage;
 
   // 2b. Fetch Project Audit Logs Timeline
   const { data: projectAuditLogs = [], isLoading: loadingProjectAudit } = useQuery<any[]>({
@@ -1127,11 +1123,13 @@ export default function ProjectStudioDetailPage() {
                 className="w-full rounded-xl border border-gray-200 bg-transparent p-2.5 text-xs text-gray-900 dark:border-gray-800 dark:text-white disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 <option value="">-- Tanpa Project Manager --</option>
-                {members.map((m: any) => (
-                  <option key={m.id} value={m.id}>
-                    {m.fullName} ({m.jobTitle || "Member"})
-                  </option>
-                ))}
+                {members
+                  .filter((m: any) => !project?.companyId || m.companyId === project.companyId)
+                  .map((m: any) => (
+                    <option key={m.id} value={m.id}>
+                      {m.fullName} ({m.jobTitle || "Member"})
+                    </option>
+                  ))}
               </select>
             </div>
           </div>

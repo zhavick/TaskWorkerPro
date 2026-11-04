@@ -16,6 +16,7 @@ public class DomainEntityTests
         public string? CompanyCode { get; set; } = "WCH";
         public string? UserId { get; set; } = "user-1";
         public bool IsAdmin { get; set; } = false;
+        public bool IsSuperAdmin => IsAdmin;
     }
 
     [Fact]

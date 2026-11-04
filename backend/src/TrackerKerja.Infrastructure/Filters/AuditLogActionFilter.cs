@@ -158,7 +158,19 @@ public class AuditLogActionFilter : IAsyncActionFilter
 
             if (executedContext?.Exception != null)
             {
-                detailsPayload["exception"] = executedContext.Exception.Message;
+                var ex = executedContext.Exception;
+                detailsPayload["exception"] = ex.Message;
+                var inners = new List<string>();
+                var cur = ex.InnerException;
+                while (cur != null)
+                {
+                    inners.Add(cur.Message);
+                    cur = cur.InnerException;
+                }
+                if (inners.Count > 0)
+                {
+                    detailsPayload["innerException"] = string.Join(" --> ", inners);
+                }
             }
 
             var details = JsonSerializer.Serialize(detailsPayload, new JsonSerializerOptions

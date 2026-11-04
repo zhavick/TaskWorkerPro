@@ -5,14 +5,14 @@
 
 ### INFORMASI DOKUMEN
 - **Nama Aplikasi**: Work Tracker Pro (TrackerKerja Modern)
-- **Versi Dokumen**: 4.1 (Interactive Project Task Charts, Today-First Task Sorting, Audit Trail CRUD Analytics, Standardized Gamification & Admin-Exclusion Edition)
+- **Versi Dokumen**: 4.2 (Task Re-upload Diff & In-Place Update, Task-Linked Notes Card, & Attendance Synchronization Matrix Edition)
 - **Status**: Disetujui & Terimplementasi Penuh (Production-Ready)
 - **Target Platform**: Web Application (Next.js 16 TurboPack Frontend / ASP.NET Core 8.0 Web API / Docker Multi-Container)
 - **Basis Data**: Entity Framework Core 8.0 dengan PostgreSQL 16 & SQLite Database Engine
 - **Engine Spreadsheet**: ClosedXML 0.104.2 (Format ARMS 21-kolom, Template Standar 9-kolom, & Timesheet Personal)
 - **Dokumentasi REST API**: OpenAPI 3.0 via Swashbuckle Swagger UI (`/swagger`) dengan Strict JWT Bearer Authorization & Postman Collection
 - **Repositori Source Code**: [https://github.com/zhavick/TaskWorkerPro.git](https://github.com/zhavick/TaskWorkerPro.git) (Branch `modern`)
-- **Tanggal Rilis & Pembaruan**: 26 Oktober 2026
+- **Tanggal Rilis & Pembaruan**: 29 Oktober 2026
 
 ---
 
@@ -557,6 +557,11 @@ erDiagram
 - **Penyatuan Formulir Edit Tugas & Pengisian Jam Kerja Manual (`SaveTaskAndSession`)**:
   - Form pada Task Studio mengintegrasikan kolom input pencatatan jam kerja manual: *Durasi Jam*, *Durasi Menit*, *Tanggal Sesi Kerja*, dan *Catatan Sesi*.
   - Aksi simpan tunggal mengeksekusi pembaruan data tugas sekaligus mencatat entitas `WorkSessions` baru secara atomik dalam satu transaksi database, mengeliminasi kebutuhan navigasi ganda ke menu timesheet terpisah.
+- **Integrasi Kartu Catatan & Dokumentasi Terkait pada Halaman Edit Tugas (`/tasks/[id]`)**:
+  - Pada halaman detail dan pengubahan tugas (`/tasks/[id]`), disediakan kartu khusus **"Catatan & Dokumentasi Terkait"** tepat di bawah daftar riwayat sesi kerja.
+  - Memungkinkan pembuatan catatan cepat (*Quick-Create Note*) langsung di tempat dengan atribut `taskId` yang secara otomatis terikat ke tugas aktif.
+  - Menyajikan daftar kartu mini catatan terkait lengkap dengan nama penulis dan waktu pembuatan.
+  - Menyediakan tautan navigasi instan ke halaman utama Catatan yang terfilter otomatis (`/notes?taskId=[id]`), di mana halaman `/notes` menampilkan spanduk filter aktif biru dan tombol reset filter.
 
 ### 5.6 Modul Kanban Board Interaktif & Mobile Segmented Switcher
 - Papan visual bertenaga **SortableJS** dengan drag-and-drop kartu real-time.
@@ -575,22 +580,34 @@ erDiagram
 
 ### 5.8 Modul Presensi & Rekonsiliasi Absensi Tim (Attendance Management)
 - **Pencatatan Mandiri Karyawan**:
-  - Tombol **Check In** dan **Check Out** dengan live timer durasi kerja harian.
-  - Pilihan status kehadiran: `Hadir`, `WFH (Work From Home)`, `Sakit`, `Izin`, `Cuti`, `Libur`, dan `Terlambat`.
+  - Tombol **Check In** dan **Check Out** dengan live timer durasi kerja harian yang berdetak setiap detik.
+  - Pilihan status kehadiran: `Hadir (WFO/WFH/Hybrid/Remote)`, `Sakit`, `Izin`, `Cuti`, `Dinas Luar`, dan `Libur`.
   - Input catatan aktivitas harian dan informasi lokasi kerja.
-- **Rekonsiliasi Tim untuk Administrator**:
-  - Tampilan kalender kehadiran bulanan per anggota tim.
-  - Form koreksi jam kerja, status absensi, dan penambahan rekaman presensi manual.
-  - REST API endpoint terpadu: `GET/POST /api/attendance/today`, `POST /api/attendance/check-in`, `POST /api/attendance/check-out`, `GET /api/attendance/monthly`.
+- **Sinkronisasi Presensi Cerdas dari Tugas (8 Jam/Hari)**:
+  - Tombol aksi otomatisasi presensi `POST /api/attendances/sync-from-tasks` yang memindai seluruh tugas aktif anggota tim.
+  - Menghasilkan rekaman presensi sah 8.0 jam kerja penuh (WFO, 08:00–17:10 WIB) untuk setiap hari kerja (Senin–Jumat), dengan secara cerdas melewati akhir pekan dan hari libur nasional resmi.
+  - **Dukungan Tugas Aktif Berjalan**: Tugas berstatus belum selesai (`Status != TaskStatus.Done`) yang aktif secara dinamis diperpanjang rentang presensinya hingga hari ini (*today*).
+  - **Inklusi Administrator**: Akun Administrator yang mengelola atau mengerjakan tugas otomatis mendapatkan rekaman presensi mandiri.
+- **Rekonsiliasi Tim & Matriks Kehadiran Bulanan Inklusif**:
+  - Tampilan **Matriks Kehadiran Bulanan (Monthly Grid Matrix)** 1 s.d. 31 hari per anggota tim dengan kode warna status: Hadir (Hijau), Sakit (Merah), Izin (Kuning), Cuti (Biru Sky), dan Dinas Luar (Ungu).
+  - **Multi-Tenant Inklusif**: Logika kueri backend menjamin seluruh personel tim yang telah disetujui (termasuk yang belum memiliki `CompanyId` atau bernilai `null`) tampil utuh di matriks bulanan dan audit harian.
+  - Form audit harian dan rekonsiliasi manual: koreksi jam masuk/pulang, pengubahan tipe kehadiran, dan input presensi manual.
+  - REST API endpoint terpadu: `GET /api/attendances/today`, `POST /api/attendances/clock-in`, `POST /api/attendances/clock-out`, `GET /api/attendances/my-history`, `GET /api/attendances/my-summary`, `GET /api/attendances/monthly`, `GET /api/attendances/reconciliation`, `POST /api/attendances/sync-from-tasks`.
 
 ### 5.9 Modul Catatan & Multi-File Upload Terorganisir Folder Pengguna
 - Editor teks kaya WYSIWYG bertenaga **Quill.js**.
 - Lampiran berkas multi-file diisolasi rapi pada folder `wwwroot/uploads/notes/{username}/`.
 - Format penamaan file fisik unik `{yyyyMMdd_HHmmss}_{GUID8}_{CleanFileName}.ext`.
 
-### 5.10 Modul Import & Export Excel (Filter Periode, Format Standar, Format ARMS)
+### 5.10 Modul Import & Export Excel (Filter Periode, Format Standar, Format ARMS & Diff Engine)
 - **Format Standar (9 Kolom)**: Fitur wizard preview interaktif dan penugasan PIC massal (*Bulk Assign*).
 - **Format ARMS Enterprise (21 Kolom)**: Ekspor dan impor tugas berstandar enterprise dengan pemetaan SDLC Waterfall Milestone.
+- **Re-upload Task Excel dengan Diff Engine & In-Place Update (Anti-Duplikasi)**:
+  - Kemampuan mengunggah kembali berkas spreadsheet yang sama maupun berkas revisi berulang kali tanpa menciptakan duplikasi tugas di basis data.
+  - **Pencocokan Identitas Multi-Kunci**: Identifikasi tugas via kode tugas sistem (`TK-xxxx`), tag indeks `code:xxxx`, kode tugas asli spreadsheet, atau kombinasi proyek dan normalisasi judul.
+  - **Deteksi Perbedaan Field-by-Field (Smart Diff)**: Membandingkan seluruh properti (*Title, Status, Progress, Priority, PIC, StartDate, DueDate, Milestone, Obstacle, Solution, Description*).
+  - **Pratinjau Statistik & Filter Tab**: Modal impor menyajikan 5 metrik kartu (Total Baris, Tugas Baru, Diperbarui/Diff, Sama Persis, Error), tab pemilih status baris, dan badge pill visual yang memperjelas field mana yang mengalami perubahan.
+  - **In-Place Update Aman**: Mengubah data tugas yang cocok secara in-place tanpa mengubah ID tugas, relasi proyek, riwayat sesi, dan atribut tenant `CompanyId`.
 - **Dukungan Kolom Catatan & Migrasi Otomatis (Notes Migration)**:
   - Parser spreadsheet mendeteksi kolom 'Catatan' / 'Notes' (seperti kolom 21 pada format ARMS).
   - Jika tugas di sistem lokal belum memiliki catatan atau catatan yang ada masih kosong (`null`, spasi kosong, atau tag HTML kosong seperti `<p></p>`), sistem impor secara otomatis membuat atau memperbarui entitas `WorkNote` menggunakan data catatan dari spreadsheet sistem lama.

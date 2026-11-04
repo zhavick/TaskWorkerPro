@@ -37,6 +37,12 @@ import {
   RotateCcw,
   Palette,
   User,
+  UserPlus,
+  UserMinus,
+  UserX,
+  Plus,
+  CheckSquare,
+  Square,
 } from "lucide-react";
 import { Button } from "@/components/tailgrids/core/button";
 import { Input } from "@/components/tailgrids/core/input";
@@ -49,6 +55,7 @@ import {
   DialogFooter,
 } from "@/components/tailgrids/core/dialog";
 import { toast } from "sonner";
+import { useCurrentUser } from "@/hooks/use-current-user";
 
 interface MemberItem {
   id: string;
@@ -71,6 +78,9 @@ interface MemberItem {
   completedTasks: number;
   totalHours: number;
   projects?: string[];
+  isActive?: boolean;
+  resignedAt?: string | null;
+  resignationReason?: string | null;
 }
 
 interface CompanyGroup {
@@ -102,7 +112,7 @@ export default function MembersPage() {
 
   // Filters & State
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | "pending" | "locked">("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "pending" | "locked" | "resigned">("all");
   const [viewMode, setViewMode] = useState<"grouped" | "flat">("grouped");
 
   // Modal Dialog States
@@ -114,7 +124,60 @@ export default function MembersPage() {
   const [editPhoneNumber, setEditPhoneNumber] = useState("");
   const [editAvatarColor, setEditAvatarColor] = useState("#6366F1");
   const [editCompanyId, setEditCompanyId] = useState<number | undefined>(undefined);
-  const [editRole, setEditRole] = useState<"Member" | "DataPurgeAdmin" | "Administrator">("Member");
+  const [editRole, setEditRole] = useState<"Staff" | "Member" | "Project Manager" | "DataPurgeAdmin" | "Administrator">("Staff");
+
+  // Create Team Member & Direct Assignment Modal States (Admin only)
+  const [isCreateMemberModalOpen, setIsCreateMemberModalOpen] = useState(false);
+  const [newMemberFullName, setNewMemberFullName] = useState("");
+  const [newMemberEmail, setNewMemberEmail] = useState("");
+  const [newMemberPassword, setNewMemberPassword] = useState("");
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [newMemberJobTitle, setNewMemberJobTitle] = useState("Software Engineer");
+  const [newMemberPhoneNumber, setNewMemberPhoneNumber] = useState("");
+  const [newMemberCompanyId, setNewMemberCompanyId] = useState<number | undefined>(undefined);
+  const [newMemberRole, setNewMemberRole] = useState<"Staff" | "Project Manager" | "Administrator" | "DataPurgeAdmin">("Staff");
+  const [newMemberAvatarColor, setNewMemberAvatarColor] = useState("#6366F1");
+  const [newMemberSelectedTaskIds, setNewMemberSelectedTaskIds] = useState<number[]>([]);
+
+  // Deactivate (Resign) Confirmation Modal States
+  const [deactivateTarget, setDeactivateTarget] = useState<MemberItem | null>(null);
+  const [deactivateReason, setDeactivateReason] = useState("Karyawan resign sukarela");
+
+  // Direct Assignment Modal States for Existing Member
+  const [assignTarget, setAssignTarget] = useState<MemberItem | null>(null);
+  const [selectedTaskIdsToAssign, setSelectedTaskIdsToAssign] = useState<number[]>([]);
+
+  const resetCreateMemberForm = () => {
+    setNewMemberFullName("");
+    setNewMemberEmail("");
+    setNewMemberPassword("");
+    setShowNewPassword(false);
+    setNewMemberJobTitle("Software Engineer");
+    setNewMemberPhoneNumber("");
+    setNewMemberRole("Staff");
+    setNewMemberAvatarColor("#6366F1");
+    setNewMemberSelectedTaskIds([]);
+  };
+
+  const generateRandomPassword = () => {
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%";
+    let generated = "K3rja!";
+    for (let i = 0; i < 6; i++) {
+      generated += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    setNewPassword(generated);
+    setShowPassword(true);
+  };
+
+  const generateNewMemberPassword = () => {
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%";
+    let generated = "Tim2026!";
+    for (let i = 0; i < 6; i++) {
+      generated += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    setNewMemberPassword(generated);
+    setShowNewPassword(true);
+  };
 
   const handleOpenDetail = (m: MemberItem) => {
     router.push(`/members/${m.id}`);
@@ -131,10 +194,12 @@ export default function MembersPage() {
 
     if (m.roles?.includes("Administrator") || m.id === "usr-superadmin") {
       setEditRole("Administrator");
+    } else if (m.roles?.includes("Project Manager") || m.jobTitle?.toLowerCase().includes("project manager")) {
+      setEditRole("Project Manager");
     } else if (m.roles?.includes("DataPurgeAdmin") || m.canPurgeData) {
       setEditRole("DataPurgeAdmin");
     } else {
-      setEditRole("Member");
+      setEditRole("Staff");
     }
     setIsEditingMember(true);
   };
@@ -212,6 +277,7 @@ export default function MembersPage() {
   });
 
   // 1. Fetch Current User Profile to inspect RBAC Role
+  const { user: hookUser, isAdmin: hookIsAdmin, isProjectManager: hookIsPm } = useCurrentUser();
   const { data: userProfile } = useQuery<any>({
     queryKey: ["currentUserProfile"],
     queryFn: async () => {
@@ -221,9 +287,19 @@ export default function MembersPage() {
   });
 
   const isAdmin =
+    hookIsAdmin ||
     userProfile?.roles?.includes("Administrator") ||
     userProfile?.jobTitle?.toLowerCase().includes("admin") ||
     false;
+
+  const isProjectManager =
+    hookIsPm ||
+    userProfile?.roles?.includes("Project Manager") ||
+    userProfile?.jobTitle?.toLowerCase().includes("project manager") ||
+    userProfile?.jobTitle?.toLowerCase() === "pm" ||
+    false;
+
+  const canDeactivate = isAdmin || isProjectManager;
 
   // 2. Fetch Members & Company Groups
   const { data: membersResponse, isLoading } = useQuery<{
@@ -252,16 +328,108 @@ export default function MembersPage() {
     },
   });
 
+  // 4. Fetch Projects & Tasks for Direct Assignment
+  const { data: allProjects = [] } = useQuery<any[]>({
+    queryKey: ["projectsListForAssignment"],
+    queryFn: async () => {
+      const res = await apiClient.get("/projects");
+      return res.data?.data || [];
+    },
+  });
+
+  const { data: allTasks = [] } = useQuery<any[]>({
+    queryKey: ["allTasksForAssignment"],
+    queryFn: async () => {
+      const res = await apiClient.get("/tasks");
+      return res.data?.data || [];
+    },
+  });
+
   // Summary Metrics
   const metrics = useMemo(() => {
     const totalCount = members.length;
     const pendingCount = members.filter((m) => !m.isApproved).length;
     const lockedCount = members.filter((m) => m.isLockedOut).length;
+    const resignedCount = members.filter((m) => m.isActive === false).length;
     const totalTasks = members.reduce((acc, m) => acc + (m.totalTasks || 0), 0);
     const completedTasks = members.reduce((acc, m) => acc + (m.completedTasks || 0), 0);
     const totalHours = members.reduce((acc, m) => acc + (m.totalHours || 0), 0);
-    return { totalCount, pendingCount, lockedCount, totalTasks, completedTasks, totalHours };
+    return { totalCount, pendingCount, lockedCount, resignedCount, totalTasks, completedTasks, totalHours };
   }, [members]);
+
+  // Mutations
+  const createMemberMutation = useMutation({
+    mutationFn: async (payload: {
+      fullName: string;
+      email: string;
+      password: string;
+      jobTitle: string;
+      companyId: number;
+      phoneNumber?: string;
+      role?: string;
+      avatarColor?: string;
+      assignedTaskIds?: number[];
+    }) => {
+      const res = await apiClient.post("/members", payload);
+      return res.data;
+    },
+    onSuccess: (data) => {
+      toast.success(data.message || "Anggota tim dan assignment berhasil ditambahkan!");
+      queryClient.invalidateQueries({ queryKey: ["membersList"] });
+      queryClient.invalidateQueries({ queryKey: ["allTasksForAssignment"] });
+      setIsCreateMemberModalOpen(false);
+      resetCreateMemberForm();
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || err.message || "Gagal menambahkan anggota tim.");
+    },
+  });
+
+  const deactivateMutation = useMutation({
+    mutationFn: async ({ userId, reason }: { userId: string; reason?: string }) => {
+      const res = await apiClient.post(`/members/${userId}/deactivate`, { reason });
+      return res.data;
+    },
+    onSuccess: (data) => {
+      toast.success(data.message || "Pengguna berhasil dinonaktifkan (status resign).");
+      setDeactivateTarget(null);
+      queryClient.invalidateQueries({ queryKey: ["membersList"] });
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || "Gagal menonaktifkan pengguna.");
+    },
+  });
+
+  const activateMutation = useMutation({
+    mutationFn: async (userId: string) => {
+      const res = await apiClient.post(`/members/${userId}/activate`);
+      return res.data;
+    },
+    onSuccess: (data) => {
+      toast.success(data.message || "Akun anggota berhasil diaktifkan kembali.");
+      queryClient.invalidateQueries({ queryKey: ["membersList"] });
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || "Gagal mengaktifkan kembali akun.");
+    },
+  });
+
+  const assignTasksMutation = useMutation({
+    mutationFn: async ({ userId, taskIds }: { userId: string; taskIds: number[] }) => {
+      const res = await apiClient.post(`/members/${userId}/assign-tasks`, { taskIds });
+      return res.data;
+    },
+    onSuccess: (data) => {
+      toast.success(data.message || "Tugas berhasil dialokasikan kepada anggota tim!");
+      setAssignTarget(null);
+      setSelectedTaskIdsToAssign([]);
+      queryClient.invalidateQueries({ queryKey: ["membersList"] });
+      queryClient.invalidateQueries({ queryKey: ["allTasksForAssignment"] });
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || "Gagal mengalokasikan tugas.");
+    },
+  });
 
   // Mutations
   const approveMutation = useMutation({
@@ -419,6 +587,7 @@ export default function MembersPage() {
     let matchesStatus = true;
     if (statusFilter === "pending") matchesStatus = !m.isApproved;
     if (statusFilter === "locked") matchesStatus = m.isLockedOut;
+    if (statusFilter === "resigned") matchesStatus = m.isActive === false;
 
     return matchesSearch && matchesStatus;
   };
@@ -436,15 +605,12 @@ export default function MembersPage() {
       .filter((g) => g.filteredMembers.length > 0 || (search === "" && statusFilter === "all"));
   }, [groups, search, statusFilter]);
 
-  // Quick Random Password Generator
-  const generateRandomPassword = () => {
-    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%";
-    let generated = "K3rja!";
-    for (let i = 0; i < 6; i++) {
-      generated += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    setNewPassword(generated);
-    setShowPassword(true);
+  const handleOpenCreateMember = (defaultCompanyId?: number) => {
+    resetCreateMemberForm();
+    const targetCompId = defaultCompanyId || allCompanies[0]?.id || groups[0]?.companyId;
+    setNewMemberCompanyId(targetCompId);
+    generateNewMemberPassword();
+    setIsCreateMemberModalOpen(true);
   };
 
   return (
@@ -456,9 +622,6 @@ export default function MembersPage() {
             <h1 className="text-2xl font-extrabold tracking-tight text-gray-900 dark:text-white">
               Direktori Anggota Tim Enterprise
             </h1>
-            <span className="rounded-full bg-indigo-100 px-2.5 py-0.5 text-xs font-bold text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
-              FSD 5.11
-            </span>
           </div>
           <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
             Pusat manajemen seluruh personel korporat, struktur grup perusahaan (*tenant*), persetujuan akun staf baru, dan reset kredensial.
@@ -469,6 +632,15 @@ export default function MembersPage() {
         <div className="flex flex-wrap items-center gap-2">
           {isAdmin && (
             <>
+              <button
+                type="button"
+                onClick={() => handleOpenCreateMember()}
+                className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-3.5 py-2 text-xs font-bold text-white shadow-md hover:from-blue-700 hover:to-indigo-700 transition"
+              >
+                <UserPlus className="h-4 w-4" />
+                Tambah Tim &amp; Assignment
+              </button>
+
               <button
                 type="button"
                 onClick={() => {
@@ -634,6 +806,18 @@ export default function MembersPage() {
             <Lock className="h-3.5 w-3.5" />
             Terkunci ({metrics.lockedCount})
           </button>
+          <button
+            type="button"
+            onClick={() => setStatusFilter("resigned")}
+            className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+              statusFilter === "resigned"
+                ? "bg-slate-700 text-white"
+                : "bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300"
+            }`}
+          >
+            <UserMinus className="h-3.5 w-3.5" />
+            Resign / Non-aktif ({metrics.resignedCount})
+          </button>
         </div>
       </div>
 
@@ -669,6 +853,16 @@ export default function MembersPage() {
 
                 {/* Company Mini KPI Metrics */}
                 <div className="flex flex-wrap items-center gap-3 text-xs">
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      onClick={() => handleOpenCreateMember(group.companyId)}
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-bold text-indigo-700 hover:bg-indigo-100 dark:border-indigo-900/60 dark:bg-indigo-950/40 dark:text-indigo-300 transition"
+                    >
+                      <UserPlus className="h-3.5 w-3.5" />
+                      Tambah Tim
+                    </button>
+                  )}
                   <div className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-1.5 dark:border-gray-800 dark:bg-gray-800/60">
                     <span className="text-gray-400 block text-[10px]">Tugas Selesai</span>
                     <span className="font-bold text-gray-800 dark:text-gray-200">
@@ -692,9 +886,19 @@ export default function MembersPage() {
                     member={m}
                     isAdmin={isAdmin}
                     currentUserId={userProfile?.id}
+                    canDeactivate={canDeactivate}
                     onOpenDetail={() => handleOpenDetail(m)}
                     onOpenEdit={() => handleStartEdit(m)}
                     onOpenAudit={() => setAuditTarget(m)}
+                    onOpenAssign={() => {
+                      setAssignTarget(m);
+                      setSelectedTaskIdsToAssign([]);
+                    }}
+                    onDeactivate={() => {
+                      setDeactivateTarget(m);
+                      setDeactivateReason("Karyawan resign sukarela");
+                    }}
+                    onActivate={() => activateMutation.mutate(m.id)}
                     onResetPassword={() => {
                       setResetTarget(m);
                       setNewPassword("");
@@ -712,6 +916,8 @@ export default function MembersPage() {
                     onUnlock={() => unlockMutation.mutate(m.id)}
                     isApprovePending={approveMutation.isPending}
                     isUnlockPending={unlockMutation.isPending}
+                    isDeactivatePending={deactivateMutation.isPending}
+                    isActivatePending={activateMutation.isPending}
                   />
                 ))}
 
@@ -739,9 +945,19 @@ export default function MembersPage() {
               member={m}
               isAdmin={isAdmin}
               currentUserId={userProfile?.id}
+              canDeactivate={canDeactivate}
               onOpenDetail={() => handleOpenDetail(m)}
               onOpenEdit={() => handleStartEdit(m)}
               onOpenAudit={() => setAuditTarget(m)}
+              onOpenAssign={() => {
+                setAssignTarget(m);
+                setSelectedTaskIdsToAssign([]);
+              }}
+              onDeactivate={() => {
+                setDeactivateTarget(m);
+                setDeactivateReason("Karyawan resign sukarela");
+              }}
+              onActivate={() => activateMutation.mutate(m.id)}
               onResetPassword={() => {
                 setResetTarget(m);
                 setNewPassword("");
@@ -759,6 +975,8 @@ export default function MembersPage() {
               onUnlock={() => unlockMutation.mutate(m.id)}
               isApprovePending={approveMutation.isPending}
               isUnlockPending={unlockMutation.isPending}
+              isDeactivatePending={deactivateMutation.isPending}
+              isActivatePending={activateMutation.isPending}
             />
           ))}
 
@@ -1195,10 +1413,10 @@ export default function MembersPage() {
                         </div>
                       ) : (
                         <div className="space-y-2">
-                          {/* Member */}
+                          {/* Staff (Member) */}
                           <label
                             className={`flex items-start gap-3 rounded-xl border p-3 cursor-pointer transition-colors ${
-                              editRole === "Member"
+                              editRole === "Staff" || editRole === "Member"
                                 ? "border-indigo-500 bg-indigo-50/50 dark:border-indigo-500 dark:bg-indigo-950/30"
                                 : "border-gray-200 hover:bg-gray-50/60 dark:border-gray-700 dark:hover:bg-gray-800/40"
                             }`}
@@ -1206,15 +1424,73 @@ export default function MembersPage() {
                             <input
                               type="radio"
                               name="editMemberRole"
-                              value="Member"
-                              checked={editRole === "Member"}
-                              onChange={() => setEditRole("Member")}
+                              value="Staff"
+                              checked={editRole === "Staff" || editRole === "Member"}
+                              onChange={() => setEditRole("Staff")}
                               className="mt-0.5 text-indigo-600 focus:ring-indigo-500"
                             />
                             <div className="min-w-0 flex-1 text-xs">
-                              <div className="font-bold text-gray-900 dark:text-white">Pengguna Biasa (Member)</div>
+                              <div className="font-bold text-gray-900 dark:text-white">Staff (Pengguna Operasional)</div>
                               <p className="text-gray-500 text-[11px] leading-relaxed">
-                                Akses operasional standar: tugas harian, pencatatan log waktu aktivitas, dan profil diri.
+                                Anggota pelaksana non-admin. Menu disesuaikan khusus aktivitas kerja: tugas, timesheet, presensi, kalender, catatan, dan profil.
+                              </p>
+                            </div>
+                          </label>
+
+                          {/* Project Manager */}
+                          <label
+                            className={`flex items-start gap-3 rounded-xl border p-3 cursor-pointer transition-colors ${
+                              editRole === "Project Manager"
+                                ? "border-purple-500 bg-purple-50/50 dark:border-purple-500 dark:bg-purple-950/30"
+                                : "border-gray-200 hover:bg-gray-50/60 dark:border-gray-700 dark:hover:bg-gray-800/40"
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              name="editMemberRole"
+                              value="Project Manager"
+                              checked={editRole === "Project Manager"}
+                              onChange={() => setEditRole("Project Manager")}
+                              className="mt-0.5 text-purple-600 focus:ring-purple-500"
+                            />
+                            <div className="min-w-0 flex-1 text-xs">
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-gray-900 dark:text-white">Project Manager</span>
+                                <span className="rounded-full bg-purple-100 px-1.5 py-0.2 text-[9px] font-extrabold text-purple-800 dark:bg-purple-900/60 dark:text-purple-300">
+                                  Admin Perusahaan (Tampil di Dashboard)
+                                </span>
+                              </div>
+                              <p className="text-gray-500 text-[11px] leading-relaxed">
+                                Admin untuk perusahaan ini. Memiliki kebijakan seperti admin (kelola proyek, tugas tim, approval anggota, audit trail), wajib ditampilkan di dashboard sebagai anggota, kecuali menu Konfigurasi Sistem.
+                              </p>
+                            </div>
+                          </label>
+
+                          {/* Administrator */}
+                          <label
+                            className={`flex items-start gap-3 rounded-xl border p-3 cursor-pointer transition-colors ${
+                              editRole === "Administrator"
+                                ? "border-indigo-600 bg-indigo-50/60 dark:border-indigo-500 dark:bg-indigo-950/40"
+                                : "border-gray-200 hover:bg-gray-50/60 dark:border-gray-700 dark:hover:bg-gray-800/40"
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              name="editMemberRole"
+                              value="Administrator"
+                              checked={editRole === "Administrator"}
+                              onChange={() => setEditRole("Administrator")}
+                              className="mt-0.5 text-indigo-600 focus:ring-indigo-500"
+                            />
+                            <div className="min-w-0 flex-1 text-xs">
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-gray-900 dark:text-white">Admin (Perawatan Aplikasi)</span>
+                                <span className="rounded-full bg-indigo-100 px-1.5 py-0.2 text-[9px] font-extrabold text-indigo-800 dark:bg-indigo-900/60 dark:text-indigo-300">
+                                  System Admin Penuh
+                                </span>
+                              </div>
+                              <p className="text-gray-500 text-[11px] leading-relaxed">
+                                Berfokus pada perawatan aplikasi & konfigurasi enterprise menyeluruh. Datanya tidak diikutsertakan pada chart dashboard performa kerja.
                               </p>
                             </div>
                           </label>
@@ -1245,31 +1521,7 @@ export default function MembersPage() {
                                 </span>
                               </div>
                               <p className="text-gray-500 text-[11px] leading-relaxed">
-                                Diberikan hak akses ke menu Konfigurasi &gt; Pembersihan Data untuk monitoring statistik storage database, VACUUM maintenance, dan purging data log lama. Dibatasi dari pengaturan umum, keamanan, SMTP, dan master data.
-                              </p>
-                            </div>
-                          </label>
-
-                          {/* Administrator */}
-                          <label
-                            className={`flex items-start gap-3 rounded-xl border p-3 cursor-pointer transition-colors ${
-                              editRole === "Administrator"
-                                ? "border-indigo-600 bg-indigo-50/60 dark:border-indigo-500 dark:bg-indigo-950/40"
-                                : "border-gray-200 hover:bg-gray-50/60 dark:border-gray-700 dark:hover:bg-gray-800/40"
-                            }`}
-                          >
-                            <input
-                              type="radio"
-                              name="editMemberRole"
-                              value="Administrator"
-                              checked={editRole === "Administrator"}
-                              onChange={() => setEditRole("Administrator")}
-                              className="mt-0.5 text-indigo-600 focus:ring-indigo-500"
-                            />
-                            <div className="min-w-0 flex-1 text-xs">
-                              <div className="font-bold text-gray-900 dark:text-white">Administrator Penuh (System Admin)</div>
-                              <p className="text-gray-500 text-[11px] leading-relaxed">
-                                Hak akses administratif menyeluruh ke seluruh modul sistem: manajemen pengguna, konfigurasi perusahaan, audit log, keamanan, dan pengaturan sistem.
+                                Diberikan hak akses ke menu Konfigurasi &gt; Pembersihan Data untuk monitoring storage database, VACUUM maintenance, dan purging data log lama.
                               </p>
                             </div>
                           </label>
@@ -1748,7 +2000,7 @@ export default function MembersPage() {
                 </Button>
               </form>
               <p className="mt-1.5 text-[11px] text-gray-500 dark:text-gray-400">
-                Pengguna yang dimasukkan akan langsung memperoleh otoritas role Administrator penuh (FSD 5.11).
+                Pengguna yang dimasukkan akan langsung memperoleh otoritas role Administrator penuh.
               </p>
             </div>
 
@@ -2066,6 +2318,540 @@ export default function MembersPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ======================================================== */}
+      {/* MODAL 7: TAMBAH PERSONEL TIM & ASSIGNMENT (ADMIN)        */}
+      {/* ======================================================== */}
+      <Dialog
+        isOpen={isCreateMemberModalOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setIsCreateMemberModalOpen(false);
+            resetCreateMemberForm();
+          }
+        }}
+      >
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <div className="flex items-center gap-2 text-primary-600 dark:text-primary-400">
+              <UserPlus className="h-5 w-5" />
+              <div>
+                <DialogTitle className="text-base font-extrabold text-gray-900 dark:text-white">
+                  Tambah Personel Tim &amp; Assignment
+                </DialogTitle>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Tambahkan anggota staf baru langsung ke perusahaan dan alokasikan tugas awal.
+                </p>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <DialogBody className="space-y-4 py-2">
+            {/* Identity Grid: Nama & Email */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-gray-700 dark:text-gray-300">
+                  Nama Lengkap <span className="text-rose-500">*</span>
+                </label>
+                <Input
+                  placeholder="cth. Budi Pratama, S.Kom"
+                  value={newMemberFullName}
+                  onChange={(e) => setNewMemberFullName(e.target.value)}
+                  className="text-xs"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-gray-700 dark:text-gray-300">
+                  Alamat Email (Login) <span className="text-rose-500">*</span>
+                </label>
+                <Input
+                  type="email"
+                  placeholder="budi.pratama@perusahaan.co.id"
+                  value={newMemberEmail}
+                  onChange={(e) => setNewMemberEmail(e.target.value)}
+                  className="text-xs"
+                />
+              </div>
+            </div>
+
+            {/* Password & Job Title */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <div className="mb-1 flex items-center justify-between">
+                  <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                    Kata Sandi Awal <span className="text-rose-500">*</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={generateNewMemberPassword}
+                    className="flex items-center gap-1 text-[11px] font-bold text-primary-600 hover:text-primary-700 dark:text-primary-400"
+                  >
+                    <Sparkles className="h-3 w-3" />
+                    Acak Sandi
+                  </button>
+                </div>
+                <div className="relative">
+                  <Input
+                    type={showNewPassword ? "text" : "password"}
+                    placeholder="Minimal 6 karakter"
+                    value={newMemberPassword}
+                    onChange={(e) => setNewMemberPassword(e.target.value)}
+                    className="pr-9 font-mono text-xs"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowNewPassword(!showNewPassword)}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-gray-700 dark:text-gray-300">
+                  Jabatan / Posisi <span className="text-rose-500">*</span>
+                </label>
+                <Input
+                  placeholder="cth. Senior Backend Engineer"
+                  value={newMemberJobTitle}
+                  onChange={(e) => setNewMemberJobTitle(e.target.value)}
+                  className="text-xs"
+                />
+              </div>
+            </div>
+
+            {/* Phone & Company */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-gray-700 dark:text-gray-300">
+                  Nomor Telepon (WhatsApp)
+                </label>
+                <Input
+                  placeholder="+62 812-3456-7890"
+                  value={newMemberPhoneNumber}
+                  onChange={(e) => setNewMemberPhoneNumber(e.target.value)}
+                  className="text-xs"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-gray-700 dark:text-gray-300">
+                  Perusahaan (Tenant) <span className="text-rose-500">*</span>
+                </label>
+                <select
+                  value={newMemberCompanyId ?? ""}
+                  onChange={(e) => setNewMemberCompanyId(Number(e.target.value))}
+                  className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-xs font-semibold text-gray-800 shadow-2xs focus:border-primary-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+                >
+                  <option value="" disabled>Pilih Perusahaan...</option>
+                  {(allCompanies.length > 0 ? allCompanies : groups).map((comp: any) => (
+                    <option key={comp.id || comp.companyId} value={comp.id || comp.companyId}>
+                      [{comp.code || comp.companyCode}] {comp.name || comp.companyName}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Role & Avatar Color */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-gray-700 dark:text-gray-300">
+                  Hak Akses Aplikasi (Role) <span className="text-rose-500">*</span>
+                </label>
+                <select
+                  value={newMemberRole}
+                  onChange={(e) => setNewMemberRole(e.target.value as any)}
+                  className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-xs font-semibold text-gray-800 shadow-2xs focus:border-primary-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+                >
+                  <option value="Staff">Staff / Member (Akses Reguler)</option>
+                  <option value="Project Manager">Project Manager (Kelola Tim &amp; Proyek)</option>
+                  <option value="Administrator">Administrator (Akses Penuh Sistem)</option>
+                  <option value="DataPurgeAdmin">DataPurgeAdmin (Pembersihan Data)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-gray-700 dark:text-gray-300">
+                  Warna Avatar Personal
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={newMemberAvatarColor}
+                    onChange={(e) => setNewMemberAvatarColor(e.target.value)}
+                    className="h-8 w-12 cursor-pointer rounded-lg border border-gray-200 bg-transparent p-0.5 dark:border-gray-700"
+                  />
+                  <div className="flex flex-wrap gap-1.5">
+                    {["#6366F1", "#3B82F6", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6", "#EC4899"].map((c) => (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => setNewMemberAvatarColor(c)}
+                        className={`h-6 w-6 rounded-md transition ${newMemberAvatarColor === c ? "ring-2 ring-primary-500 ring-offset-1" : "opacity-80 hover:opacity-100"}`}
+                        style={{ backgroundColor: c }}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Direct Task Assignment Checklist */}
+            <div className="rounded-2xl border border-gray-200 bg-gray-50/70 p-3.5 dark:border-gray-800 dark:bg-gray-800/40">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <Briefcase className="h-4 w-4 text-primary-600 dark:text-primary-400" />
+                  <span className="text-xs font-bold text-gray-800 dark:text-white">
+                    Alokasi Tugas Langsung (Assignment)
+                  </span>
+                </div>
+                <span className="rounded-full bg-primary-100 px-2 py-0.5 text-[10px] font-extrabold text-primary-700 dark:bg-primary-950 dark:text-primary-300">
+                  {newMemberSelectedTaskIds.length} Tugas Dipilih
+                </span>
+              </div>
+              <p className="text-[11px] text-gray-500 dark:text-gray-400 mb-3">
+                Tugaskan langsung pekerjaan kepada anggota tim baru ini dari daftar tugas yang belum dialokasikan.
+              </p>
+
+              <div className="max-h-44 space-y-1.5 overflow-y-auto pr-1">
+                {allTasks.length === 0 ? (
+                  <p className="py-4 text-center text-xs text-gray-400">Tidak ada tugas tersedia.</p>
+                ) : (
+                  allTasks
+                    .filter((t: any) => !t.assignedToUserId || t.assignedToUserId === "")
+                    .slice(0, 30)
+                    .map((t: any) => {
+                      const isSelected = newMemberSelectedTaskIds.includes(t.id);
+                      return (
+                        <div
+                          key={t.id}
+                          onClick={() => {
+                            if (isSelected) {
+                              setNewMemberSelectedTaskIds(newMemberSelectedTaskIds.filter((id) => id !== t.id));
+                            } else {
+                              setNewMemberSelectedTaskIds([...newMemberSelectedTaskIds, t.id]);
+                            }
+                          }}
+                          className={`flex items-center justify-between rounded-xl border p-2 text-xs transition cursor-pointer ${
+                            isSelected
+                              ? "border-primary-400 bg-primary-50/50 dark:border-primary-700 dark:bg-primary-950/30"
+                              : "border-gray-200 bg-white hover:border-gray-300 dark:border-gray-700 dark:bg-gray-900"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            {isSelected ? (
+                              <CheckSquare className="h-4 w-4 text-primary-600 shrink-0" />
+                            ) : (
+                              <Square className="h-4 w-4 text-gray-400 shrink-0" />
+                            )}
+                            <div className="min-w-0">
+                              <span className="font-semibold text-gray-800 dark:text-gray-200 truncate block">
+                                {t.title}
+                              </span>
+                              <span className="text-[10px] text-gray-400">
+                                {t.projectName ? `Proyek: ${t.projectName}` : "Umum"}
+                              </span>
+                            </div>
+                          </div>
+                          <span className="shrink-0 rounded-md bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+                            #{t.id}
+                          </span>
+                        </div>
+                      );
+                    })
+                )}
+              </div>
+            </div>
+          </DialogBody>
+
+          <DialogFooter className="gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setIsCreateMemberModalOpen(false);
+                resetCreateMemberForm();
+              }}
+              className="text-xs"
+            >
+              Batal
+            </Button>
+            <Button
+              size="sm"
+              disabled={
+                !newMemberFullName.trim() ||
+                !newMemberEmail.trim() ||
+                !newMemberPassword.trim() ||
+                !newMemberCompanyId ||
+                createMemberMutation.isPending
+              }
+              onClick={() => {
+                if (newMemberCompanyId) {
+                  createMemberMutation.mutate({
+                    fullName: newMemberFullName.trim(),
+                    email: newMemberEmail.trim(),
+                    password: newMemberPassword.trim(),
+                    jobTitle: newMemberJobTitle.trim() || "Staff",
+                    companyId: newMemberCompanyId,
+                    phoneNumber: newMemberPhoneNumber.trim() || undefined,
+                    role: newMemberRole,
+                    avatarColor: newMemberAvatarColor,
+                    assignedTaskIds: newMemberSelectedTaskIds.length > 0 ? newMemberSelectedTaskIds : undefined,
+                  });
+                }
+              }}
+              className="gap-1.5 text-xs bg-primary-600 hover:bg-primary-700 text-white font-bold"
+            >
+              {createMemberMutation.isPending ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Menyimpan...
+                </>
+              ) : (
+                <>
+                  <UserPlus className="h-3.5 w-3.5" />
+                  Simpan Anggota &amp; Alokasi
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ======================================================== */}
+      {/* MODAL 8: KONFIRMASI PENONAKTIFAN RESIGN (PM & ADMIN)      */}
+      {/* ======================================================== */}
+      <Dialog isOpen={!!deactivateTarget} onOpenChange={(open) => !open && setDeactivateTarget(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <div className="flex items-center gap-2 text-rose-600 dark:text-rose-400">
+              <UserMinus className="h-5 w-5" />
+              <DialogTitle className="text-base font-extrabold text-gray-900 dark:text-white">
+                Nonaktifkan Anggota Tim (Resign)
+              </DialogTitle>
+            </div>
+          </DialogHeader>
+
+          {deactivateTarget && (
+            <DialogBody className="space-y-4 py-2">
+              {/* Target User Info */}
+              <div className="flex items-center gap-3 rounded-xl border border-gray-100 bg-gray-50/70 p-3 dark:border-gray-800 dark:bg-gray-800/40">
+                <div
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl font-bold text-white shadow-2xs text-sm"
+                  style={{ backgroundColor: deactivateTarget.avatarColor || "#6366F1" }}
+                >
+                  {deactivateTarget.fullName.slice(0, 2).toUpperCase()}
+                </div>
+                <div className="min-w-0">
+                  <h4 className="font-bold text-sm text-gray-900 dark:text-white truncate">
+                    {deactivateTarget.fullName}
+                  </h4>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{deactivateTarget.email}</p>
+                  <p className="text-[11px] font-semibold text-gray-400">
+                    [{deactivateTarget.companyCode}] {deactivateTarget.jobTitle}
+                  </p>
+                </div>
+              </div>
+
+              {/* Warning Notice */}
+              <div className="flex gap-2.5 rounded-xl border border-amber-200 bg-amber-50/60 p-3 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300">
+                <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
+                <p>
+                  Pengguna yang dinonaktifkan akan berstatus <strong>Resign</strong> dan langsung diblokir dari login ke aplikasi. Riwayat tugas, log waktu, dan jejak audit tetap tersimpan.
+                </p>
+              </div>
+
+              {/* Alasan Resign */}
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-gray-700 dark:text-gray-300">
+                  Alasan / Keterangan Penonaktifan
+                </label>
+                <Input
+                  placeholder="cth. Karyawan resign sukarela / akhir masa kontrak"
+                  value={deactivateReason}
+                  onChange={(e) => setDeactivateReason(e.target.value)}
+                  className="text-xs"
+                />
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {[
+                    "Karyawan resign sukarela",
+                    "Masa kontrak kerja berakhir",
+                    "Mutasi antar holding",
+                    "Pemberhentian kerja",
+                  ].map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => setDeactivateReason(preset)}
+                      className="rounded-md border border-gray-200 bg-gray-50 px-2 py-0.5 text-[10px] text-gray-600 hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300"
+                    >
+                      {preset}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </DialogBody>
+          )}
+
+          <DialogFooter className="gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setDeactivateTarget(null)}
+              className="text-xs"
+            >
+              Batal
+            </Button>
+            <Button
+              size="sm"
+              disabled={deactivateMutation.isPending}
+              onClick={() => {
+                if (deactivateTarget) {
+                  deactivateMutation.mutate({
+                    userId: deactivateTarget.id,
+                    reason: deactivateReason,
+                  });
+                }
+              }}
+              className="gap-1.5 text-xs bg-rose-600 hover:bg-rose-700 text-white font-bold"
+            >
+              {deactivateMutation.isPending ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Memproses...
+                </>
+              ) : (
+                <>
+                  <UserMinus className="h-3.5 w-3.5" />
+                  Nonaktifkan Pengguna
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ======================================================== */}
+      {/* MODAL 9: ALOKASI PENUGASAN LANGSUNG ANGGOTA              */}
+      {/* ======================================================== */}
+      <Dialog isOpen={!!assignTarget} onOpenChange={(open) => !open && setAssignTarget(null)}>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400">
+              <Briefcase className="h-5 w-5" />
+              <div>
+                <DialogTitle className="text-base font-extrabold text-gray-900 dark:text-white">
+                  Alokasi Tugas Langsung
+                </DialogTitle>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Pilih tugas untuk ditugaskan kepada <span className="font-bold text-gray-800 dark:text-gray-200">{assignTarget?.fullName}</span>
+                </p>
+              </div>
+            </div>
+          </DialogHeader>
+
+          {assignTarget && (
+            <DialogBody className="space-y-3 py-2">
+              <div className="flex items-center justify-between text-xs text-gray-500">
+                <span>Daftar Tugas Tersedia:</span>
+                <span className="font-bold text-indigo-600 dark:text-indigo-400">
+                  {selectedTaskIdsToAssign.length} Tugas Dipilih
+                </span>
+              </div>
+
+              <div className="max-h-64 space-y-1.5 overflow-y-auto pr-1">
+                {allTasks.filter((t: any) => !t.assignedToUserId || t.assignedToUserId !== assignTarget.id).length === 0 ? (
+                  <p className="py-6 text-center text-xs text-gray-400">Tidak ada tugas unassigned yang tersedia saat ini.</p>
+                ) : (
+                  allTasks
+                    .filter((t: any) => !t.assignedToUserId || t.assignedToUserId !== assignTarget.id)
+                    .map((t: any) => {
+                      const isSelected = selectedTaskIdsToAssign.includes(t.id);
+                      return (
+                        <div
+                          key={t.id}
+                          onClick={() => {
+                            if (isSelected) {
+                              setSelectedTaskIdsToAssign(selectedTaskIdsToAssign.filter((id) => id !== t.id));
+                            } else {
+                              setSelectedTaskIdsToAssign([...selectedTaskIdsToAssign, t.id]);
+                            }
+                          }}
+                          className={`flex items-center justify-between rounded-xl border p-2.5 text-xs transition cursor-pointer ${
+                            isSelected
+                              ? "border-indigo-400 bg-indigo-50/50 dark:border-indigo-700 dark:bg-indigo-950/30"
+                              : "border-gray-200 bg-white hover:border-gray-300 dark:border-gray-700 dark:bg-gray-900"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            {isSelected ? (
+                              <CheckSquare className="h-4 w-4 text-indigo-600 shrink-0" />
+                            ) : (
+                              <Square className="h-4 w-4 text-gray-400 shrink-0" />
+                            )}
+                            <div className="min-w-0">
+                              <span className="font-semibold text-gray-800 dark:text-gray-200 truncate block">
+                                {t.title}
+                              </span>
+                              <span className="text-[10px] text-gray-400">
+                                {t.projectName ? `Proyek: ${t.projectName}` : "Umum"}
+                              </span>
+                            </div>
+                          </div>
+                          <span className="shrink-0 rounded-md bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+                            #{t.id}
+                          </span>
+                        </div>
+                      );
+                    })
+                )}
+              </div>
+            </DialogBody>
+          )}
+
+          <DialogFooter className="gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setAssignTarget(null);
+                setSelectedTaskIdsToAssign([]);
+              }}
+              className="text-xs"
+            >
+              Batal
+            </Button>
+            <Button
+              size="sm"
+              disabled={selectedTaskIdsToAssign.length === 0 || assignTasksMutation.isPending}
+              onClick={() => {
+                if (assignTarget && selectedTaskIdsToAssign.length > 0) {
+                  assignTasksMutation.mutate({
+                    userId: assignTarget.id,
+                    taskIds: selectedTaskIdsToAssign,
+                  });
+                }
+              }}
+              className="gap-1.5 text-xs bg-indigo-600 hover:bg-indigo-700 text-white font-bold"
+            >
+              {assignTasksMutation.isPending ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Menugaskan...
+                </>
+              ) : (
+                <>
+                  <Briefcase className="h-3.5 w-3.5" />
+                  Tugaskan {selectedTaskIdsToAssign.length} Tugas
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -2075,9 +2861,13 @@ interface MemberCardProps {
   member: MemberItem;
   isAdmin: boolean;
   currentUserId?: string;
+  canDeactivate?: boolean;
   onOpenDetail: () => void;
   onOpenEdit?: () => void;
   onOpenAudit?: () => void;
+  onOpenAssign?: () => void;
+  onDeactivate?: () => void;
+  onActivate?: () => void;
   onResetPassword: () => void;
   onDeletePermanent: () => void;
   onApprove: () => void;
@@ -2085,15 +2875,21 @@ interface MemberCardProps {
   onUnlock: () => void;
   isApprovePending: boolean;
   isUnlockPending: boolean;
+  isDeactivatePending?: boolean;
+  isActivatePending?: boolean;
 }
 
 function MemberCard({
   member: m,
   isAdmin,
   currentUserId,
+  canDeactivate,
   onOpenDetail,
   onOpenEdit,
   onOpenAudit,
+  onOpenAssign,
+  onDeactivate,
+  onActivate,
   onResetPassword,
   onDeletePermanent,
   onApprove,
@@ -2101,6 +2897,8 @@ function MemberCard({
   onUnlock,
   isApprovePending,
   isUnlockPending,
+  isDeactivatePending,
+  isActivatePending,
 }: MemberCardProps) {
   const router = useRouter();
   const isSuperadmin = m.id === "usr-superadmin";
@@ -2110,7 +2908,9 @@ function MemberCard({
     <div
       onClick={() => router.push(`/members/${m.id}`)}
       className={`group flex flex-col justify-between rounded-2xl border bg-card-background text-text-primary p-5 shadow-2xs transition-all hover:shadow-md cursor-pointer hover:border-primary-400 ${
-        !m.isApproved
+        m.isActive === false
+          ? "border-slate-300 bg-slate-50/50 opacity-80 dark:border-slate-800 dark:bg-slate-950/40"
+          : !m.isApproved
           ? "border-amber-300 bg-amber-50/20 dark:border-amber-800/80"
           : m.isLockedOut
           ? "border-rose-300 bg-rose-50/20 dark:border-rose-800/80"
@@ -2153,8 +2953,12 @@ function MemberCard({
           {/* Status Badges */}
           <div className="shrink-0 flex items-center gap-1">
             {m.roles?.includes("Administrator") || m.roles?.includes("SuperAdmin") || m.id === "usr-superadmin" ? (
-              <span className="rounded-full bg-indigo-100 px-2.5 py-0.5 text-[10px] font-extrabold text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-400">
+              <span className="rounded-full bg-blue-100 px-2.5 py-0.5 text-[10px] font-extrabold text-blue-700 dark:bg-blue-950/60 dark:text-blue-400">
                 Admin
+              </span>
+            ) : m.roles?.includes("Project Manager") || m.jobTitle?.toLowerCase().includes("project manager") ? (
+              <span className="rounded-full bg-purple-100 px-2.5 py-0.5 text-[10px] font-extrabold text-purple-700 dark:bg-purple-950/60 dark:text-purple-400">
+                Project Manager
               </span>
             ) : m.roles?.includes("DataPurgeAdmin") || m.canPurgeData ? (
               <span
@@ -2163,8 +2967,17 @@ function MemberCard({
               >
                 Purge Admin
               </span>
-            ) : null}
-            {!m.isApproved ? (
+            ) : (
+              <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-[10px] font-bold text-gray-600 dark:bg-gray-800 dark:text-gray-400">
+                Staff
+              </span>
+            )}
+
+            {m.isActive === false ? (
+              <span className="rounded-full bg-slate-200 px-2.5 py-0.5 text-[10px] font-extrabold text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                Resign
+              </span>
+            ) : !m.isApproved ? (
               <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-[10px] font-extrabold text-amber-700 dark:bg-amber-950/60 dark:text-amber-400">
                 Pending
               </span>
@@ -2198,6 +3011,11 @@ function MemberCard({
               [{m.companyCode || "WCH"}] {m.companyName || "Wahana Holding"}
             </span>
           </div>
+          {m.isActive === false && (
+            <div className="rounded-lg bg-slate-100 px-2 py-1 text-[10px] text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+              <span className="font-semibold">Status Resign:</span> {m.resignationReason || "Non-aktif"}
+            </div>
+          )}
         </div>
 
         {/* Work Metrics Bar */}
@@ -2273,8 +3091,60 @@ function MemberCard({
         </div>
 
         <div className="flex items-center gap-1.5">
+          {/* Direct Task Assignment (Admin Only) */}
+          {isAdmin && onOpenAssign && m.isActive !== false && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 gap-1 px-2 text-[11px] text-indigo-600 border-indigo-200 hover:bg-indigo-50 dark:border-indigo-900/60 dark:text-indigo-400"
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenAssign();
+              }}
+              title="Alokasi Penugasan Langsung"
+            >
+              <Briefcase className="h-3 w-3" />
+              Tugas
+            </Button>
+          )}
+
+          {/* Deactivate (Resign) or Reactivate (PM & Admin) */}
+          {canDeactivate && !isSuperadmin && !isSelf && (
+            m.isActive === false ? (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 gap-1 border-emerald-400 text-emerald-600 hover:bg-emerald-50 px-2 text-[11px] dark:hover:bg-emerald-950/30"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onActivate?.();
+                }}
+                disabled={isActivatePending}
+                title="Aktifkan Kembali Akun"
+              >
+                <CheckCircle2 className="h-3 w-3" />
+                Aktifkan
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 gap-1 border-rose-300 text-rose-600 hover:bg-rose-50 px-2 text-[11px] dark:border-rose-900/60 dark:hover:bg-rose-950/30"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDeactivate?.();
+                }}
+                disabled={isDeactivatePending}
+                title="Nonaktifkan Akun (Karyawan Resign)"
+              >
+                <UserMinus className="h-3 w-3" />
+                Resign
+              </Button>
+            )
+          )}
+
           {/* Approval Controls (Admin Only) */}
-          {isAdmin && !m.isApproved && (
+          {isAdmin && !m.isApproved && m.isActive !== false && (
             <>
               <Button
                 size="sm"
@@ -2303,7 +3173,7 @@ function MemberCard({
           )}
 
           {/* Unlock Controls (Admin Only) */}
-          {isAdmin && m.isLockedOut && (
+          {isAdmin && m.isLockedOut && m.isActive !== false && (
             <Button
               size="sm"
               variant="outline"
@@ -2320,7 +3190,7 @@ function MemberCard({
           )}
 
           {/* Admin Direct Password Reset */}
-          {isAdmin && (
+          {isAdmin && m.isActive !== false && (
             <Button
               size="sm"
               variant="outline"

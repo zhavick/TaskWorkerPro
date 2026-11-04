@@ -242,6 +242,12 @@ public class NotificationsController : ControllerBase
 
         if (!string.IsNullOrEmpty(request.TargetUserId))
         {
+            var targetUser = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == request.TargetUserId);
+            if (targetUser != null && !_tenantService.IsSuperAdmin && targetUser.CompanyId.HasValue && targetUser.CompanyId.Value != companyId)
+            {
+                return StatusCode(403, new { success = false, message = "Target pengguna bukan bagian dari perusahaan Anda." });
+            }
+
             await _notificationService.SendNotificationAsync(
                 request.TargetUserId,
                 companyId,

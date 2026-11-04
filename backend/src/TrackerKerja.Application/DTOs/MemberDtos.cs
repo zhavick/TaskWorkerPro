@@ -14,7 +14,10 @@ public record UserProfileDto(
     bool IsApproved,
     IList<string> Roles,
     string? PhoneNumber = null,
-    DateTimeOffset? CreatedAt = null
+    DateTimeOffset? CreatedAt = null,
+    bool EnableDms = true,
+    bool EnableTicketing = true,
+    bool EnableInvoicing = true
 );
 
 public record MemberListItemDto(
@@ -38,7 +41,32 @@ public record MemberListItemDto(
     string? PhoneNumber = null,
     List<string>? Projects = null,
     string? CoverPictureUrl = null,
-    bool CanPurgeData = false
+    bool CanPurgeData = false,
+    bool IsActive = true,
+    DateTimeOffset? ResignedAt = null,
+    string? ResignationReason = null
+);
+
+public record CreateMemberRequest(
+    string FullName,
+    string Email,
+    string Password,
+    string JobTitle,
+    int CompanyId,
+    string? PhoneNumber = null,
+    string? Role = "Staff",
+    string? AvatarColor = "#6366F1",
+    List<int>? AssignedProjectIds = null,
+    List<int>? AssignedTaskIds = null
+);
+
+public record DeactivateMemberRequest(
+    string? Reason = null
+);
+
+public record AssignMemberProjectsTasksRequest(
+    List<int>? ProjectIds = null,
+    List<int>? TaskIds = null
 );
 
 public record UpdateMemberRequest(

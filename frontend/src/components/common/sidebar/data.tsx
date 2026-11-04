@@ -17,6 +17,9 @@ import {
   ShieldCheck,
   BarChart3,
   HelpCircle,
+  AlertCircle,
+  Receipt,
+  FolderTree,
 } from "lucide-react";
 
 export const NAV_DATA = [
@@ -43,6 +46,12 @@ export const NAV_DATA = [
           { title: "Daftar Tugas", url: "/tasks" },
           { title: "Papan Kanban", url: "/tasks/kanban" },
         ],
+      },
+      {
+        title: "Tiket & Kendala",
+        icon: <AlertCircle className="h-5 w-5" />,
+        url: "/issues",
+        items: [],
       },
       {
         title: "Timesheet & Timer",
@@ -91,6 +100,23 @@ export const NAV_DATA = [
     ],
   },
   {
+    label: "FINANSIAL & DOKUMEN",
+    items: [
+      {
+        title: "Invoice & Tagihan",
+        icon: <Receipt className="h-5 w-5" />,
+        url: "/invoices",
+        items: [],
+      },
+      {
+        title: "Repositori Dokumen",
+        icon: <FolderTree className="h-5 w-5" />,
+        url: "/documents",
+        items: [],
+      },
+    ],
+  },
+  {
     label: "TIM & ENTERPRISE",
     items: [
       {
@@ -127,6 +153,7 @@ export const NAV_DATA = [
         title: "Audit Trail & Log",
         icon: <ShieldCheck className="h-5 w-5" />,
         url: "/audit-trail",
+        companyAdminOnly: true,
         items: [],
       },
       {

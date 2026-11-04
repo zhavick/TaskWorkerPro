@@ -5,6 +5,25 @@ const backendUrl = process.env.BACKEND_URL || "http://localhost:5008";
 const nextConfig: NextConfig = {
   output: "standalone",
   allowedDevOrigins: ["192.168.0.117"],
+  async redirects() {
+    return [
+      {
+        source: "/tugas",
+        destination: "/tasks",
+        permanent: false,
+      },
+      {
+        source: "/tugas/kanban",
+        destination: "/tasks/kanban",
+        permanent: false,
+      },
+      {
+        source: "/kanban",
+        destination: "/tasks/kanban",
+        permanent: false,
+      },
+    ];
+  },
   async rewrites() {
     return [
       {

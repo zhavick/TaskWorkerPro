@@ -56,6 +56,7 @@ export default function RegisterPage() {
         jobTitle: jobTitle.trim(),
         companyOption,
         companyCode: companyOption === "existing" ? companyCode.trim().toUpperCase() : null,
+        existingCompanyCode: companyOption === "existing" ? companyCode.trim().toUpperCase() : null,
         newCompanyName: companyOption === "new" ? newCompanyName.trim() : null,
         newCompanyCode: companyOption === "new" ? newCompanyCode.trim().toUpperCase() : null,
       });

@@ -67,6 +67,8 @@ export interface TaskImportRow {
   isUpdate?: boolean;
   existingTaskId?: number | null;
   picEmail?: string | null;
+  differences?: string[];
+  hasDifferences?: boolean;
 }
 
 export interface TaskImportPreview {
@@ -76,6 +78,9 @@ export interface TaskImportPreview {
   warningCount: number;
   errorCount: number;
   rows: TaskImportRow[];
+  updatedCount?: number;
+  unchangedCount?: number;
+  newCount?: number;
 }
 
 export interface ImportResult {
@@ -117,7 +122,7 @@ export function ImportExcelDialog({ open, onOpenChange, onSuccess }: ImportExcel
   // Preview & Selection State
   const [previewData, setPreviewData] = useState<TaskImportPreview | null>(null);
   const [selectedRowIndexes, setSelectedRowIndexes] = useState<Set<number>>(new Set());
-  const [filterTab, setFilterTab] = useState<"all" | "valid" | "warning" | "error">("all");
+  const [filterTab, setFilterTab] = useState<"all" | "new" | "update" | "unchanged" | "valid" | "warning" | "error">("all");
   const [searchQuery, setSearchQuery] = useState("");
 
   // Result state
@@ -387,6 +392,9 @@ export function ImportExcelDialog({ open, onOpenChange, onSuccess }: ImportExcel
       if (filterTab === "valid" && !isValid) return false;
       if (filterTab === "warning" && !isWarning) return false;
       if (filterTab === "error" && !isError) return false;
+      if (filterTab === "new" && (row.isUpdate || isError)) return false;
+      if (filterTab === "update" && (!row.isUpdate || (!row.hasDifferences && (!row.differences || row.differences.length === 0)))) return false;
+      if (filterTab === "unchanged" && (!row.isUpdate || row.hasDifferences || (row.differences && row.differences.length > 0))) return false;
 
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase();
@@ -790,24 +798,36 @@ export function ImportExcelDialog({ open, onOpenChange, onSuccess }: ImportExcel
             )}
 
             {/* Top Stat Summary Cards */}
-            <div className="grid grid-cols-4 gap-2">
-              <div className="rounded-xl border border-gray-200 bg-gray-50/60 p-2.5 text-center dark:border-gray-800 dark:bg-gray-800/40">
-                <span className="text-[11px] text-gray-500 font-medium">Total Baris</span>
-                <p className="text-base font-extrabold text-gray-900 dark:text-white">{previewData.totalRows}</p>
-              </div>
-              <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-2.5 text-center dark:border-emerald-900/40 dark:bg-emerald-950/20">
-                <span className="text-[11px] text-emerald-700 dark:text-emerald-400 font-medium">Valid</span>
-                <p className="text-base font-extrabold text-emerald-700 dark:text-emerald-400">{previewData.validCount}</p>
-              </div>
-              <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-2.5 text-center dark:border-amber-900/40 dark:bg-amber-950/20">
-                <span className="text-[11px] text-amber-700 dark:text-amber-400 font-medium">Peringatan</span>
-                <p className="text-base font-extrabold text-amber-700 dark:text-amber-400">{previewData.warningCount}</p>
-              </div>
-              <div className="rounded-xl border border-rose-200 bg-rose-50/60 p-2.5 text-center dark:border-rose-900/40 dark:bg-rose-950/20">
-                <span className="text-[11px] text-rose-700 dark:text-rose-400 font-medium">Error (Ditolak)</span>
-                <p className="text-base font-extrabold text-rose-700 dark:text-rose-400">{previewData.errorCount}</p>
-              </div>
-            </div>
+            {(() => {
+              const newCount = previewData.newCount ?? previewData.rows.filter(r => !r.isUpdate && r.validationStatus !== "Error" && r.validationStatus !== 2).length;
+              const updatedCount = previewData.updatedCount ?? previewData.rows.filter(r => r.isUpdate && (r.hasDifferences || (r.differences && r.differences.length > 0))).length;
+              const unchangedCount = previewData.unchangedCount ?? previewData.rows.filter(r => r.isUpdate && !r.hasDifferences && (!r.differences || r.differences.length === 0)).length;
+
+              return (
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                  <div className="rounded-xl border border-gray-200 bg-gray-50/60 p-2 text-center dark:border-gray-800 dark:bg-gray-800/40">
+                    <span className="text-[10px] text-gray-500 font-medium">Total Baris</span>
+                    <p className="text-base font-extrabold text-gray-900 dark:text-white">{previewData.totalRows}</p>
+                  </div>
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-2 text-center dark:border-emerald-900/40 dark:bg-emerald-950/20">
+                    <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-medium">Tugas Baru</span>
+                    <p className="text-base font-extrabold text-emerald-700 dark:text-emerald-400">{newCount}</p>
+                  </div>
+                  <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-2 text-center dark:border-amber-900/40 dark:bg-amber-950/20">
+                    <span className="text-[10px] text-amber-700 dark:text-amber-400 font-medium">Diperbarui (Diff)</span>
+                    <p className="text-base font-extrabold text-amber-700 dark:text-amber-400">{updatedCount}</p>
+                  </div>
+                  <div className="rounded-xl border border-blue-200 bg-blue-50/60 p-2 text-center dark:border-blue-900/40 dark:bg-blue-950/20">
+                    <span className="text-[10px] text-blue-700 dark:text-blue-400 font-medium">Sama Persis</span>
+                    <p className="text-base font-extrabold text-blue-700 dark:text-blue-400">{unchangedCount}</p>
+                  </div>
+                  <div className="rounded-xl border border-rose-200 bg-rose-50/60 p-2 text-center dark:border-rose-900/40 dark:bg-rose-950/20">
+                    <span className="text-[10px] text-rose-700 dark:text-rose-400 font-medium">Error (Ditolak)</span>
+                    <p className="text-base font-extrabold text-rose-700 dark:text-rose-400">{previewData.errorCount}</p>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Detected Personnel Banner */}
             {detectedNewPersonnel.length > 0 && (
@@ -872,28 +892,35 @@ export function ImportExcelDialog({ open, onOpenChange, onSuccess }: ImportExcel
             {/* Filter Tabs & Bulk Assign Controls */}
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-gray-50 p-2 dark:bg-gray-800/50">
               {/* Filter Tabs */}
-              <div className="flex items-center gap-1">
-                {(
-                  [
+              <div className="flex flex-wrap items-center gap-1">
+                {(() => {
+                  const newCount = previewData.newCount ?? previewData.rows.filter(r => !r.isUpdate && r.validationStatus !== "Error" && r.validationStatus !== 2).length;
+                  const updatedCount = previewData.updatedCount ?? previewData.rows.filter(r => r.isUpdate && (r.hasDifferences || (r.differences && r.differences.length > 0))).length;
+                  const unchangedCount = previewData.unchangedCount ?? previewData.rows.filter(r => r.isUpdate && !r.hasDifferences && (!r.differences || r.differences.length === 0)).length;
+
+                  const tabs = [
                     { id: "all", label: "Semua", count: previewData.totalRows },
-                    { id: "valid", label: "Valid", count: previewData.validCount },
-                    { id: "warning", label: "Peringatan", count: previewData.warningCount },
+                    { id: "new", label: "Baru", count: newCount },
+                    { id: "update", label: "Diperbarui", count: updatedCount },
+                    { id: "unchanged", label: "Sama", count: unchangedCount },
                     { id: "error", label: "Error", count: previewData.errorCount },
-                  ] as const
-                ).map((tab) => (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    onClick={() => setFilterTab(tab.id)}
-                    className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
-                      filterTab === tab.id
-                        ? "bg-white text-gray-900 shadow-xs dark:bg-gray-900 dark:text-white"
-                        : "text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
-                    }`}
-                  >
-                    {tab.label} ({tab.count})
-                  </button>
-                ))}
+                  ] as const;
+
+                  return tabs.map((tab) => (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setFilterTab(tab.id)}
+                      className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
+                        filterTab === tab.id
+                          ? "bg-white text-gray-900 shadow-xs dark:bg-gray-900 dark:text-white"
+                          : "text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
+                      }`}
+                    >
+                      {tab.label} ({tab.count})
+                    </button>
+                  ));
+                })()}
               </div>
 
               {/* Bulk PIC Assigner */}
@@ -989,24 +1016,51 @@ export function ImportExcelDialog({ open, onOpenChange, onSuccess }: ImportExcel
                             {row.rowIndex}
                           </td>
                           <td className="py-2 px-3">
-                            <div className="flex items-center gap-1.5 max-w-xs">
+                            <div className="flex items-center gap-1.5 max-w-xs flex-wrap">
                               <span className="font-semibold text-gray-900 dark:text-white truncate">
                                 {row.title || <span className="text-rose-500 italic">(Kosong)</span>}
                               </span>
-                              {row.isUpdate && (
-                                <span
-                                  className="inline-flex items-center gap-0.5 rounded bg-amber-100 px-1 py-0.2 text-[9px] font-bold text-amber-800 dark:bg-amber-950 dark:text-amber-300 shrink-0"
-                                  title="Tugas ini sudah terdaftar dan nilainya akan diperbarui dengan data ter-update"
-                                >
-                                  <RefreshCw className="h-2.5 w-2.5" />
-                                  Update
-                                </span>
-                              )}
+                              {row.isUpdate ? (
+                                (row.hasDifferences || (row.differences && row.differences.length > 0)) ? (
+                                  <span
+                                    className="inline-flex items-center gap-0.5 rounded bg-amber-100 px-1 py-0.2 text-[9px] font-bold text-amber-800 dark:bg-amber-950 dark:text-amber-300 shrink-0"
+                                    title={`Tugas #${row.existingTaskId || ""}: ${row.differences?.join(", ") || "Ada perubahan data"}`}
+                                  >
+                                    <RefreshCw className="h-2.5 w-2.5" />
+                                    Update ({row.differences?.length || 1})
+                                  </span>
+                                ) : (
+                                  <span
+                                    className="inline-flex items-center gap-0.5 rounded bg-blue-100 px-1 py-0.2 text-[9px] font-bold text-blue-800 dark:bg-blue-950 dark:text-blue-300 shrink-0"
+                                    title={`Tugas #${row.existingTaskId || ""}: Data di file sama persis dengan sistem (tidak akan diduplikasi)`}
+                                  >
+                                    <Check className="h-2.5 w-2.5" />
+                                    Sama Persis
+                                  </span>
+                                )
+                              ) : null}
                             </div>
                             {row.taskCode && (
                               <div className="text-[10px] text-gray-400 font-mono">
                                 Code: {row.taskCode}
                                 {row.parentTaskCode ? ` • Parent: ${row.parentTaskCode}` : ""}
+                              </div>
+                            )}
+                            {row.differences && row.differences.length > 0 && (
+                              <div className="mt-1 flex flex-wrap gap-1 max-w-sm">
+                                {row.differences.slice(0, 3).map((diff, dIdx) => (
+                                  <span
+                                    key={dIdx}
+                                    className="inline-block text-[9px] bg-amber-50 dark:bg-amber-950/40 border border-amber-200/60 dark:border-amber-800/40 text-amber-800 dark:text-amber-300 rounded px-1.5 py-0.2"
+                                  >
+                                    {diff}
+                                  </span>
+                                ))}
+                                {row.differences.length > 3 && (
+                                  <span className="text-[9px] text-gray-400 font-medium">
+                                    +{row.differences.length - 3} lainnya
+                                  </span>
+                                )}
                               </div>
                             )}
                           </td>

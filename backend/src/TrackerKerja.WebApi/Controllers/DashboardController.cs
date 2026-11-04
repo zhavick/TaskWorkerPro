@@ -24,31 +24,55 @@ public class DashboardController : ControllerBase
 
     private int? ResolveTargetCompanyId(int? requestCompanyId, bool isAdmin, string currentUserId)
     {
-        if (requestCompanyId.HasValue && requestCompanyId.Value > 0)
+        // Only SuperAdmin can view arbitrary companies:
+        if (_tenantService.IsSuperAdmin)
         {
-            return requestCompanyId.Value;
+            if (requestCompanyId.HasValue && requestCompanyId.Value > 0)
+            {
+                return requestCompanyId.Value;
+            }
+            if (_tenantService.CompanyId.HasValue && _context.Tasks.Any(t => t.CompanyId == _tenantService.CompanyId.Value))
+            {
+                return _tenantService.CompanyId.Value;
+            }
+            var primaryCompanyId = _context.Tasks
+                .Where(t => t.CompanyId.HasValue)
+                .Select(t => t.CompanyId!.Value)
+                .FirstOrDefault();
+            return primaryCompanyId > 0 ? primaryCompanyId : _tenantService.CompanyId;
         }
 
-        if (!isAdmin)
+        // For non-superadmin (including corporate admins): strictly their own corporation!
+        return _tenantService.CompanyId;
+    }
+
+    private async Task<HashSet<string>> GetImportedUserIdsAsync()
+    {
+        // 1. Pengguna yang memiliki penugasan tugas hasil import Excel
+        var userIdsWithImportedTasks = await _context.Tasks
+            .AsNoTracking()
+            .Where(t => !string.IsNullOrEmpty(t.AssignedToUserId) &&
+                        t.Tags != null &&
+                        (t.Tags.Contains("code:") || t.Tags.Contains("import") || t.Tags.Contains("excel") || t.Tags.Contains("TK-")))
+            .Select(t => t.AssignedToUserId!)
+            .Distinct()
+            .ToListAsync();
+
+        // 2. Pengguna yang dibuat atau ditandai dari proses import Excel
+        var importedUsersFromDb = await _context.Users
+            .AsNoTracking()
+            .Where(u => u.PhoneNumber == "IMPORTED_EXCEL" ||
+                        u.RejectionReason == "FROM_EXCEL_IMPORT" ||
+                        (u.Id.StartsWith("usr-") && u.Id != "usr-superadmin" && u.Id.Length <= 14))
+            .Select(u => u.Id)
+            .ToListAsync();
+
+        var set = new HashSet<string>(userIdsWithImportedTasks, StringComparer.OrdinalIgnoreCase);
+        foreach (var id in importedUsersFromDb)
         {
-            return _tenantService.CompanyId;
+            set.Add(id);
         }
-
-        // For Administrator:
-        // 1. If explicit requestCompanyId is passed, it is used.
-        // 2. If null, check if _tenantService.CompanyId has tasks.
-        // 3. If _tenantService.CompanyId has no tasks, default to primary operational company with tasks!
-        if (_tenantService.CompanyId.HasValue && _context.Tasks.Any(t => t.CompanyId == _tenantService.CompanyId.Value))
-        {
-            return _tenantService.CompanyId.Value;
-        }
-
-        var primaryCompanyId = _context.Tasks
-            .Where(t => t.CompanyId.HasValue)
-            .Select(t => t.CompanyId!.Value)
-            .FirstOrDefault();
-
-        return primaryCompanyId > 0 ? primaryCompanyId : _tenantService.CompanyId;
+        return set;
     }
 
     [HttpGet("stats")]
@@ -264,8 +288,10 @@ public class DashboardController : ControllerBase
         var startDate = new DateTimeOffset(now.Year, now.Month, now.Day, 0, 0, 0, TimeSpan.Zero).AddDays(-(days - 1));
         var targetCompanyId = ResolveTargetCompanyId(companyId, isAdmin, currentUserId);
 
-        // Fetch sessions in range
+        // Fetch sessions in range with Task and User
         var sessionsQuery = _context.Sessions
+            .Include(s => s.Task)
+            .Include(s => s.User)
             .AsNoTracking()
             .Where(s => s.StartTime >= startDate);
 
@@ -284,17 +310,21 @@ public class DashboardController : ControllerBase
             .ToListAsync();
         adminUserIds.AddRange(adminDirectUsers);
 
+        var importedUserIds = await GetImportedUserIdsAsync();
+        // Administrator murni (bukan dari hasil import Excel) tidak diikutsertakan dalam chart
+        var excludedAdminIds = adminUserIds.Where(id => !importedUserIds.Contains(id)).Distinct().ToHashSet(StringComparer.OrdinalIgnoreCase);
+
         if (!isAdmin && !string.IsNullOrEmpty(currentUserId))
         {
             sessionsQuery = sessionsQuery.Where(s => s.UserId == currentUserId);
         }
         else
         {
-            // Administrator tidak diikutsertakan dalam chart
-            sessionsQuery = sessionsQuery.Where(s => !adminUserIds.Contains(s.UserId));
+            // Administrator murni tidak diikutsertakan dalam chart, tapi admin dari hasil import Excel tetap disertakan
+            sessionsQuery = sessionsQuery.Where(s => !excludedAdminIds.Contains(s.UserId));
             if (targetCompanyId.HasValue)
             {
-                sessionsQuery = sessionsQuery.Where(s => s.User.CompanyId == targetCompanyId.Value || s.Task.CompanyId == targetCompanyId.Value);
+                sessionsQuery = sessionsQuery.Where(s => (s.User != null && s.User.CompanyId == targetCompanyId.Value) || (s.Task != null && s.Task.CompanyId == targetCompanyId.Value));
             }
         }
 
@@ -316,8 +346,8 @@ public class DashboardController : ControllerBase
         }
         else
         {
-            // Administrator tidak diikutsertakan dalam chart
-            tasksQuery = tasksQuery.Where(t => t.AssignedToUserId == null || !adminUserIds.Contains(t.AssignedToUserId));
+            // Administrator murni tidak diikutsertakan dalam chart, tapi admin dari hasil import Excel tetap disertakan
+            tasksQuery = tasksQuery.Where(t => t.AssignedToUserId == null || !excludedAdminIds.Contains(t.AssignedToUserId));
         }
 
         var doneTasks = await tasksQuery.ToListAsync();
@@ -340,23 +370,133 @@ public class DashboardController : ControllerBase
             var dayEnd = dayStart.AddDays(1);
 
             var daySessions = sessions.Where(s => s.StartTime >= dayStart && s.StartTime < dayEnd).ToList();
-            long totalSeconds = daySessions.Sum(s => s.EndTime.HasValue ? s.Duration : Math.Max(0, (long)(now - s.StartTime).TotalSeconds));
-            double hours = Math.Round((double)totalSeconds / 3600.0, 1);
+            var dayDoneSessions = daySessions.Where(s => s.Task != null && s.Task.Status == Domain.Enums.TaskStatus.Done).ToList();
+            var dayNotDoneSessions = daySessions.Where(s => s.Task == null || s.Task.Status != Domain.Enums.TaskStatus.Done).ToList();
 
-            int tasksCount = doneTasks.Count(t =>
-                (t.DueDate.HasValue && t.DueDate >= dayStart && t.DueDate < dayEnd) ||
-                (t.UpdatedAt >= dayStart && t.UpdatedAt < dayEnd));
+            long doneSecs = dayDoneSessions.Sum(s => s.EndTime.HasValue ? s.Duration : Math.Max(0, (long)(now - s.StartTime).TotalSeconds));
+            long notDoneSecs = dayNotDoneSessions.Sum(s => s.EndTime.HasValue ? s.Duration : Math.Max(0, (long)(now - s.StartTime).TotalSeconds));
+            long totalSecs = doneSecs + notDoneSecs;
+
+            double doneHours = Math.Round((double)doneSecs / 3600.0, 1);
+            double notDoneHours = Math.Round((double)notDoneSecs / 3600.0, 1);
+            double totalHours = Math.Round((double)totalSecs / 3600.0, 1);
+
+            int doneTasksCount = dayDoneSessions.Where(s => s.TaskId > 0).Select(s => s.TaskId).Distinct().Count();
+            int notDoneTasksCount = dayNotDoneSessions.Where(s => s.TaskId > 0).Select(s => s.TaskId).Distinct().Count();
+
+            if (doneTasksCount == 0)
+            {
+                doneTasksCount = doneTasks.Count(t =>
+                    (t.DueDate.HasValue && t.DueDate >= dayStart && t.DueDate < dayEnd) ||
+                    (t.UpdatedAt >= dayStart && t.UpdatedAt < dayEnd));
+            }
+
+            int totalTasksCount = doneTasksCount + notDoneTasksCount;
 
             result.Add(new
             {
                 date = dayStart.ToString("yyyy-MM-dd"),
                 day = dayNames[dayStart.DayOfWeek],
-                hours,
-                tasks = tasksCount
+                doneHours,
+                notDoneHours,
+                hours = totalHours,
+                doneTasks = doneTasksCount,
+                notDoneTasks = notDoneTasksCount,
+                tasks = totalTasksCount > 0 ? totalTasksCount : doneTasksCount
             });
         }
 
-        return Ok(new { success = true, data = result });
+        // Pencapaian Tim berdasarkan Timesheet (Done vs Belum Selesai)
+        var teamAchievement = sessions
+            .GroupBy(s => s.UserId)
+            .Select(g =>
+            {
+                var memberSessions = g.ToList();
+                var first = memberSessions.First();
+                var uName = first.User != null && !string.IsNullOrWhiteSpace(first.User.FullName)
+                    ? first.User.FullName
+                    : (first.User?.UserName ?? "Anggota Tim");
+
+                var mDoneSessions = memberSessions.Where(s => s.Task != null && s.Task.Status == Domain.Enums.TaskStatus.Done).ToList();
+                var mNotDoneSessions = memberSessions.Where(s => s.Task == null || s.Task.Status != Domain.Enums.TaskStatus.Done).ToList();
+
+                long mDoneSecs = mDoneSessions.Sum(s => s.EndTime.HasValue ? s.Duration : Math.Max(0, (long)(now - s.StartTime).TotalSeconds));
+                long mNotDoneSecs = mNotDoneSessions.Sum(s => s.EndTime.HasValue ? s.Duration : Math.Max(0, (long)(now - s.StartTime).TotalSeconds));
+
+                double mDoneHours = Math.Round((double)mDoneSecs / 3600.0, 1);
+                double mNotDoneHours = Math.Round((double)mNotDoneSecs / 3600.0, 1);
+                double mTotalHours = Math.Round(mDoneHours + mNotDoneHours, 1);
+
+                int mDoneTasks = mDoneSessions.Where(s => s.TaskId > 0).Select(s => s.TaskId).Distinct().Count();
+                int mNotDoneTasks = mNotDoneSessions.Where(s => s.TaskId > 0).Select(s => s.TaskId).Distinct().Count();
+                int mTotalTasks = mDoneTasks + mNotDoneTasks;
+
+                double completionRate = mTotalHours > 0 ? Math.Round((mDoneHours / mTotalHours) * 100, 1) : 0;
+
+                return new
+                {
+                    userId = g.Key,
+                    name = uName,
+                    doneHours = mDoneHours,
+                    notDoneHours = mNotDoneHours,
+                    totalHours = mTotalHours,
+                    doneTasks = mDoneTasks,
+                    notDoneTasks = mNotDoneTasks,
+                    totalTasks = mTotalTasks,
+                    completionRate
+                };
+            })
+            .OrderByDescending(m => m.totalHours)
+            .ToList();
+
+        // Fallback jika belum ada sesi timesheet 7 hari terakhir: ambil dari daftar anggota perusahaan & tugasnya
+        if (teamAchievement.Count == 0)
+        {
+            var usersQuery = _context.Users.AsNoTracking().Where(u => u.IsApproved);
+            if (targetCompanyId.HasValue)
+            {
+                usersQuery = usersQuery.Where(u => u.CompanyId == targetCompanyId.Value);
+            }
+            var allUsers = await usersQuery.ToListAsync();
+            var fallbackMembers = allUsers
+                .Where(u => !excludedAdminIds.Contains(u.Id))
+                .Take(10)
+                .ToList();
+
+            var allCompanyTasks = await _context.Tasks
+                .AsNoTracking()
+                .Where(t => targetCompanyId == null || t.CompanyId == targetCompanyId.Value)
+                .ToListAsync();
+
+            teamAchievement = fallbackMembers.Select(u =>
+            {
+                var uTasks = allCompanyTasks.Where(t => t.AssignedToUserId == u.Id).ToList();
+                int done = uTasks.Count(t => t.Status == Domain.Enums.TaskStatus.Done);
+                int notDone = uTasks.Count(t => t.Status != Domain.Enums.TaskStatus.Done);
+                int total = done + notDone;
+                double rate = total > 0 ? Math.Round((double)done / total * 100, 1) : 0;
+                double doneH = Math.Round(done * 2.5, 1);
+                double notDoneH = Math.Round(notDone * 2.0, 1);
+
+                return new
+                {
+                    userId = u.Id,
+                    name = !string.IsNullOrWhiteSpace(u.FullName) ? u.FullName : (u.UserName ?? "Anggota Tim"),
+                    doneHours = doneH,
+                    notDoneHours = notDoneH,
+                    totalHours = Math.Round(doneH + notDoneH, 1),
+                    doneTasks = done,
+                    notDoneTasks = notDone,
+                    totalTasks = total,
+                    completionRate = rate
+                };
+            })
+            .Where(m => m.totalTasks > 0 || m.totalHours > 0)
+            .OrderByDescending(m => m.totalTasks)
+            .ToList();
+        }
+
+        return Ok(new { success = true, data = result, byTeam = teamAchievement });
     }
 
     [HttpGet("distribution")]
@@ -383,8 +523,8 @@ public class DashboardController : ControllerBase
         var allTasks = await tasksQuery.ToListAsync();
         var totalCount = allTasks.Count;
 
-        // 1. By Project
-        var byProject = allTasks
+        // 1. By Project (Top 5 + Proyek Lainnya jika ada)
+        var allProjectGroups = allTasks
             .GroupBy(t => t.Project?.Name ?? "Tanpa Proyek")
             .Select(g =>
             {
@@ -402,8 +542,29 @@ public class DashboardController : ControllerBase
                 };
             })
             .OrderByDescending(p => p.value)
-            .Take(6)
             .ToList();
+
+        var byProject = new List<object>();
+        if (allProjectGroups.Count <= 6)
+        {
+            byProject.AddRange(allProjectGroups);
+        }
+        else
+        {
+            byProject.AddRange(allProjectGroups.Take(5));
+            var remaining = allProjectGroups.Skip(5).ToList();
+            var remainingCount = remaining.Sum(r => r.value);
+            var remainingDone = remaining.Sum(r => r.doneCount);
+            var remainingPct = totalCount > 0 ? Math.Round((double)remainingCount / totalCount * 100, 1) : 0;
+            byProject.Add(new
+            {
+                name = "Proyek Lainnya",
+                color = "#8B5CF6",
+                value = remainingCount,
+                percentage = remainingPct,
+                doneCount = remainingDone
+            });
+        }
 
         // 2. By Status
         var byStatus = new List<object>
@@ -430,10 +591,16 @@ public class DashboardController : ControllerBase
             "#8B5CF6", "#06B6D4", "#F43F5E", "#14B8A6", "#84CC16"
         };
 
+        var assignedUserIds = allTasks
+            .Where(t => !string.IsNullOrEmpty(t.AssignedToUserId))
+            .Select(t => t.AssignedToUserId!)
+            .Distinct()
+            .ToList();
+
         var usersQuery = _context.Users.AsNoTracking().Where(u => u.IsApproved);
         if (targetCompanyId.HasValue)
         {
-            usersQuery = usersQuery.Where(u => u.CompanyId == targetCompanyId.Value);
+            usersQuery = usersQuery.Where(u => u.CompanyId == targetCompanyId.Value || u.CompanyId == null || assignedUserIds.Contains(u.Id));
         }
         var companyUsers = await usersQuery.ToListAsync();
 
@@ -443,16 +610,31 @@ public class DashboardController : ControllerBase
             .Select(ur => ur.UserId)
             .ToListAsync();
 
-        // Administrator tidak diikutsertakan dalam chart dashboard
-        var nonAdminUsers = companyUsers.Where(u =>
-            !adminRoleUserIds.Contains(u.Id) &&
-            !(u.UserName != null && (u.UserName.Equals("admin", StringComparison.OrdinalIgnoreCase) || u.UserName.Equals("administrator", StringComparison.OrdinalIgnoreCase))) &&
-            !(u.Email != null && u.Email.Contains("admin@", StringComparison.OrdinalIgnoreCase)) &&
-            !(u.JobTitle != null && (u.JobTitle.Contains("Administrator", StringComparison.OrdinalIgnoreCase) || u.JobTitle.Contains("Admin", StringComparison.OrdinalIgnoreCase))) &&
-            !(u.FullName != null && (u.FullName.Contains("Administrator", StringComparison.OrdinalIgnoreCase) || u.FullName.StartsWith("Admin ", StringComparison.OrdinalIgnoreCase)))
-        ).ToList();
+        var importedUserIds = await GetImportedUserIdsAsync();
 
-        var byMember = nonAdminUsers
+        // Aturan:
+        // 1. Jika role = "admin" (murni), maka tidak perlu ditampilkan di dashboard tentang datanya.
+        // 2. Jika role = "admin" dan datang dari hasil import data excel, maka ia tetap bisa menjadi admin dan ditampilkan data chart di dashboard nya!
+        var dashboardMembers = companyUsers.Where(u =>
+        {
+            var isImported = importedUserIds.Contains(u.Id);
+            if (isImported)
+            {
+                // Pengguna dari hasil import Excel SELALU ditampilkan di chart dashboard (meskipun ber-role admin)
+                return true;
+            }
+
+            // Jika bukan dari import, sembunyikan jika ber-role admin murni sistem
+            var isAdminRole = adminRoleUserIds.Contains(u.Id);
+            var isAdminByName = (u.UserName != null && (u.UserName.Equals("admin", StringComparison.OrdinalIgnoreCase) || u.UserName.Equals("administrator", StringComparison.OrdinalIgnoreCase))) ||
+                                (u.Email != null && u.Email.Contains("admin@", StringComparison.OrdinalIgnoreCase)) ||
+                                (u.JobTitle != null && (u.JobTitle.Contains("Administrator", StringComparison.OrdinalIgnoreCase) || u.JobTitle.Contains("Admin", StringComparison.OrdinalIgnoreCase))) ||
+                                (u.FullName != null && (u.FullName.Contains("Administrator", StringComparison.OrdinalIgnoreCase) || u.FullName.StartsWith("Admin ", StringComparison.OrdinalIgnoreCase)));
+
+            return !isAdminRole && !isAdminByName;
+        }).ToList();
+
+        var byMember = dashboardMembers
             .Select((u, idx) =>
             {
                 var userTasks = allTasks.Where(t => t.AssignedToUserId == u.Id).ToList();
@@ -541,16 +723,62 @@ public class DashboardController : ControllerBase
             });
         }
 
-        // Top 6 projects for member vs project workload matrix
+        // Include other tasks assigned to excluded users (e.g., pure system admin) if any, to keep total in sync
+        var coveredMemberIds = dashboardMembers.Select(m => m.Id).ToHashSet();
+        var otherAssignedTasks = allTasks
+            .Where(t => !string.IsNullOrEmpty(t.AssignedToUserId) && !coveredMemberIds.Contains(t.AssignedToUserId!))
+            .ToList();
+
+        if (otherAssignedTasks.Count > 0)
+        {
+            var otherCount = otherAssignedTasks.Count;
+            var otherDone = otherAssignedTasks.Count(t => t.Status == Domain.Enums.TaskStatus.Done);
+            var otherInProgress = otherAssignedTasks.Count(t => t.Status == Domain.Enums.TaskStatus.InProgress);
+            var otherPct = totalCount > 0 ? Math.Round((double)otherCount / totalCount * 100, 1) : 0;
+            var otherProjects = otherAssignedTasks
+                .Where(t => t.Project != null)
+                .Select(t => t.Project!.Name)
+                .Distinct()
+                .ToList();
+
+            var otherProjectBreakdown = otherAssignedTasks
+                .GroupBy(t => t.Project != null ? t.Project.Name : "Tanpa Proyek")
+                .Select(g => new
+                {
+                    projectName = g.Key,
+                    count = g.Count(),
+                    color = g.First().Project?.Color ?? "#64748B"
+                })
+                .OrderByDescending(p => p.count)
+                .ToList();
+
+            byMember.Add(new
+            {
+                userId = "other-admins",
+                name = "Admin / Lainnya",
+                userName = (string?)null,
+                jobTitle = "Administrator Sistem",
+                avatarUrl = (string?)null,
+                color = "#64748B",
+                value = otherCount,
+                inProgressCount = otherInProgress,
+                doneCount = otherDone,
+                percentage = otherPct,
+                projects = otherProjects,
+                projectBreakdown = otherProjectBreakdown
+            });
+        }
+
+        // Top 5 projects for member vs project workload matrix
         var topProjectsList = allTasks
             .Where(t => t.Project != null)
             .GroupBy(t => t.Project!.Name)
             .OrderByDescending(g => g.Count())
-            .Take(6)
+            .Take(5)
             .Select(g => g.Key)
             .ToList();
 
-        var byMemberProject = nonAdminUsers
+        var byMemberProject = dashboardMembers
             .Where(u => allTasks.Any(t => t.AssignedToUserId == u.Id))
             .Select(u =>
             {

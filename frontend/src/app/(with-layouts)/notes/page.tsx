@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "@/services/api/client";
 import {
@@ -78,11 +79,20 @@ function formatFileSize(bytes: number) {
 
 export default function NotesPage() {
   const queryClient = useQueryClient();
+  const searchParams = useSearchParams();
+  const urlTaskId = searchParams.get("taskId") ? Number(searchParams.get("taskId")) : undefined;
 
   // Search & Filters
   const [selectedCategory, setSelectedCategory] = useState("Semua");
   const [onlyPinned, setOnlyPinned] = useState(false);
   const [search, setSearch] = useState("");
+  const [filterTaskId, setFilterTaskId] = useState<number | undefined>(urlTaskId);
+
+  useEffect(() => {
+    if (urlTaskId) {
+      setFilterTaskId(urlTaskId);
+    }
+  }, [urlTaskId]);
 
   // Modals state
   const [formModalOpen, setFormModalOpen] = useState(false);
@@ -115,14 +125,15 @@ export default function NotesPage() {
   const [contentHtml, setContentHtml] = useState("");
   const [category, setCategory] = useState("General");
   const [color, setColor] = useState("#6366F1");
-  const [taskId, setTaskId] = useState<number | undefined>(undefined);
+  const [taskId, setTaskId] = useState<number | undefined>(urlTaskId);
   const [isPinned, setIsPinned] = useState(false);
 
   // 1. Query Notes List
   const { data: notes = [], isLoading } = useQuery<any[]>({
-    queryKey: ["notesList", selectedCategory, onlyPinned, search],
+    queryKey: ["notesList", selectedCategory, onlyPinned, search, filterTaskId],
     queryFn: async () => {
       let url = "/notes?";
+      if (filterTaskId) url += `taskId=${filterTaskId}&`;
       if (selectedCategory !== "Semua") url += `category=${encodeURIComponent(selectedCategory)}&`;
       if (onlyPinned) url += `isPinned=true&`;
       if (search) url += `search=${encodeURIComponent(search)}&`;
@@ -182,6 +193,9 @@ export default function NotesPage() {
 
   const openCreateModal = () => {
     resetForm();
+    if (filterTaskId) {
+      setTaskId(filterTaskId);
+    }
     setFormMode("create");
     setFormModalOpen(true);
   };
@@ -454,6 +468,34 @@ export default function NotesPage() {
           Catatan Baru
         </Button>
       </div>
+
+      {/* Active Filter for Task Banner */}
+      {filterTaskId && (
+        <div className="flex items-center justify-between rounded-xl border border-indigo-200 bg-indigo-50/70 p-3 dark:border-indigo-900/60 dark:bg-indigo-950/30">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-600 text-white shrink-0">
+              <BookOpen className="h-4 w-4" />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-gray-900 dark:text-white">
+                Menampilkan Catatan Tertaut untuk Tugas #TK-{filterTaskId}
+              </p>
+              <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                Hanya menampilkan catatan yang terhubung dengan tugas ini.
+              </p>
+            </div>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setFilterTaskId(undefined)}
+            className="text-xs h-7 gap-1"
+          >
+            <X className="h-3.5 w-3.5" />
+            Hapus Filter Tugas
+          </Button>
+        </div>
+      )}
 
       {/* Filter and Category Pills */}
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">

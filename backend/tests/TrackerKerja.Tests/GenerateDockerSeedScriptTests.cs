@@ -27,11 +27,16 @@ public class GenerateDockerSeedScriptTests
     [Fact]
     public async Task GenerateFullDemoSeedSqlFromTaskTrackerV2()
     {
-        var excelPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../Sample Source DB/Task Tracker v2.xlsx"));
-        if (!File.Exists(excelPath))
+        var candidatePaths = new[]
         {
-            excelPath = @"/Users/mac/Projects/2026/taskpro/TaskWorkerPro/Sample Source DB/Task Tracker v2.xlsx";
-        }
+            Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../../Sample Source DB/Task Tracker v2.xlsx")),
+            Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../Sample Source DB/Task Tracker v2.xlsx")),
+            Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../Sample Source DB/Task Tracker v2.xlsx")),
+            Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "Sample Source DB/Task Tracker v2.xlsx")),
+            @"c:\TEMP\VSCODE\TrackerKerjaModern\Sample Source DB\Task Tracker v2.xlsx",
+            @"/Users/mac/Projects/2026/taskpro/TaskWorkerPro/Sample Source DB/Task Tracker v2.xlsx"
+        };
+        var excelPath = candidatePaths.FirstOrDefault(File.Exists) ?? candidatePaths[0];
         Assert.True(File.Exists(excelPath), $"File not found at: {excelPath}");
 
         var options = new DbContextOptionsBuilder<AppDbContext>()
@@ -371,11 +376,15 @@ public class GenerateDockerSeedScriptTests
         var sqlContent = sb.ToString();
 
         // Write to database/init/03_demo_seed.sql
-        var targetSqlPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../database/init/03_demo_seed.sql"));
-        if (!File.Exists(targetSqlPath))
+        var candidateOutPaths = new[]
         {
-            targetSqlPath = @"/Users/mac/Projects/2026/taskpro/TaskWorkerPro/database/init/03_demo_seed.sql";
-        }
+            Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../../database/init/03_demo_seed.sql")),
+            Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../database/init/03_demo_seed.sql")),
+            @"c:\TEMP\VSCODE\TrackerKerjaModern\database\init\03_demo_seed.sql",
+            Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "database/init/03_demo_seed.sql"))
+        };
+        var targetSqlPath = candidateOutPaths.FirstOrDefault(p => Directory.Exists(Path.GetDirectoryName(p))) ?? candidateOutPaths[0];
+        Directory.CreateDirectory(Path.GetDirectoryName(targetSqlPath)!);
         await File.WriteAllTextAsync(targetSqlPath, sqlContent, Encoding.UTF8);
 
         _output.WriteLine($"Successfully generated SQL seed: {targetSqlPath} ({sqlContent.Length} chars, {attendanceSqlList.Count} attendances, {taskSqlList.Count} tasks)");

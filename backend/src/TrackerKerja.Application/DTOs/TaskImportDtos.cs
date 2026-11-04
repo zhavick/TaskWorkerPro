@@ -33,7 +33,9 @@ public record TaskImportRowDto(
     bool IsUpdate = false,
     int? ExistingTaskId = null,
     string? PicEmail = null,
-    string? Notes = null
+    string? Notes = null,
+    List<string>? Differences = null,
+    bool HasDifferences = false
 );
 
 public record TaskImportPreviewDto(
@@ -44,7 +46,10 @@ public record TaskImportPreviewDto(
     int ErrorCount,
     List<TaskImportRowDto> Rows,
     int? DetectedCompanyId = null,
-    string? DetectedCompanyName = null
+    string? DetectedCompanyName = null,
+    int UpdatedCount = 0,
+    int UnchangedCount = 0,
+    int NewCount = 0
 );
 
 public record TaskImportCommitRequest(

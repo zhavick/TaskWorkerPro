@@ -2,11 +2,11 @@
 # WORK TRACKER PRO (TRACKERKERJA MODERN)
 
 > **Dokumen Spesifikasi Teknis: Arsitektur Pengambilan Data, Controller, API Endpoint, Layanan Backend, Desain Basis Data Relasional, dan Otomasi Deployment**  
-> **Versi Sistem:** v4.1 Interactive Project Charts, Today-First Task Sorting, Audit Trail CRUD Analytics, Standardized Gamification & Admin-Exclusion Edition  
+> **Versi Sistem:** v4.2 Task Re-upload Diff & In-Place Update, Task-Linked Notes Card, & Attendance Synchronization Matrix Edition  
 > **Target Framework:** Next.js 16 (React 19, TypeScript), .NET 8.0 (C# 12 Web API), Entity Framework Core 8  
 > **Mesin Basis Data:** PostgreSQL 16 & SQLite 3 (Write-Ahead Logging / WAL Mode)  
 > **Status Dokumen:** Approved & Published  
-> **Tanggal Rilis:** 26 Oktober 2026  
+> **Tanggal Rilis:** 29 Oktober 2026  
 
 ---
 
@@ -60,11 +60,11 @@
 | Properti Dokumen | Rincian Teknis |
 | :--- | :--- |
 | **Nama Dokumen** | Technical Specification Document (TSD) Work Tracker Pro (TrackerKerja Modern) |
-| **Kode Dokumen** | TSD-WTP-4.1-202610 |
-| **Versi Aplikasi** | v4.1 Interactive Project Charts, Today-First Task Sorting, Audit Trail CRUD Analytics, Standardized Gamification & Admin-Exclusion Edition |
+| **Kode Dokumen** | TSD-WTP-4.2-202610 |
+| **Versi Aplikasi** | v4.2 Task Re-upload Diff & In-Place Update, Task-Linked Notes Card, & Attendance Synchronization Matrix Edition |
 | **Arsitek Sistem** | Senior Systems & Software Engineering Team |
 | **Klasifikasi Akses** | Internal Development Team, Technical Leads, DevOps, & DB Administrator |
-| **Tanggal Pembaruan** | 26 Oktober 2026 |
+| **Tanggal Pembaruan** | 29 Oktober 2026 |
 
 ---
 
@@ -367,6 +367,72 @@ public async Task<IActionResult> Edit(
   3. Memeriksa parameter timesheet manual: jika `manualHours > 0` atau `manualMinutes > 0`, prosedur secara otomatis menghitung durasi dalam detik `(h * 3600) + (m * 60)` dan menginstansiasi entitas `WorkSession` baru yang langsung dikaitkan ke `TaskId = id` dan `UserId = currentUser.Id`.
   4. Menyimpan kedua perubahan entitas dalam satu kali pemanggilan `await _db.SaveChangesAsync()` yang terikat transaksi basis data.
 
+##### 3. `TaskExcelImportService` (Diff Engine & In-Place Update Anti-Duplikasi)
+Layanan backend `TaskExcelImportService.cs` (`ITaskExcelImportService`) menyediakan algoritma pemrosesan berkas spreadsheet Excel berkinerja tinggi:
+- **Struktur DTO Pratinjau Diff (`TaskImportDtos.cs`)**:
+  ```csharp
+  public record TaskImportRowDto(
+      int RowIndex,
+      string? TaskCode,
+      string Title,
+      string? ProjectName,
+      string? PicIdentifier,
+      string? Status,
+      int Progress,
+      string? Priority,
+      DateTimeOffset? StartDate,
+      DateTimeOffset? DueDate,
+      string? Milestone,
+      string? Obstacle,
+      string? Solution,
+      string? Description,
+      TaskImportValidationStatus ValidationStatus,
+      List<string> ValidationMessages,
+      bool IsUpdate = false,
+      int? ExistingTaskId = null,
+      List<string>? Differences = null,
+      bool HasDifferences = false
+  );
+
+  public record TaskImportPreviewDto(
+      int TotalRows,
+      int ValidRows,
+      int ErrorRows,
+      int WarningRows,
+      int NewCount,
+      int UpdatedCount,
+      int UnchangedCount,
+      List<TaskImportRowDto> Rows,
+      List<string> GlobalWarnings
+  );
+  ```
+- **Algoritma Pencocokan Identitas Multi-Kunci**:
+  ```csharp
+  // Cache dictionary terindeks memori
+  var dbTaskByCode = new Dictionary<string, WorkTask>(StringComparer.OrdinalIgnoreCase);
+  var dbTaskByProjAndTitle = new Dictionary<string, WorkTask>(StringComparer.OrdinalIgnoreCase);
+
+  // Pencocokan: 1. Kode Task (TK-xxxx / code:tag), 2. Proyek + Judul Normal
+  if (!string.IsNullOrWhiteSpace(taskCode))
+      dbTaskByCode.TryGetValue(taskCode.Trim(), out matchedExistingTask);
+
+  if (matchedExistingTask == null && matchedProjectId.HasValue && !string.IsNullOrWhiteSpace(title))
+      dbTaskByProjAndTitle.TryGetValue($"{matchedProjectId.Value}|{NormalizeTitle(title)}", out matchedExistingTask);
+  ```
+- **Deteksi Perubahan Lapangan (Field-by-Field Diff)**:
+  - Membandingkan nilai lama di database vs nilai baru di Excel untuk 11 properti utama.
+  - Jika terdapat perbedaan nilai, field dicatat ke dalam `Differences` dan `HasDifferences = true`.
+- **Eksekusi In-Place Update (`ExecuteImportAsync`)**:
+  - Jika `row.IsUpdate` dan `row.ExistingTaskId.HasValue`, sistem memperbarui rekaman lama di tabel `WorkTasks` secara in-place tanpa mengubah kunci primer (`Id`), relasi sesi kerja (`WorkSessions`), lampiran berkas, maupun hak milik tenant (`CompanyId`).
+
+##### 4. Integrasi Kartu Catatan Terkait pada Halaman Detail/Edit Tugas (`/tasks/[id]`)
+- **Komponen Klien Next.js (`frontend/src/app/(with-layouts)/tasks/[id]/page.tsx`)**:
+  - Mengintegrasikan kueri React Query `["taskNotes", taskId]` memanggil `GET /api/notes?taskId={taskId}`.
+  - Menyediakan modal formulir mini untuk menyimpan catatan baru dengan mutasi `POST /api/notes` membawa payload `{ title, content, category, taskId }`.
+  - Tombol pintas navigasi eksternal membuka `/notes?taskId={taskId}`.
+- **Dukungan Kueri URL pada Halaman Catatan (`frontend/src/app/(with-layouts)/notes/page.tsx`)**:
+  - Membaca `useSearchParams().get("taskId")`. Jika ada, kueri catatan menginjeksi filter `taskId` dan menampilkan banner filter aktif dengan opsi reset.
+
 ---
 
 ### 2.2 Modul Proyek, Analitik Finansial & Alokasi Massal Tugas (Projects & Milestones)
@@ -557,29 +623,63 @@ Pada antarmuka laporan timesheet Next.js (`frontend/src/app/(with-layouts)/repor
 
 | Tipe | Route / URL | Controller | Nama Fungsi / Prosedur | Keterangan |
 | :--- | :--- | :--- | :--- | :--- |
-| **MVC** | `GET /Attendance/Index` | `AttendanceController` | `Task<IActionResult> Index(...)` | Riwayat presensi bulanan, status hari ini, dan filter |
-| **MVC** | `GET /Attendance/Reconciliation` | `AttendanceController` | `Task<IActionResult> Reconciliation(...)` | Matriks rekonsiliasi kehadiran seluruh anggota per tanggal |
-| **MVC** | `POST /Attendance/ClockIn` | `AttendanceController` | `Task<IActionResult> ClockIn(...)` | Mencatat jam kedatangan (WFO/WFH/Dinas/Remote) |
-| **MVC** | `POST /Attendance/ClockOut` | `AttendanceController` | `Task<IActionResult> ClockOut(...)` | Mencatat jam pulang dan menghitung `TotalHours` |
-| **MVC** | `POST /Attendance/RequestLeave` | `AttendanceController` | `Task<IActionResult> RequestLeave(...)` | Pengajuan cuti, sakit, izin, atau perjalanan dinas |
-| **API** | `GET /api/attendance` | `AttendanceApiController` | `Task<IActionResult> GetAll(...)` | Mengambil data presensi via REST API |
-| **API** | `GET /api/attendance/today` | `AttendanceApiController` | `Task<IActionResult> GetToday()` | Mengambil status Clock-In/Clock-Out hari ini |
-| **API** | `GET /api/attendance/summary` | `AttendanceApiController` | `Task<IActionResult> GetMonthlySummary(...)`| Rekapitulasi hari hadir, WFO, WFH, Cuti, Sakit, Izin |
-| **API** | `POST /api/attendance/approve/{id}`| `AttendanceApiController` | `Task<IActionResult> Approve(int id)` | Menyetujui pengajuan izin/cuti oleh Admin |
+| **API** | `GET /api/attendances/today` | `AttendancesController` | `Task<IActionResult> GetTodayStatus()` | Mengambil status Clock-In/Clock-Out dan durasi sesi hari ini |
+| **API** | `POST /api/attendances/clock-in` | `AttendancesController` | `Task<IActionResult> ClockIn([FromBody] ClockInRequest)` | Mencatat jam masuk (WFO, WFH, Hybrid, Remote) |
+| **API** | `POST /api/attendances/clock-out` | `AttendancesController` | `Task<IActionResult> ClockOut([FromBody] ClockOutRequest)` | Mencatat jam pulang dan menghitung durasi jam desimal |
+| **API** | `POST /api/attendances/leave` | `AttendancesController` | `Task<IActionResult> SubmitLeave([FromBody] SubmitLeaveRequest)` | Pengajuan izin, cuti, sakit, atau dinas luar |
+| **API** | `POST /api/attendances/approve/{id}` | `AttendancesController` | `Task<IActionResult> Approve(int id)` | Persetujuan pengajuan presensi oleh Administrator |
+| **API** | `GET /api/attendances/my-summary` | `AttendancesController` | `Task<IActionResult> GetMySummary(int? month, int? year)` | Rekapitulasi bulanan mandiri (Hadir, Izin, Sakit, Cuti, Total Jam) |
+| **API** | `GET /api/attendances/my-history` | `AttendancesController` | `Task<IActionResult> GetMyHistory(int? month, int? year)` | Mengambil riwayat entri kehadiran pribadi per bulan |
+| **API** | `GET /api/attendances/monthly` | `AttendancesController` | `Task<IActionResult> GetMonthlyTeamReconciliation(...)` | **Matriks Bulanan Tim:** Mengambil rekapitulasi kehadiran tim 1..31 hari |
+| **API** | `GET /api/attendances/reconciliation` | `AttendancesController` | `Task<IActionResult> GetReconciliation(DateOnly? date, ...)` | **Audit Harian Tim:** Mengambil seluruh log presensi tim per tanggal |
+| **API** | `PUT /api/attendances/reconciliation/{id}` | `AttendancesController` | `Task<IActionResult> ReconcileAttendance(int id, ...)` | Mengoreksi data presensi anggota (jam, lokasi, tipe) |
+| **API** | `POST /api/attendances/reconciliation/manual-entry` | `AttendancesController` | `Task<IActionResult> CreateManualEntry(...)` | Menambahkan presensi manual anggota oleh Administrator |
+| **API** | `POST /api/attendances/sync-from-tasks` | `AttendancesController` | `Task<IActionResult> SyncFromTasks(...)` | **Sinkronisasi Tugas ke Presensi:** Generate 8 Jam/hari otomatis |
 
-#### B. Logika Perhitungan Presensi & Zona Waktu GMT+7
-Sistem menggunakan `DateTimeHelper.Today` dan `DateTimeHelper.Now` yang terstandarisasi pada waktu lokal Indonesia Barat (GMT+7 / Asia/Jakarta).
-```csharp
-var today = DateTimeHelper.Today;
-var todayRecord = await _db.Attendances
-    .Include(a => a.User)
-    .FirstOrDefaultAsync(a => a.UserId == currentUser.Id && a.Date == today);
+#### B. Algoritma Sinkronisasi Presensi dari Tugas (`SyncFromTasks`)
+Fungsi `SyncFromTasks` mengonversi rentang pengerjaan tugas menjadi catatan kehadiran resmi:
+1. **Resolusi Multi-Tenant Inklusif**:
+   ```csharp
+   int? targetCompanyId = null;
+   if (!_tenantService.IsAdmin)
+   {
+       targetCompanyId = _tenantService.CompanyId;
+   }
+   else if (companyId.HasValue)
+   {
+       targetCompanyId = companyId.Value;
+   }
+   else if (_tenantService.CompanyId.HasValue)
+   {
+       var adminComp = _tenantService.CompanyId.Value;
+       var hasMembers = await _context.Users.AnyAsync(u => u.IsApproved && u.CompanyId == adminComp);
+       if (hasMembers) targetCompanyId = adminComp;
+   }
 
-// Saat Clock-Out:
-todayRecord.ClockOut = DateTimeHelper.Now;
-todayRecord.TotalHours = Math.Round((todayRecord.ClockOut.Value - todayRecord.ClockIn.Value).TotalHours, 2);
-await _db.SaveChangesAsync();
-```
+   var usersQuery = _context.Users.Where(u => u.IsApproved);
+   if (targetCompanyId.HasValue)
+   {
+       usersQuery = usersQuery.Where(u => u.CompanyId == targetCompanyId.Value || u.CompanyId == null);
+   }
+   if (!string.IsNullOrEmpty(targetUserId))
+   {
+       usersQuery = usersQuery.Where(u => u.Id == targetUserId);
+   }
+   ```
+2. **Kalkulasi Hari Kerja & Filter Libur**:
+   - Untuk setiap tanggal dalam rentang tugas (`taskStart` hingga `taskDue`):
+   - Lewati hari libur nasional (`_context.Holidays`) dan akhir pekan (`DayOfWeek.Saturday` & `DayOfWeek.Sunday`).
+3. **Ekstensi Tugas Berjalan (In Progress Extension)**:
+   - Jika `task.Status != TaskStatus.Done` dan batas waktu `taskDue < today`, sistem secara dinamis memperpanjang `taskDue = today` agar kehadiran bulan berjalan tetap ter-generate.
+4. **Pencatatan Kehadiran 8 Jam/Hari**:
+   - Jam masuk: 08:00:00 (GMT+7), Jam pulang: 17:10:00 (GMT+7).
+   - Tipe: `AttendanceType.Present`, Lokasi: `WorkLocation.WFO`, `TotalHours = 8.0`, Status: `Approved (2)`.
+   - Melakukan upsert aman (`existingAtt != null ? update : add`).
+
+#### C. Matriks Kehadiran Bulanan Tim (`GetMonthlyTeamReconciliation`)
+- Menghasilkan DTO `TeamMonthlyAttendanceReportDto` berisi total jam kerja tim, total anggota, dan daftar detail `TeamMemberMonthlyAttendanceItemDto` per staf.
+- Setiap item menyertakan array `dailyRecords` berisi status dan total jam per tanggal (1..31) untuk memetakan warna kotak grid visual pada frontend Next.js.
+- Resolusi keanggotaan menggunakan pengecekan inklusif `u.CompanyId == targetCompany.Value || u.CompanyId == null` memastikan tidak ada personel aktif yang tereliminasi dari matriks.
 
 ---
 

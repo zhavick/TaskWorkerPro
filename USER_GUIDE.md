@@ -1,9 +1,9 @@
 # Buku Panduan Pengguna (User Guide)
 # Work Tracker Pro (TrackerKerja Modern)
 
-> **Versi Aplikasi**: 4.1 (Next.js 16 TurboPack & ASP.NET Core 8 Web API Modern Edition)  
+> **Versi Aplikasi**: 4.2 (Task Re-upload Diff & In-Place Update, Task-Linked Notes Card, & Attendance Synchronization Matrix Edition)  
 > **Target Pengguna**: Seluruh Karyawan, System Analyst, Developer, QA, Technical Writer, Project Lead, dan Administrator  
-> **Terakhir Diperbarui**: 26 Oktober 2026  
+> **Terakhir Diperbarui**: 29 Oktober 2026  
 
 ---
 
@@ -27,7 +27,9 @@
    - 3.5 [Mencatat Kendala (Obstacle) & Solusi Teknis](#35-mencatat-kendala-obstacle--solusi-teknis)
    - 3.6 [Papan Kanban Interaktif (Geser & Letakkan)](#36-papan-kanban-interaktif-geser--letakkan)
    - 3.7 [Import Data Tugas dari Excel (Format Standar & Format ARMS)](#37-import-data-tugas-dari-excel-format-standar--format-arms)
-   - 3.8 [Penyatuan Formulir Edit Tugas & Pengisian Jam Kerja Manual (Satu Tombol Simpan)](#38-penyatuan-formulir-edit-tugas--pengisian-jam-kerja-manual-satu-tombol-simpan)
+   - 3.8 [Re-upload Data Tugas Excel dengan Diff Engine & In-Place Update (Anti-Duplikasi)](#38-re-upload-data-tugas-excel-dengan-diff-engine--in-place-update-anti-duplikasi)
+   - 3.9 [Kartu Catatan & Dokumentasi Terkait pada Halaman Detail/Edit Tugas (/tasks/[id])](#39-kartu-catatan--dokumentasi-terkait-pada-halaman-detailedit-tugas-tasksid)
+   - 3.10 [Penyatuan Formulir Edit Tugas & Pengisian Jam Kerja Manual (Satu Tombol Simpan)](#310-penyatuan-formulir-edit-tugas--pengisian-jam-kerja-manual-satu-tombol-simpan)
 4. [Modul Project (Manajemen Proyek, Finansial & Alokasi Massal Tugas)](#4-modul-project-manajemen-proyek-finansial--alokasi-massal-tugas)
    - 4.1 [Membuat & Mengelola Proyek (Client, PM, Budget & Actual Cost)](#41-membuat--mengelola-proyek-client-pm-budget--actual-cost)
    - 4.2 [Analitik Finansial, Indikator Burn Rate & Linimasa Proyek](#42-analitik-finansial-indikator-burn-rate--linimasa-proyek)
@@ -40,9 +42,10 @@
    - 5.5 [Export Laporan Excel Timesheet Resmi (Format Standar Elistec)](#55-export-laporan-excel-timesheet-resmi-format-standar-elistec)
    - 5.6 [Grafik Batang Beban Kerja Anggota Tim pada Halaman Laporan (/reports)](#56-grafik-batang-beban-kerja-anggota-tim-pada-halaman-laporan-reports)
 6. [Modul Absensi & Presensi Kerja (Attendance)](#6-modul-absensi--presensi-kerja-attendance)
-   - 6.1 [Pencatatan Check-In & Check-Out Harian](#61-pencatatan-check-in--check-out-harian)
-   - 6.2 [Status Kehadiran Fleksibel (Hadir, WFH, Sakit, Izin, Cuti, Libur)](#62-status-kehadiran-fleksibel-hadir-wfh-sakit-izin-cuti-libur)
-   - 6.3 [Monitoring Rekapitulasi Presensi Tim](#63-monitoring-rekapitulasi-presensi-tim)
+   - 6.1 [Pencatatan 1-Click Clock In & Clock Out Harian dengan Live Timer](#61-pencatatan-1-click-clock-in--clock-out-harian-dengan-live-timer)
+   - 6.2 [Status Kehadiran Fleksibel (Hadir, WFH, Sakit, Izin, Cuti, Dinas Luar)](#62-status-kehadiran-fleksibel-hadir-wfh-sakit-izin-cuti-dinas-luar)
+   - 6.3 [Sinkronisasi Presensi Cerdas dari Tugas (8 Jam/Hari) & Penanganan Hari Kerja](#63-sinkronisasi-presensi-cerdas-dari-tugas-8-jamhari--penanganan-hari-kerja)
+   - 6.4 [Matriks Kehadiran Bulanan Tim & Audit Harian (Rekonsiliasi Lengkap Seluruh Anggota)](#64-matriks-kehadiran-bulanan-tim--audit-harian-rekonsiliasi-lengkap-seluruh-anggota)
 7. [Modul Kalender Kerja & Jadwal (Calendar)](#7-modul-kalender-kerja--jadwal-calendar)
    - 7.1 [Tampilan Kalender Berbasis Peran (RBAC Filter)](#71-tampilan-kalender-berbasis-peran-rbac-filter)
    - 7.2 [Fitur Khusus Administrator (Dropdown Semua Tugas vs Tugas Saya)](#72-fitur-khusus-administrator-dropdown-semua-tugas-vs-tugas-saya)
@@ -52,6 +55,7 @@
    - 8.2 [Menyematkan Catatan Penting (Pin Note)](#82-menyematkan-catatan-penting-pin-note)
    - 8.3 [Menghubungkan Catatan ke Tugas atau Proyek](#83-menghubungkan-catatan-ke-tugas-atau-proyek)
    - 8.4 [Mengunggah Berkas Lampiran](#84-mengunggah-berkas-lampiran)
+   - 8.5 [Penyaringan Catatan Berdasarkan Tugas Terkait (/notes?taskId=...)](#85-penyaringan-catatan-berdasarkan-tugas-terkait-notestaskid)
 9. [Modul JSON Payload Tools](#9-modul-json-payload-tools)
    - 9.1 [Merapikan Format JSON (Beautify)](#91-merapikan-format-json-beautify)
    - 9.2 [Validasi Sintaks & Minify JSON](#92-validasi-sintaks--minify-json)
@@ -305,7 +309,43 @@ Aplikasi mendukung impor banyak tugas sekaligus melalui berkas spreadsheet Excel
    - Unduh template Excel yang diinginkan (*Template 9-Kolom* atau *Template ARMS 21-Kolom*).
    - Unggah berkas yang telah diisi, tinjau tabel pratinjau data, lalu klik **Konfirmasi Import Task**.
 
-### 3.8 Penyatuan Formulir Edit Tugas & Pengisian Jam Kerja Manual (Satu Tombol Simpan)
+### 3.8 Re-upload Data Tugas Excel dengan Diff Engine & In-Place Update (Anti-Duplikasi)
+Fitur unggulan v4.2 memungkinkan Anda **mengunggah kembali berkas Excel yang sama atau berkas revisi** tanpa khawatir data tugas terduplikasi:
+1. **Mekanisme Pencocokan Multi-Kunci**:
+   - Sistem secara cerdas memindai apakah tugas pada baris Excel sudah ada di database melalui:
+     - Kode Tugas resmi sistem (misal: `TK-0025`).
+     - Tag indexing `code:xxxx` yang tersimpan pada tugas.
+     - Kode tugas asli lembar kerja (misal: `TASK-001`, `REQ-101`).
+     - Kombinasi Proyek dan Normalisasi Judul Tugas.
+2. **Deteksi Perbedaan Field-by-Field (Smart Diff)**:
+   - Jika tugas ditemukan di sistem, sistem membandingkan seluruh field: *Proyek, Judul, Status, Progres, Prioritas, PIC (Penanggung Jawab), Tanggal Mulai, Tenggat Waktu (Due Date), Milestone SDLC, Kendala (Obstacle), Solusi (Solution), dan Deskripsi*.
+   - Jika terdapat perbedaan nilai, baris tersebut ditandai dengan status **Diperbarui (Diff)** dan menampilkan badge pill spesifik yang menyorot field apa saja yang berubah (misal: `[Status]`, `[Progress: 40% → 100%]`, `[PIC]`).
+   - Jika seluruh field sama persis, baris ditandai dengan status **Sama Persis (Unchanged)** dan tidak akan diubah sembarangan.
+3. **Statistik Pratinjau & Tab Filter Cepat**:
+   - Dialog pratinjau impor menampilkan 5 kartu statistik ringkas:
+     - 📋 **Total Baris**: Jumlah baris valid dalam berkas.
+     - ➕ **Tugas Baru**: Baris yang belum pernah ada dan akan dibuat baru.
+     - 🔄 **Diperbarui (Diff)**: Baris yang cocok dengan tugas lama dan memiliki nilai ter-update.
+     - ⏸️ **Sama Persis**: Baris yang sudah identik di database.
+     - ⚠️ **Error**: Baris dengan validasi gagal.
+   - Anda dapat mengeklik tab filter di atas tabel pratinjau untuk hanya melihat tugas yang diperbarui (*Diff*), tugas baru, atau tugas yang sama persis.
+4. **Eksekusi In-Place Update Aman**:
+   - Saat Anda mengeklik **Konfirmasi Import Task**, sistem melakukan *in-place update* langsung pada baris tugas lama. ID tugas, penugasan proyek, catatan terhubung, riwayat sesi kerja, dan kepemilikan perusahaan (`CompanyId`) tetap terjaga aman 100%.
+
+### 3.9 Kartu Catatan & Dokumentasi Terkait pada Halaman Detail/Edit Tugas (`/tasks/[id]`)
+Pada halaman rincian atau ubah tugas (contoh: `/tasks/1626`), kini tersedia panel dokumentasi terintegrasi:
+1. **Letak Kartu Terpadu**:
+   - Kartu **"Catatan & Dokumentasi Terkait"** terletak tepat di bawah riwayat sesi kerja (*Work Sessions*).
+2. **Formulir Cepat Buat Catatan (Quick-Create Note)**:
+   - Anda dapat langsung menulis catatan teknis tanpa meninggalkan halaman tugas.
+   - Masukkan **Judul Catatan**, pilih **Kategori** (*Umum*, *Rapat*, *Teknis*, *Ide*, *Pengujian*), dan tulis konten ringkasan.
+   - Catatan yang disimpan otomatis memiliki atribut `taskId` yang mengikatnya langsung pada tugas yang sedang aktif.
+3. **Daftar Catatan Tertaut & Navigasi Cepat**:
+   - Menampilkan kartu-kartu mini catatan yang telah terhubung ke tugas ini lengkap dengan nama pembuat dan waktu pembuatan.
+   - Tersedia tombol **Lihat Semua di Modul Catatan** yang akan membuka halaman Catatan lengkap dengan URL terfilter: `/notes?taskId=[id]`.
+   - Pada halaman `/notes`, spanduk filter biru interaktif akan memberitahukan bahwa daftar catatan sedang disaring khusus untuk tugas tersebut, disertai tombol **Reset Filter** untuk kembali melihat seluruh catatan.
+
+### 3.10 Penyatuan Formulir Edit Tugas & Pengisian Jam Kerja Manual (Satu Tombol Simpan)
 Untuk mempercepat alur kerja harian pengembang dan analis sistem:
 - Pada halaman **Ubah Tugas** (`/Task/Edit/{id}`), selain memperbarui rincian tugas (judul, status, progress, kendala, solusi), formulir kini menyediakan seksi terintegrasi **Catat Jam Kerja Sesi Ini (Manual Timesheet)**.
 - Anda dapat langsung mengisi:
@@ -405,24 +445,51 @@ Pada halaman laporan timesheet modern (`/reports`):
 
 ## 6. Modul Absensi & Presensi Kerja (Attendance)
 
-Modul Presensi (`/Attendance`) memudahkan pencatatan kehadiran kerja harian seluruh anggota tim:
+Modul Presensi (`/attendance`) memudahkan pencatatan kehadiran kerja harian seluruh anggota tim, rekonsiliasi audit, dan sinkronisasi otomatis dari tugas:
 
-### 6.1 Pencatatan Check-In & Check-Out Harian
-1. Buka menu **Absensi** pada bilah navigasi.
-2. Klik tombol **Check In** saat memulai hari kerja. Waktu masuk akan tercatat secara presisi.
-3. Klik tombol **Check Out** saat mengakhiri hari kerja untuk menyelesaikan durasi kerja harian.
+### 6.1 Pencatatan 1-Click Clock In & Clock Out Harian dengan Live Timer
+1. Buka menu **Presensi** (`/attendance`) pada bilah navigasi (tab *Presensi Mandiri*).
+2. Pilih lokasi kerja (*WFO, WFH, Hybrid, Remote*) dan klik tombol **Clock In**.
+3. Saat Clock In aktif, sistem menampilkan kartu status dengan badge **LIVE TIMER** yang berdetak setiap detik menghitung akumulasi durasi jam kerja secara real-time.
+4. Klik tombol **Clock Out** saat mengakhiri hari kerja. Sistem langsung mengkalkulasi total jam kerja harian secara presisi.
 
-### 6.2 Status Kehadiran Fleksibel
-Pengguna dapat memilih status kehadiran sesuai kondisi kerja:
-- **Hadir (WFO)**: Bekerja di kantor.
-- **WFH (Work From Home)**: Bekerja dari rumah / jarak jauh.
-- **Sakit**: Kehadiran izin sakit.
-- **Izin / Cuti**: Mengambil jatah cuti atau izin keperluan pribadi.
-- **Libur**: Hari libur resmi.
+### 6.2 Status Kehadiran Fleksibel & Pengajuan Izin
+Pengguna dapat memilih atau mengajukan status kehadiran resmi:
+- **Hadir (WFO / WFH / Hybrid / Remote)**: Kehadiran aktif harian.
+- **Sakit (Sick)**: Izin sakit dengan pengisian keterangan medis.
+- **Cuti (Leave)**: Cuti tahunan atau cuti bersama.
+- **Izin (Permit)**: Izin keperluan pribadi mendesak.
+- **Dinas Luar (Business Trip)**: Perjalanan dinas atau kunjungan kerja luar kota/kantor.
+- **Libur (Holiday)**: Hari libur nasional resmi (otomatis terintegrasi dari master tabel `Holidays`).
 
-### 6.3 Monitoring Rekapitulasi Presensi Tim
-- Administrator dapat melihat rekapitulasi kehadiran seluruh anggota tim dalam format tabel bulanan yang rapi.
-- Membantu bagian operasional dan manajemen dalam memverifikasi kedisiplinan dan ketersediaan tim.
+### 6.3 Sinkronisasi Presensi Cerdas dari Tugas (8 Jam/Hari) & Penanganan Hari Kerja
+Fitur otomatisasi v4.2 memungkinkan admin atau karyawan mengonversi beban kerja tugas menjadi rekaman presensi sah:
+1. Klik tombol **Sinkronisasi Presensi dari Tugas** pada bagian atas layar.
+2. **Kalkulasi Hari Kerja Otomatis**:
+   - Sistem memindai seluruh tugas aktif yang ditugaskan kepada anggota tim.
+   - Untuk setiap tanggal kerja aktif (Senin s.d. Jumat), sistem membuat atau memperbarui catatan kehadiran dengan tipe **Hadir (WFO)**, jam masuk 08:00 WIB, jam pulang 17:10 WIB, dan durasi penuh **8.0 Jam/hari**.
+   - Sistem secara cerdas **melewati akhir pekan (Sabtu & Minggu)** dan seluruh hari libur nasional resmi yang tercatat di database.
+3. **Dukungan Tugas Aktif Berjalan (In Progress Extension)**:
+   - Tugas yang statusnya masih berjalan (*In Progress, Review, Todo*) dan belum selesai (*Done*) otomatis diperpanjang tanggal pengerjaannya hingga hari ini (*today*), sehingga presensi di bulan berjalan tetap ter-generate penuh.
+4. **Inklusi Akun Administrator**:
+   - Administrator yang memiliki penugasan tugas kini juga ikut disinkronkan kehadirannya, sehingga tabel riwayat kehadiran pribadi pada tab *Presensi Mandiri* terisi lengkap.
+
+### 6.4 Matriks Kehadiran Bulanan Tim & Audit Harian (Rekonsiliasi Lengkap Seluruh Anggota)
+Buka tab **Presensi & Rekonsiliasi Tim** untuk melihat pengawasan kehadiran terpadu:
+1. **Matriks Kehadiran Bulanan (Monthly Grid Matrix)**:
+   - Menyajikan seluruh personel tim dalam satu kisi matriks bulanan komprehensif.
+   - Kolom ringkasan menampilkan: *Nama & Foto Anggota, Total Jam Kerja, Total Hari Hadir, Sakit, Izin, Cuti, dan Dinas Luar*.
+   - Kolom tanggal 1 hingga 31 menampilkan status kehadiran harian dengan kode warna visual:
+     - 🟢 Kotak Hijau: Hadir (WFO/WFH).
+     - 🔴 Kotak Merah: Sakit.
+     - 🟡 Kotak Kuning: Izin.
+     - 🔵 Kotak Biru Sky: Cuti.
+     - 🟣 Kotak Ungu: Dinas Luar.
+   - **Multi-Tenant Inklusif**: Seluruh anggota yang telah disetujui (termasuk yang belum memiliki `CompanyId` atau bernilai `null`) tampil lengkap di dalam matriks.
+2. **Audit Harian (Daily Audit Log)**:
+   - Memilih tanggal spesifik untuk meninjau jam masuk, jam pulang, lokasi kerja, dan catatan presensi seluruh staf pada hari tersebut.
+3. **Koreksi Data Presensi (Reconciliation Modal)**:
+   - Administrator dapat mengoreksi jam masuk/pulang, mengubah tipe kehadiran, atau menambahkan catatan presensi manual untuk anggota tim.
 
 ---
 
@@ -464,6 +531,13 @@ Modul Catatan (`/Note`) berfungsi sebagai repositori dokumentasi teknis, notula 
 
 ### 8.4 Mengunggah Berkas Lampiran
 - Lampirkan berkas dokumen (PDF, Word, Excel, gambar) ke dalam catatan. Berkas tersimpan rapi dan dapat diunduh kapan saja.
+
+### 8.5 Penyaringan Catatan Berdasarkan Tugas Terkait (`/notes?taskId=...`)
+- Halaman Catatan kini terintegrasi secara dinamis dengan parameter URL:
+  - Mengakses `/notes?taskId=[ID_TUGAS]` akan langsung menyaring daftar catatan dan hanya menampilkan catatan yang tertaut pada ID tugas tersebut.
+  - Di atas daftar catatan akan muncul spanduk informasi biru yang menandakan filter aktif (misal: *Menampilkan catatan terhubung untuk Tugas #1626*).
+  - Terdapat tombol **Tampilkan Semua Catatan** pada spanduk untuk mereset filter dan melihat seluruh repositori catatan secara instan.
+  - Saat modal buat catatan dibuka dalam kondisi filter aktif, bidang penugasan tugas otomatis terisi dengan ID tugas tersebut.
 
 ---
 

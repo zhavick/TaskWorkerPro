@@ -152,7 +152,7 @@ public class EnterpriseModulesControllerTests
         _context.DailyCheckIns.Add(new DailyCheckIn
         {
             UserId = "user-1",
-            CheckInDate = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(-3),
+            CheckInDate = DateOnly.FromDateTime(DateTime.UtcNow),
             PointsEarned = 500,
             StreakDay = 2
         });

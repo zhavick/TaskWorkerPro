@@ -10,6 +10,11 @@ public class Company
     public string? ContactEmail { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 
+    // Feature Modules Matrix
+    public bool EnableDms { get; set; } = true;
+    public bool EnableTicketing { get; set; } = true;
+    public bool EnableInvoicing { get; set; } = true;
+
     // Navigation properties
     public ICollection<AppUser> Users { get; set; } = new List<AppUser>();
     public ICollection<Project> Projects { get; set; } = new List<Project>();

@@ -19,6 +19,9 @@ export interface UserProfileInfo {
   roles: string[];
   phoneNumber?: string | null;
   createdAt?: string;
+  enableDms?: boolean;
+  enableTicketing?: boolean;
+  enableInvoicing?: boolean;
 }
 
 export function useCurrentUser() {
@@ -52,10 +55,23 @@ export function useCurrentUser() {
 
   const isAdmin = Boolean(
     user?.roles?.includes("Administrator") ||
+    user?.roles?.includes("Admin") ||
     user?.roles?.includes("SuperAdmin") ||
     user?.jobTitle?.toLowerCase().includes("admin") ||
     user?.email?.toLowerCase().includes("admin@")
   );
+
+  const isProjectManager = Boolean(
+    !isAdmin && (
+      user?.roles?.includes("Project Manager") ||
+      user?.roles?.includes("ProjectManager") ||
+      user?.jobTitle?.toLowerCase().includes("project manager") ||
+      user?.jobTitle?.toLowerCase() === "pm"
+    )
+  );
+
+  const isStaff = !isAdmin && !isProjectManager;
+  const canManageCompany = isAdmin || isProjectManager;
 
   const isPurgeAdmin = Boolean(
     isAdmin ||
@@ -70,7 +86,13 @@ export function useCurrentUser() {
     email: user?.email,
     roles: user?.roles || [],
     isAdmin,
+    isProjectManager,
+    isStaff,
+    canManageCompany,
     isPurgeAdmin,
+    enableDms: user?.enableDms ?? true,
+    enableTicketing: user?.enableTicketing ?? true,
+    enableInvoicing: user?.enableInvoicing ?? true,
     isLoading: isLoading && !user,
   };
 }

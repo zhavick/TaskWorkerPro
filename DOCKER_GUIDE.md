@@ -1,6 +1,10 @@
 # Panduan Resmi Docker Containerization & Deployment
 ## TaskWorker Pro (TrackerKerja Modern)
 
+> **Versi Rilis:** v4.2 (Task Re-upload Diff & In-Place Update, Task-Linked Notes Card, & Attendance Synchronization Matrix Edition)  
+> **Terakhir Diperbarui:** 29 Oktober 2026  
+> **Target Infrastruktur:** Docker Engine 24+, Docker Compose v2, Linux/Windows Host (Bridge Network)
+
 Panduan ini mendokumentasikan tata cara kontainerisasi, konfigurasi Docker Compose, persistent volumes, environment variables, dan pemeliharaan produksi untuk aplikasi **TaskWorker Pro**.
 
 ---
@@ -63,7 +67,7 @@ Sistem dijalankan dalam arsitektur multi-container yang terisolasi dalam satu br
 
 ## 3. Konfigurasi Docker Compose & Variabel Lingkungan
 
-Berkas konfigurasi utama: [`docker-compose.yml`](file:///c:/TEMP/VSCODE/TrackerKerjaModern/docker-compose.yml)
+Berkas konfigurasi utama: [`docker-compose.yml`](docker-compose.yml)
 
 ### Variabel Lingkungan Penting
 ```env
@@ -88,7 +92,7 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:5008/api
 ## 4. Cara Menjalankan Aplikasi
 
 ### Metode 1: Menggunakan PowerShell Script Helper (Direkomendasikan di Windows)
-Tersedia helper script [`docker-run.ps1`](file:///c:/TEMP/VSCODE/TrackerKerjaModern/docker-run.ps1):
+Tersedia helper script [`docker-run.ps1`](docker-run.ps1):
 
 ```powershell
 # Menjalankan kontainer di latar belakang

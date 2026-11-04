@@ -22,7 +22,7 @@ public class ProjectsControllerTests
             .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
             .Options;
 
-        _tenantService = new FakeTenantService(10, "WCH", "user-1", true);
+        _tenantService = new FakeTenantService(10, "WCH", "user-1", false, true);
         _context = new AppDbContext(options, _tenantService);
 
         // Seed Company
@@ -132,6 +132,30 @@ public class ProjectsControllerTests
         var overProj = data.First(p => p.Id == 3);
         overProj.BurnRatePercent.Should().Be(120.0);
         overProj.BurnRateStatus.Should().Be("Overbudget");
+    }
+
+    [Fact]
+    public async Task CreateProject_WhenUserIsSystemAdminOnly_ShouldReturn403Forbidden()
+    {
+        // System admin without PM role is forbidden from creating project
+        var adminOnlyService = new FakeTenantService(10, "WCH", "admin-sys", true, false);
+        var controller = new ProjectsController(_context, adminOnlyService);
+        var request = new CreateProjectRequest(
+            "Forbidden Sysadmin Project",
+            "Should fail",
+            "#10B981",
+            ProjectStatus.Active,
+            "Client PT Maju",
+            null,
+            100_000_000,
+            0,
+            DateTimeOffset.UtcNow.AddMonths(3),
+            10
+        );
+
+        var result = await controller.CreateProject(request) as ObjectResult;
+        result.Should().NotBeNull();
+        result!.StatusCode.Should().Be(403);
     }
 
     [Fact]
@@ -319,17 +343,19 @@ public class ProjectsControllerTests
 
     private class FakeTenantService : ICurrentTenantService
     {
-        public FakeTenantService(int? companyId, string? companyCode, string? userId, bool isAdmin)
+        public FakeTenantService(int? companyId, string? companyCode, string? userId, bool isAdmin, bool isProjectManager = false)
         {
             CompanyId = companyId;
             CompanyCode = companyCode;
             UserId = userId;
             IsAdmin = isAdmin;
+            IsProjectManager = isProjectManager;
         }
 
         public int? CompanyId { get; }
         public string? CompanyCode { get; }
         public string? UserId { get; }
         public bool IsAdmin { get; }
+        public bool IsProjectManager { get; }
     }
 }

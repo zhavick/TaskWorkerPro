@@ -8,8 +8,14 @@ public record RegisterRequest(
     string CompanyOption, // "existing" atau "new"
     string? ExistingCompanyCode,
     string? NewCompanyName,
-    string? NewCompanyCode
-);
+    string? NewCompanyCode,
+    string? CompanyCode = null
+)
+{
+    public string? ResolvedCompanyCode => !string.IsNullOrWhiteSpace(ExistingCompanyCode)
+        ? ExistingCompanyCode
+        : CompanyCode;
+}
 
 public record LoginRequest(
     string Email,

@@ -29,15 +29,28 @@ export default function Sidebar({
     const pathname = usePathname();
     const { theme } = useTheme();
     const { appName } = useAppSettings();
-    const { isAdmin, isPurgeAdmin } = useCurrentUser();
+    const { isAdmin, canManageCompany, isPurgeAdmin, enableDms, enableTicketing, enableInvoicing } = useCurrentUser();
 
-    // Filter navigation sections & items based on RBAC role (Admin vs Regular Member vs DataPurgeAdmin)
+    // Filter navigasi berdasarkan 3 Role: Admin (Perawatan), Project Manager (Admin Perusahaan), Staff (Pengguna Biasa)
     const filteredNavData = useMemo(() => {
         return NAV_DATA.map((section) => ({
             ...section,
-            items: section.items.filter((item: any) => !item.adminOnly || isAdmin || (item.url === '/configuration' && isPurgeAdmin)),
+            items: section.items.filter((item: any) => {
+                if (item.adminOnly) {
+                    return isAdmin || (item.url === '/configuration' && isPurgeAdmin);
+                }
+                if (item.companyAdminOnly) {
+                    return canManageCompany;
+                }
+                if (!isAdmin) {
+                    if (item.url === '/issues' && !enableTicketing) return false;
+                    if (item.url === '/invoices' && !enableInvoicing) return false;
+                    if (item.url === '/documents' && !enableDms) return false;
+                }
+                return true;
+            }),
         })).filter((section) => section.items.length > 0);
-    }, [isAdmin, isPurgeAdmin]);
+    }, [isAdmin, canManageCompany, isPurgeAdmin, enableDms, enableTicketing, enableInvoicing]);
 
     // Compute which group should be open based on the current route
     const activeGroupKey = useMemo(

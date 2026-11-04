@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *, [data-theme="dark"], [data-theme="dark"] *));
 @plugin "@tailwindcss/forms";
 @plugin "tailwind-scrollbar";
 
@@ -556,10 +557,70 @@
   }
 }
 
+:root,
+html.light,
+[data-theme="light"] {
+  color-scheme: light;
+}
+
+html.dark,
+[data-theme="dark"] {
+  color-scheme: dark;
+}
+
 @layer base {
   button:not(:disabled),
   [role="button"]:not(:disabled) {
     cursor: pointer;
+  }
+
+  /* Universal Form Input & Control Normalization - solves OS/browser dark/light theme overlap */
+  input:not([type="checkbox"]):not([type="radio"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="range"]):not([type="file"]):not([type="color"]),
+  textarea,
+  select {
+    color: var(--text-primary);
+    background-color: var(--input-background);
+    border-color: var(--input-border);
+  }
+
+  input:not([type="checkbox"]):not([type="radio"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="range"]):not([type="file"]):not([type="color"]):focus,
+  textarea:focus,
+  select:focus {
+    color: var(--text-primary);
+    background-color: var(--input-background);
+  }
+
+  /* Placeholder normalization */
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--input-placeholder-text-color) !important;
+    opacity: 1;
+  }
+
+  /* Native Select Options normalization */
+  select option {
+    background-color: var(--card-background);
+    color: var(--text-primary);
+  }
+
+  /* Autofill styling normalization across all browsers (Chrome, Edge, Safari, Firefox) */
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus,
+  input:-webkit-autofill:active,
+  textarea:-webkit-autofill,
+  textarea:-webkit-autofill:hover,
+  textarea:-webkit-autofill:focus,
+  textarea:-webkit-autofill:active,
+  select:-webkit-autofill,
+  select:-webkit-autofill:hover,
+  select:-webkit-autofill:focus,
+  select:-webkit-autofill:active {
+    -webkit-text-fill-color: var(--text-primary) !important;
+    -webkit-box-shadow: 0 0 0px 1000px var(--input-background) inset !important;
+    box-shadow: 0 0 0px 1000px var(--input-background) inset !important;
+    caret-color: var(--text-primary) !important;
+    transition: background-color 5000s ease-in-out 0s;
   }
 }
 

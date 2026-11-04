@@ -26,6 +26,22 @@ public class CurrentTenantService : ICurrentTenantService
 
     public string? UserId => _httpContextAccessor.HttpContext?.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
 
+    public bool IsSuperAdmin
+    {
+        get
+        {
+            var user = _httpContextAccessor.HttpContext?.User;
+            if (user == null) return false;
+            if (user.IsInRole("SuperAdmin")) return true;
+            var roleClaim = user.FindFirst(ClaimTypes.Role)?.Value;
+            if (!string.IsNullOrEmpty(roleClaim) && roleClaim.Equals("SuperAdmin", StringComparison.OrdinalIgnoreCase))
+                return true;
+            var userId = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (userId == "usr-superadmin" || userId == "usr-admin") return true;
+            return false;
+        }
+    }
+
     public bool IsAdmin
     {
         get
@@ -39,6 +55,24 @@ public class CurrentTenantService : ICurrentTenantService
                 return true;
             var jobTitle = user.FindFirst("jobTitle")?.Value;
             if (!string.IsNullOrEmpty(jobTitle) && (jobTitle.Contains("Admin", StringComparison.OrdinalIgnoreCase) || jobTitle.Contains("Architect", StringComparison.OrdinalIgnoreCase)))
+                return true;
+            return false;
+        }
+    }
+
+    public bool IsProjectManager
+    {
+        get
+        {
+            var user = _httpContextAccessor.HttpContext?.User;
+            if (user == null) return false;
+            if (user.IsInRole("Project Manager") || user.IsInRole("ProjectManager") || user.IsInRole("PM"))
+                return true;
+            var roleClaim = user.FindFirst(ClaimTypes.Role)?.Value;
+            if (!string.IsNullOrEmpty(roleClaim) && (roleClaim.Equals("Project Manager", StringComparison.OrdinalIgnoreCase) || roleClaim.Equals("ProjectManager", StringComparison.OrdinalIgnoreCase) || roleClaim.Equals("PM", StringComparison.OrdinalIgnoreCase)))
+                return true;
+            var jobTitle = user.FindFirst("jobTitle")?.Value;
+            if (!string.IsNullOrEmpty(jobTitle) && (jobTitle.Contains("Project Manager", StringComparison.OrdinalIgnoreCase) || jobTitle.Equals("PM", StringComparison.OrdinalIgnoreCase)))
                 return true;
             return false;
         }

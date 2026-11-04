@@ -48,6 +48,11 @@ public class NotesController : ControllerBase
             .AsNoTracking()
             .AsQueryable();
 
+        if (!_tenantService.IsSuperAdmin && _tenantService.CompanyId.HasValue)
+        {
+            query = query.Where(n => n.CompanyId == _tenantService.CompanyId.Value);
+        }
+
         if (taskId.HasValue) query = query.Where(n => n.TaskId == taskId.Value);
         if (!string.IsNullOrWhiteSpace(category)) query = query.Where(n => n.Category == category);
         if (isPinned.HasValue) query = query.Where(n => n.IsPinned == isPinned.Value);
@@ -94,6 +99,11 @@ public class NotesController : ControllerBase
             .FirstOrDefaultAsync(n => n.Id == id);
 
         if (note == null) return NotFound(new { success = false, message = "Catatan tidak ditemukan." });
+
+        if (!_tenantService.IsSuperAdmin && _tenantService.CompanyId.HasValue && note.CompanyId.HasValue && note.CompanyId.Value != _tenantService.CompanyId.Value)
+        {
+            return StatusCode(403, new { success = false, message = "Anda tidak berhak mengakses catatan perusahaan lain." });
+        }
 
         var attachments = note.Attachments.Select(a => new NoteAttachmentDto(
             a.Id,
@@ -153,6 +163,11 @@ public class NotesController : ControllerBase
         var note = await _context.Notes.FirstOrDefaultAsync(n => n.Id == id);
         if (note == null) return NotFound(new { success = false, message = "Catatan tidak ditemukan." });
 
+        if (!_tenantService.IsSuperAdmin && _tenantService.CompanyId.HasValue && note.CompanyId.HasValue && note.CompanyId.Value != _tenantService.CompanyId.Value)
+        {
+            return StatusCode(403, new { success = false, message = "Anda tidak berhak mengakses catatan perusahaan lain." });
+        }
+
         note.Title = request.Title.Trim();
         note.ContentHtml = request.ContentHtml;
         note.Category = string.IsNullOrWhiteSpace(request.Category) ? "General" : request.Category.Trim();
@@ -172,6 +187,11 @@ public class NotesController : ControllerBase
         var note = await _context.Notes.FirstOrDefaultAsync(n => n.Id == id);
         if (note == null) return NotFound(new { success = false, message = "Catatan tidak ditemukan." });
 
+        if (!_tenantService.IsSuperAdmin && _tenantService.CompanyId.HasValue && note.CompanyId.HasValue && note.CompanyId.Value != _tenantService.CompanyId.Value)
+        {
+            return StatusCode(403, new { success = false, message = "Anda tidak berhak mengakses catatan perusahaan lain." });
+        }
+
         note.IsPinned = !note.IsPinned;
         note.UpdatedAt = DateTimeOffset.UtcNow;
         await _context.SaveChangesAsync();
@@ -187,6 +207,11 @@ public class NotesController : ControllerBase
             .FirstOrDefaultAsync(n => n.Id == id);
 
         if (note == null) return NotFound(new { success = false, message = "Catatan tidak ditemukan." });
+
+        if (!_tenantService.IsSuperAdmin && _tenantService.CompanyId.HasValue && note.CompanyId.HasValue && note.CompanyId.Value != _tenantService.CompanyId.Value)
+        {
+            return StatusCode(403, new { success = false, message = "Anda tidak berhak mengakses catatan perusahaan lain." });
+        }
 
         // Remove physical files
         foreach (var attachment in note.Attachments)
@@ -209,6 +234,11 @@ public class NotesController : ControllerBase
     {
         var note = await _context.Notes.FirstOrDefaultAsync(n => n.Id == id);
         if (note == null) return NotFound(new { success = false, message = "Catatan tidak ditemukan." });
+
+        if (!_tenantService.IsSuperAdmin && _tenantService.CompanyId.HasValue && note.CompanyId.HasValue && note.CompanyId.Value != _tenantService.CompanyId.Value)
+        {
+            return StatusCode(403, new { success = false, message = "Anda tidak berhak mengakses catatan perusahaan lain." });
+        }
 
         if (file == null || file.Length == 0)
         {

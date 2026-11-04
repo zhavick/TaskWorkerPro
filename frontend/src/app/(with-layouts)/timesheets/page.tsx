@@ -43,6 +43,7 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip as RechartsTooltip,
+  Legend,
   PieChart,
   Pie,
   Cell,
@@ -740,25 +741,55 @@ export default function TimesheetsPage() {
                       axisLine={false}
                     />
                     <RechartsTooltip />
+                    <Legend
+                      wrapperStyle={{ fontSize: "11px", paddingTop: "8px" }}
+                      formatter={(val) => <span className="text-gray-600 dark:text-gray-300 font-medium">{val}</span>}
+                    />
                     <Bar
-                      dataKey="totalTasks"
-                      name="Total Tugas"
-                      radius={[6, 6, 0, 0]}
+                      name="Selesai (Done)"
+                      dataKey="doneTasks"
+                      stackId="a"
+                      fill="#10B981"
+                      radius={[0, 0, 0, 0]}
                       onClick={(data: any) => {
-                        if (data && data.projectId) {
-                          setProjectFilter(String(data.projectId));
+                        const item = data?.payload || data;
+                        if (item?.projectId) {
+                          setProjectFilter(String(item.projectId));
                           setPage(1);
                         }
                       }}
                       className="cursor-pointer"
-                    >
-                      {projectChartData.map((entry, index) => (
-                        <Cell
-                          key={`cell-${index}`}
-                          fill={entry.projectColor || PROJECT_PIE_COLORS[index % PROJECT_PIE_COLORS.length]}
-                        />
-                      ))}
-                    </Bar>
+                    />
+                    <Bar
+                      name="Dalam Proses"
+                      dataKey="inProgressTasks"
+                      stackId="a"
+                      fill="#3B82F6"
+                      radius={[0, 0, 0, 0]}
+                      onClick={(data: any) => {
+                        const item = data?.payload || data;
+                        if (item?.projectId) {
+                          setProjectFilter(String(item.projectId));
+                          setPage(1);
+                        }
+                      }}
+                      className="cursor-pointer"
+                    />
+                    <Bar
+                      name="To Do"
+                      dataKey="todoTasks"
+                      stackId="a"
+                      fill="#6366F1"
+                      radius={[6, 6, 0, 0]}
+                      onClick={(data: any) => {
+                        const item = data?.payload || data;
+                        if (item?.projectId) {
+                          setProjectFilter(String(item.projectId));
+                          setPage(1);
+                        }
+                      }}
+                      className="cursor-pointer"
+                    />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
