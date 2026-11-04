@@ -329,8 +329,8 @@ public class BadgeEvaluationServiceTests
             AssignedToUserId = TargetUserId,
             CompanyId = 1,
             Status = TrackerKerja.Domain.Enums.TaskStatus.Done,
-            CreatedAt = now.AddHours(-2),
-            UpdatedAt = now
+            CreatedAt = now.Date.AddHours(8),
+            UpdatedAt = now.Date.AddHours(10)
         });
         await _context.SaveChangesAsync();
 

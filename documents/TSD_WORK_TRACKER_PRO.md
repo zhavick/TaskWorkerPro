@@ -1216,14 +1216,14 @@ Modal popup pengumuman (`AnnouncementModal`) memiliki pencegah visual overlap:
 #### A. Multi-Container Topologi & Orchestration
 1. **Layanan Docker Compose (`docker-compose.yml`)**:
    - `postgres`: Image `postgres:16-alpine`, port 5432, volume `pgdata`.
-   - `backend`: Image multi-stage build .NET 8 SDK & ASP.NET Core Runtime, port 5008, volume `backend_uploads`.
+   - `backend`: Image multi-stage build .NET 8 SDK & ASP.NET Core Runtime, port 5010, volume `backend_uploads`.
    - `frontend`: Image multi-stage build Node 20 Alpine, standalone Next.js 16 TurboPack, port 3000.
 2. **Helper Scripts Operasional**:
    - `docker-run.ps1`: Script PowerShell untuk perintah `up`, `down`, `logs`, `status`, `restart`, dan `init-data`.
    - `git-push.ps1`: Script PowerShell otomatisasi staging, semantic commit, dan remote push.
 3. **Postman API Artifacts**:
    - `TrackerKerja_Postman_Collection.json`: Koleksi Postman 2.1 memuat 10 grup endpoint terstruktur dengan auto-save token JWT.
-   - `TrackerKerja_Postman_Environment.json`: Environment Postman dengan `base_url` port 5008.
+   - `TrackerKerja_Postman_Environment.json`: Environment Postman dengan `base_url` port 5010.
 
 ---
 

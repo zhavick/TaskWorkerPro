@@ -3,9 +3,9 @@
     "version": "2.0.0",
     "private": true,
     "scripts": {
-        "dev": "NODE_OPTIONS=\"--require ./node-compat.js\" next dev",
+        "dev": "NODE_OPTIONS=\"--require ./node-compat.js\" next dev -p 3005",
         "build": "NODE_OPTIONS=\"--require ./node-compat.js\" next build",
-        "start": "NODE_OPTIONS=\"--require ./node-compat.js\" next start",
+        "start": "NODE_OPTIONS=\"--require ./node-compat.js\" next start -p 3005",
         "lint": "eslint",
         "test:e2e": "playwright test"
     },

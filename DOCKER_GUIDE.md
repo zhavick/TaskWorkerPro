@@ -17,7 +17,7 @@ Sistem dijalankan dalam arsitektur multi-container yang terisolasi dalam satu br
                         [ Pengguna / Peramban ]
                                    │
                ┌───────────────────┴───────────────────┐
-               ▼ (Port 3000)                           ▼ (Port 5008)
+               ▼ (Port 3005)                           ▼ (Port 5010)
      ┌───────────────────────┐               ┌───────────────────────┐
      │  trackerkerja_frontend │               │  trackerkerja_backend │
      │   (Next.js 16 Turbo)  │──────────────▶│ (ASP.NET Core 8 API)  │
@@ -39,8 +39,8 @@ Sistem dijalankan dalam arsitektur multi-container yang terisolasi dalam satu br
 | Layanan Kontainer | Image / Dockerfile | Port Internal | Port Eksternal | Persistent Volume |
 |:---|:---|:---:|:---:|:---|
 | **`postgres`** | `postgres:16-alpine` | `5432` | `5432` | `pgdata:/var/lib/postgresql/data` |
-| **`backend`** | Multi-Stage .NET 8 SDK & ASP.NET Runtime | `5008` | `5008` | `backend_uploads:/app/uploads` |
-| **`frontend`** | Multi-Stage Node.js 20 Alpine & Standalone Next.js | `3000` | `3000` | — |
+| **`backend`** | Multi-Stage .NET 8 SDK & ASP.NET Runtime | `5010` | `5010` | `backend_uploads:/app/uploads` |
+| **`frontend`** | Multi-Stage Node.js 20 Alpine & Standalone Next.js | `3005` | `3005` | — |
 
 ---
 
@@ -52,13 +52,13 @@ Sistem dijalankan dalam arsitektur multi-container yang terisolasi dalam satu br
    - Mengompilasi assembly dalam mode Release (`-c Release -o /app/publish`).
 2. **Runtime Stage (`mcr.microsoft.com/dotnet/aspnet:8.0`)**:
    - Image minimalis, aman dari eksploitasi build toolchain.
-   - Binding port: `http://+:5008`.
+   - Binding port: `http://+:5010`.
 
 ### Frontend Dockerfile (`frontend/Dockerfile`)
 1. **Dependencies Stage (`node:20-alpine`)**:
    - Instalasi paket via `npm ci`.
 2. **Build Stage (`node:20-alpine`)**:
-   - Injeksi build arguments `NEXT_PUBLIC_API_BASE_URL=http://localhost:5008/api`.
+   - Injeksi build arguments `NEXT_PUBLIC_API_BASE_URL=http://localhost:5010/api`.
    - Kompilasi Turbopack static & server components.
 3. **Runner Stage (`node:20-alpine`)**:
    - Menjalankan Next.js dalam mode standalone tanpa overhead dev dependencies.
@@ -73,18 +73,18 @@ Berkas konfigurasi utama: [`docker-compose.yml`](docker-compose.yml)
 ```env
 # Backend Environment
 ASPNETCORE_ENVIRONMENT=Production
-ASPNETCORE_URLS=http://+:5008
+ASPNETCORE_URLS=http://+:5010
 ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=trackerkerja_db;Username=tracker_admin;Password=TrackerSecurePassword2026!;Maximum Pool Size=100;Minimum Pool Size=10;
 JwtSettings__SecretKey=SUPER_SECRET_KEY_FOR_TRACKER_KERJA_2026_MINIMUM_32_BYTES_STRONG!
 JwtSettings__Issuer=https://api.trackerkerja.local
 JwtSettings__Audience=https://app.trackerkerja.local
-CorsSettings__AllowedOrigins__0=http://localhost:3000
-CorsSettings__AllowedOrigins__1=http://frontend:3000
+CorsSettings__AllowedOrigins__0=http://localhost:3005
+CorsSettings__AllowedOrigins__1=http://frontend:3005
 
 # Frontend Environment
 NODE_ENV=production
-PORT=3000
-NEXT_PUBLIC_API_BASE_URL=http://localhost:5008/api
+PORT=3005
+NEXT_PUBLIC_API_BASE_URL=http://localhost:5010/api
 ```
 
 ---
@@ -176,9 +176,9 @@ docker compose -f docker-compose.prod.yml ps
 | Path | Tujuan | Catatan |
 |:---|:---|:---|
 | `/` | `http://127.0.0.1:5000` | Frontend Next.js (`FRONTEND_PORT`) |
-| `/api` | `http://127.0.0.1:5008` | REST API |
-| `/hubs` | `http://127.0.0.1:5008` | SignalR, butuh header WebSocket |
-| `/uploads` | `http://127.0.0.1:5008` | Berkas unggahan |
+| `/api` | `http://127.0.0.1:5010` | REST API |
+| `/hubs` | `http://127.0.0.1:5010` | SignalR, butuh header WebSocket |
+| `/uploads` | `http://127.0.0.1:5010` | Berkas unggahan |
 
 Di aaPanel: **Site → Reverse proxy**, buat satu proxy per baris tabel di atas (Target URL tanpa `/` di akhir, Sent Domain `$host`). Lalu di tab **Config** tambahkan di dalam blok `server { }`:
 ```nginx

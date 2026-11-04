@@ -53,7 +53,7 @@ Berkas `TrackerKerja_Postman_Environment.json` telah dilengkapi variabel bawaan:
 
 ```json
 {
-  "base_url": "http://localhost:5008/api",
+  "base_url": "http://localhost:5010/api",
   "admin_email": "admin@trackerkerja.local",
   "admin_password": "AdminSecurePassword2026!",
   "corporate_code": "WCH",

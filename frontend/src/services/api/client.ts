@@ -6,10 +6,10 @@ export const getBaseUrl = () => {
       process.env.INTERNAL_API_URL ||
       (process.env.BACKEND_URL ? `${process.env.BACKEND_URL}/api` : null) ||
       process.env.NEXT_PUBLIC_API_BASE_URL ||
-      "http://localhost:5008/api"
+      "http://localhost:5010/api"
     );
   }
-  return process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5008/api";
+  return process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5010/api";
 };
 
 export const API_BASE_URL = getBaseUrl();

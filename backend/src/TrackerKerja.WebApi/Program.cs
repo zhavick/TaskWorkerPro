@@ -106,7 +106,7 @@ builder.Services.AddCors(options =>
     options.AddPolicy("NextJsClientPolicy", policy =>
     {
         var origins = builder.Configuration.GetSection("CorsSettings:AllowedOrigins").Get<string[]>() 
-            ?? new[] { "http://localhost:3000", "http://127.0.0.1:3000" };
+            ?? new[] { "http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:3005", "http://127.0.0.1:3005" };
 
         policy.WithOrigins(origins)
             .AllowAnyHeader()
