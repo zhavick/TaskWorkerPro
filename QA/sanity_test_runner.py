@@ -8,7 +8,7 @@ import urllib.error
 import json
 import sys
 
-BASE_URL = "http://localhost:5008"
+BASE_URL = "http://localhost:5010"
 
 def request(method, path, data=None, token=None, expected_status=200):
     url = f"{BASE_URL}{path}"

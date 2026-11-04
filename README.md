@@ -8,9 +8,9 @@
 [![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL%2016%20%7C%20SQLite-336791?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![ClosedXML](https://img.shields.io/badge/ClosedXML-0.104.2-emerald?logo=microsoft-excel&logoColor=white)](https://github.com/ClosedXML/ClosedXML)
 [![Docker](https://img.shields.io/badge/Docker-Multi--Container-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
-[![REST API](https://img.shields.io/badge/REST%20API-110%2B%20Endpoints-85EA2D?logo=swagger&logoColor=black)](http://localhost:5008/swagger)
-[![JWT Bearer](https://img.shields.io/badge/Auth-JWT%20Bearer-orange?logo=jsonwebtokens&logoColor=white)](http://localhost:5008/swagger)
-[![Themes & Fonts](https://img.shields.io/badge/Themes%20%26%20Fonts-40%20Themes%20%7C%205%20Fonts-pink)](http://localhost:3000)
+[![REST API](https://img.shields.io/badge/REST%20API-110%2B%20Endpoints-85EA2D?logo=swagger&logoColor=black)](http://localhost:5010/swagger)
+[![JWT Bearer](https://img.shields.io/badge/Auth-JWT%20Bearer-orange?logo=jsonwebtokens&logoColor=white)](http://localhost:5010/swagger)
+[![Themes & Fonts](https://img.shields.io/badge/Themes%20%26%20Fonts-40%20Themes%20%7C%205%20Fonts-pink)](http://localhost:3005)
 [![GitHub](https://img.shields.io/badge/GitHub-zhavick%2FTaskWorkerPro-181717?logo=github&logoColor=white)](https://github.com/zhavick/TaskWorkerPro.git)
 
 ---
@@ -157,7 +157,7 @@ docker compose up -d --build
 #### Menjalankan Backend (.NET 8):
 ```powershell
 cd backend/src/TrackerKerja.WebApi
-dotnet run --urls=http://localhost:5008
+dotnet run --urls=http://localhost:5010
 ```
 
 #### Menjalankan Frontend (Next.js 16):
@@ -170,9 +170,9 @@ npm run dev
 
 ## 🌐 Endpoint & Akses Cepat
 
-- **Frontend Web Application**: [http://localhost:3000](http://localhost:3000)
-- **Backend Swagger REST API Documentation**: [http://localhost:5008/swagger](http://localhost:5008/swagger)
-- **OpenAPI JSON Spec**: [http://localhost:5008/swagger/v1/swagger.json](http://localhost:5008/swagger/v1/swagger.json)
+- **Frontend Web Application**: [http://localhost:3005](http://localhost:3005)
+- **Backend Swagger REST API Documentation**: [http://localhost:5010/swagger](http://localhost:5010/swagger)
+- **OpenAPI JSON Spec**: [http://localhost:5010/swagger/v1/swagger.json](http://localhost:5010/swagger/v1/swagger.json)
 - **PostgreSQL Database**: Port `5432` (`trackerkerja_db`)
 
 ---

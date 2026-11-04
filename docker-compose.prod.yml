@@ -36,7 +36,7 @@ services:
         condition: service_healthy
     environment:
       ASPNETCORE_ENVIRONMENT: Production
-      ASPNETCORE_URLS: http://+:5008
+      ASPNETCORE_URLS: http://+:5010
       ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=trackerkerja_db;Username=tracker_admin;Password=${POSTGRES_PASSWORD};Maximum Pool Size=100;Minimum Pool Size=10;
       JwtSettings__SecretKey: ${JWT_SECRET:?JWT_SECRET wajib diisi di .env}
       JwtSettings__Issuer: ${APP_URL:?APP_URL wajib diisi di .env}
@@ -44,7 +44,7 @@ services:
       CorsSettings__AllowedOrigins__0: ${APP_URL}
       SyncSettings__ApiKey: ${SYNC_API_KEY:-}
     ports:
-      - "127.0.0.1:5008:5008"
+      - "127.0.0.1:5010:5010"
     volumes:
       - backend_uploads:/app/uploads
     networks:
@@ -63,11 +63,11 @@ services:
       - backend
     environment:
       NODE_ENV: production
-      PORT: 3000
-      BACKEND_URL: http://backend:5008
-      INTERNAL_API_URL: http://backend:5008/api
+      PORT: 3005
+      BACKEND_URL: http://backend:5010
+      INTERNAL_API_URL: http://backend:5010/api
     ports:
-      - "127.0.0.1:${FRONTEND_PORT:-5000}:3000"
+      - "127.0.0.1:${FRONTEND_PORT:-3005}:3005"
     networks:
       - tracker_network
 

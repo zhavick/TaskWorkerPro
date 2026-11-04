@@ -35,8 +35,8 @@ switch ($Command) {
         docker compose up -d --build
         Write-Host ""
         Write-Host "[SUKSES] Seluruh kontainer berhasil dijalankan!" -ForegroundColor Green
-        Write-Host "  - Frontend Web UI : http://localhost:3000" -ForegroundColor White
-        Write-Host "  - Backend REST API: http://localhost:5008/swagger" -ForegroundColor White
+        Write-Host "  - Frontend Web UI : http://localhost:3005" -ForegroundColor White
+        Write-Host "  - Backend REST API: http://localhost:5010/swagger" -ForegroundColor White
         Write-Host "  - Database Postgres: localhost:5432 (trackerkerja_db)" -ForegroundColor White
     }
 
@@ -83,7 +83,7 @@ switch ($Command) {
 
         Write-Host "[3/3] Memeriksa respons REST API Backend..." -ForegroundColor Yellow
         try {
-            $resp = Invoke-RestMethod -Uri "http://localhost:5008/api/sync/health" -Method Get -TimeoutSec 5
+            $resp = Invoke-RestMethod -Uri "http://localhost:5010/api/sync/health" -Method Get -TimeoutSec 5
             Write-Host "[OK] Backend REST API responsif: Status = $($resp.status)" -ForegroundColor Green
         } catch {
             Write-Host "[INFO] Backend API sedang memproses inisialisasi basis data dan migrasi." -ForegroundColor Yellow

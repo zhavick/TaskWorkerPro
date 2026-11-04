@@ -32,15 +32,15 @@ services:
         condition: service_healthy
     environment:
       ASPNETCORE_ENVIRONMENT: Production
-      ASPNETCORE_URLS: http://+:5008
+      ASPNETCORE_URLS: http://+:5010
       ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=trackerkerja_db;Username=tracker_admin;Password=TrackerSecurePassword2026!;Maximum Pool Size=100;Minimum Pool Size=10;
       JwtSettings__SecretKey: SUPER_SECRET_KEY_FOR_TRACKER_KERJA_2026_MINIMUM_32_BYTES_STRONG!
       JwtSettings__Issuer: https://api.trackerkerja.local
       JwtSettings__Audience: https://app.trackerkerja.local
-      CorsSettings__AllowedOrigins__0: http://localhost:3000
-      CorsSettings__AllowedOrigins__1: http://frontend:3000
+      CorsSettings__AllowedOrigins__0: http://localhost:3005
+      CorsSettings__AllowedOrigins__1: http://frontend:3005
     ports:
-      - "5008:5008"
+      - "5010:5010"
     volumes:
       - backend_uploads:/app/uploads
       - ./Sample Source DB:/app/seed-data:ro
@@ -52,19 +52,19 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        NEXT_PUBLIC_API_BASE_URL: http://localhost:5008/api
+        NEXT_PUBLIC_API_BASE_URL: http://localhost:5010/api
     container_name: trackerkerja_frontend
     restart: unless-stopped
     depends_on:
       - backend
     environment:
       NODE_ENV: production
-      PORT: 3000
-      NEXT_PUBLIC_API_BASE_URL: http://localhost:5008/api
-      BACKEND_URL: http://backend:5008
-      INTERNAL_API_URL: http://backend:5008/api
+      PORT: 3005
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:5010/api
+      BACKEND_URL: http://backend:5010
+      INTERNAL_API_URL: http://backend:5010/api
     ports:
-      - "3000:3000"
+      - "3005:3005"
     networks:
       - tracker_network
 

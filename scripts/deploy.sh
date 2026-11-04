@@ -34,7 +34,7 @@ docker image prune -f >/dev/null
 # Backend dianggap sehat bila endpoint terproteksi membalas 401
 echo "==> Menunggu backend siap"
 for _ in $(seq 1 45); do
-  code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:5008/api/members || true)
+  code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:5010/api/members || true)
   if [ "$code" = "401" ]; then
     echo "==> Backend OK"
     $COMPOSE ps

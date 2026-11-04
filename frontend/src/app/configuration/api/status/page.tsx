@@ -217,8 +217,8 @@ export default function ConfigurationApiStatusPage() {
                 var envApi = $('#status-container').attr('data-api-base');
                 var API_BASE = envApi && envApi.length > 0
                   ? envApi
-                  : (window.location.port === '3000'
-                      ? window.location.protocol + '//' + window.location.hostname + ':5008/api'
+                  : (window.location.port === '3000' || window.location.port === '3005'
+                      ? window.location.protocol + '//' + window.location.hostname + ':5010/api'
                       : '/api');
 
                 $('#val-frontend-origin').text(window.location.origin);
@@ -339,7 +339,7 @@ export default function ConfigurationApiStatusPage() {
                       $('#banner-status')
                         .removeClass('border-emerald-600/80 bg-emerald-950/40 border-slate-700 bg-slate-800/80')
                         .addClass('border-red-600/80 bg-red-950/40 text-red-200')
-                        .html('<strong>❌ Gagal Terhubung ke Backend API:</strong> Pastikan backend aktif pada port 5008 atau periksa konfigurasi jaringan Docker/CORS.');
+                        .html('<strong>❌ Gagal Terhubung ke Backend API:</strong> Pastikan backend aktif pada port 5010 atau periksa konfigurasi jaringan Docker/CORS.');
                       appendLog('Error koneksi backend: ' + (xhr.statusText || err || 'Network Error'), 'error');
                     }
                   });
