@@ -179,6 +179,7 @@ docker compose -f docker-compose.prod.yml ps
 | `/api` | `http://127.0.0.1:5010` | REST API |
 | `/hubs` | `http://127.0.0.1:5010` | SignalR, butuh header WebSocket |
 | `/uploads` | `http://127.0.0.1:5010` | Berkas unggahan |
+| `/swagger` | `http://127.0.0.1:5010` | Swagger REST API Documentation & OpenAPI Spec |
 
 Di aaPanel: **Site → Reverse proxy**, buat satu proxy per baris tabel di atas (Target URL tanpa `/` di akhir, Sent Domain `$host`). Lalu di tab **Config** tambahkan di dalam blok `server { }`:
 ```nginx
