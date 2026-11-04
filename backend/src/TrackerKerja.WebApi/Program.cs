@@ -108,7 +108,21 @@ builder.Services.AddCors(options =>
         var origins = builder.Configuration.GetSection("CorsSettings:AllowedOrigins").Get<string[]>() 
             ?? new[] { "http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:3005", "http://127.0.0.1:3005" };
 
-        policy.WithOrigins(origins)
+                policy.SetIsOriginAllowed(origin =>
+            {
+                if (string.IsNullOrWhiteSpace(origin)) return false;
+                if (origins.Contains(origin, StringComparer.OrdinalIgnoreCase)) return true;
+                if (origins.Contains("*")) return true;
+                if (origin.StartsWith("http://localhost:") || origin.StartsWith("https://localhost:") ||
+                    origin.StartsWith("http://127.0.0.1:") || origin.StartsWith("https://127.0.0.1:")) return true;
+                try
+                {
+                    var uri = new Uri(origin);
+                    if (uri.Port == 3000 || uri.Port == 3005) return true;
+                }
+                catch { }
+                return false;
+            })
             .AllowAnyHeader()
             .AllowAnyMethod()
             .AllowCredentials()
@@ -124,17 +138,24 @@ builder.Services.AddSwaggerGen(c =>
     {
         Title = "TrackerKerja Modern RESTful Web API",
         Version = "v1",
-        Description = "Enterprise Work Task Management, Multi-Timer Timesheet, Attendance & Team Analytics API"
+        Description = "Enterprise Work Task Management, Multi-Timer Timesheet, Attendance & Team Analytics API.\n\n" +
+                      "**Petunjuk Autentikasi Swagger:**\n" +
+                      "1. Buka endpoint `POST /api/auth/login` di bawah ini.\n" +
+                      "2. Masukkan kredensial akun Anda (contoh admin: `admin@trackerkerja.local` / `AdminSecurePassword2026!`).\n" +
+                      "3. Jalankan dan salin nilai `token` dari respon JSON.\n" +
+                      "4. Klik tombol hijau **Authorize** di pojok kanan atas, lalu tempelkan token.\n" +
+                      "5. Klik **Authorize** dan seluruh endpoint API siap diakses secara resmi."
     });
 
-    // Add JWT Bearer Security Scheme
+    // Add HTTP Bearer JWT Security Scheme
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
-        Description = "Masukkan token JWT dengan format: Bearer {token}",
         Name = "Authorization",
+        Type = SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT",
         In = ParameterLocation.Header,
-        Type = SecuritySchemeType.ApiKey,
-        Scheme = "Bearer"
+        Description = "Masukkan JWT Access Token Anda di sini (cukup masukkan nilai token saja tanpa awalan 'Bearer ')."
     });
 
     c.AddSecurityRequirement(new OpenApiSecurityRequirement
@@ -185,12 +206,15 @@ app.UseStaticFiles(new StaticFileOptions
     RequestPath = "/uploads"
 });
 
-// Always enable Swagger for testing/development
+// Always enable Swagger for testing/development and external API access
 app.UseSwagger();
 app.UseSwaggerUI(c =>
 {
     c.SwaggerEndpoint("/swagger/v1/swagger.json", "TrackerKerja API v1");
     c.RoutePrefix = "swagger";
+    c.EnablePersistAuthorization();
+    c.DisplayRequestDuration();
+    c.DocExpansion(Swashbuckle.AspNetCore.SwaggerUI.DocExpansion.None);
 });
 
 app.UseCors("NextJsClientPolicy");

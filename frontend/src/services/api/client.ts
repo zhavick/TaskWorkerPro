@@ -9,7 +9,27 @@ export const getBaseUrl = () => {
       "http://localhost:5010/api"
     );
   }
-  return process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5010/api";
+
+  // Runtime Browser
+  const envUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+  if (envUrl && envUrl.length > 0) {
+    // Jika path relatif (misal: /api untuk reverse proxy Nginx)
+    if (envUrl.startsWith("/")) {
+      return envUrl;
+    }
+    // Jika envUrl menunjuk localhost tetapi browser diakses dari remote IP / domain
+    if (envUrl.includes("localhost") && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") {
+      return `${window.location.protocol}//${window.location.hostname}:5010/api`;
+    }
+    return envUrl;
+  }
+
+  // Jika browser diakses dari IP atau domain remote selain localhost
+  if (window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") {
+    return `${window.location.protocol}//${window.location.hostname}:5010/api`;
+  }
+
+  return "http://localhost:5010/api";
 };
 
 export const API_BASE_URL = getBaseUrl();

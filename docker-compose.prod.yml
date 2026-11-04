@@ -44,7 +44,7 @@ services:
       CorsSettings__AllowedOrigins__0: ${APP_URL}
       SyncSettings__ApiKey: ${SYNC_API_KEY:-}
     ports:
-      - "127.0.0.1:5010:5010"
+      - "5010:5010"
     volumes:
       - backend_uploads:/app/uploads
     networks:
