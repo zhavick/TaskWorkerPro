@@ -1,8 +1,8 @@
 import * as signalR from "@microsoft/signalr";
-import { API_BASE_URL } from "@/services/api/client";
+import { getBaseUrl } from "@/services/api/client";
 
 export function getSignalRHubUrl(): string {
-  const base = (process.env.NEXT_PUBLIC_API_BASE_URL || API_BASE_URL).replace(/\/api\/?$/, "");
+  const base = getBaseUrl().replace(/\/api\/?$/, "");
   return `${base}/hubs/notifications`;
 }
 

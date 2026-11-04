@@ -215,11 +215,17 @@ export default function ConfigurationApiStatusPage() {
 
                 var $ = window.$;
                 var envApi = $('#status-container').attr('data-api-base');
-                var API_BASE = envApi && envApi.length > 0
-                  ? envApi
-                  : (window.location.port === '3000' || window.location.port === '3005'
-                      ? window.location.protocol + '//' + window.location.hostname + ':5010/api'
-                      : '/api');
+                var isRemoteHost = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
+                var API_BASE = '/api';
+                if (envApi && envApi.length > 0) {
+                  if (envApi.indexOf('/') === 0) {
+                    API_BASE = envApi;
+                  } else if ((envApi.indexOf('localhost') !== -1 || envApi.indexOf('127.0.0.1') !== -1) && isRemoteHost) {
+                    API_BASE = '/api';
+                  } else {
+                    API_BASE = envApi;
+                  }
+                }
 
                 $('#val-frontend-origin').text(window.location.origin);
 

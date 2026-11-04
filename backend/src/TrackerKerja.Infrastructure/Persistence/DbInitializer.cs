@@ -379,6 +379,39 @@ public static class DbInitializer
                 ");
             }
             catch { }
+
+            // 7. Sinkronisasi Sequence SERIAL/IDENTITY PostgreSQL agar tidak terjadi duplicate key (23505)
+            // akibat penyisipan ID eksplisit pada skrip SQL inisialisasi (02_init_seed.sql & 03_demo_seed.sql)
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(@"
+                    DO $$
+                    DECLARE
+                        r RECORD;
+                        seq_name TEXT;
+                        max_id BIGINT;
+                    BEGIN
+                        FOR r IN
+                            SELECT table_name
+                            FROM information_schema.columns
+                            WHERE table_schema = 'public'
+                              AND column_name = 'id'
+                              AND data_type IN ('integer', 'bigint')
+                        LOOP
+                            seq_name := pg_get_serial_sequence('public.' || quote_ident(r.table_name), 'id');
+                            IF seq_name IS NOT NULL THEN
+                                EXECUTE format('SELECT COALESCE(MAX(id), 0) FROM public.%I', r.table_name) INTO max_id;
+                                IF max_id > 0 THEN
+                                    PERFORM setval(seq_name, max_id, true);
+                                ELSE
+                                    PERFORM setval(seq_name, 1, false);
+                                END IF;
+                            END IF;
+                        END LOOP;
+                    END $$;
+                ");
+            }
+            catch { }
         }
 
         // 1. Pastikan Perusahaan Default (HQ Tenant)
@@ -395,38 +428,6 @@ public static class DbInitializer
                 CreatedAt = DateTimeOffset.UtcNow
             };
             context.Companies.Add(company);
-            await context.SaveChangesAsync();
-        }
-
-        // 2. Pastikan Akun Administrator Bawaan (admin@trackerkerja.local / AdminSecurePassword2026!)
-        var adminEmail = "admin@trackerkerja.local";
-        var adminUser = await context.Users.FirstOrDefaultAsync(u => u.Email == adminEmail);
-        if (adminUser == null)
-        {
-            adminUser = new AppUser
-            {
-                Id = "usr-superadmin",
-                UserName = adminEmail,
-                NormalizedUserName = adminEmail.ToUpperInvariant(),
-                Email = adminEmail,
-                NormalizedEmail = adminEmail.ToUpperInvariant(),
-                EmailConfirmed = true,
-                FullName = "Super Administrator",
-                JobTitle = "Lead Systems Architect & Administrator",
-                AvatarColor = "#6366F1",
-                CompanyId = company.Id,
-                IsApproved = true,
-                ApprovedAt = DateTimeOffset.UtcNow,
-                PasswordHash = PasswordHasher.HashPassword("AdminSecurePassword2026!"),
-                CreatedAt = DateTimeOffset.UtcNow
-            };
-            context.Users.Add(adminUser);
-            await context.SaveChangesAsync();
-        }
-        else if (string.IsNullOrEmpty(adminUser.PasswordHash) || !adminUser.PasswordHash.Contains(':'))
-        {
-            adminUser.PasswordHash = PasswordHasher.HashPassword("AdminSecurePassword2026!");
-            adminUser.IsApproved = true;
             await context.SaveChangesAsync();
         }
 
@@ -453,6 +454,61 @@ public static class DbInitializer
             }
         }
         await context.SaveChangesAsync();
+
+        var adminRoleEntity = await context.Roles.FirstOrDefaultAsync(r => r.Id == "r-admin" || r.Name == "Administrator");
+        var adminRoleId = adminRoleEntity?.Id ?? "r-admin";
+
+        // 2. Pastikan Akun Administrator Bawaan (admin@trackerkerja.local & admin@trackerkerja.com)
+        var defaultAdmins = new List<(string Id, string Email, string Password, string FullName, string JobTitle, string AvatarColor)>
+        {
+            ("usr-superadmin", "admin@trackerkerja.local", "AdminSecurePassword2026!", "Super Administrator", "Lead Systems Architect & Administrator", "#6366F1"),
+            ("usr-admin-trackerkerja", "admin@trackerkerja.com", "AdminSecure@2026!!", "Administrator TrackerKerja", "System Administrator", "#4F46E5")
+        };
+
+        foreach (var (admId, admEmail, admPass, admName, admJob, admColor) in defaultAdmins)
+        {
+            var adminUser = await context.Users.FirstOrDefaultAsync(u => u.Email == admEmail || u.Id == admId);
+            if (adminUser == null)
+            {
+                adminUser = new AppUser
+                {
+                    Id = admId,
+                    UserName = admEmail,
+                    NormalizedUserName = admEmail.ToUpperInvariant(),
+                    Email = admEmail,
+                    NormalizedEmail = admEmail.ToUpperInvariant(),
+                    EmailConfirmed = true,
+                    FullName = admName,
+                    JobTitle = admJob,
+                    AvatarColor = admColor,
+                    CompanyId = company.Id,
+                    IsApproved = true,
+                    ApprovedAt = DateTimeOffset.UtcNow,
+                    PasswordHash = PasswordHasher.HashPassword(admPass),
+                    CreatedAt = DateTimeOffset.UtcNow
+                };
+                context.Users.Add(adminUser);
+                await context.SaveChangesAsync();
+            }
+            else if (string.IsNullOrEmpty(adminUser.PasswordHash) || !adminUser.PasswordHash.Contains(':') || !adminUser.IsApproved)
+            {
+                adminUser.PasswordHash = PasswordHasher.HashPassword(admPass);
+                adminUser.IsApproved = true;
+                adminUser.ApprovedAt ??= DateTimeOffset.UtcNow;
+                adminUser.CompanyId ??= company.Id;
+                await context.SaveChangesAsync();
+            }
+
+            if (!await context.UserRoles.AnyAsync(ur => ur.UserId == adminUser.Id && ur.RoleId == adminRoleId))
+            {
+                context.UserRoles.Add(new AppUserRole
+                {
+                    UserId = adminUser.Id,
+                    RoleId = adminRoleId
+                });
+                await context.SaveChangesAsync();
+            }
+        }
 
         // 3. Pastikan Koleksi 70+ Master Badge Gaul & Modern Anak Muda (FSD 5.20.4 + Ekstensi Gamifikasi Kreatif)
         var badges = new List<MasterBadge>

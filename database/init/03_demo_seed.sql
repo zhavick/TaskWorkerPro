@@ -1,4 +1,4 @@
-﻿-- ============================================================================
+-- ============================================================================
 -- TRACKERKERJA MODERN (WORK TRACKER PRO)
 -- REALISTIC SEED DATA DARI TASK TRACKER V2.XLSX & ATTENDANCES LENGKAP
 -- File: 03_demo_seed.sql
@@ -1190,11 +1190,16 @@ VALUES
 (2, 'Data Operasional Task Tracker v2 & Presensi Tim Terpasang', 'Sistem TrackerKerja telah mengimpor 491 tugas operasional dan presensi tim terpadu.', 'Pengumuman Umum', CURRENT_TIMESTAMP - INTERVAL '2 days', CURRENT_TIMESTAMP + INTERVAL '14 days', true, 1, 'usr-superadmin', CURRENT_TIMESTAMP - INTERVAL '2 days')
 ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, content = EXCLUDED.content;
 
-SELECT setval('announcements_id_seq', (SELECT MAX(id) FROM announcements));
-SELECT setval('master_priorities_id_seq', (SELECT MAX(id) FROM master_priorities));
-SELECT setval('master_statuses_id_seq', (SELECT MAX(id) FROM master_statuses));
-SELECT setval('master_milestones_id_seq', (SELECT MAX(id) FROM master_milestones));
-SELECT setval('categories_id_seq', (SELECT MAX(id) FROM categories));
-SELECT setval('projects_id_seq', (SELECT MAX(id) FROM projects));
+SELECT setval('companies_id_seq', (SELECT COALESCE(MAX(id), 1) FROM companies));
+SELECT setval('announcements_id_seq', (SELECT COALESCE(MAX(id), 1) FROM announcements));
+SELECT setval('master_priorities_id_seq', (SELECT COALESCE(MAX(id), 1) FROM master_priorities));
+SELECT setval('master_statuses_id_seq', (SELECT COALESCE(MAX(id), 1) FROM master_statuses));
+SELECT setval('master_milestones_id_seq', (SELECT COALESCE(MAX(id), 1) FROM master_milestones));
+SELECT setval('categories_id_seq', (SELECT COALESCE(MAX(id), 1) FROM categories));
+SELECT setval('projects_id_seq', (SELECT COALESCE(MAX(id), 1) FROM projects));
+SELECT setval('tasks_id_seq', (SELECT COALESCE(MAX(id), 1) FROM tasks));
+SELECT setval('email_templates_id_seq', (SELECT COALESCE(MAX(id), 1) FROM email_templates));
+SELECT setval('master_badges_id_seq', (SELECT COALESCE(MAX(id), 1) FROM master_badges));
+SELECT setval('reward_items_id_seq', (SELECT COALESCE(MAX(id), 1) FROM reward_items));
 
 -- SEED DATA TASK TRACKER V2 & PRESENSI SELESAI

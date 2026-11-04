@@ -5,7 +5,9 @@ export const getBaseUrl = () => {
     return (
       process.env.INTERNAL_API_URL ||
       (process.env.BACKEND_URL ? `${process.env.BACKEND_URL}/api` : null) ||
-      process.env.NEXT_PUBLIC_API_BASE_URL ||
+      (process.env.NEXT_PUBLIC_API_BASE_URL?.startsWith("http")
+        ? process.env.NEXT_PUBLIC_API_BASE_URL
+        : null) ||
       "http://localhost:5010/api"
     );
   }
@@ -13,23 +15,23 @@ export const getBaseUrl = () => {
   // Runtime Browser
   const envUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
   if (envUrl && envUrl.length > 0) {
-    // Jika path relatif (misal: /api untuk reverse proxy Nginx)
+    // Jika path relatif (misal: /api untuk reverse proxy Next.js / Nginx)
     if (envUrl.startsWith("/")) {
       return envUrl;
     }
-    // Jika envUrl menunjuk localhost tetapi browser diakses dari remote IP / domain
-    if (envUrl.includes("localhost") && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") {
-      return `${window.location.protocol}//${window.location.hostname}:5010/api`;
+    // Jika envUrl menunjuk localhost tetapi browser diakses dari remote IP / domain,
+    // gunakan path relatif /api agar diteruskan oleh Next.js rewrite / Nginx tanpa masalah port/CORS/SSL
+    if (
+      (envUrl.includes("localhost") || envUrl.includes("127.0.0.1")) &&
+      window.location.hostname !== "localhost" &&
+      window.location.hostname !== "127.0.0.1"
+    ) {
+      return "/api";
     }
     return envUrl;
   }
 
-  // Jika browser diakses dari IP atau domain remote selain localhost
-  if (window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") {
-    return `${window.location.protocol}//${window.location.hostname}:5010/api`;
-  }
-
-  return "http://localhost:5010/api";
+  return "/api";
 };
 
 export const API_BASE_URL = getBaseUrl();
@@ -62,9 +64,7 @@ apiClient.interceptors.request.use(
       }
     }
 
-    if (typeof window === "undefined") {
-      config.baseURL = getBaseUrl();
-    }
+    config.baseURL = getBaseUrl();
 
     if (typeof window !== "undefined") {
       const token = localStorage.getItem("access_token");
@@ -123,7 +123,7 @@ apiClient.interceptors.response.use(
 
       try {
         const refreshResponse = await axios.post(
-          `${API_BASE_URL}/auth/refresh-token`,
+          `${getBaseUrl()}/auth/refresh-token`,
           {},
           { withCredentials: true }
         );

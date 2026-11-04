@@ -118,7 +118,7 @@ builder.Services.AddCors(options =>
                 try
                 {
                     var uri = new Uri(origin);
-                    if (uri.Port == 3000 || uri.Port == 3005) return true;
+                    if (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps) return true;
                 }
                 catch { }
                 return false;

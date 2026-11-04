@@ -138,3 +138,13 @@ INSERT INTO reward_items (id, name, description, point_cost, stock, category, ic
 (3, 'Pulsa Seluler Rp 100.000', 'Pulsa all operator (Telkomsel, Indosat, XL)', 1000, 15, 'Pulsa', 'smartphone', '#3B82F6'),
 (4, 'Tumbler Stainless Eksklusif', 'Tumbler termos kopi branding Work Tracker Pro', 1500, 10, 'Merchandise', 'coffee', '#F59E0B')
 ON CONFLICT (id) DO NOTHING;
+
+-- 12. Sinkronisasi Sequence SERIAL setelah insert ID eksplisit
+SELECT setval('companies_id_seq', (SELECT COALESCE(MAX(id), 1) FROM companies));
+SELECT setval('master_priorities_id_seq', (SELECT COALESCE(MAX(id), 1) FROM master_priorities));
+SELECT setval('master_statuses_id_seq', (SELECT COALESCE(MAX(id), 1) FROM master_statuses));
+SELECT setval('master_milestones_id_seq', (SELECT COALESCE(MAX(id), 1) FROM master_milestones));
+SELECT setval('categories_id_seq', (SELECT COALESCE(MAX(id), 1) FROM categories));
+SELECT setval('email_templates_id_seq', (SELECT COALESCE(MAX(id), 1) FROM email_templates));
+SELECT setval('master_badges_id_seq', (SELECT COALESCE(MAX(id), 1) FROM master_badges));
+SELECT setval('reward_items_id_seq', (SELECT COALESCE(MAX(id), 1) FROM reward_items));
