@@ -972,16 +972,30 @@ public class GamificationController : ControllerBase
     }
 
     [HttpPost("admin/reset-points")]
-    [Authorize(Roles = "Administrator,SuperAdmin")]
+    [Authorize]
     public async Task<IActionResult> ResetGamificationPoints([FromBody] ResetGamificationPointsRequest? request)
     {
-        if (!await IsUserAdminAsync())
+        var isAuthorized = await IsUserProjectManagerOrAdminAsync();
+        if (!isAuthorized)
         {
-            return StatusCode(403, new { success = false, message = "Akses ditolak: Hanya Administrator yang diizinkan." });
+            return StatusCode(403, new { success = false, message = "Akses ditolak: Hanya Administrator dan Project Manager yang diizinkan mereset gamifikasi." });
         }
 
         var req = request ?? new ResetGamificationPointsRequest();
-        var companyId = _tenantService.CompanyId;
+        var isSuperAdmin = _tenantService.IsSuperAdmin;
+        var callerCompanyId = _tenantService.CompanyId;
+        if (!callerCompanyId.HasValue && !string.IsNullOrEmpty(_tenantService.UserId))
+        {
+            var callerUser = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == _tenantService.UserId);
+            callerCompanyId = callerUser?.CompanyId;
+        }
+
+        // Project Manager WAJIB terhubung ke perusahaan
+        if (!isSuperAdmin && !callerCompanyId.HasValue)
+        {
+            return StatusCode(403, new { success = false, message = "Akses ditolak: Akun Anda tidak terasosiasi dengan perusahaan manapun." });
+        }
+
         var isAllUsers = string.IsNullOrWhiteSpace(req.UserId) || req.UserId.Equals("all", StringComparison.OrdinalIgnoreCase);
 
         List<string> targetUserIds;
@@ -990,9 +1004,10 @@ public class GamificationController : ControllerBase
         if (isAllUsers)
         {
             var usersQuery = _context.Users.AsQueryable();
-            if (companyId.HasValue)
+            if (!isSuperAdmin && callerCompanyId.HasValue)
             {
-                usersQuery = usersQuery.Where(u => u.CompanyId == companyId.Value);
+                // Isolasi multi-tenant: PM dan Corporate Admin hanya dapat mereset tim sesama perusahaannya
+                usersQuery = usersQuery.Where(u => u.CompanyId == callerCompanyId.Value);
             }
             targetUserIds = await usersQuery.Select(u => u.Id).ToListAsync();
             targetDescription = $"seluruh pengguna ({targetUserIds.Count} akun)";
@@ -1004,6 +1019,13 @@ public class GamificationController : ControllerBase
             {
                 return NotFound(new { success = false, message = "Pengguna tidak ditemukan." });
             }
+
+            // Isolasi multi-tenant: Pastikan target user berada di perusahaan yang sama jika bukan SuperAdmin
+            if (!isSuperAdmin && callerCompanyId.HasValue && user.CompanyId != callerCompanyId.Value)
+            {
+                return StatusCode(403, new { success = false, message = "Akses ditolak: Anda hanya dapat mereset gamifikasi untuk anggota tim di perusahaan Anda sendiri." });
+            }
+
             targetUserIds = new List<string> { user.Id };
             targetDescription = $"pengguna '{user.FullName}'";
         }
@@ -1072,6 +1094,29 @@ public class GamificationController : ControllerBase
                 deletedClaims = claimsDeleted
             }
         });
+    }
+
+    private async Task<bool> IsUserProjectManagerOrAdminAsync()
+    {
+        if (_tenantService.IsAdmin || _tenantService.IsProjectManager) return true;
+        var user = User;
+        if (user?.Identity?.IsAuthenticated != true) return false;
+        if (user.IsInRole("Administrator") || user.IsInRole("SuperAdmin") || user.IsInRole("Project Manager") || user.IsInRole("ProjectManager")) return true;
+        var sub = _tenantService.UserId;
+        if (string.IsNullOrEmpty(sub)) return false;
+        var dbUser = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == sub);
+        if (dbUser != null)
+        {
+            if (dbUser.JobTitle != null && (dbUser.JobTitle.Contains("Project Manager", StringComparison.OrdinalIgnoreCase) ||
+                                           dbUser.JobTitle.Equals("PM", StringComparison.OrdinalIgnoreCase) ||
+                                           dbUser.JobTitle.Contains("Admin", StringComparison.OrdinalIgnoreCase)))
+                return true;
+
+            var isPmRole = await _context.UserRoles.AnyAsync(ur => ur.UserId == dbUser.Id &&
+                (ur.RoleId == "r-pm" || ur.RoleId == "r-admin" || _context.Roles.Any(r => r.Id == ur.RoleId && (r.Name == "Project Manager" || r.Name == "Administrator"))));
+            if (isPmRole) return true;
+        }
+        return false;
     }
 
     private async Task<bool> IsUserAdminAsync()

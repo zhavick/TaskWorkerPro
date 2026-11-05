@@ -28,7 +28,8 @@ public class ReportsController : ControllerBase
     private string CurrentUserId => _tenantService.UserId ?? string.Empty;
 
     private bool IsAdmin =>
-        _tenantService.IsAdmin || (User?.Identity?.IsAuthenticated == true && User.IsInRole("Administrator"));
+        _tenantService.IsAdmin || _tenantService.IsProjectManager ||
+        (User?.Identity?.IsAuthenticated == true && (User.IsInRole("Administrator") || User.IsInRole("Project Manager") || User.IsInRole("SuperAdmin")));
 
     [HttpGet("filters")]
     public async Task<IActionResult> GetFilters(CancellationToken ct)

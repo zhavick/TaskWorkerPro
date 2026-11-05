@@ -160,14 +160,28 @@ export default function ReportsPage() {
 
   const { data: filterRes } = useQuery<any>({
     queryKey: ["reportFilters"],
-    queryFn: async () => (await apiClient.get("/reports/filters")).data,
+    queryFn: async () => {
+      try {
+        const res = await apiClient.get("/reports/filters");
+        return res.data;
+      } catch {
+        return { data: { projects: [], members: [], milestones: [] }, isAdmin: false };
+      }
+    },
   });
   const options = filterRes?.data;
   const isAdmin = !!filterRes?.isAdmin;
 
   const { data: report, isLoading } = useQuery<any>({
     queryKey: ["report", tab, params],
-    queryFn: async () => (await apiClient.get(`/reports/${tab}`, { params })).data.data,
+    queryFn: async () => {
+      try {
+        const res = await apiClient.get(`/reports/${tab}`, { params });
+        return res.data?.data || null;
+      } catch {
+        return null;
+      }
+    },
   });
 
   const toggle = (key: string) => setCollapsed((c) => ({ ...c, [key]: !c[key] }));
@@ -404,7 +418,7 @@ export default function ReportsPage() {
                     <span className="font-mono text-indigo-600 dark:text-indigo-400">{fmtH(p.hours)}</span>
                   </ProjectHeader>
                   {open &&
-                    p.milestones.map((m: any) => (
+                    (p.milestones || []).map((m: any) => (
                       <div key={`${pk}-${m.milestone}`}>
                         <MilestoneBar name={m.milestone}>
                           <span>{m.taskCount} tugas</span>
@@ -412,12 +426,12 @@ export default function ReportsPage() {
                         </MilestoneBar>
                         <table className="w-full border-collapse text-left text-xs">
                           <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                            {m.tasks.map((t: any) => (
+                            {(m.tasks || []).map((t: any) => (
                               <tr key={t.taskId} className="align-top hover:bg-gray-50/60 dark:hover:bg-gray-800/40">
                                 <td className="py-3 pl-16 pr-3">
                                   <div className="font-semibold text-gray-900 dark:text-white">{t.title}</div>
                                   <div className="mt-1 flex flex-wrap gap-1.5">
-                                    {t.members.map((mem: any) => (
+                                    {(t.members || []).map((mem: any) => (
                                       <span
                                         key={mem.userId}
                                         className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-300"
@@ -473,7 +487,7 @@ export default function ReportsPage() {
                     <span className="w-28"><ProgressBar value={p.avgProgress} tone="emerald" /></span>
                   </ProjectHeader>
                   {open &&
-                    p.milestones.map((m: any) => (
+                    (p.milestones || []).map((m: any) => (
                       <div key={`${pk}-${m.milestone}`}>
                         <MilestoneBar name={m.milestone}>
                           <span>{m.doneTasks}/{m.totalTasks} selesai</span>
@@ -482,7 +496,7 @@ export default function ReportsPage() {
                         </MilestoneBar>
                         <table className="w-full border-collapse text-left text-xs">
                           <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                            {m.tasks.map((t: any) => (
+                            {(m.tasks || []).map((t: any) => (
                               <tr key={t.taskId} className="hover:bg-gray-50/60 dark:hover:bg-gray-800/40">
                                 <td className="py-3 pl-16 pr-3 font-semibold text-gray-900 dark:text-white">{t.title}</td>
                                 <td className="px-3 py-3 text-gray-500">{t.assigneeName}</td>
@@ -532,7 +546,7 @@ export default function ReportsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                  {report.members.map((m: any, i: number) => (
+                  {(report?.members || []).map((m: any, i: number) => (
                     <tr key={m.userId} className="hover:bg-gray-50/60 dark:hover:bg-gray-800/40">
                       <td className="px-4 py-3.5 font-mono text-gray-400">{i + 1}</td>
                       <td className="px-4 py-3.5">

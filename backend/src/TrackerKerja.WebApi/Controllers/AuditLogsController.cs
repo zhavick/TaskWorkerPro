@@ -43,24 +43,47 @@ public class AuditLogsController : ControllerBase
         if (!string.IsNullOrWhiteSpace(search))
         {
             var searchLower = search.Trim();
-            query = query.Where(a => (a.UserName != null && a.UserName.Contains(searchLower)) ||
-                                     (a.UserEmail != null && a.UserEmail.Contains(searchLower)) ||
-                                     (a.Path != null && a.Path.Contains(searchLower)) ||
-                                     (a.ControllerName != null && a.ControllerName.Contains(searchLower)) ||
-                                     (a.ActionName != null && a.ActionName.Contains(searchLower)) ||
-                                     (a.Details != null && a.Details.Contains(searchLower)));
+            if (_context.Database.IsNpgsql())
+            {
+                query = query.Where(a => (a.UserName != null && EF.Functions.ILike(a.UserName, $"%{searchLower}%")) ||
+                                         (a.UserEmail != null && EF.Functions.ILike(a.UserEmail, $"%{searchLower}%")) ||
+                                         (a.Path != null && EF.Functions.ILike(a.Path, $"%{searchLower}%")) ||
+                                         (a.ControllerName != null && EF.Functions.ILike(a.ControllerName, $"%{searchLower}%")) ||
+                                         (a.ActionName != null && EF.Functions.ILike(a.ActionName, $"%{searchLower}%")) ||
+                                         (a.Details != null && EF.Functions.ILike(a.Details, $"%{searchLower}%")));
+            }
+            else
+            {
+                var lower = searchLower.ToLower();
+                query = query.Where(a => (a.UserName != null && a.UserName.ToLower().Contains(lower)) ||
+                                         (a.UserEmail != null && a.UserEmail.ToLower().Contains(lower)) ||
+                                         (a.Path != null && a.Path.ToLower().Contains(lower)) ||
+                                         (a.ControllerName != null && a.ControllerName.ToLower().Contains(lower)) ||
+                                         (a.ActionName != null && a.ActionName.ToLower().Contains(lower)) ||
+                                         (a.Details != null && a.Details.ToLower().Contains(lower)));
+            }
         }
 
         if (!string.IsNullOrWhiteSpace(method) && method.ToUpperInvariant() != "ALL")
         {
-            query = query.Where(a => a.HttpMethod == method.ToUpperInvariant());
+            var methodUpper = method.ToUpperInvariant();
+            query = query.Where(a => a.HttpMethod != null && a.HttpMethod.ToUpper() == methodUpper);
         }
 
         if (!string.IsNullOrWhiteSpace(module) && module.ToUpperInvariant() != "ALL")
         {
             var moduleLower = module.Trim();
-            query = query.Where(a => (a.Details != null && a.Details.Contains(moduleLower)) ||
-                                     (a.ControllerName != null && a.ControllerName.Contains(moduleLower)));
+            if (_context.Database.IsNpgsql())
+            {
+                query = query.Where(a => (a.Details != null && EF.Functions.ILike(a.Details, $"%{moduleLower}%")) ||
+                                         (a.ControllerName != null && EF.Functions.ILike(a.ControllerName, $"%{moduleLower}%")));
+            }
+            else
+            {
+                var lower = moduleLower.ToLower();
+                query = query.Where(a => (a.Details != null && a.Details.ToLower().Contains(lower)) ||
+                                         (a.ControllerName != null && a.ControllerName.ToLower().Contains(lower)));
+            }
         }
 
         if (statusCode.HasValue)
@@ -315,10 +338,16 @@ public class AuditLogsController : ControllerBase
             "Gamifikasi & Hadiah",
             "Pengumuman Resmi",
             "Manajemen Anggota",
+            "Faktur & Invoicing",
+            "Tiket & Bantuan",
+            "Manajemen Dokumen (DMS)",
+            "Laporan & Rekapitulasi",
+            "Profil & Multi-Perusahaan",
             "Konfigurasi Sistem",
             "Master Data SDLC",
             "Developer Tools",
-            "Sinkronisasi Host Induk"
+            "Sinkronisasi Host Induk",
+            "Dashboard & Ringkasan"
         };
         return Ok(new { success = true, data = modules });
     }

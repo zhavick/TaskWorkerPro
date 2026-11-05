@@ -440,6 +440,38 @@ public static class DbInitializer
             await context.SaveChangesAsync();
         }
 
+        // 2b. Pastikan Akun Administrator Standar (admin@trackerkerja.com / AdminSecure@2026!!)
+        var comAdminEmail = "admin@trackerkerja.com";
+        var comAdminUser = await context.Users.FirstOrDefaultAsync(u => u.Email == comAdminEmail);
+        if (comAdminUser == null)
+        {
+            comAdminUser = new AppUser
+            {
+                Id = "usr-admin-trackerkerja",
+                UserName = comAdminEmail,
+                NormalizedUserName = comAdminEmail.ToUpperInvariant(),
+                Email = comAdminEmail,
+                NormalizedEmail = comAdminEmail.ToUpperInvariant(),
+                EmailConfirmed = true,
+                FullName = "Administrator TrackerKerja",
+                JobTitle = "System Administrator",
+                AvatarColor = "#4F46E5",
+                CompanyId = company.Id,
+                IsApproved = true,
+                ApprovedAt = DateTimeOffset.UtcNow,
+                PasswordHash = PasswordHasher.HashPassword("AdminSecure@2026!!"),
+                CreatedAt = DateTimeOffset.UtcNow
+            };
+            context.Users.Add(comAdminUser);
+            await context.SaveChangesAsync();
+        }
+        else if (string.IsNullOrEmpty(comAdminUser.PasswordHash) || !comAdminUser.PasswordHash.Contains(':') || !PasswordHasher.VerifyPassword("AdminSecure@2026!!", comAdminUser.PasswordHash))
+        {
+            comAdminUser.PasswordHash = PasswordHasher.HashPassword("AdminSecure@2026!!");
+            comAdminUser.IsApproved = true;
+            await context.SaveChangesAsync();
+        }
+
         // Pastikan Master Peran Sistem (Admin, Project Manager, Staff/Member, DataPurgeAdmin)
         var rolesToEnsure = new List<(string Id, string Name)>
         {
@@ -518,6 +550,19 @@ public static class DbInitializer
                 await context.SaveChangesAsync();
             }
 
+        }
+
+        // Pastikan seluruh perusahaan default memiliki modul invoicing dan ticketing aktif
+        try
+        {
+            if (context.Database.IsRelational())
+            {
+                await context.Database.ExecuteSqlRawAsync("UPDATE companies SET enable_invoicing = true, enable_ticketing = true, enable_dms = true WHERE enable_invoicing = false OR enable_ticketing = false OR enable_dms = false;");
+            }
+        }
+        catch
+        {
+            // Abaikan jika database in-memory / tabel belum siap
         }
 
         // 3. Pastikan Koleksi 70+ Master Badge Gaul & Modern Anak Muda (FSD 5.20.4 + Ekstensi Gamifikasi Kreatif)

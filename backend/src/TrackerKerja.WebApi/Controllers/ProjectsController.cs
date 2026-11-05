@@ -36,6 +36,13 @@ public class ProjectsController : ControllerBase
             .AsNoTracking()
             .AsQueryable();
 
+        var userCompanyId = _tenantService.CompanyId;
+        if (!_tenantService.IsSuperAdmin && !userCompanyId.HasValue && !string.IsNullOrEmpty(_tenantService.UserId))
+        {
+            var user = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == _tenantService.UserId);
+            userCompanyId = user?.CompanyId;
+        }
+
         if (_tenantService.IsSuperAdmin)
         {
             if (companyId.HasValue)
@@ -43,9 +50,9 @@ public class ProjectsController : ControllerBase
                 query = query.Where(p => p.CompanyId == companyId.Value);
             }
         }
-        else if (_tenantService.CompanyId.HasValue)
+        else if (userCompanyId.HasValue)
         {
-            query = query.Where(p => p.CompanyId == _tenantService.CompanyId.Value);
+            query = query.Where(p => p.CompanyId == userCompanyId.Value);
         }
 
         if (status.HasValue)

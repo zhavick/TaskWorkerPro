@@ -68,23 +68,48 @@ public class AuditLogActionFilter : IAsyncActionFilter
                     {
                         sanitizedArgs[k] = "[REDACTED]";
                     }
-                    else if (v != null && v.GetType().Name.Contains("FormFile", StringComparison.OrdinalIgnoreCase))
+                    else if (v != null && (v.GetType().Name.Contains("FormFile", StringComparison.OrdinalIgnoreCase) ||
+                                           v is CancellationToken ||
+                                           v is Stream ||
+                                           v.GetType().Name.Contains("CancellationToken", StringComparison.OrdinalIgnoreCase) ||
+                                           v.GetType().Name.Contains("HttpContext", StringComparison.OrdinalIgnoreCase)))
                     {
-                        sanitizedArgs[k] = "[FILE_UPLOAD]";
+                        sanitizedArgs[k] = $"[{v.GetType().Name}]";
+                    }
+                    else if (v != null)
+                    {
+                        var emailProp = v.GetType().GetProperty("Email") ?? v.GetType().GetProperty("email");
+                        if (emailProp != null)
+                        {
+                            attemptedEmail = emailProp.GetValue(v)?.ToString();
+                        }
+
+                        var type = v.GetType();
+                        if (type.IsPrimitive || v is string || v is decimal || v is DateTime || v is DateTimeOffset || v is Guid)
+                        {
+                            sanitizedArgs[k] = v;
+                        }
+                        else
+                        {
+                            try
+                            {
+                                var safeJson = JsonSerializer.Serialize(v, new JsonSerializerOptions
+                                {
+                                    WriteIndented = false,
+                                    MaxDepth = 8,
+                                    ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles
+                                });
+                                sanitizedArgs[k] = JsonSerializer.Deserialize<JsonElement>(safeJson);
+                            }
+                            catch
+                            {
+                                sanitizedArgs[k] = v.ToString() ?? "[Complex Data]";
+                            }
+                        }
                     }
                     else
                     {
-                        sanitizedArgs[k] = v;
-
-                        // Capture email from login or registration request if available
-                        if (v != null)
-                        {
-                            var emailProp = v.GetType().GetProperty("Email") ?? v.GetType().GetProperty("email");
-                            if (emailProp != null)
-                            {
-                                attemptedEmail = emailProp.GetValue(v)?.ToString();
-                            }
-                        }
+                        sanitizedArgs[k] = null;
                     }
                 }
             }
@@ -173,12 +198,28 @@ public class AuditLogActionFilter : IAsyncActionFilter
                 }
             }
 
-            var details = JsonSerializer.Serialize(detailsPayload, new JsonSerializerOptions
+            string details;
+            try
             {
-                WriteIndented = false,
-                MaxDepth = 32,
-                ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles
-            });
+                details = JsonSerializer.Serialize(detailsPayload, new JsonSerializerOptions
+                {
+                    WriteIndented = false,
+                    MaxDepth = 32,
+                    ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles
+                });
+            }
+            catch (Exception exSerial)
+            {
+                _logger.LogWarning(exSerial, "Details payload serialization fallback triggered for {Path}", path);
+                details = JsonSerializer.Serialize(new Dictionary<string, object?>
+                {
+                    ["module"] = module,
+                    ["actionSummary"] = actionSummary,
+                    ["ipAddress"] = ipAddress,
+                    ["userAgent"] = userAgent,
+                    ["params"] = "[Complex Data]"
+                });
+            }
 
             var auditLog = new AuditLog
             {
@@ -211,21 +252,40 @@ public class AuditLogActionFilter : IAsyncActionFilter
         if (string.Equals(httpMethod, "OPTIONS", StringComparison.OrdinalIgnoreCase)) return false;
         if (path.StartsWith("/health", StringComparison.OrdinalIgnoreCase)) return false;
         if (path.StartsWith("/swagger", StringComparison.OrdinalIgnoreCase)) return false;
-        if (path.EndsWith(".js") || path.EndsWith(".css") || path.EndsWith(".ico") || path.EndsWith(".map")) return false;
+        if (path.StartsWith("/hubs", StringComparison.OrdinalIgnoreCase)) return false;
+        if (path.EndsWith(".js") || path.EndsWith(".css") || path.EndsWith(".ico") || path.EndsWith(".map") ||
+            path.EndsWith(".png") || path.EndsWith(".jpg") || path.EndsWith(".jpeg") || path.EndsWith(".svg") ||
+            path.EndsWith(".woff") || path.EndsWith(".woff2")) return false;
 
         // Selalu catat setiap aksi mutasi (POST, PUT, DELETE, PATCH)
         if (MutatingMethods.Contains(httpMethod)) return true;
 
-        // Catat aksi GET penting (Ekspor, Impor, Log Audit, Sinkronisasi, Profil, Konfigurasi)
+        // Catat akses dan pembacaan data di semua modul bisnis
         var lower = path.ToLowerInvariant();
-        return lower.Contains("export") ||
+        return lower.Contains("/api/tasks") ||
+               lower.Contains("/api/projects") ||
+               lower.Contains("/api/invoices") ||
+               lower.Contains("/api/reports") ||
+               lower.Contains("/api/issues") ||
+               lower.Contains("/api/documents") ||
+               lower.Contains("/api/companies") ||
+               lower.Contains("/api/members") ||
+               lower.Contains("/api/attendances") ||
+               lower.Contains("/api/timesheets") ||
+               lower.Contains("/api/gamification") ||
+               lower.Contains("/api/notes") ||
+               lower.Contains("/api/calendar") ||
+               lower.Contains("/api/announcements") ||
+               lower.Contains("/api/audit-logs") ||
+               lower.Contains("/api/audittrail") ||
+               lower.Contains("/api/dashboard") ||
+               lower.Contains("/api/settings") ||
+               lower.Contains("/api/profile") ||
+               lower.Contains("/api/devtools") ||
+               lower.Contains("/api/sync") ||
+               lower.Contains("export") ||
                lower.Contains("import") ||
-               lower.Contains("audit-logs") ||
-               lower.Contains("template") ||
-               lower.Contains("package") ||
-               lower.Contains("stats") ||
-               lower.Contains("settings") ||
-               lower.Contains("profile");
+               lower.Contains("stats");
     }
 
     private static string GetModuleName(string controllerName) => controllerName switch
@@ -245,6 +305,19 @@ public class AuditLogActionFilter : IAsyncActionFilter
         "Sync" => "Sinkronisasi Host Induk",
         "Calendar" => "Jadwal & Kalender",
         "AuditLogs" => "Audit Trail & Log",
+        "Invoices" => "Faktur & Invoicing",
+        "Issues" => "Tiket & Bantuan",
+        "Documents" => "Manajemen Dokumen (DMS)",
+        "Reports" => "Laporan & Rekapitulasi",
+        "Companies" => "Profil & Multi-Perusahaan",
+        "CompanyTimesheetConfig" => "Konfigurasi Timesheet",
+        "TimesheetPeriods" => "Periode Timesheet",
+        "EmailConfig" => "Konfigurasi Email SMTP",
+        "Notifications" => "Pemberitahuan Sistem",
+        "Dashboard" => "Dashboard & Ringkasan",
+        "Profile" => "Profil Pengguna",
+        "SqlTools" => "SQL Tools",
+        "SystemStatus" => "Status Sistem",
         _ => controllerName
     };
 
@@ -366,6 +439,64 @@ public class AuditLogActionFilter : IAsyncActionFilter
             if (lowerPath.Contains("/push")) return "Mengirim paket sinkronisasi data ke host induk";
             if (lowerPath.Contains("/pull")) return "Menerima data sinkronisasi dari host induk";
             if (lowerPath.Contains("/ping")) return "Menguji koneksi ke host induk";
+        }
+
+        // 12. Invoices Module
+        if (controllerName.Equals("Invoices", StringComparison.OrdinalIgnoreCase))
+        {
+            if (lowerPath.Contains("/status")) return "Mengubah status pembayaran invoice";
+            if (httpMethod == "POST") return "Menerbitkan invoice baru";
+            if (httpMethod == "PUT") return "Memperbarui detail invoice";
+            if (httpMethod == "DELETE") return "Menghapus invoice";
+            return "Melihat data invoice & penagihan";
+        }
+
+        // 13. Issues Module
+        if (controllerName.Equals("Issues", StringComparison.OrdinalIgnoreCase))
+        {
+            if (lowerPath.Contains("/comments")) return "Menambahkan komentar penanganan tiket";
+            if (lowerPath.Contains("/status")) return "Mengubah status tiket issue";
+            if (httpMethod == "POST") return "Membuat tiket bantuan baru";
+            if (httpMethod == "PUT") return "Memperbarui detail tiket issue";
+            if (httpMethod == "DELETE") return "Menghapus tiket issue";
+            return "Melihat data tiket bantuan / issues";
+        }
+
+        // 14. Documents Module
+        if (controllerName.Equals("Documents", StringComparison.OrdinalIgnoreCase))
+        {
+            if (lowerPath.Contains("/download")) return "Mengunduh berkas dokumen korporat";
+            if (httpMethod == "POST") return "Mengunggah dokumen korporat baru (DMS)";
+            if (httpMethod == "PUT") return "Memperbarui metadata dokumen";
+            if (httpMethod == "DELETE") return "Menghapus dokumen dari repository";
+            return "Melihat repositori dokumen (DMS)";
+        }
+
+        // 15. Reports Module
+        if (controllerName.Equals("Reports", StringComparison.OrdinalIgnoreCase))
+        {
+            if (lowerPath.Contains("/export")) return "Mengekspor laporan ke format Excel (.xlsx)";
+            if (lowerPath.Contains("/timesheet")) return "Melihat laporan rekapitulasi timesheet";
+            if (lowerPath.Contains("/tasks")) return "Melihat laporan kemajuan tugas";
+            if (lowerPath.Contains("/members")) return "Melihat laporan achievement staf";
+            return "Membuka pusat pelaporan & rekapitulasi";
+        }
+
+        // 16. Companies Module
+        if (controllerName.Equals("Companies", StringComparison.OrdinalIgnoreCase))
+        {
+            if (httpMethod == "POST") return "Menambahkan perusahaan korporat baru";
+            if (httpMethod == "PUT") return "Memperbarui data profil & modul perusahaan";
+            if (httpMethod == "DELETE") return "Menghapus entitas perusahaan";
+            return "Melihat daftar korporat & perusahaan";
+        }
+
+        // 17. Notifications Module
+        if (controllerName.Equals("Notifications", StringComparison.OrdinalIgnoreCase))
+        {
+            if (lowerPath.Contains("/mark-all-read")) return "Menandai seluruh notifikasi telah dibaca";
+            if (lowerPath.Contains("/read")) return "Membaca notifikasi sistem";
+            return "Melihat daftar notifikasi";
         }
 
         return $"{httpMethod} {actionName ?? path}";

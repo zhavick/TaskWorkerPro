@@ -14,14 +14,66 @@ import {
   ShoppingBag,
   Coins,
   ArrowRight,
+  RotateCcw,
+  AlertTriangle,
 } from "lucide-react";
 import { Button } from "@/components/tailgrids/core/button";
 import { toast } from "sonner";
 import { BadgeIcon } from "@/components/common/BadgeIcon";
 import { GamificationNav } from "./_components/gamification-nav";
+import { useCurrentUser } from "@/hooks/use-current-user";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogBody } from "@/components/tailgrids/core/dialog";
 
 export default function GamificationPage() {
   const queryClient = useQueryClient();
+  const { user, isAdmin, isProjectManager, canManageCompany } = useCurrentUser();
+
+  // Reset Gamifikasi Modal State for Project Manager & Admin
+  const [resetModalOpen, setResetModalOpen] = useState(false);
+  const [resetTargetUser, setResetTargetUser] = useState("all");
+  const [resetOptions, setResetOptions] = useState({
+    resetCheckIns: true,
+    resetBadges: true,
+    resetClaims: true,
+  });
+
+  // Query Members for Company Gamification Reset
+  const { data: members = [] } = useQuery<any[]>({
+    queryKey: ["membersListForGamification"],
+    queryFn: async () => {
+      try {
+        const res = await apiClient.get("/members?isApproved=true");
+        return Array.isArray(res.data?.data) ? res.data.data : [];
+      } catch {
+        return [];
+      }
+    },
+    enabled: canManageCompany,
+  });
+
+  // Reset Gamification Mutation
+  const resetMutation = useMutation({
+    mutationFn: async () => {
+      const payload = {
+        userId: resetTargetUser === "all" ? null : resetTargetUser,
+        resetCheckIns: resetOptions.resetCheckIns,
+        resetBadges: resetOptions.resetBadges,
+        resetClaims: resetOptions.resetClaims,
+      };
+      const res = await apiClient.post("/gamification/admin/reset-points", payload);
+      return res.data;
+    },
+    onSuccess: (data: any) => {
+      toast.success(data?.message || "Gamifikasi berhasil direset.");
+      setResetModalOpen(false);
+      queryClient.invalidateQueries({ queryKey: ["gamificationSummary"] });
+      queryClient.invalidateQueries({ queryKey: ["gamificationBadges"] });
+      queryClient.invalidateQueries({ queryKey: ["gamificationRewards"] });
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || "Gagal mereset gamifikasi");
+    },
+  });
 
   // 1. Gamification Summary
   const { data: summary, isLoading: loadingSummary } = useQuery<any>({
@@ -74,21 +126,35 @@ export default function GamificationPage() {
         title="Gamifikasi & Prestasi Tim"
         subtitle="Pantau rangkaian streak harian, raih lencana pencapaian, dan kumpulkan poin reward produktivitas."
         action={
-          !summary?.hasCheckedInToday ? (
-            <Button
-              onClick={() => checkInMutation.mutate()}
-              disabled={checkInMutation.isPending}
-              className="gap-2 bg-gradient-to-r from-amber-500 to-orange-500 font-bold text-white shadow-md shadow-orange-500/20 text-xs"
-            >
-              <Sparkles className="h-4 w-4" />
-              1-Click Check-In (+10 Pts)
-            </Button>
-          ) : (
-            <span className="flex items-center gap-1.5 rounded-xl bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700 border border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800">
-              <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-              Sudah Check-In Hari Ini
-            </span>
-          )
+          <div className="flex flex-wrap items-center gap-2">
+            {!summary?.hasCheckedInToday ? (
+              <Button
+                onClick={() => checkInMutation.mutate()}
+                disabled={checkInMutation.isPending}
+                className="gap-2 bg-gradient-to-r from-amber-500 to-orange-500 font-bold text-white shadow-md shadow-orange-500/20 text-xs"
+              >
+                <Sparkles className="h-4 w-4" />
+                1-Click Check-In (+10 Pts)
+              </Button>
+            ) : (
+              <span className="flex items-center gap-1.5 rounded-xl bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700 border border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800">
+                <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                Sudah Check-In Hari Ini
+              </span>
+            )}
+
+            {canManageCompany && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setResetModalOpen(true)}
+                className="gap-1.5 text-xs font-semibold text-rose-600 border-rose-200 hover:bg-rose-50 dark:border-rose-900/50 dark:text-rose-400 dark:hover:bg-rose-950/30"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                Reset Gamifikasi Tim
+              </Button>
+            )}
+          </div>
         }
       />
 
