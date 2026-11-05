@@ -209,6 +209,69 @@ public class AuthControllerTests
         deleteResult!.StatusCode.Should().Be(400);
     }
 
+    [Fact]
+    public async Task ForgotPassword_And_ResetPassword_RequiresAdminApproval_ForNextLogin()
+    {
+        // 1. Arrange User
+        var user = new AppUser
+        {
+            Id = "usr-fp-test",
+            Email = "member.forgot@test.com",
+            UserName = "member.forgot@test.com",
+            FullName = "Member Lupa Password",
+            PasswordHash = TrackerKerja.Infrastructure.Services.PasswordHasher.HashPassword("OldSecret123!"),
+            CompanyId = 10,
+            IsApproved = true,
+            ApprovedAt = DateTimeOffset.UtcNow.AddDays(-10)
+        };
+        _context.Users.Add(user);
+        await _context.SaveChangesAsync();
+
+        var authController = new AuthController(_context, _jwtService)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext()
+            }
+        };
+
+        // 2. Act Forgot Password
+        var fpResult = await authController.ForgotPassword(new ForgotPasswordRequest("member.forgot@test.com")) as OkObjectResult;
+        fpResult.Should().NotBeNull();
+        var fpData = fpResult!.Value;
+        var tokenProp = fpData?.GetType().GetProperty("claimToken");
+        var claimToken = tokenProp?.GetValue(fpData)?.ToString();
+        claimToken.Should().NotBeNullOrEmpty();
+
+        // 3. Act Reset Password with Token
+        var resetReq = new ResetPasswordRequest("member.forgot@test.com", claimToken!, "BrandNewPass2026!");
+        var resetResult = await authController.ResetPassword(resetReq) as OkObjectResult;
+        resetResult.Should().NotBeNull();
+        resetResult!.StatusCode.Should().Be(200);
+
+        // 4. Verify in DB: User IsApproved should now be false!
+        var updatedUser = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == "usr-fp-test");
+        updatedUser!.IsApproved.Should().BeFalse();
+        updatedUser.RejectionReason.Should().Contain("kata sandi");
+
+        // 5. User attempts to login with the new password before Administrator approves
+        var loginAttemptResult = await authController.Login(new LoginRequest("member.forgot@test.com", "BrandNewPass2026!")) as ObjectResult;
+        loginAttemptResult.Should().NotBeNull();
+        loginAttemptResult!.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+
+        // 6. Administrator approves the user
+        var tenantService = new FakeAdminTenantService();
+        var membersController = new MembersController(_context, tenantService);
+        var approveResult = await membersController.ApproveMember("usr-fp-test", null) as OkObjectResult;
+        approveResult.Should().NotBeNull();
+        approveResult!.StatusCode.Should().Be(200);
+
+        // 7. User now logs in successfully
+        var successfulLoginResult = await authController.Login(new LoginRequest("member.forgot@test.com", "BrandNewPass2026!")) as OkObjectResult;
+        successfulLoginResult.Should().NotBeNull();
+        successfulLoginResult!.StatusCode.Should().Be(200);
+    }
+
     private class FakeAdminTenantService : ICurrentTenantService
     {
         public int? CompanyId => 10;

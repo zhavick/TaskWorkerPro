@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Text;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -155,10 +156,14 @@ public class AuthController : ControllerBase
         // Cek Status Approval
         if (!user.IsApproved)
         {
+            var approvalMessage = !string.IsNullOrEmpty(user.RejectionReason) && user.RejectionReason.Contains("kata sandi")
+                ? "Kata sandi Anda telah berhasil diperbarui, namun akun Anda membutuhkan persetujuan (approval) dari Administrator Aplikasi sebelum dapat digunakan pada login selanjutnya."
+                : "Pendaftaran Anda telah berhasil, namun akun Anda masih menunggu persetujuan (approval) dari Administrator.";
+
             return StatusCode(403, new
             {
                 success = false,
-                message = "Pendaftaran Anda telah berhasil, namun akun Anda masih menunggu persetujuan (approval) dari Administrator."
+                message = approvalMessage
             });
         }
 
@@ -315,22 +320,133 @@ public class AuthController : ControllerBase
     [HttpPost("forgot-password")]
     public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest request)
     {
-        var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == request.Email.Trim().ToLower());
-        if (user == null)
+        if (string.IsNullOrWhiteSpace(request?.Email))
         {
-            return Ok(new { success = true, message = "Jika email terdaftar, instruksi reset telah dibuat." });
+            return BadRequest(new { success = false, message = "Email wajib diisi." });
         }
 
-        // Generate Fallback Claim Token (15 menit)
-        var claimToken = Guid.NewGuid().ToString("N");
+        var normalizedEmail = request.Email.Trim().ToLowerInvariant();
+        var user = await _context.Users.FirstOrDefaultAsync(u => u.Email != null && u.Email.ToLower() == normalizedEmail);
+        if (user == null)
+        {
+            return Ok(new
+            {
+                success = true,
+                message = "Jika email terdaftar dalam sistem, instruksi dan token pengaturan ulang kata sandi telah dipersiapkan.",
+                claimToken = string.Empty,
+                claimUrl = string.Empty,
+                expiresInMinutes = 30
+            });
+        }
+
+        // Generate SecurityStamp baru agar token sebelumnya kadaluarsa
+        user.SecurityStamp = Guid.NewGuid().ToString("N");
+        await _context.SaveChangesAsync();
+
+        var expiry = DateTimeOffset.UtcNow.AddMinutes(30).ToUnixTimeSeconds();
+        var rawPayload = $"{user.Id}:{user.SecurityStamp}:{expiry}";
+        var claimToken = Convert.ToBase64String(Encoding.UTF8.GetBytes(rawPayload));
 
         return Ok(new
         {
             success = true,
-            message = "Permintaan reset kata sandi berhasil.",
+            message = "Permintaan reset kata sandi berhasil diproses. Silakan masukkan kata sandi baru Anda.",
+            email = user.Email,
             claimToken,
-            claimUrl = $"/reset-password?email={Uri.EscapeDataString(user.Email!)}&token={claimToken}",
-            expiresInMinutes = 15
+            claimUrl = $"/reset-password?email={Uri.EscapeDataString(user.Email!)}&token={Uri.EscapeDataString(claimToken)}",
+            expiresInMinutes = 30
+        });
+    }
+
+    [HttpPost("reset-password")]
+    public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest request)
+    {
+        if (request == null || string.IsNullOrWhiteSpace(request.Email))
+        {
+            return BadRequest(new { success = false, message = "Email tidak boleh kosong." });
+        }
+
+        if (string.IsNullOrWhiteSpace(request.NewPassword) || request.NewPassword.Length < 6)
+        {
+            return BadRequest(new { success = false, message = "Kata sandi baru minimal 6 karakter." });
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Token))
+        {
+            return BadRequest(new { success = false, message = "Token pengaturan ulang kata sandi tidak valid atau telah kedaluwarsa." });
+        }
+
+        string userId;
+        string securityStamp;
+        long expiryUnix;
+
+        try
+        {
+            var rawPayload = Encoding.UTF8.GetString(Convert.FromBase64String(request.Token));
+            var parts = rawPayload.Split(':');
+            if (parts.Length != 3)
+            {
+                return BadRequest(new { success = false, message = "Format token pengaturan ulang kata sandi tidak valid." });
+            }
+
+            userId = parts[0];
+            securityStamp = parts[1];
+            if (!long.TryParse(parts[2], out expiryUnix))
+            {
+                return BadRequest(new { success = false, message = "Token tidak valid." });
+            }
+        }
+        catch
+        {
+            return BadRequest(new { success = false, message = "Token pengaturan ulang kata sandi tidak valid atau rusak." });
+        }
+
+        if (DateTimeOffset.UtcNow.ToUnixTimeSeconds() > expiryUnix)
+        {
+            return BadRequest(new { success = false, message = "Token pengaturan ulang kata sandi telah kedaluwarsa (berlaku 30 menit). Silakan ajukan reset baru." });
+        }
+
+        var normalizedEmail = request.Email.Trim().ToLowerInvariant();
+        var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == userId && u.Email != null && u.Email.ToLower() == normalizedEmail);
+
+        if (user == null || user.SecurityStamp != securityStamp)
+        {
+            return BadRequest(new { success = false, message = "Token pengaturan ulang kata sandi tidak valid atau telah digunakan sebelumnya." });
+        }
+
+        // Update password hash
+        user.PasswordHash = PasswordHasher.HashPassword(request.NewPassword);
+        user.SecurityStamp = Guid.NewGuid().ToString("N");
+        user.ConcurrencyStamp = Guid.NewGuid().ToString();
+        user.AccessFailedCount = 0;
+        user.LockoutEnd = null;
+
+        // Revoke seluruh token refresh aktif
+        var existingTokens = await _context.UserRefreshTokens.Where(t => t.UserId == user.Id).ToListAsync();
+        if (existingTokens.Count > 0)
+        {
+            _context.UserRefreshTokens.RemoveRange(existingTokens);
+        }
+
+        // Setting approval: kata sandi yang sudah diupdate membutuhkan approval administrator aplikasi untuk dapat digunakan pada login selanjutnya
+        var requiresApproval = user.Id != "usr-superadmin" && user.Email?.ToLower() != "admin@trackerkerja.local";
+        if (requiresApproval)
+        {
+            user.IsApproved = false;
+            user.ApprovedAt = null;
+            user.ApprovedByUserId = null;
+            user.RejectionReason = "Memerlukan persetujuan ulang Administrator setelah perubahan kata sandi (Forgot Password).";
+        }
+
+        await _context.SaveChangesAsync();
+
+        return Ok(new
+        {
+            success = true,
+            requiresApproval,
+            message = requiresApproval
+                ? "Kata sandi Anda telah berhasil diperbarui. Demi keamanan sistem, akun Anda memerlukan persetujuan (approval) dari Administrator Aplikasi sebelum dapat digunakan pada login selanjutnya."
+                : "Kata sandi Administrator berhasil diperbarui."
         });
     }
 

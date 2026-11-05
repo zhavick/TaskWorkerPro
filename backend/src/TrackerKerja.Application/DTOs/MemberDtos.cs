@@ -44,7 +44,8 @@ public record MemberListItemDto(
     bool CanPurgeData = false,
     bool IsActive = true,
     DateTimeOffset? ResignedAt = null,
-    string? ResignationReason = null
+    string? ResignationReason = null,
+    string? RejectionReason = null
 );
 
 public record CreateMemberRequest(
