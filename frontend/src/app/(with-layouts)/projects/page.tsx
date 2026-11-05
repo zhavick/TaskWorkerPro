@@ -67,8 +67,12 @@ export default function ProjectsPage() {
   const { data: projects = [], isLoading } = useQuery<any[]>({
     queryKey: ["projectsList", search],
     queryFn: async () => {
-      const res = await apiClient.get(`/projects${search ? `?search=${search}` : ""}`);
-      return res.data.data;
+      try {
+        const res = await apiClient.get(`/projects${search ? `?search=${search}` : ""}`);
+        return Array.isArray(res.data?.data) ? res.data.data : [];
+      } catch {
+        return [];
+      }
     },
   });
 
@@ -76,8 +80,12 @@ export default function ProjectsPage() {
   const { data: companies = [] } = useQuery<any[]>({
     queryKey: ["companiesList"],
     queryFn: async () => {
-      const res = await apiClient.get("/companies");
-      return res.data.data;
+      try {
+        const res = await apiClient.get("/companies");
+        return Array.isArray(res.data?.data) ? res.data.data : [];
+      } catch {
+        return [];
+      }
     },
   });
 
@@ -85,8 +93,12 @@ export default function ProjectsPage() {
   const { data: members = [] } = useQuery<any[]>({
     queryKey: ["membersList"],
     queryFn: async () => {
-      const res = await apiClient.get("/members");
-      return res.data.data;
+      try {
+        const res = await apiClient.get("/members");
+        return Array.isArray(res.data?.data) ? res.data.data : [];
+      } catch {
+        return [];
+      }
     },
   });
 
@@ -101,9 +113,13 @@ export default function ProjectsPage() {
     enabled: !!selectedProjectForAssign,
   });
 
+  const safeProjects = Array.isArray(projects) ? projects : [];
+  const safeCompanies = Array.isArray(companies) ? companies : [];
+  const safeMembers = Array.isArray(members) ? members : [];
+
   // Group projects by Company
   const groupedProjects = useMemo(() => {
-    const filtered = projects.filter((p) => {
+    const filtered = safeProjects.filter((p) => {
       if (companyFilter === "all") return true;
       if (companyFilter === "none") return !p.companyId;
       return String(p.companyId) === companyFilter;
@@ -143,7 +159,8 @@ export default function ProjectsPage() {
       groups[key].projects.push(p);
       groups[key].totalBudget += Number(p.budget || 0);
       groups[key].totalActualCost += Number(p.actualCost || 0);
-      if (p.status === 1) {
+      const isCompleted = p.status === 1 || p.status === "Completed" || String(p.status).toLowerCase() === "completed";
+      if (isCompleted) {
         groups[key].completedCount += 1;
       } else {
         groups[key].activeCount += 1;
@@ -174,7 +191,8 @@ export default function ProjectsPage() {
     setEditDescription(p.description || "");
     setEditClientName(p.clientName || "");
     setEditColor(p.color || "#4680FF");
-    setEditStatus(String(p.status ?? 0));
+    const statusVal = typeof p.status === "string" ? (p.status.toLowerCase() === "completed" ? "1" : "0") : String(p.status ?? 0);
+    setEditStatus(statusVal);
     setEditBudget(String(p.budget ?? 0));
     setEditActualCost(String(p.actualCost ?? 0));
     setEditDeadline(p.deadline ? p.deadline.split("T")[0] : "");
@@ -312,9 +330,9 @@ export default function ProjectsPage() {
             onChange={(e) => setCompanyFilter(e.target.value)}
             className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
           >
-            <option value="all">Semua Perusahaan ({projects.length})</option>
-            {companies.map((c) => {
-              const count = projects.filter((p) => p.companyId === c.id).length;
+            <option value="all">Semua Perusahaan ({safeProjects.length})</option>
+            {safeCompanies.map((c) => {
+              const count = safeProjects.filter((p) => p.companyId === c.id).length;
               return (
                 <option key={c.id} value={String(c.id)}>
                   {c.name} {c.code ? `(${c.code})` : ""} - {count} Proyek
@@ -557,7 +575,7 @@ export default function ProjectsPage() {
                 className="mt-1 w-full rounded-xl border border-gray-200 bg-transparent p-2.5 text-xs text-gray-900 dark:border-gray-800 dark:bg-gray-900 dark:text-white"
               >
                 <option value="">-- Pilih Perusahaan --</option>
-                {companies.map((c) => (
+                {safeCompanies.map((c) => (
                   <option key={c.id} value={String(c.id)}>
                     {c.name} {c.code ? `(${c.code})` : ""}
                   </option>
@@ -802,7 +820,7 @@ export default function ProjectsPage() {
                 className="mt-1 w-full rounded-xl border border-gray-200 bg-transparent p-2.5 text-xs text-gray-900 dark:border-gray-800 dark:bg-gray-900 dark:text-white"
               >
                 <option value="">-- Tanpa Perusahaan --</option>
-                {companies.map((c) => (
+                {safeCompanies.map((c) => (
                   <option key={c.id} value={String(c.id)}>
                     {c.name} {c.code ? `(${c.code})` : ""}
                   </option>

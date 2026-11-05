@@ -39,7 +39,7 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:5010
-      ConnectionStrings__DefaultConnection: Host=postgres;Port=5571;Database=trackerkerja_db;Username=tracker_admin;Password=${POSTGRES_PASSWORD};Maximum Pool Size=100;Minimum Pool Size=10;
+      ConnectionStrings__DefaultConnection: Host=postgres;Port=5571;Database=trackerkerja_db;Username=tracker_admin;Password=${POSTGRES_PASSWORD};Maximum Pool Size=100;Minimum Pool Size=10;Include Error Detail=true;
       JwtSettings__SecretKey: ${JWT_SECRET:?JWT_SECRET wajib diisi di .env}
       JwtSettings__Issuer: ${APP_URL:?APP_URL wajib diisi di .env}
       JwtSettings__Audience: ${APP_URL}
@@ -57,8 +57,9 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        # Relatif: browser memanggil /api, /hubs, /uploads di domain yang sama, diteruskan Nginx ke backend
+        # Relatif: browser memanggil /api, /hubs, /uploads di domain yang sama, diteruskan Nginx / Next.js ke backend
         NEXT_PUBLIC_API_BASE_URL: /api
+        BACKEND_URL: http://backend:5010
     container_name: trackerkerja_frontend
     restart: unless-stopped
     depends_on:

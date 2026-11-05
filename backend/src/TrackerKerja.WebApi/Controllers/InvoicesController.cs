@@ -356,6 +356,11 @@ public class InvoicesController : ControllerBase
         {
             var count = await _context.Invoices.CountAsync(i => i.CompanyId == targetCompanyId.Value) + 1;
             invoiceNumber = $"INV-{DateTime.UtcNow.Year}-{count:D4}";
+            while (await _context.Invoices.AnyAsync(i => i.CompanyId == targetCompanyId.Value && i.InvoiceNumber == invoiceNumber))
+            {
+                count++;
+                invoiceNumber = $"INV-{DateTime.UtcNow.Year}-{count:D4}";
+            }
         }
 
         // Calculate Items & Totals
@@ -411,7 +416,37 @@ public class InvoicesController : ControllerBase
             _context.Invoices.Add(invoice);
             await _context.SaveChangesAsync();
 
-            return Ok(new { success = true, message = "Invoice berhasil dibuat.", data = invoice });
+            var project = request.ProjectId.HasValue
+                ? await _context.Projects.AsNoTracking().FirstOrDefaultAsync(p => p.Id == request.ProjectId.Value)
+                : null;
+
+            var dto = new InvoiceDto(
+                invoice.Id,
+                invoice.InvoiceNumber,
+                invoice.CompanyId,
+                company.Name,
+                invoice.ProjectId,
+                project?.Name,
+                invoice.ClientName,
+                invoice.ClientEmail,
+                invoice.ClientAddress,
+                invoice.IssueDate,
+                invoice.DueDate,
+                invoice.Status,
+                invoice.TaxRatePercent,
+                invoice.DiscountAmount,
+                invoice.SubTotal,
+                invoice.TaxAmount,
+                invoice.TotalAmount,
+                invoice.Notes,
+                invoice.CreatedByUserId,
+                null,
+                invoice.PaidAt,
+                invoice.CreatedAt,
+                invoice.Items.Select(it => new InvoiceItemDto(it.Id, it.Description, it.Quantity, it.UnitPrice, it.Amount)).ToList()
+            );
+
+            return Ok(new { success = true, message = "Invoice berhasil dibuat.", data = dto });
         }
         catch (Exception ex)
         {
@@ -492,7 +527,39 @@ public class InvoicesController : ControllerBase
         try
         {
             await _context.SaveChangesAsync();
-            return Ok(new { success = true, message = "Invoice berhasil diperbarui.", data = invoice });
+
+            var comp = await _context.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == invoice.CompanyId);
+            var proj = invoice.ProjectId.HasValue
+                ? await _context.Projects.AsNoTracking().FirstOrDefaultAsync(p => p.Id == invoice.ProjectId.Value)
+                : null;
+
+            var dto = new InvoiceDto(
+                invoice.Id,
+                invoice.InvoiceNumber,
+                invoice.CompanyId,
+                comp?.Name,
+                invoice.ProjectId,
+                proj?.Name,
+                invoice.ClientName,
+                invoice.ClientEmail,
+                invoice.ClientAddress,
+                invoice.IssueDate,
+                invoice.DueDate,
+                invoice.Status,
+                invoice.TaxRatePercent,
+                invoice.DiscountAmount,
+                invoice.SubTotal,
+                invoice.TaxAmount,
+                invoice.TotalAmount,
+                invoice.Notes,
+                invoice.CreatedByUserId,
+                null,
+                invoice.PaidAt,
+                invoice.CreatedAt,
+                invoice.Items.Select(it => new InvoiceItemDto(it.Id, it.Description, it.Quantity, it.UnitPrice, it.Amount)).ToList()
+            );
+
+            return Ok(new { success = true, message = "Invoice berhasil diperbarui.", data = dto });
         }
         catch (Exception ex)
         {

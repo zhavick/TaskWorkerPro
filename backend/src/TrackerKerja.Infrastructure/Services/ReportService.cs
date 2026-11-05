@@ -39,8 +39,8 @@ public class ReportService : IReportService
     private static bool IsOverdue(WorkTask t, DateTimeOffset now) =>
         !IsDone(t) && t.DueDate.HasValue && t.DueDate.Value < now;
 
-    private static string MilestoneOf(WorkTask t) =>
-        string.IsNullOrWhiteSpace(t.Milestone) ? NoMilestone : t.Milestone.Trim();
+    private static string MilestoneOf(WorkTask? t) =>
+        string.IsNullOrWhiteSpace(t?.Milestone) ? NoMilestone : t!.Milestone.Trim();
 
     private static long SessionSeconds(WorkSession s, DateTimeOffset now) =>
         s.EndTime.HasValue ? s.Duration : Math.Max(0, (long)(now - s.StartTime).TotalSeconds);
@@ -58,9 +58,9 @@ public class ReportService : IReportService
         return true;
     }
 
-    private static bool MilestoneMatches(WorkTask t, ReportFilter f) =>
+    private static bool MilestoneMatches(WorkTask? t, ReportFilter f) =>
         string.IsNullOrWhiteSpace(f.Milestone) ||
-        string.Equals(MilestoneOf(t), f.Milestone.Trim(), StringComparison.OrdinalIgnoreCase);
+        (t != null && string.Equals(MilestoneOf(t), f.Milestone.Trim(), StringComparison.OrdinalIgnoreCase));
 
     private async Task<List<WorkTask>> LoadTasksAsync(
         ReportFilter filter, int? companyId, string currentUserId, bool isAdmin,
@@ -133,6 +133,7 @@ public class ReportService : IReportService
 
         var list = await query.ToListAsync(ct);
         return list.Where(s =>
+            s.Task != null &&
             MilestoneMatches(s.Task, filter) &&
             (!filter.StartDate.HasValue || s.StartTime >= filter.StartDate.Value) &&
             (!filter.EndDate.HasValue || s.StartTime <= filter.EndDate.Value)).ToList();
@@ -148,6 +149,7 @@ public class ReportService : IReportService
         var sessions = await LoadSessionsAsync(filter, companyId, currentUserId, isAdmin, ct);
 
         var projects = sessions
+            .Where(s => s.Task != null)
             .GroupBy(s => s.Task.ProjectId)
             .Select(pg =>
             {
