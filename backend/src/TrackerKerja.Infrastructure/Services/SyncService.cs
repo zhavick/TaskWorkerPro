@@ -150,6 +150,19 @@ public class SyncService : ISyncService
     public async Task<byte[]> ExportPackageZipAsync(bool includeFiles)
     {
         var payload = await PrepareSyncPayloadAsync(includeFiles: false);
+        if (includeFiles)
+        {
+            ConsolidateLocalUploads();
+            var uploadsSize = CalculateDirectorySize(_uploadBasePath);
+            payload = payload with
+            {
+                Manifest = payload.Manifest with
+                {
+                    IncludesFiles = true,
+                    UploadsSizeBytes = uploadsSize
+                }
+            };
+        }
 
         using var memoryStream = new MemoryStream();
         using (var archive = new ZipArchive(memoryStream, ZipArchiveMode.Create, leaveOpen: true))
@@ -788,21 +801,35 @@ public class SyncService : ISyncService
                 UpdatedAt = n.UpdatedAt
             }).ToListAsync();
 
-        var attachments = await _context.NoteAttachments.IgnoreQueryFilters()
-            .Select(a => new NoteAttachmentSyncDto
+        var rawAttachments = await _context.NoteAttachments.IgnoreQueryFilters().ToListAsync();
+        var attachments = rawAttachments.Select(a =>
+        {
+            var normalizedPath = (a.FilePath ?? string.Empty).Replace('\\', '/');
+            var diskFileName = !string.IsNullOrWhiteSpace(normalizedPath)
+                ? Path.GetFileName(normalizedPath)
+                : a.FileName;
+            if (string.IsNullOrWhiteSpace(diskFileName))
+            {
+                diskFileName = a.FileName;
+            }
+
+            var cleanFilePath = (!string.IsNullOrWhiteSpace(normalizedPath) && normalizedPath.StartsWith("/uploads/notes/"))
+                ? normalizedPath
+                : $"/uploads/notes/{a.NoteId}/{diskFileName}";
+
+            return new NoteAttachmentSyncDto
             {
                 Id = a.Id,
                 NoteId = a.NoteId,
                 FileName = a.FileName,
-                FilePath = (!string.IsNullOrWhiteSpace(a.FilePath) && !a.FilePath.Contains('\\') && a.FilePath.StartsWith("/uploads/"))
-                    ? a.FilePath
-                    : $"/uploads/notes/{a.NoteId}/{a.FileName}",
+                FilePath = cleanFilePath,
                 FileSize = a.FileSize,
                 ContentType = a.ContentType,
                 FileExtension = a.FileExtension,
                 UploadedByUserId = a.UploadedByUserId,
                 UploadedAt = a.UploadedAt
-            }).ToListAsync();
+            };
+        }).ToList();
 
         var masterBadges = await _context.MasterBadges.IgnoreQueryFilters()
             .Select(b => new MasterBadgeSyncDto
@@ -2110,10 +2137,83 @@ public class SyncService : ISyncService
                 }
             }
 
-            var normalizedFilePath = att.FilePath;
-            if (string.IsNullOrWhiteSpace(normalizedFilePath) || Path.IsPathRooted(normalizedFilePath) || normalizedFilePath.Contains('\\'))
+            var rawPath = (att.FilePath ?? string.Empty).Replace('\\', '/');
+            var diskFileName = !string.IsNullOrWhiteSpace(rawPath) ? Path.GetFileName(rawPath) : att.FileName;
+            if (string.IsNullOrWhiteSpace(diskFileName))
             {
-                normalizedFilePath = $"/uploads/notes/{targetNoteId}/{att.FileName}";
+                diskFileName = att.FileName;
+            }
+
+            var normalizedFilePath = $"/uploads/notes/{targetNoteId}/{diskFileName}";
+
+            // Pastikan relokasi dan mirroring berkas fisik ke direktori catatan tujuan (_uploadBasePath/notes/{targetNoteId}/)
+            try
+            {
+                var targetDir = Path.Combine(_uploadBasePath, "notes", targetNoteId.ToString());
+                if (!Directory.Exists(targetDir))
+                {
+                    Directory.CreateDirectory(targetDir);
+                }
+
+                var targetFilePath = Path.Combine(targetDir, diskFileName);
+                if (!File.Exists(targetFilePath))
+                {
+                    var candidateSources = new List<string>
+                    {
+                        Path.Combine(_uploadBasePath, "notes", att.NoteId.ToString(), diskFileName),
+                        Path.Combine(_uploadBasePath, "notes", att.NoteId.ToString(), att.FileName),
+                        Path.Combine(_uploadBasePath, "notes", targetNoteId.ToString(), att.FileName)
+                    };
+
+                    string? foundSource = candidateSources.FirstOrDefault(File.Exists);
+                    if (foundSource == null && Directory.Exists(_uploadBasePath))
+                    {
+                        var matches = Directory.GetFiles(_uploadBasePath, diskFileName, SearchOption.AllDirectories);
+                        if (matches.Length == 0 && !string.IsNullOrWhiteSpace(att.FileName))
+                        {
+                            matches = Directory.GetFiles(_uploadBasePath, att.FileName, SearchOption.AllDirectories);
+                        }
+                        if (matches.Length > 0)
+                        {
+                            foundSource = matches[0];
+                        }
+                    }
+
+                    if (foundSource != null && File.Exists(foundSource))
+                    {
+                        File.Copy(foundSource, targetFilePath, overwrite: true);
+                        if (!string.IsNullOrWhiteSpace(att.FileName) && !att.FileName.Equals(diskFileName, StringComparison.OrdinalIgnoreCase))
+                        {
+                            var targetRawPath = Path.Combine(targetDir, att.FileName);
+                            if (!File.Exists(targetRawPath))
+                            {
+                                File.Copy(foundSource, targetRawPath, overwrite: true);
+                            }
+                        }
+                        MirrorExtractedFile($"notes/{targetNoteId}/{diskFileName}", targetFilePath);
+                        if (!string.IsNullOrWhiteSpace(att.FileName))
+                        {
+                            MirrorExtractedFile($"notes/{targetNoteId}/{att.FileName}", targetFilePath);
+                        }
+                    }
+                }
+                else
+                {
+                    MirrorExtractedFile($"notes/{targetNoteId}/{diskFileName}", targetFilePath);
+                    if (!string.IsNullOrWhiteSpace(att.FileName) && !att.FileName.Equals(diskFileName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        var targetRawPath = Path.Combine(targetDir, att.FileName);
+                        if (!File.Exists(targetRawPath))
+                        {
+                            File.Copy(targetFilePath, targetRawPath, overwrite: true);
+                        }
+                        MirrorExtractedFile($"notes/{targetNoteId}/{att.FileName}", targetFilePath);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Failed to relocate or mirror note attachment file for note {NoteId}", targetNoteId);
             }
 
             var existing = await _context.NoteAttachments.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.Id == att.Id);
@@ -3172,6 +3272,82 @@ public class SyncService : ISyncService
                         _logger?.LogDebug(ex, "Could not consolidate file: {File}", file);
                     }
                 }
+            }
+
+            // 4. Pastikan setiap NoteAttachment di basis data tersedia secara fisik di _uploadBasePath/notes/{noteId}/{fileName}
+            try
+            {
+                var attachments = _context.NoteAttachments.IgnoreQueryFilters().ToList();
+                foreach (var att in attachments)
+                {
+                    var rawPath = (att.FilePath ?? string.Empty).Replace('\\', '/');
+                    var diskFileName = !string.IsNullOrWhiteSpace(rawPath) ? Path.GetFileName(rawPath) : att.FileName;
+                    if (string.IsNullOrWhiteSpace(diskFileName))
+                    {
+                        diskFileName = att.FileName;
+                    }
+
+                    var expectedDir = Path.Combine(_uploadBasePath, "notes", att.NoteId.ToString());
+                    var expectedTarget = Path.Combine(expectedDir, diskFileName);
+
+                    if (!File.Exists(expectedTarget))
+                    {
+                        var candidates = new List<string>();
+                        if (!string.IsNullOrWhiteSpace(att.FilePath) && File.Exists(att.FilePath))
+                        {
+                            candidates.Add(att.FilePath);
+                        }
+
+                        if (!string.IsNullOrWhiteSpace(att.FilePath))
+                        {
+                            var trimmed = att.FilePath.TrimStart('/', '\\');
+                            candidates.Add(Path.Combine(_uploadBasePath, trimmed));
+                            candidates.Add(Path.Combine(_uploadBasePath, "..", trimmed));
+                        }
+
+                        foreach (var src in candidateSources)
+                        {
+                            candidates.Add(Path.Combine(src, "notes", att.NoteId.ToString(), diskFileName));
+                            candidates.Add(Path.Combine(src, "notes", att.NoteId.ToString(), att.FileName));
+                        }
+
+                        string? found = candidates.FirstOrDefault(File.Exists);
+
+                        if (found == null && Directory.Exists(_uploadBasePath))
+                        {
+                            var matches = Directory.GetFiles(_uploadBasePath, diskFileName, SearchOption.AllDirectories);
+                            if (matches.Length == 0 && !string.IsNullOrWhiteSpace(att.FileName))
+                            {
+                                matches = Directory.GetFiles(_uploadBasePath, att.FileName, SearchOption.AllDirectories);
+                            }
+                            if (matches.Length > 0)
+                            {
+                                found = matches[0];
+                            }
+                        }
+
+                        if (found != null && File.Exists(found))
+                        {
+                            if (!Directory.Exists(expectedDir))
+                            {
+                                Directory.CreateDirectory(expectedDir);
+                            }
+                            File.Copy(found, expectedTarget, overwrite: true);
+                            if (!string.IsNullOrWhiteSpace(att.FileName) && !att.FileName.Equals(diskFileName, StringComparison.OrdinalIgnoreCase))
+                            {
+                                var expectedRaw = Path.Combine(expectedDir, att.FileName);
+                                if (!File.Exists(expectedRaw))
+                                {
+                                    File.Copy(found, expectedRaw, overwrite: true);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogDebug(ex, "Consolidation of database note attachments encountered an issue");
             }
         }
         catch (Exception ex)

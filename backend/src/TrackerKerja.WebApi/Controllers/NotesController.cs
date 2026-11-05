@@ -50,7 +50,7 @@ public class NotesController : ControllerBase
 
         if (!_tenantService.IsSuperAdmin && _tenantService.CompanyId.HasValue)
         {
-            query = query.Where(n => n.CompanyId == _tenantService.CompanyId.Value);
+            query = query.Where(n => n.CompanyId == null || n.CompanyId == _tenantService.CompanyId.Value || n.Category == "SOP");
         }
 
         if (taskId.HasValue) query = query.Where(n => n.TaskId == taskId.Value);
@@ -100,7 +100,7 @@ public class NotesController : ControllerBase
 
         if (note == null) return NotFound(new { success = false, message = "Catatan tidak ditemukan." });
 
-        if (!_tenantService.IsSuperAdmin && _tenantService.CompanyId.HasValue && note.CompanyId.HasValue && note.CompanyId.Value != _tenantService.CompanyId.Value)
+        if (!_tenantService.IsSuperAdmin && _tenantService.CompanyId.HasValue && note.CompanyId.HasValue && note.CompanyId.Value != _tenantService.CompanyId.Value && note.Category != "SOP")
         {
             return StatusCode(403, new { success = false, message = "Anda tidak berhak mengakses catatan perusahaan lain." });
         }
@@ -163,7 +163,7 @@ public class NotesController : ControllerBase
         var note = await _context.Notes.FirstOrDefaultAsync(n => n.Id == id);
         if (note == null) return NotFound(new { success = false, message = "Catatan tidak ditemukan." });
 
-        if (!_tenantService.IsSuperAdmin && _tenantService.CompanyId.HasValue && note.CompanyId.HasValue && note.CompanyId.Value != _tenantService.CompanyId.Value)
+        if (!_tenantService.IsSuperAdmin && _tenantService.CompanyId.HasValue && note.CompanyId.HasValue && note.CompanyId.Value != _tenantService.CompanyId.Value && note.Category != "SOP")
         {
             return StatusCode(403, new { success = false, message = "Anda tidak berhak mengakses catatan perusahaan lain." });
         }
@@ -187,7 +187,7 @@ public class NotesController : ControllerBase
         var note = await _context.Notes.FirstOrDefaultAsync(n => n.Id == id);
         if (note == null) return NotFound(new { success = false, message = "Catatan tidak ditemukan." });
 
-        if (!_tenantService.IsSuperAdmin && _tenantService.CompanyId.HasValue && note.CompanyId.HasValue && note.CompanyId.Value != _tenantService.CompanyId.Value)
+        if (!_tenantService.IsSuperAdmin && _tenantService.CompanyId.HasValue && note.CompanyId.HasValue && note.CompanyId.Value != _tenantService.CompanyId.Value && note.Category != "SOP")
         {
             return StatusCode(403, new { success = false, message = "Anda tidak berhak mengakses catatan perusahaan lain." });
         }
@@ -208,7 +208,7 @@ public class NotesController : ControllerBase
 
         if (note == null) return NotFound(new { success = false, message = "Catatan tidak ditemukan." });
 
-        if (!_tenantService.IsSuperAdmin && _tenantService.CompanyId.HasValue && note.CompanyId.HasValue && note.CompanyId.Value != _tenantService.CompanyId.Value)
+        if (!_tenantService.IsSuperAdmin && _tenantService.CompanyId.HasValue && note.CompanyId.HasValue && note.CompanyId.Value != _tenantService.CompanyId.Value && note.Category != "SOP")
         {
             return StatusCode(403, new { success = false, message = "Anda tidak berhak mengakses catatan perusahaan lain." });
         }
@@ -235,7 +235,7 @@ public class NotesController : ControllerBase
         var note = await _context.Notes.FirstOrDefaultAsync(n => n.Id == id);
         if (note == null) return NotFound(new { success = false, message = "Catatan tidak ditemukan." });
 
-        if (!_tenantService.IsSuperAdmin && _tenantService.CompanyId.HasValue && note.CompanyId.HasValue && note.CompanyId.Value != _tenantService.CompanyId.Value)
+        if (!_tenantService.IsSuperAdmin && _tenantService.CompanyId.HasValue && note.CompanyId.HasValue && note.CompanyId.Value != _tenantService.CompanyId.Value && note.Category != "SOP")
         {
             return StatusCode(403, new { success = false, message = "Anda tidak berhak mengakses catatan perusahaan lain." });
         }
@@ -357,15 +357,26 @@ public class NotesController : ControllerBase
 
         if (attachment == null) return NotFound(new { success = false, message = "Lampiran tidak ditemukan." });
 
-        var fileName = Path.GetFileName(attachment.FilePath);
+        var rawDiskName = !string.IsNullOrWhiteSpace(attachment.FilePath)
+            ? Path.GetFileName(attachment.FilePath.Replace('\\', '/'))
+            : attachment.FileName;
+        var fileName = string.IsNullOrWhiteSpace(rawDiskName) ? attachment.FileName : rawDiskName;
+        var originalFileName = attachment.FileName;
+
         var candidatePaths = new List<string>
         {
             attachment.FilePath,
             Path.Combine(_env.ContentRootPath, attachment.FilePath.TrimStart('/', '\\')),
             Path.Combine(_env.ContentRootPath, "uploads", "notes", attachment.NoteId.ToString(), fileName),
+            Path.Combine(_env.ContentRootPath, "uploads", "notes", attachment.NoteId.ToString(), originalFileName),
             Path.Combine(_env.ContentRootPath, "uploads", "companies", (attachment.Note?.CompanyId ?? _tenantService.CompanyId ?? 1).ToString(), "notes", attachment.NoteId.ToString(), fileName),
+            Path.Combine(_env.ContentRootPath, "uploads", "companies", (attachment.Note?.CompanyId ?? _tenantService.CompanyId ?? 1).ToString(), "notes", attachment.NoteId.ToString(), originalFileName),
             Path.Combine(_env.WebRootPath ?? Path.Combine(_env.ContentRootPath, "wwwroot"), "uploads", "notes", attachment.NoteId.ToString(), fileName),
+            Path.Combine(_env.WebRootPath ?? Path.Combine(_env.ContentRootPath, "wwwroot"), "uploads", "notes", attachment.NoteId.ToString(), originalFileName),
             Path.Combine(Directory.GetCurrentDirectory(), "frontend", "public", "uploads", "notes", attachment.NoteId.ToString(), fileName),
+            Path.Combine(Directory.GetCurrentDirectory(), "frontend", "public", "uploads", "notes", attachment.NoteId.ToString(), originalFileName),
+            Path.Combine(Directory.GetCurrentDirectory(), "uploads", "notes", attachment.NoteId.ToString(), fileName),
+            Path.Combine(Directory.GetCurrentDirectory(), "uploads", "notes", attachment.NoteId.ToString(), originalFileName),
             Path.Combine(@"c:\TEMP\VSCODE\TrackerKerjaModern\frontend\public\uploads\notes", attachment.NoteId.ToString(), fileName),
             Path.Combine(@"c:\TEMP\VSCODE\TrackerKerjaModern\uploads\notes", attachment.NoteId.ToString(), fileName)
         };
@@ -375,13 +386,38 @@ public class NotesController : ControllerBase
         if (activePath == null)
         {
             // Deep search di direktori uploads jika file berada di subfolder berbeda setelah sinkronisasi
-            var uploadsRoot = Path.Combine(_env.ContentRootPath, "uploads");
-            if (Directory.Exists(uploadsRoot))
+            var searchRoots = new List<string>
+            {
+                Path.Combine(_env.ContentRootPath, "uploads"),
+                Path.Combine(_env.WebRootPath ?? Path.Combine(_env.ContentRootPath, "wwwroot"), "uploads"),
+                Path.Combine(Directory.GetCurrentDirectory(), "uploads"),
+                Path.Combine(Directory.GetCurrentDirectory(), "frontend", "public", "uploads")
+            };
+
+            foreach (var uploadsRoot in searchRoots.Where(Directory.Exists))
             {
                 var matches = Directory.GetFiles(uploadsRoot, fileName, SearchOption.AllDirectories);
                 if (matches.Length > 0)
                 {
                     activePath = matches[0];
+                    break;
+                }
+
+                if (!string.IsNullOrWhiteSpace(originalFileName))
+                {
+                    matches = Directory.GetFiles(uploadsRoot, originalFileName, SearchOption.AllDirectories);
+                    if (matches.Length > 0)
+                    {
+                        activePath = matches[0];
+                        break;
+                    }
+
+                    matches = Directory.GetFiles(uploadsRoot, $"*{originalFileName}", SearchOption.AllDirectories);
+                    if (matches.Length > 0)
+                    {
+                        activePath = matches[0];
+                        break;
+                    }
                 }
             }
         }

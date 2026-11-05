@@ -278,7 +278,7 @@ public class AppDbContext : DbContext
             IsCurrentUserSuperAdmin || CurrentCompanyId == null || p.CompanyId == CurrentCompanyId);
 
         modelBuilder.Entity<WorkNote>().HasQueryFilter(n =>
-            IsCurrentUserSuperAdmin || CurrentCompanyId == null || n.CompanyId == CurrentCompanyId);
+            IsCurrentUserSuperAdmin || n.CompanyId == null || CurrentCompanyId == null || n.CompanyId == CurrentCompanyId || n.Category == "SOP");
 
         modelBuilder.Entity<Announcement>().HasQueryFilter(a =>
             IsCurrentUserSuperAdmin || a.CompanyId == null || CurrentCompanyId == null || a.CompanyId == CurrentCompanyId);

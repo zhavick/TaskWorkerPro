@@ -790,6 +790,146 @@ public class SyncServiceTests : IDisposable
         Assert.Contains(".pdf", sampleAtt.FileName);
     }
 
+    [Fact]
+    public async Task ExportPackageZipAsync_WithNoteAttachments_ShouldPreserveSanitizedFileNameAndIncludePhysicalFile()
+    {
+        // Arrange: Buat catatan SOP dan lampiran berkas fisik dengan timestamp
+        var note = new WorkNote
+        {
+            Id = 8801,
+            Title = "SOP Deployment Server Induk",
+            ContentHtml = "<p>Dokumentasi deployment dan panduan teknis SOP</p>",
+            Category = "SOP",
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        _context.Notes.Add(note);
+
+        var sanitizedFileName = "20261105_120000_sop_deployment.pdf";
+        var noteUploadDir = Path.Combine(_tempUploadDir, "notes", note.Id.ToString());
+        Directory.CreateDirectory(noteUploadDir);
+        var physicalPath = Path.Combine(noteUploadDir, sanitizedFileName);
+        await File.WriteAllTextAsync(physicalPath, "KONTEN_FISIK_SOP_DEPLOYMENT");
+
+        var attachment = new NoteAttachment
+        {
+            Id = 8802,
+            NoteId = note.Id,
+            FileName = "sop_deployment.pdf",
+            FilePath = $"/uploads/notes/{note.Id}/{sanitizedFileName}",
+            FileSize = 100,
+            ContentType = "application/pdf",
+            FileExtension = ".pdf",
+            UploadedAt = DateTimeOffset.UtcNow
+        };
+        _context.NoteAttachments.Add(attachment);
+        await _context.SaveChangesAsync();
+
+        // Act: Ekspor paket sinkronisasi termasuk berkas fisik
+        var zipBytes = await _syncService.ExportPackageZipAsync(includeFiles: true);
+
+        // Assert
+        Assert.NotNull(zipBytes);
+        using var ms = new MemoryStream(zipBytes);
+        using var archive = new ZipArchive(ms, ZipArchiveMode.Read);
+
+        // Berkas fisik SOP harus masuk ke dalam zip dengan path uploads/notes/8801/20261105_120000_sop_deployment.pdf
+        var expectedEntryName = $"uploads/notes/{note.Id}/{sanitizedFileName}";
+        var entry = archive.GetEntry(expectedEntryName);
+        Assert.NotNull(entry);
+
+        using var entryReader = new StreamReader(entry.Open());
+        var content = await entryReader.ReadToEndAsync();
+        Assert.Equal("KONTEN_FISIK_SOP_DEPLOYMENT", content);
+
+        // Pastikan sync_data.json juga merekam path berkas yang tepat
+        var dataEntry = archive.GetEntry("sync_data.json");
+        Assert.NotNull(dataEntry);
+        using var jsonReader = new StreamReader(dataEntry.Open());
+        var jsonData = await jsonReader.ReadToEndAsync();
+        Assert.Contains(sanitizedFileName, jsonData);
+        Assert.Contains("SOP Deployment Server Induk", jsonData);
+    }
+
+    [Fact]
+    public async Task ImportPackageZipAsync_WhenNoteIdShifts_ShouldRelocateAttachmentFileAndBindCorrectly()
+    {
+        // Arrange: Di sistem lokal sudah ada catatan dengan ID 9901
+        _context.Notes.Add(new WorkNote
+        {
+            Id = 9901,
+            Title = "Catatan Lokal Eksisting",
+            ContentHtml = "<p>Konten lokal</p>",
+            Category = "General"
+        });
+        await _context.SaveChangesAsync();
+
+        // Buat zip paket sinkronisasi dengan catatan ID 9901 (yang akan konflik dan dialihkan ke ID baru)
+        var sanitizedFileName = "20261105_150000_petunjuk_teknis.pdf";
+        using var zipMs = new MemoryStream();
+        using (var archive = new ZipArchive(zipMs, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            var syncData = new SyncDatabaseData
+            {
+                Notes = new List<WorkNoteSyncDto>
+                {
+                    new()
+                    {
+                        Id = 9901,
+                        Title = "SOP Pemeliharaan Jaringan Cabang",
+                        ContentHtml = "<p>Prosedur teknis jaringan</p>",
+                        Category = "SOP"
+                    }
+                },
+                NoteAttachments = new List<NoteAttachmentSyncDto>
+                {
+                    new()
+                    {
+                        Id = 9902,
+                        NoteId = 9901,
+                        FileName = "petunjuk_teknis.pdf",
+                        FilePath = $"/uploads/notes/9901/{sanitizedFileName}",
+                        FileSize = 256,
+                        ContentType = "application/pdf",
+                        FileExtension = ".pdf"
+                    }
+                }
+            };
+
+            var dataEntry = archive.CreateEntry("sync_data.json");
+            using (var writer = new StreamWriter(dataEntry.Open()))
+            {
+                await writer.WriteAsync(JsonSerializer.Serialize(syncData));
+            }
+
+            var fileEntry = archive.CreateEntry($"uploads/notes/9901/{sanitizedFileName}");
+            using (var writer = new StreamWriter(fileEntry.Open()))
+            {
+                await writer.WriteAsync("KONTEN_FISIK_PETUNJUK_TEKNIS_SOP");
+            }
+        }
+        zipMs.Position = 0;
+
+        // Act: Impor paket zip
+        var result = await _syncService.ImportPackageZipAsync(zipMs, "admin-sync");
+
+        // Assert
+        Assert.True(result.Success);
+
+        // Catatan SOP harus tersimpan
+        var importedNote = await _context.Notes.FirstOrDefaultAsync(n => n.Title == "SOP Pemeliharaan Jaringan Cabang");
+        Assert.NotNull(importedNote);
+
+        // Lampiran berkas harus terikat ke catatan yang dialihkan
+        var importedAtt = await _context.NoteAttachments.FirstOrDefaultAsync(a => a.FileName == "petunjuk_teknis.pdf");
+        Assert.NotNull(importedAtt);
+        Assert.Equal(importedNote.Id, importedAtt.NoteId);
+
+        // Berkas fisik harus ada di folder _tempUploadDir/notes/{importedNote.Id}/{sanitizedFileName}
+        var targetFile = Path.Combine(_tempUploadDir, "notes", importedNote.Id.ToString(), sanitizedFileName);
+        Assert.True(File.Exists(targetFile), $"File tidak ditemukan di {targetFile}");
+        Assert.Equal("KONTEN_FISIK_PETUNJUK_TEKNIS_SOP", await File.ReadAllTextAsync(targetFile));
+    }
+
     private class FakeTenantService : ICurrentTenantService
     {
         public FakeTenantService(int? companyId, string? companyCode, string? userId, bool isAdmin)
