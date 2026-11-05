@@ -163,20 +163,36 @@ Sistem secara otomatis mengeksekusi instruksi `VACUUM ANALYZE` pada PostgreSQL a
 
 Gunakan `docker-compose.prod.yml`: semua port hanya di-bind ke `127.0.0.1`, secret dibaca dari `.env`, dan frontend di-build dengan `NEXT_PUBLIC_API_BASE_URL=/api` sehingga browser memanggil backend lewat domain/IP yang sama.
 
-### 7.1 Menjalankan
+### 7.1 Menjalankan Deployment Bersih (Clean Deployment)
 ```bash
-git checkout modern && git pull
-cp .env.example .env        # isi APP_URL, POSTGRES_PASSWORD, JWT_SECRET (openssl rand -hex 24)
-docker compose -f docker-compose.prod.yml up -d --build
-docker compose -f docker-compose.prod.yml ps
-```
-> `POSTGRES_PASSWORD` hanya dipakai saat volume `pgdata` pertama kali dibuat. Jika volume lama sudah ada, password lama tetap berlaku.
+# 1. Update ke branch modern terbaru
+git checkout modern && git pull origin modern
 
-### 7.2 Routing Nginx
+# 2. Siapkan file .env (jika menggunakan docker-compose.prod.yml)
+cp -n .env.example .env
+
+# 3. Deployment Bersih (Rekomendasi Utama: Reset volume lama agar skema & seed otomatis terpasang)
+docker compose down -v
+docker compose up -d --build
+
+# 4. Periksa status seluruh kontainer
+docker compose ps
+
+# 5. Jika container sudah berjalan dan Anda ingin menyuntikkan data seed tanpa mereset volume database:
+docker compose exec -T postgres psql -U tracker_admin -d trackerkerja_db < database/init/02_init_seed.sql
+docker compose exec -T postgres psql -U tracker_admin -d trackerkerja_db < database/init/03_demo_seed.sql
+# Atau eksekusi seeder otomatis via endpoint backend:
+curl -X POST http://localhost:5010/api/configuration/status/seed
+```
+> **Catatan Kredensial Default Setelah Seeding**:
+> - **Admin 1**: `admin@trackerkerja.com` | Sandi: `AdminSecure@2026!!`
+> - **Admin 2**: `admin@trackerkerja.local` | Sandi: `AdminSecurePassword2026!`
+
+### 7.2 Routing Nginx / Reverse Proxy aaPanel
 | Path | Tujuan | Catatan |
 |:---|:---|:---|
-| `/` | `http://127.0.0.1:5000` | Frontend Next.js (`FRONTEND_PORT`) |
-| `/api` | `http://127.0.0.1:5010` | REST API |
+| `/` | `http://127.0.0.1:3005` | Frontend Next.js (`FRONTEND_PORT`) |
+| `/api` | `http://127.0.0.1:5010` | REST API (otomatis di-proxy via Next.js rewrites) |
 | `/hubs` | `http://127.0.0.1:5010` | SignalR, butuh header WebSocket |
 | `/uploads` | `http://127.0.0.1:5010` | Berkas unggahan |
 | `/swagger` | `http://127.0.0.1:5010` | Swagger REST API Documentation & OpenAPI Spec |

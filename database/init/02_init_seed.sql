@@ -42,9 +42,34 @@ INSERT INTO asp_net_users (
     CURRENT_TIMESTAMP
 ) ON CONFLICT (id) DO UPDATE SET password_hash = EXCLUDED.password_hash, is_approved = true;
 
+-- 3b. Akun Administrator Tambahan (admin@trackerkerja.com, Password: AdminSecure@2026!!)
+INSERT INTO asp_net_users (
+    id, user_name, normalized_user_name, email, normalized_email, email_confirmed,
+    password_hash, security_stamp, concurrency_stamp, phone_number,
+    full_name, job_title, avatar_color, company_id, is_approved, approved_at
+) VALUES (
+    'usr-admin-trackerkerja',
+    'admin@trackerkerja.com',
+    'ADMIN@TRACKERKERJA.COM',
+    'admin@trackerkerja.com',
+    'ADMIN@TRACKERKERJA.COM',
+    true,
+    'd//93NNMboAzcCEZVjXD/w==:c71w7+5w/iFXvQWBrHer6mYgABHLXAikkKVSfT2H5ZE=', -- Valid PBKDF2 hash: AdminSecure@2026!!
+    gen_random_uuid()::text,
+    gen_random_uuid()::text,
+    '081298765432',
+    'Administrator TrackerKerja',
+    'System Administrator',
+    '#4F46E5',
+    1,
+    true,
+    CURRENT_TIMESTAMP
+) ON CONFLICT (id) DO UPDATE SET password_hash = EXCLUDED.password_hash, is_approved = true;
+
 -- Assign Admin Role
 INSERT INTO asp_net_user_roles (user_id, role_id) VALUES
-('usr-superadmin', 'r-admin')
+('usr-superadmin', 'r-admin'),
+('usr-admin-trackerkerja', 'r-admin')
 ON CONFLICT (user_id, role_id) DO NOTHING;
 
 -- 4. Master Prioritas

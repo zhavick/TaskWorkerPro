@@ -128,7 +128,7 @@ export default function ConfigurationApiStatusPage() {
               </thead>
               <tbody className="divide-y divide-slate-700/40 text-slate-300 font-mono text-[12px]">
                 <tr>
-                  <td className="py-2.5 pr-4 text-slate-400 font-sans">Email Admin</td>
+                  <td className="py-2.5 pr-4 text-slate-400 font-sans">Email Admin Utama</td>
                   <td className="py-2.5 px-4 font-bold text-indigo-400">admin@trackerkerja.com</td>
                   <td id="info-admin-email" className="py-2.5 pl-4 font-sans text-slate-400">Memeriksa...</td>
                 </tr>
@@ -136,6 +136,11 @@ export default function ConfigurationApiStatusPage() {
                   <td className="py-2.5 pr-4 text-slate-400 font-sans">Kata Sandi Default</td>
                   <td className="py-2.5 px-4 font-bold text-amber-400">AdminSecure@2026!!</td>
                   <td id="info-admin-password" className="py-2.5 pl-4 font-sans text-slate-400">Memeriksa hash...</td>
+                </tr>
+                <tr>
+                  <td className="py-2.5 pr-4 text-slate-400 font-sans">Email Admin Cadangan</td>
+                  <td className="py-2.5 px-4 font-bold text-indigo-400">admin@trackerkerja.local</td>
+                  <td className="py-2.5 pl-4 font-sans text-slate-400">Sandi: <code className="text-amber-400">AdminSecurePassword2026!</code></td>
                 </tr>
                 <tr>
                   <td className="py-2.5 pr-4 text-slate-400 font-sans">Role Akses</td>
@@ -225,6 +230,7 @@ export default function ConfigurationApiStatusPage() {
                   } else {
                     API_BASE = envApi;
                   }
+                }
                 }
 
                 $('#val-frontend-origin').text(window.location.origin);

@@ -35,6 +35,10 @@ const nextConfig: NextConfig = {
         destination: `${backendUrl}/hubs/:path*`,
       },
       {
+        source: "/swagger/:path*",
+        destination: `${backendUrl}/swagger/:path*`,
+      },
+      {
         source: "/uploads/:path*",
         destination: `${backendUrl}/uploads/:path*`,
       },

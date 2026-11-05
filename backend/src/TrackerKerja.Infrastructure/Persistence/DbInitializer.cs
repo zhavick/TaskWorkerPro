@@ -16,6 +16,15 @@ public static class DbInitializer
         {
             try
             {
+                await context.Database.EnsureCreatedAsync();
+            }
+            catch
+            {
+                // Abaikan jika skema telah dikelola
+            }
+
+            try
+            {
                 await context.Database.ExecuteSqlRawAsync(@"
                     -- Auto-migrate columns & types for PostgreSQL
                     DO $$ 
@@ -508,6 +517,7 @@ public static class DbInitializer
                 });
                 await context.SaveChangesAsync();
             }
+
         }
 
         // 3. Pastikan Koleksi 70+ Master Badge Gaul & Modern Anak Muda (FSD 5.20.4 + Ekstensi Gamifikasi Kreatif)
