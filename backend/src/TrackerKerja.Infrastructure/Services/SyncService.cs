@@ -198,15 +198,22 @@ public class SyncService : ISyncService
                     var files = Directory.GetFiles(_uploadBasePath, "*.*", SearchOption.AllDirectories);
                     foreach (var file in files)
                     {
-                        var relativePath = Path.GetRelativePath(_uploadBasePath, file).Replace('\\', '/');
-                        var entryName = relativePath.StartsWith("uploads/", StringComparison.OrdinalIgnoreCase)
-                            ? relativePath
-                            : $"uploads/{relativePath}";
-                        var fileEntry = archive.CreateEntry(entryName, CompressionLevel.Optimal);
+                        try
+                        {
+                            var relativePath = Path.GetRelativePath(_uploadBasePath, file).Replace('\\', '/');
+                            var entryName = relativePath.StartsWith("uploads/", StringComparison.OrdinalIgnoreCase)
+                                ? relativePath
+                                : $"uploads/{relativePath}";
+                            var fileEntry = archive.CreateEntry(entryName, CompressionLevel.Optimal);
 
-                        using var sourceStream = File.OpenRead(file);
-                        using var targetStream = fileEntry.Open();
-                        await sourceStream.CopyToAsync(targetStream);
+                            using var sourceStream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                            using var targetStream = fileEntry.Open();
+                            await sourceStream.CopyToAsync(targetStream);
+                        }
+                        catch (Exception fileEx)
+                        {
+                            _logger?.LogWarning(fileEx, "Skipping locked or unreadable file {File} during package zip export", file);
+                        }
                     }
                 }
             }
@@ -254,7 +261,15 @@ public class SyncService : ISyncService
     {
         try
         {
-            using var archive = new ZipArchive(zipStream, ZipArchiveMode.Read, leaveOpen: false);
+            using var ms = new MemoryStream();
+            if (zipStream.CanSeek && zipStream.Position > 0)
+            {
+                zipStream.Position = 0;
+            }
+            await zipStream.CopyToAsync(ms);
+            ms.Position = 0;
+
+            using var archive = new ZipArchive(ms, ZipArchiveMode.Read, leaveOpen: false);
 
             var normalizedUploadBase = Path.GetFullPath(_uploadBasePath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
 
@@ -267,10 +282,12 @@ public class SyncService : ISyncService
                 var isUploadEntry = cleanEntryName.StartsWith("uploads/", StringComparison.OrdinalIgnoreCase);
                 var relPath = (isUploadEntry ? cleanEntryName.Substring("uploads/".Length) : cleanEntryName).TrimStart('/');
 
+                var entryFileName = entry.Name;
                 if (string.IsNullOrWhiteSpace(relPath) ||
-                    relPath.Equals("manifest.json", StringComparison.OrdinalIgnoreCase) ||
-                    relPath.Equals("sync_data.json", StringComparison.OrdinalIgnoreCase) ||
-                    relPath.Equals("sync_data.sql", StringComparison.OrdinalIgnoreCase))
+                    entryFileName.Equals("manifest.json", StringComparison.OrdinalIgnoreCase) ||
+                    entryFileName.Equals("sync_data.json", StringComparison.OrdinalIgnoreCase) ||
+                    entryFileName.Equals("sync_data.sql", StringComparison.OrdinalIgnoreCase) ||
+                    (!isUploadEntry && (entryFileName.EndsWith(".json", StringComparison.OrdinalIgnoreCase) || entryFileName.EndsWith(".sql", StringComparison.OrdinalIgnoreCase))))
                 {
                     continue;
                 }
@@ -301,16 +318,23 @@ public class SyncService : ISyncService
                 }
             }
 
-            var manifestEntry = archive.GetEntry("manifest.json");
-            var dataEntry = archive.GetEntry("sync_data.json");
-            var sqlEntry = archive.GetEntry("sync_data.sql");
+            var manifestEntry = archive.GetEntry("manifest.json")
+                ?? archive.Entries.FirstOrDefault(e => e.Name.Equals("manifest.json", StringComparison.OrdinalIgnoreCase));
+
+            var dataEntry = archive.GetEntry("sync_data.json")
+                ?? archive.Entries.FirstOrDefault(e => e.Name.Equals("sync_data.json", StringComparison.OrdinalIgnoreCase))
+                ?? archive.Entries.FirstOrDefault(e => e.Name.EndsWith(".json", StringComparison.OrdinalIgnoreCase) && !e.Name.Equals("manifest.json", StringComparison.OrdinalIgnoreCase));
+
+            var sqlEntry = archive.GetEntry("sync_data.sql")
+                ?? archive.Entries.FirstOrDefault(e => e.Name.Equals("sync_data.sql", StringComparison.OrdinalIgnoreCase))
+                ?? archive.Entries.FirstOrDefault(e => e.Name.EndsWith(".sql", StringComparison.OrdinalIgnoreCase));
 
             if (dataEntry == null && sqlEntry == null)
             {
                 return new SyncOperationResult
                 {
                     Success = false,
-                    Message = "Berkas paket tidak valid: sync_data.json atau sync_data.sql tidak ditemukan.",
+                    Message = "Berkas paket tidak valid: sync_data.json atau sync_data.sql tidak ditemukan di dalam berkas .ZIP.",
                     Status = SyncStatus.Failed
                 };
             }
@@ -325,10 +349,12 @@ public class SyncService : ISyncService
                 var isUploadEntry = cleanEntryName.StartsWith("uploads/", StringComparison.OrdinalIgnoreCase);
                 var relPath = (isUploadEntry ? cleanEntryName.Substring("uploads/".Length) : cleanEntryName).TrimStart('/');
 
+                var entryFileName = entry.Name;
                 if (string.IsNullOrWhiteSpace(relPath) ||
-                    relPath.Equals("manifest.json", StringComparison.OrdinalIgnoreCase) ||
-                    relPath.Equals("sync_data.json", StringComparison.OrdinalIgnoreCase) ||
-                    relPath.Equals("sync_data.sql", StringComparison.OrdinalIgnoreCase))
+                    entryFileName.Equals("manifest.json", StringComparison.OrdinalIgnoreCase) ||
+                    entryFileName.Equals("sync_data.json", StringComparison.OrdinalIgnoreCase) ||
+                    entryFileName.Equals("sync_data.sql", StringComparison.OrdinalIgnoreCase) ||
+                    (!isUploadEntry && (entryFileName.EndsWith(".json", StringComparison.OrdinalIgnoreCase) || entryFileName.EndsWith(".sql", StringComparison.OrdinalIgnoreCase))))
                 {
                     continue;
                 }
@@ -363,6 +389,10 @@ public class SyncService : ISyncService
                 using var sqlReader = new StreamReader(sqlEntry.Open(), Encoding.UTF8);
                 var sqlContent = await sqlReader.ReadToEndAsync();
                 var sqlResult = await ImportSqlScriptAsync(sqlContent, triggeredByUserId);
+                if (!sqlResult.Success)
+                {
+                    return sqlResult;
+                }
                 mergedCount = sqlResult.RecordsProcessed;
             }
 
@@ -372,7 +402,7 @@ public class SyncService : ISyncService
                 Status = SyncStatus.Success,
                 TargetHost = "Local Package Import",
                 TotalRecordsSynced = mergedCount,
-                FileSizeBytes = zipStream.CanSeek ? zipStream.Length : 0,
+                FileSizeBytes = ms.Length,
                 SummaryJson = JsonSerializer.Serialize(new { RecordsMerged = mergedCount, FilesExtracted = extractedFilesCount }),
                 TriggeredByUserId = triggeredByUserId
             });
@@ -383,7 +413,7 @@ public class SyncService : ISyncService
                 Success = true,
                 Message = $"Berhasil mengimpor paket: {mergedCount} rekod disinkronkan, {extractedFilesCount} berkas diekstrak.",
                 RecordsProcessed = mergedCount,
-                FileSizeBytes = zipStream.CanSeek ? zipStream.Length : 0,
+                FileSizeBytes = ms.Length,
                 Status = SyncStatus.Success,
                 Details = new List<string> { $"{mergedCount} rekod basis data", $"{extractedFilesCount} lampiran berkas" }
             };
@@ -568,6 +598,7 @@ public class SyncService : ISyncService
         var total = merged + rolesLinked;
         var noteCount = parsed.TableCounts.GetValueOrDefault("Notes");
         var attachmentCount = parsed.TableCounts.GetValueOrDefault("NoteAttachments");
+        var docCount = parsed.TableCounts.GetValueOrDefault("Documents");
 
         _context.SyncHistories.Add(new SyncHistory
         {
@@ -582,6 +613,7 @@ public class SyncService : ISyncService
                 RolesLinked = rolesLinked,
                 Notes = noteCount,
                 NoteAttachments = attachmentCount,
+                Documents = docCount,
                 Tables = parsed.TableCounts
             }),
             TriggeredByUserId = triggeredByUserId
@@ -591,7 +623,7 @@ public class SyncService : ISyncService
         return new SyncOperationResult
         {
             Success = true,
-            Message = $"Berhasil mengimpor dump SQL: {total} rekod digabungkan ({noteCount} catatan, {attachmentCount} lampiran catatan).",
+            Message = $"Berhasil mengimpor dump SQL: {total} rekod digabungkan ({noteCount} catatan, {attachmentCount} lampiran, {docCount} dokumen & SOP).",
             RecordsProcessed = total,
             FileSizeBytes = Encoding.UTF8.GetByteCount(sqlContent),
             Status = SyncStatus.Success,
@@ -1769,9 +1801,19 @@ public class SyncService : ISyncService
                 ? pcId
                 : (pr.CompanyId ?? defaultCompanyId);
 
+            if (resolvedCompanyId.HasValue && !await _context.Companies.IgnoreQueryFilters().AnyAsync(c => c.Id == resolvedCompanyId.Value))
+            {
+                resolvedCompanyId = defaultCompanyId;
+            }
+
             var resolvedPmId = (!string.IsNullOrEmpty(pr.ProjectManagerId) && userLookup.TryGetValue(pr.ProjectManagerId, out var pmUid))
                 ? pmUid
                 : pr.ProjectManagerId;
+
+            if (!string.IsNullOrEmpty(resolvedPmId) && !allUsers.Any(u => u.Id == resolvedPmId))
+            {
+                resolvedPmId = null;
+            }
 
             var existing = await _context.Projects.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.Id == pr.Id);
             if (existing != null)
@@ -1831,16 +1873,28 @@ public class SyncService : ISyncService
                 ? tcId
                 : (t.CompanyId ?? defaultCompanyId);
 
+            if (resolvedCompanyId.HasValue && !await _context.Companies.IgnoreQueryFilters().AnyAsync(c => c.Id == resolvedCompanyId.Value))
+            {
+                resolvedCompanyId = defaultCompanyId;
+            }
+
             var resolvedAssignedUserId = (!string.IsNullOrEmpty(t.AssignedToUserId) && userLookup.TryGetValue(t.AssignedToUserId, out var aUid))
                 ? aUid
-                : (string.IsNullOrEmpty(t.AssignedToUserId) ? null : defaultFallbackUserId);
+                : null;
 
-            var parentExists = t.ParentTaskId.HasValue && (data.Tasks.Any(x => x.Id == t.ParentTaskId.Value) || await _context.Tasks.IgnoreQueryFilters().AnyAsync(x => x.Id == t.ParentTaskId.Value));
-            var resolvedParentTaskId = parentExists ? t.ParentTaskId : null;
+            if (!string.IsNullOrEmpty(resolvedAssignedUserId) && !allUsers.Any(u => u.Id == resolvedAssignedUserId))
+            {
+                resolvedAssignedUserId = null;
+            }
 
             var resolvedProjectId = t.ProjectId.HasValue && projectIdLookup.TryGetValue(t.ProjectId.Value, out var pid)
                 ? pid
                 : t.ProjectId;
+
+            if (resolvedProjectId.HasValue && !await _context.Projects.IgnoreQueryFilters().AnyAsync(p => p.Id == resolvedProjectId.Value))
+            {
+                resolvedProjectId = null;
+            }
 
             var existing = await _context.Tasks.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.Id == t.Id);
             if (existing == null && !string.IsNullOrWhiteSpace(t.Title))
@@ -1874,7 +1928,6 @@ public class SyncService : ISyncService
                 existing.ProjectId = resolvedProjectId;
                 existing.CategoryId = t.CategoryId;
                 existing.AssignedToUserId = resolvedAssignedUserId;
-                existing.ParentTaskId = resolvedParentTaskId;
                 existing.CompanyId = resolvedCompanyId;
                 existing.StartDate = t.StartDate;
                 existing.DueDate = t.DueDate;
@@ -1897,7 +1950,7 @@ public class SyncService : ISyncService
                     ProjectId = resolvedProjectId,
                     CategoryId = t.CategoryId,
                     AssignedToUserId = resolvedAssignedUserId,
-                    ParentTaskId = resolvedParentTaskId,
+                    ParentTaskId = null, // Disambungkan di pass 2 untuk menghindari pelanggaran foreign key
                     CompanyId = resolvedCompanyId,
                     StartDate = t.StartDate,
                     DueDate = t.DueDate,
@@ -1909,6 +1962,23 @@ public class SyncService : ISyncService
                 taskIdLookup[t.Id] = newTask.Id;
             }
             totalMerged++;
+        }
+        await _context.SaveChangesAsync();
+
+        // 5b. Update Task Hierarchy (ParentTaskId) setelah seluruh rekod tugas tersedia di database
+        foreach (var t in data.Tasks)
+        {
+            if (t.ParentTaskId.HasValue && taskIdLookup.TryGetValue(t.ParentTaskId.Value, out var parentId))
+            {
+                if (taskIdLookup.TryGetValue(t.Id, out var currentTaskId) && currentTaskId != parentId)
+                {
+                    var taskToUpdate = await _context.Tasks.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.Id == currentTaskId);
+                    if (taskToUpdate != null && taskToUpdate.ParentTaskId != parentId)
+                    {
+                        taskToUpdate.ParentTaskId = parentId;
+                    }
+                }
+            }
         }
         await _context.SaveChangesAsync();
 

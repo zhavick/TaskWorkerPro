@@ -1075,6 +1075,220 @@ public class SyncServiceTests : IDisposable
         Assert.Equal(docContent, await File.ReadAllTextAsync(physicalFile));
     }
 
+    [Fact]
+    public async Task ExportPackageZipAsync_RoundTripImport_ShouldRestoreDocumentsAndTasksWithHierarchy()
+    {
+        // Arrange
+        var company = new Company { Id = 3301, Name = "PT Sinergi Offline", Code = "SNG" };
+        _context.Companies.Add(company);
+
+        var docFileName = "sop_arsitektur_modern.pdf";
+        var docDir = Path.Combine(_tempUploadDir, "documents", company.Id.ToString());
+        Directory.CreateDirectory(docDir);
+        var docFilePath = Path.Combine(docDir, docFileName);
+        await File.WriteAllTextAsync(docFilePath, "KONTEN_DOKUMEN_SOP_MODERN_ZIP");
+
+        var doc = new CompanyDocument
+        {
+            Id = 4401,
+            Title = "SOP Arsitektur Sistem Modern",
+            Description = "Dokumentasi & SOP Teknis",
+            FileName = docFileName,
+            FileStoragePath = $"/uploads/documents/{company.Id}/{docFileName}",
+            FileSize = 100,
+            ContentType = "application/pdf",
+            Category = "SOP Teknis",
+            CompanyId = company.Id
+        };
+        _context.Documents.Add(doc);
+
+        var parentTask = new WorkTask
+        {
+            Id = 5501,
+            Title = "Task Utama",
+            CompanyId = company.Id
+        };
+        var childTask = new WorkTask
+        {
+            Id = 5502,
+            Title = "Subtask Teknis",
+            ParentTaskId = 5501,
+            CompanyId = company.Id
+        };
+        _context.Tasks.AddRange(parentTask, childTask);
+        await _context.SaveChangesAsync();
+
+        // Act 1: Export Package Zip
+        var zipBytes = await _syncService.ExportPackageZipAsync(includeFiles: true);
+        Assert.NotNull(zipBytes);
+        Assert.True(zipBytes.Length > 0);
+
+        // Act 2: Import on fresh instance / database
+        var newDbName = Guid.NewGuid().ToString();
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase(databaseName: newDbName)
+            .Options;
+        var tenantService = new FakeTenantService(company.Id, "SNG", "test-user-id", true);
+        using var destContext = new AppDbContext(options, tenantService);
+        var destUploadDir = Path.Combine(Path.GetTempPath(), "TrackerKerjaDest_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(destUploadDir);
+
+        try
+        {
+            var destSyncService = new SyncService(destContext, destUploadDir, httpClientFactory: null);
+            using var importMs = new MemoryStream(zipBytes);
+            var result = await destSyncService.ImportPackageZipAsync(importMs, "admin-importer");
+
+            // Assert
+            Assert.True(result.Success, result.Message);
+            Assert.True(result.RecordsProcessed > 0);
+
+            // Verifikasi Documents masuk ke database tujuan
+            var importedDoc = await destContext.Documents.FirstOrDefaultAsync(d => d.Title == "SOP Arsitektur Sistem Modern");
+            Assert.NotNull(importedDoc);
+            Assert.Equal("SOP Teknis", importedDoc.Category);
+
+            // Verifikasi Berkas Fisik Dokumentasi terekstrak
+            var extractedDocFile = Path.Combine(destUploadDir, "documents", company.Id.ToString(), docFileName);
+            Assert.True(File.Exists(extractedDocFile), $"Berkas fisik dokumen harus ada di {extractedDocFile}");
+            Assert.Equal("KONTEN_DOKUMEN_SOP_MODERN_ZIP", await File.ReadAllTextAsync(extractedDocFile));
+
+            // Verifikasi Relasi Hierarki Tasks terpelihara
+            var importedChild = await destContext.Tasks.FirstOrDefaultAsync(t => t.Title == "Subtask Teknis");
+            Assert.NotNull(importedChild);
+            Assert.NotNull(importedChild.ParentTaskId);
+        }
+        finally
+        {
+            if (Directory.Exists(destUploadDir))
+            {
+                try { Directory.Delete(destUploadDir, recursive: true); } catch { }
+            }
+        }
+    }
+
+    [Fact]
+    public async Task ExportSqlDumpAsync_RoundTripImport_ShouldRestoreDocumentsAndParseSuccessfully()
+    {
+        // Arrange
+        var company = new Company { Id = 3302, Name = "PT Solusi SQL", Code = "SQL" };
+        _context.Companies.Add(company);
+
+        var doc = new CompanyDocument
+        {
+            Id = 4402,
+            Title = "Petunjuk Teknis Deployment SQL",
+            Description = "SOP dan Panduan Migrasi",
+            FileName = "panduan_migrasi.pdf",
+            FileStoragePath = $"/uploads/documents/{company.Id}/panduan_migrasi.pdf",
+            FileSize = 500,
+            ContentType = "application/pdf",
+            Category = "SOP",
+            CompanyId = company.Id
+        };
+        _context.Documents.Add(doc);
+        await _context.SaveChangesAsync();
+
+        // Act 1: Export SQL Dump
+        var sqlContent = await _syncService.ExportSqlDumpAsync();
+        Assert.NotNull(sqlContent);
+        Assert.Contains("documents", sqlContent);
+        Assert.Contains("Petunjuk Teknis Deployment SQL", sqlContent);
+
+        // Act 2: Import SQL Script on a fresh context
+        var newDbName = Guid.NewGuid().ToString();
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase(databaseName: newDbName)
+            .Options;
+        var tenantService = new FakeTenantService(company.Id, "SQL", "test-user-id", true);
+        using var destContext = new AppDbContext(options, tenantService);
+        var destUploadDir = Path.Combine(Path.GetTempPath(), "TrackerKerjaDestSql_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(destUploadDir);
+
+        try
+        {
+            var destSyncService = new SyncService(destContext, destUploadDir, httpClientFactory: null);
+            var result = await destSyncService.ImportSqlScriptAsync(sqlContent, "admin-importer");
+
+            // Assert
+            Assert.True(result.Success, result.Message);
+            Assert.True(result.RecordsProcessed > 0);
+
+            var importedDoc = await destContext.Documents.FirstOrDefaultAsync(d => d.Title == "Petunjuk Teknis Deployment SQL");
+            Assert.NotNull(importedDoc);
+            Assert.Equal("SOP", importedDoc.Category);
+        }
+        finally
+        {
+            if (Directory.Exists(destUploadDir))
+            {
+                try { Directory.Delete(destUploadDir, recursive: true); } catch { }
+            }
+        }
+    }
+
+    [Fact]
+    public async Task ImportPackageZipAsync_WithSqlOnlyInsideZip_ShouldImportSuccessfully()
+    {
+        // Arrange: ZIP yang hanya berisi berkas .sql (tanpa sync_data.json)
+        var sqlScript = @"
+            INSERT OR REPLACE INTO companies (id, name, code) VALUES (991, 'Perusahaan SQL Zip', 'PSZ');
+            INSERT OR REPLACE INTO documents (id, title, file_name, file_storage_path, file_size, content_type, category, company_id)
+            VALUES (9901, 'SOP Keamanan Siber SQL', 'sop_cyber.pdf', '/uploads/documents/991/sop_cyber.pdf', 1234, 'application/pdf', 'SOP Teknis', 991);
+        ";
+
+        using var zipMs = new MemoryStream();
+        using (var archive = new ZipArchive(zipMs, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            var sqlEntry = archive.CreateEntry("trackerkerja_backup_dump.sql");
+            using var writer = new StreamWriter(sqlEntry.Open(), Encoding.UTF8);
+            await writer.WriteAsync(sqlScript);
+        }
+        zipMs.Position = 0;
+
+        // Act
+        var result = await _syncService.ImportPackageZipAsync(zipMs, "admin-sql-zip");
+
+        // Assert
+        Assert.True(result.Success, result.Message);
+        Assert.True(result.RecordsProcessed > 0);
+
+        var doc = await _context.Documents.FirstOrDefaultAsync(d => d.Title == "SOP Keamanan Siber SQL");
+        Assert.NotNull(doc);
+        Assert.Equal("SOP Teknis", doc.Category);
+    }
+
+    [Fact]
+    public void SqlDumpImportParser_ShouldRecognizeAndMapDocumentsTable()
+    {
+        // Arrange
+        var sql = @"
+            INSERT INTO documents (id, title, file_name, file_storage_path, file_size, content_type, category, company_id)
+            VALUES (101, 'SOP Pengoperasian Mesin', 'mesin.pdf', '/uploads/documents/1/mesin.pdf', 2048, 'application/pdf', 'Operasional', 1);
+
+            INSERT INTO company_documents (id, title, file_name, file_storage_path, file_size, content_type, category, company_id)
+            VALUES (102, 'SOP Tanggap Darurat', 'darurat.pdf', '/uploads/documents/1/darurat.pdf', 1024, 'application/pdf', 'K3', 1);
+        ";
+
+        // Act
+        var parsed = SqlDumpImportParser.Parse(sql);
+
+        // Assert
+        Assert.NotNull(parsed);
+        Assert.Equal(2, parsed.RecognizedRows);
+        Assert.Equal(2, parsed.Data.Documents.Count);
+
+        var d1 = parsed.Data.Documents.FirstOrDefault(x => x.Id == 101);
+        Assert.NotNull(d1);
+        Assert.Equal("SOP Pengoperasian Mesin", d1.Title);
+        Assert.Equal("Operasional", d1.Category);
+
+        var d2 = parsed.Data.Documents.FirstOrDefault(x => x.Id == 102);
+        Assert.NotNull(d2);
+        Assert.Equal("SOP Tanggap Darurat", d2.Title);
+        Assert.Equal("K3", d2.Category);
+    }
+
     private class FakeTenantService : ICurrentTenantService
     {
         public FakeTenantService(int? companyId, string? companyCode, string? userId, bool isAdmin)

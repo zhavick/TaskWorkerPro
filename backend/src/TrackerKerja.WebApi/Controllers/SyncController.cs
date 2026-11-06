@@ -194,12 +194,20 @@ public class SyncController : ControllerBase
             using var reader = new StreamReader(file.OpenReadStream(), System.Text.Encoding.UTF8);
             var sqlContent = await reader.ReadToEndAsync();
             var result = await _syncService.ImportSqlScriptAsync(sqlContent, _tenantService.UserId);
+            if (!result.Success)
+            {
+                return BadRequest(result);
+            }
             return Ok(result);
         }
         else
         {
             using var stream = file.OpenReadStream();
             var result = await _syncService.ImportPackageZipAsync(stream, _tenantService.UserId);
+            if (!result.Success)
+            {
+                return BadRequest(result);
+            }
             return Ok(result);
         }
     }
@@ -220,7 +228,7 @@ public class SyncController : ControllerBase
 
     private bool IsAdmin()
     {
-        return _tenantService.IsAdmin || (User.Identity?.IsAuthenticated == true && (User.IsInRole("Administrator") || User.IsInRole("SuperAdmin")));
+        return _tenantService.IsAdmin || (User.Identity?.IsAuthenticated == true && (User.IsInRole("Administrator") || User.IsInRole("SuperAdmin") || User.IsInRole("Admin")));
     }
 
     private bool IsSyncAuthorized()

@@ -137,7 +137,8 @@ public static class SqlDumpImportParser
         "companies", "aspnetusers", "aspnetroles", "aspnetuserroles", "categories",
         "masterpriorities", "masterstatuses", "mastermilestones", "masterbadges", "userbadges",
         "dailycheckins", "rewarditems", "rewardclaims", "emailtemplates", "systemsettings",
-        "announcements", "projects", "tasks", "sessions", "attendances", "notes", "noteattachments"
+        "announcements", "projects", "tasks", "sessions", "attendances", "notes", "noteattachments",
+        "documents", "companydocuments"
     };
 
     /// <summary>
@@ -159,6 +160,14 @@ public static class SqlDumpImportParser
                 sb.Append(c);
                 if (c == '\'')
                 {
+                    // Dukung double single quote '' dan C-style backslash quote \'
+                    var isEscapedByBackslash = i > 0 && sql[i - 1] == '\\' && (i < 2 || sql[i - 2] != '\\');
+                    if (isEscapedByBackslash)
+                    {
+                        // Kuotasi diloloskan dengan tanda backslash, tetap berada dalam string
+                        continue;
+                    }
+
                     if (i + 1 < sql.Length && sql[i + 1] == '\'')
                     {
                         sb.Append('\'');
@@ -366,6 +375,13 @@ public static class SqlDumpImportParser
             {
                 if (s[i] == '\'')
                 {
+                    var isEscapedByBackslash = i > 0 && s[i - 1] == '\\' && (i < 2 || s[i - 2] != '\\');
+                    if (isEscapedByBackslash)
+                    {
+                        sb.Append(s[i++]);
+                        continue;
+                    }
+
                     if (i + 1 < s.Length && s[i + 1] == '\'')
                     {
                         sb.Append('\'');
@@ -832,6 +848,30 @@ public static class SqlDumpImportParser
                 AdminNotes = r.Str("AdminNotes")
             });
             Count("RewardClaims", 1);
+        }
+
+        foreach (var r in Rows("documents").Concat(Rows("companydocuments")))
+        {
+            var id = r.IntN("Id");
+            if (!id.HasValue) continue;
+            var fileName = r.Str("FileName") ?? $"dokumen-{id.Value}";
+            d.Documents.Add(new CompanyDocumentSyncDto
+            {
+                Id = id.Value,
+                Title = r.Str("Title") ?? fileName,
+                Description = r.Str("Description"),
+                FileName = fileName,
+                FileStoragePath = r.Str("FileStoragePath", "FilePath") ?? string.Empty,
+                FileSize = r.Long(0, "FileSize"),
+                ContentType = r.Str("ContentType") ?? "application/octet-stream",
+                Category = r.Str("Category") ?? "Umum",
+                CompanyId = r.Int(1, "CompanyId"),
+                ProjectId = r.IntN("ProjectId"),
+                UploadedByUserId = r.Str("UploadedByUserId"),
+                CreatedAt = r.Date("CreatedAt") ?? now,
+                UpdatedAt = r.Date("UpdatedAt") ?? r.Date("CreatedAt") ?? now
+            });
+            Count("Documents", 1);
         }
 
         // Peran pengguna: petakan RoleId -> nama peran lalu hubungkan ke pengguna.

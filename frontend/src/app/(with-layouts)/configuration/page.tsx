@@ -560,19 +560,34 @@ export default function ConfigurationPage() {
       setSyncResultData(null);
       setSyncModalOpen(true);
 
-      const response = await apiClient.get(`/sync/export-package?includeFiles=${includeFiles}`, {
-        responseType: "blob",
-      });
-      const blob = new Blob([response.data]);
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.setAttribute("download", `trackerkerja_sync_package_${Date.now()}.zip`);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
-      return { size: blob.size };
+      try {
+        const response = await apiClient.get(`/sync/export-package?includeFiles=${includeFiles}`, {
+          responseType: "blob",
+        });
+        const blob = new Blob([response.data], { type: "application/zip" });
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.setAttribute("download", `trackerkerja_sync_package_${Date.now()}.zip`);
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.URL.revokeObjectURL(url);
+        return { size: blob.size };
+      } catch (err: any) {
+        if (err.response?.data instanceof Blob) {
+          try {
+            const text = await err.response.data.text();
+            const parsed = JSON.parse(text);
+            throw new Error(parsed.message || text);
+          } catch (parseErr: any) {
+            if (parseErr.message && !parseErr.message.includes("JSON")) {
+              throw parseErr;
+            }
+          }
+        }
+        throw err;
+      }
     },
     onSuccess: (res: any) => {
       setSyncModalStatus("success");
@@ -600,19 +615,34 @@ export default function ConfigurationPage() {
       setSyncResultData(null);
       setSyncModalOpen(true);
 
-      const response = await apiClient.get("/sync/export-sql", {
-        responseType: "blob",
-      });
-      const blob = new Blob([response.data]);
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.setAttribute("download", `trackerkerja_sync_dump_${Date.now()}.sql`);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
-      return { size: blob.size };
+      try {
+        const response = await apiClient.get("/sync/export-sql", {
+          responseType: "blob",
+        });
+        const blob = new Blob([response.data], { type: "application/sql" });
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.setAttribute("download", `trackerkerja_sync_dump_${Date.now()}.sql`);
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.URL.revokeObjectURL(url);
+        return { size: blob.size };
+      } catch (err: any) {
+        if (err.response?.data instanceof Blob) {
+          try {
+            const text = await err.response.data.text();
+            const parsed = JSON.parse(text);
+            throw new Error(parsed.message || text);
+          } catch (parseErr: any) {
+            if (parseErr.message && !parseErr.message.includes("JSON")) {
+              throw parseErr;
+            }
+          }
+        }
+        throw err;
+      }
     },
     onSuccess: (res: any) => {
       setSyncModalStatus("success");
@@ -648,6 +678,13 @@ export default function ConfigurationPage() {
       return res.data;
     },
     onSuccess: (data: any) => {
+      if (data?.success === false) {
+        setSyncModalStatus("error");
+        const errMsg = data?.message || "Gagal menerapkan paket sinkronisasi.";
+        setSyncModalError(errMsg);
+        toast.error(errMsg);
+        return;
+      }
       setSyncModalStatus("success");
       setSyncResultData({
         recordsProcessed: data?.recordsProcessed,

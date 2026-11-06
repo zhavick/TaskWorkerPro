@@ -175,6 +175,77 @@ public class SyncControllerTests : IDisposable
         Assert.NotEmpty(list);
     }
 
+    [Fact]
+    public async Task ImportPackage_WithSqlFile_AsAdmin_ShouldReturnOk()
+    {
+        var controller = new SyncController(_syncService, _adminTenantService, _configuration);
+        controller.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() };
+
+        var sqlContent = "INSERT OR REPLACE INTO companies (id, name, code) VALUES (881, 'Test Company SQL', 'TCS');";
+        var bytes = System.Text.Encoding.UTF8.GetBytes(sqlContent);
+        var file = new FormFile(new MemoryStream(bytes), 0, bytes.Length, "file", "backup.sql");
+
+        var result = await controller.ImportPackage(file);
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        Assert.Equal(200, okResult.StatusCode);
+
+        var opResult = Assert.IsType<SyncOperationResult>(okResult.Value);
+        Assert.True(opResult.Success);
+    }
+
+    [Fact]
+    public async Task ImportPackage_WithZipFile_AsAdmin_ShouldReturnOk()
+    {
+        var controller = new SyncController(_syncService, _adminTenantService, _configuration);
+        controller.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() };
+
+        using var zipMs = new MemoryStream();
+        using (var archive = new System.IO.Compression.ZipArchive(zipMs, System.IO.Compression.ZipArchiveMode.Create, leaveOpen: true))
+        {
+            var entry = archive.CreateEntry("sync_data.json");
+            using var writer = new StreamWriter(entry.Open());
+            await writer.WriteAsync(System.Text.Json.JsonSerializer.Serialize(new SyncDatabaseData
+            {
+                Companies = new List<CompanySyncDto> { new() { Id = 882, Name = "Zip Test Company", Code = "ZTC" } }
+            }));
+        }
+        var bytes = zipMs.ToArray();
+        var file = new FormFile(new MemoryStream(bytes), 0, bytes.Length, "file", "package.zip");
+
+        var result = await controller.ImportPackage(file);
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        Assert.Equal(200, okResult.StatusCode);
+
+        var opResult = Assert.IsType<SyncOperationResult>(okResult.Value);
+        Assert.True(opResult.Success);
+    }
+
+    [Fact]
+    public async Task ImportPackage_AsNonAdmin_ShouldReturnForbid()
+    {
+        var controller = new SyncController(_syncService, _normalTenantService, _configuration);
+        controller.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() };
+
+        var bytes = System.Text.Encoding.UTF8.GetBytes("-- empty");
+        var file = new FormFile(new MemoryStream(bytes), 0, bytes.Length, "file", "test.sql");
+
+        var result = await controller.ImportPackage(file);
+        Assert.IsType<ForbidResult>(result);
+    }
+
+    [Fact]
+    public async Task ImportPackage_InvalidExtension_ShouldReturnBadRequest()
+    {
+        var controller = new SyncController(_syncService, _adminTenantService, _configuration);
+        controller.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() };
+
+        var bytes = new byte[] { 1, 2, 3 };
+        var file = new FormFile(new MemoryStream(bytes), 0, bytes.Length, "file", "malicious.exe");
+
+        var result = await controller.ImportPackage(file);
+        Assert.IsType<BadRequestObjectResult>(result);
+    }
+
     private class FakeTenantService : ICurrentTenantService
     {
         public FakeTenantService(int? companyId, string? companyCode, string? userId, bool isAdmin)
