@@ -278,7 +278,7 @@ public class AppDbContext : DbContext
             IsCurrentUserSuperAdmin || CurrentCompanyId == null || p.CompanyId == CurrentCompanyId);
 
         modelBuilder.Entity<WorkNote>().HasQueryFilter(n =>
-            IsCurrentUserSuperAdmin || n.CompanyId == null || CurrentCompanyId == null || n.CompanyId == CurrentCompanyId || n.Category == "SOP");
+            IsCurrentUserSuperAdmin || IsCurrentUserAdmin || n.CompanyId == null || CurrentCompanyId == null || n.CompanyId == CurrentCompanyId || n.Category == "SOP");
 
         modelBuilder.Entity<Announcement>().HasQueryFilter(a =>
             IsCurrentUserSuperAdmin || a.CompanyId == null || CurrentCompanyId == null || a.CompanyId == CurrentCompanyId);
@@ -333,6 +333,6 @@ public class AppDbContext : DbContext
             IsCurrentUserSuperAdmin || CurrentCompanyId == null || inv.CompanyId == CurrentCompanyId);
 
         modelBuilder.Entity<CompanyDocument>().HasQueryFilter(d =>
-            IsCurrentUserSuperAdmin || CurrentCompanyId == null || d.CompanyId == CurrentCompanyId);
+            IsCurrentUserSuperAdmin || IsCurrentUserAdmin || CurrentCompanyId == null || d.CompanyId == CurrentCompanyId || d.Category == "SOP");
     }
 }

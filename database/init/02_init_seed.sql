@@ -114,6 +114,7 @@ INSERT INTO system_settings (key, value, description) VALUES
 ('Security:SessionWarningBeforeMinutes', '5', 'Waktu peringatan sebelum sesi kedaluwarsa (menit)'),
 ('Sync:MasterHostUrl', 'https://central.trackerkerja.local', 'Host server induk untuk sinkronisasi multi-instance'),
 ('Sync:AutoSyncIntervalMinutes', '60', 'Interval sinkronisasi data otomatis antar instance (menit)'),
+('Sync_ApiKey', 'TRACKERKERJA-SYNC-APIKEY-PROD-2026-SECURE', 'Kunci Otorisasi REST API Sinkronisasi Multi-Instance'),
 ('Database:VacuumSchedule', 'Weekly', 'Jadwal otomatis pemeliharaan pembersihan database VACUUM'),
 ('Smtp:Host', 'smtp.gmail.com', 'Alamat host mail server SMTP'),
 ('Smtp:Port', '587', 'Port server SMTP'),

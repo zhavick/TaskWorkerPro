@@ -226,6 +226,23 @@ public record NoteAttachmentSyncDto
     public DateTimeOffset UploadedAt { get; init; }
 }
 
+public record CompanyDocumentSyncDto
+{
+    public int Id { get; init; }
+    public string Title { get; init; } = string.Empty;
+    public string? Description { get; init; }
+    public string FileName { get; init; } = string.Empty;
+    public string FileStoragePath { get; init; } = string.Empty;
+    public long FileSize { get; init; }
+    public string ContentType { get; init; } = "application/octet-stream";
+    public string Category { get; init; } = "Umum";
+    public int CompanyId { get; init; }
+    public int? ProjectId { get; init; }
+    public string? UploadedByUserId { get; init; }
+    public DateTimeOffset CreatedAt { get; init; }
+    public DateTimeOffset UpdatedAt { get; init; }
+}
+
 public record MasterBadgeSyncDto
 {
     public int Id { get; init; }
@@ -358,6 +375,7 @@ public record SyncDatabaseData
     public List<AttendanceSyncDto> Attendances { get; init; } = new();
     public List<WorkNoteSyncDto> Notes { get; init; } = new();
     public List<NoteAttachmentSyncDto> NoteAttachments { get; init; } = new();
+    public List<CompanyDocumentSyncDto> Documents { get; init; } = new();
 }
 
 public record SyncPayload

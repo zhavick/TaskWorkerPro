@@ -70,6 +70,7 @@ public class SyncController : ControllerBase
 
     [HttpPost("push")]
     [Authorize]
+    [DisableRequestSizeLimit]
     public async Task<IActionResult> Push([FromBody] SyncPushRequest request)
     {
         if (!IsAdmin())
@@ -124,6 +125,7 @@ public class SyncController : ControllerBase
 
     [HttpPost("receive")]
     [AllowAnonymous]
+    [DisableRequestSizeLimit]
     public async Task<IActionResult> ReceivePayload([FromBody] SyncPayload payload)
     {
         if (!IsSyncAuthorized())
@@ -167,6 +169,8 @@ public class SyncController : ControllerBase
     [HttpPost("import-package")]
     [HttpPost("package/upload")]
     [Authorize]
+    [DisableRequestSizeLimit]
+    [RequestFormLimits(MultipartBodyLengthLimit = 524_288_000)]
     public async Task<IActionResult> ImportPackage(IFormFile file)
     {
         if (!IsAdmin())

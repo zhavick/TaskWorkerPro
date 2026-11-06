@@ -930,6 +930,151 @@ public class SyncServiceTests : IDisposable
         Assert.Equal("KONTEN_FISIK_PETUNJUK_TEKNIS_SOP", await File.ReadAllTextAsync(targetFile));
     }
 
+    [Fact]
+    public async Task ImportPackageZipAsync_WithLeadingSlashInZipEntries_ShouldExtractWithoutZipSlip()
+    {
+        // Arrange
+        var noteTitle = "SOP Konfigurasi Router Induk";
+        var fileName = "config_router.txt";
+        var syncData = new SyncDatabaseData
+        {
+            Notes = new List<WorkNoteSyncDto>
+            {
+                new()
+                {
+                    Id = 5510,
+                    Title = noteTitle,
+                    ContentHtml = "<p>Langkah setup router mikrotik induk</p>",
+                    Category = "SOP",
+                    CreatedAt = DateTimeOffset.UtcNow,
+                    UpdatedAt = DateTimeOffset.UtcNow
+                }
+            },
+            NoteAttachments = new List<NoteAttachmentSyncDto>
+            {
+                new()
+                {
+                    Id = 6610,
+                    NoteId = 5510,
+                    FileName = fileName,
+                    FilePath = $"/uploads/notes/5510/{fileName}",
+                    FileSize = 100,
+                    ContentType = "text/plain",
+                    UploadedAt = DateTimeOffset.UtcNow
+                }
+            }
+        };
+
+        using var zipMs = new MemoryStream();
+        using (var archive = new ZipArchive(zipMs, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            var manifestEntry = archive.CreateEntry("manifest.json");
+            using (var writer = new StreamWriter(manifestEntry.Open()))
+            {
+                await writer.WriteAsync(JsonSerializer.Serialize(new SyncManifest
+                {
+                    SourceInstance = "Induk",
+                    EntityCount = 2,
+                    ExportedAt = DateTimeOffset.UtcNow
+                }));
+            }
+
+            var dataEntry = archive.CreateEntry("sync_data.json");
+            using (var writer = new StreamWriter(dataEntry.Open()))
+            {
+                await writer.WriteAsync(JsonSerializer.Serialize(syncData));
+            }
+
+            // Entri ZIP dengan leading slash (format UNIX / Docker)
+            var fileEntry = archive.CreateEntry($"/uploads/notes/5510/{fileName}");
+            using (var writer = new StreamWriter(fileEntry.Open()))
+            {
+                await writer.WriteAsync("CONFIG_ROUTER_DATA_OK");
+            }
+        }
+        zipMs.Position = 0;
+
+        // Act
+        var result = await _syncService.ImportPackageZipAsync(zipMs, "tester");
+
+        // Assert
+        Assert.True(result.Success, result.Message);
+
+        var note = await _context.Notes.FirstOrDefaultAsync(n => n.Title == noteTitle);
+        Assert.NotNull(note);
+
+        var targetFile = Path.Combine(_tempUploadDir, "notes", note.Id.ToString(), fileName);
+        Assert.True(File.Exists(targetFile), $"File tidak ditemukan di {targetFile}");
+        Assert.Equal("CONFIG_ROUTER_DATA_OK", await File.ReadAllTextAsync(targetFile));
+    }
+
+    [Fact]
+    public async Task ProcessReceivedPayloadAsync_ShouldSyncDocumentsAndPreservePhysicalFiles()
+    {
+        // Arrange
+        var company = new Company { Name = "PT Nusantara Sync", Code = "NUS" };
+        _context.Companies.Add(company);
+        await _context.SaveChangesAsync();
+
+        var docTitle = "SOP Standar Operasional Pengujian";
+        var diskFileName = "sop_pengujian.pdf";
+        var docContent = "KONTEN_DOKUMEN_SOP_DMS";
+
+        using var zipMs = new MemoryStream();
+        using (var zip = new ZipArchive(zipMs, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            var entry = zip.CreateEntry($"uploads/documents/{company.Id}/{diskFileName}");
+            using var writer = new StreamWriter(entry.Open());
+            await writer.WriteAsync(docContent);
+        }
+
+        var payload = new SyncPayload
+        {
+            Manifest = new SyncManifest
+            {
+                SourceInstance = "Parent-Server",
+                EntityCount = 1,
+                IncludesFiles = true
+            },
+            Data = new SyncDatabaseData
+            {
+                Documents = new List<CompanyDocumentSyncDto>
+                {
+                    new()
+                    {
+                        Id = 8801,
+                        Title = docTitle,
+                        Description = "Dokumen SOP pengujian aplikasi",
+                        FileName = diskFileName,
+                        FileStoragePath = $"/uploads/documents/{company.Id}/{diskFileName}",
+                        FileSize = docContent.Length,
+                        ContentType = "application/pdf",
+                        Category = "SOP",
+                        CompanyId = company.Id,
+                        CreatedAt = DateTimeOffset.UtcNow,
+                        UpdatedAt = DateTimeOffset.UtcNow
+                    }
+                }
+            },
+            FilesZipBase64 = Convert.ToBase64String(zipMs.ToArray())
+        };
+
+        // Act
+        var result = await _syncService.ProcessReceivedPayloadAsync(payload, "admin-tester");
+
+        // Assert
+        Assert.True(result.Success, result.Message);
+
+        var syncedDoc = await _context.Documents.FirstOrDefaultAsync(d => d.Title == docTitle);
+        Assert.NotNull(syncedDoc);
+        Assert.Equal("SOP", syncedDoc.Category);
+        Assert.Equal(company.Id, syncedDoc.CompanyId);
+
+        var physicalFile = Path.Combine(_tempUploadDir, "documents", company.Id.ToString(), diskFileName);
+        Assert.True(File.Exists(physicalFile), $"Physical file must exist at {physicalFile}");
+        Assert.Equal(docContent, await File.ReadAllTextAsync(physicalFile));
+    }
+
     private class FakeTenantService : ICurrentTenantService
     {
         public FakeTenantService(int? companyId, string? companyCode, string? userId, bool isAdmin)

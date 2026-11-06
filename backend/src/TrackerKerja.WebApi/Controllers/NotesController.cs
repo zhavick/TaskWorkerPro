@@ -48,7 +48,7 @@ public class NotesController : ControllerBase
             .AsNoTracking()
             .AsQueryable();
 
-        if (!_tenantService.IsSuperAdmin && _tenantService.CompanyId.HasValue)
+        if (!_tenantService.IsSuperAdmin && !_tenantService.IsAdmin && _tenantService.CompanyId.HasValue)
         {
             query = query.Where(n => n.CompanyId == null || n.CompanyId == _tenantService.CompanyId.Value || n.Category == "SOP");
         }
@@ -100,7 +100,7 @@ public class NotesController : ControllerBase
 
         if (note == null) return NotFound(new { success = false, message = "Catatan tidak ditemukan." });
 
-        if (!_tenantService.IsSuperAdmin && _tenantService.CompanyId.HasValue && note.CompanyId.HasValue && note.CompanyId.Value != _tenantService.CompanyId.Value && note.Category != "SOP")
+        if (!_tenantService.IsSuperAdmin && !_tenantService.IsAdmin && _tenantService.CompanyId.HasValue && note.CompanyId.HasValue && note.CompanyId.Value != _tenantService.CompanyId.Value && note.Category != "SOP")
         {
             return StatusCode(403, new { success = false, message = "Anda tidak berhak mengakses catatan perusahaan lain." });
         }
@@ -163,7 +163,7 @@ public class NotesController : ControllerBase
         var note = await _context.Notes.FirstOrDefaultAsync(n => n.Id == id);
         if (note == null) return NotFound(new { success = false, message = "Catatan tidak ditemukan." });
 
-        if (!_tenantService.IsSuperAdmin && _tenantService.CompanyId.HasValue && note.CompanyId.HasValue && note.CompanyId.Value != _tenantService.CompanyId.Value && note.Category != "SOP")
+        if (!_tenantService.IsSuperAdmin && !_tenantService.IsAdmin && _tenantService.CompanyId.HasValue && note.CompanyId.HasValue && note.CompanyId.Value != _tenantService.CompanyId.Value && note.Category != "SOP")
         {
             return StatusCode(403, new { success = false, message = "Anda tidak berhak mengakses catatan perusahaan lain." });
         }
@@ -187,7 +187,7 @@ public class NotesController : ControllerBase
         var note = await _context.Notes.FirstOrDefaultAsync(n => n.Id == id);
         if (note == null) return NotFound(new { success = false, message = "Catatan tidak ditemukan." });
 
-        if (!_tenantService.IsSuperAdmin && _tenantService.CompanyId.HasValue && note.CompanyId.HasValue && note.CompanyId.Value != _tenantService.CompanyId.Value && note.Category != "SOP")
+        if (!_tenantService.IsSuperAdmin && !_tenantService.IsAdmin && _tenantService.CompanyId.HasValue && note.CompanyId.HasValue && note.CompanyId.Value != _tenantService.CompanyId.Value && note.Category != "SOP")
         {
             return StatusCode(403, new { success = false, message = "Anda tidak berhak mengakses catatan perusahaan lain." });
         }
@@ -208,7 +208,7 @@ public class NotesController : ControllerBase
 
         if (note == null) return NotFound(new { success = false, message = "Catatan tidak ditemukan." });
 
-        if (!_tenantService.IsSuperAdmin && _tenantService.CompanyId.HasValue && note.CompanyId.HasValue && note.CompanyId.Value != _tenantService.CompanyId.Value && note.Category != "SOP")
+        if (!_tenantService.IsSuperAdmin && !_tenantService.IsAdmin && _tenantService.CompanyId.HasValue && note.CompanyId.HasValue && note.CompanyId.Value != _tenantService.CompanyId.Value && note.Category != "SOP")
         {
             return StatusCode(403, new { success = false, message = "Anda tidak berhak mengakses catatan perusahaan lain." });
         }
@@ -235,7 +235,7 @@ public class NotesController : ControllerBase
         var note = await _context.Notes.FirstOrDefaultAsync(n => n.Id == id);
         if (note == null) return NotFound(new { success = false, message = "Catatan tidak ditemukan." });
 
-        if (!_tenantService.IsSuperAdmin && _tenantService.CompanyId.HasValue && note.CompanyId.HasValue && note.CompanyId.Value != _tenantService.CompanyId.Value && note.Category != "SOP")
+        if (!_tenantService.IsSuperAdmin && !_tenantService.IsAdmin && _tenantService.CompanyId.HasValue && note.CompanyId.HasValue && note.CompanyId.Value != _tenantService.CompanyId.Value && note.Category != "SOP")
         {
             return StatusCode(403, new { success = false, message = "Anda tidak berhak mengakses catatan perusahaan lain." });
         }

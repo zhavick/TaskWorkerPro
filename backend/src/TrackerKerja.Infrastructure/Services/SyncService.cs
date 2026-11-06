@@ -256,14 +256,28 @@ public class SyncService : ISyncService
         {
             using var archive = new ZipArchive(zipStream, ZipArchiveMode.Read, leaveOpen: false);
 
+            var normalizedUploadBase = Path.GetFullPath(_uploadBasePath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+
             // Zip Slip Security Guard Verification
             foreach (var entry in archive.Entries)
             {
                 if (string.IsNullOrEmpty(entry.Name)) continue; // directory entry
 
+                var cleanEntryName = entry.FullName.Replace('\\', '/').TrimStart('/');
+                var isUploadEntry = cleanEntryName.StartsWith("uploads/", StringComparison.OrdinalIgnoreCase);
+                var relPath = (isUploadEntry ? cleanEntryName.Substring("uploads/".Length) : cleanEntryName).TrimStart('/');
+
+                if (string.IsNullOrWhiteSpace(relPath) ||
+                    relPath.Equals("manifest.json", StringComparison.OrdinalIgnoreCase) ||
+                    relPath.Equals("sync_data.json", StringComparison.OrdinalIgnoreCase) ||
+                    relPath.Equals("sync_data.sql", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
                 // Normalize path
-                var destinationPath = Path.GetFullPath(Path.Combine(_uploadBasePath, entry.FullName));
-                if (!destinationPath.StartsWith(_uploadBasePath, StringComparison.OrdinalIgnoreCase))
+                var destinationPath = Path.GetFullPath(Path.Combine(normalizedUploadBase, relPath));
+                if (!destinationPath.StartsWith(normalizedUploadBase, StringComparison.OrdinalIgnoreCase))
                 {
                     var failMsg = $"Zip Slip path traversal attempt detected in entry: {entry.FullName}";
                     _logger?.LogWarning(failMsg);
@@ -301,15 +315,15 @@ public class SyncService : ISyncService
                 };
             }
 
-            // Extract file attachments if present (avatars, covers, note attachments, etc.)
+            // Extract file attachments if present (avatars, covers, note attachments, documents, etc.)
             var extractedFilesCount = 0;
             foreach (var entry in archive.Entries)
             {
                 if (string.IsNullOrEmpty(entry.Name)) continue; // directory entry
 
-                var rawName = entry.FullName.Replace('\\', '/');
-                var isUploadEntry = rawName.StartsWith("uploads/", StringComparison.OrdinalIgnoreCase);
-                var relPath = isUploadEntry ? rawName.Substring("uploads/".Length) : rawName;
+                var cleanEntryName = entry.FullName.Replace('\\', '/').TrimStart('/');
+                var isUploadEntry = cleanEntryName.StartsWith("uploads/", StringComparison.OrdinalIgnoreCase);
+                var relPath = (isUploadEntry ? cleanEntryName.Substring("uploads/".Length) : cleanEntryName).TrimStart('/');
 
                 if (string.IsNullOrWhiteSpace(relPath) ||
                     relPath.Equals("manifest.json", StringComparison.OrdinalIgnoreCase) ||
@@ -319,8 +333,8 @@ public class SyncService : ISyncService
                     continue;
                 }
 
-                var destinationPath = Path.GetFullPath(Path.Combine(_uploadBasePath, relPath));
-                if (!destinationPath.StartsWith(_uploadBasePath, StringComparison.OrdinalIgnoreCase))
+                var destinationPath = Path.GetFullPath(Path.Combine(normalizedUploadBase, relPath));
+                if (!destinationPath.StartsWith(normalizedUploadBase, StringComparison.OrdinalIgnoreCase))
                 {
                     throw new InvalidOperationException($"Zip Slip detected: {entry.FullName}");
                 }
@@ -951,6 +965,40 @@ public class SyncService : ISyncService
                 UpdatedAt = a.UpdatedAt
             }).ToListAsync();
 
+        var rawDocuments = await _context.Documents.IgnoreQueryFilters().ToListAsync();
+        var documents = rawDocuments.Select(d =>
+        {
+            var normalizedPath = (d.FileStoragePath ?? string.Empty).Replace('\\', '/');
+            var diskFileName = !string.IsNullOrWhiteSpace(normalizedPath)
+                ? Path.GetFileName(normalizedPath)
+                : d.FileName;
+            if (string.IsNullOrWhiteSpace(diskFileName))
+            {
+                diskFileName = d.FileName;
+            }
+
+            var cleanFilePath = (!string.IsNullOrWhiteSpace(normalizedPath) && normalizedPath.StartsWith("/uploads/documents/"))
+                ? normalizedPath
+                : $"/uploads/documents/{d.CompanyId}/{diskFileName}";
+
+            return new CompanyDocumentSyncDto
+            {
+                Id = d.Id,
+                Title = d.Title,
+                Description = d.Description,
+                FileName = d.FileName,
+                FileStoragePath = cleanFilePath,
+                FileSize = d.FileSize,
+                ContentType = d.ContentType,
+                Category = d.Category,
+                CompanyId = d.CompanyId,
+                ProjectId = d.ProjectId,
+                UploadedByUserId = d.UploadedByUserId,
+                CreatedAt = d.CreatedAt,
+                UpdatedAt = d.UpdatedAt
+            };
+        }).ToList();
+
         var data = new SyncDatabaseData
         {
             Companies = companies,
@@ -972,7 +1020,8 @@ public class SyncService : ISyncService
             Sessions = sessions,
             Attendances = attendances,
             Notes = notes,
-            NoteAttachments = attachments
+            NoteAttachments = attachments,
+            Documents = documents
         };
 
         var entityCount = companies.Count + users.Count + categories.Count + priorities.Count +
@@ -980,7 +1029,7 @@ public class SyncService : ISyncService
                           dailyCheckIns.Count + rewardItems.Count + rewardClaims.Count +
                           emailTemplates.Count + systemSettings.Count + announcements.Count +
                           projects.Count + tasks.Count + sessions.Count + attendances.Count +
-                          notes.Count + attachments.Count;
+                          notes.Count + attachments.Count + documents.Count;
 
         string? filesZipBase64 = null;
         if (includeFiles)
@@ -1024,7 +1073,7 @@ public class SyncService : ISyncService
                 "master_statuses", "master_milestones", "master_badges", "user_badges",
                 "daily_check_ins", "reward_items", "reward_claims",
                 "email_templates", "system_settings", "announcements", "projects", "tasks",
-                "sessions", "attendances", "notes", "note_attachments"
+                "sessions", "attendances", "notes", "note_attachments", "documents"
             }
         };
 
@@ -1047,14 +1096,16 @@ public class SyncService : ISyncService
                 using var ms = new MemoryStream(zipBytes);
                 using var archive = new ZipArchive(ms, ZipArchiveMode.Read);
 
+                var normalizedUploadBase = Path.GetFullPath(_uploadBasePath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+
                 // Zip slip check & extraction
                 foreach (var entry in archive.Entries)
                 {
                     if (string.IsNullOrEmpty(entry.Name)) continue;
 
-                    var rawName = entry.FullName.Replace('\\', '/');
-                    var isUploadEntry = rawName.StartsWith("uploads/", StringComparison.OrdinalIgnoreCase);
-                    var relPath = isUploadEntry ? rawName.Substring("uploads/".Length) : rawName;
+                    var cleanEntryName = entry.FullName.Replace('\\', '/').TrimStart('/');
+                    var isUploadEntry = cleanEntryName.StartsWith("uploads/", StringComparison.OrdinalIgnoreCase);
+                    var relPath = (isUploadEntry ? cleanEntryName.Substring("uploads/".Length) : cleanEntryName).TrimStart('/');
 
                     if (string.IsNullOrWhiteSpace(relPath) ||
                         relPath.Equals("manifest.json", StringComparison.OrdinalIgnoreCase) ||
@@ -1064,8 +1115,8 @@ public class SyncService : ISyncService
                         continue;
                     }
 
-                    var dest = Path.GetFullPath(Path.Combine(_uploadBasePath, relPath));
-                    if (!dest.StartsWith(_uploadBasePath, StringComparison.OrdinalIgnoreCase))
+                    var dest = Path.GetFullPath(Path.Combine(normalizedUploadBase, relPath));
+                    if (!dest.StartsWith(normalizedUploadBase, StringComparison.OrdinalIgnoreCase))
                     {
                         throw new InvalidOperationException($"Zip Slip detected: {entry.FullName}");
                     }
@@ -1705,6 +1756,13 @@ public class SyncService : ISyncService
         }
 
         // 4. Merge Projects
+        var projectIdLookup = new Dictionary<int, int>();
+        var allLocalProjects = await _context.Projects.IgnoreQueryFilters().ToListAsync();
+        foreach (var lp in allLocalProjects)
+        {
+            projectIdLookup[lp.Id] = lp.Id;
+        }
+
         foreach (var pr in data.Projects)
         {
             var resolvedCompanyId = pr.CompanyId.HasValue && companyIdLookup.TryGetValue(pr.CompanyId.Value, out var pcId)
@@ -1718,6 +1776,7 @@ public class SyncService : ISyncService
             var existing = await _context.Projects.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.Id == pr.Id);
             if (existing != null)
             {
+                projectIdLookup[pr.Id] = existing.Id;
                 existing.Name = pr.Name;
                 existing.Description = pr.Description;
                 existing.Color = pr.Color;
@@ -1733,7 +1792,7 @@ public class SyncService : ISyncService
             }
             else
             {
-                _context.Projects.Add(new Project
+                var newProject = new Project
                 {
                     Id = pr.Id,
                     Name = pr.Name,
@@ -1749,7 +1808,10 @@ public class SyncService : ISyncService
                     Tags = pr.Tags,
                     Deadline = pr.Deadline,
                     CreatedAt = pr.CreatedAt
-                });
+                };
+                _context.Projects.Add(newProject);
+                await _context.SaveChangesAsync();
+                projectIdLookup[pr.Id] = newProject.Id;
             }
             totalMerged++;
         }
@@ -1776,11 +1838,15 @@ public class SyncService : ISyncService
             var parentExists = t.ParentTaskId.HasValue && (data.Tasks.Any(x => x.Id == t.ParentTaskId.Value) || await _context.Tasks.IgnoreQueryFilters().AnyAsync(x => x.Id == t.ParentTaskId.Value));
             var resolvedParentTaskId = parentExists ? t.ParentTaskId : null;
 
+            var resolvedProjectId = t.ProjectId.HasValue && projectIdLookup.TryGetValue(t.ProjectId.Value, out var pid)
+                ? pid
+                : t.ProjectId;
+
             var existing = await _context.Tasks.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.Id == t.Id);
             if (existing == null && !string.IsNullOrWhiteSpace(t.Title))
             {
                 existing = await _context.Tasks.IgnoreQueryFilters()
-                    .FirstOrDefaultAsync(x => x.Title.ToLower() == t.Title.ToLower() && (!t.ProjectId.HasValue || x.ProjectId == t.ProjectId));
+                    .FirstOrDefaultAsync(x => x.Title.ToLower() == t.Title.ToLower() && (!resolvedProjectId.HasValue || x.ProjectId == resolvedProjectId));
             }
 
             if (existing != null)
@@ -1805,7 +1871,7 @@ public class SyncService : ISyncService
                 existing.Obstacle = t.Obstacle;
                 existing.Solution = t.Solution;
                 existing.Tags = t.Tags;
-                existing.ProjectId = t.ProjectId;
+                existing.ProjectId = resolvedProjectId;
                 existing.CategoryId = t.CategoryId;
                 existing.AssignedToUserId = resolvedAssignedUserId;
                 existing.ParentTaskId = resolvedParentTaskId;
@@ -1828,7 +1894,7 @@ public class SyncService : ISyncService
                     Obstacle = t.Obstacle,
                     Solution = t.Solution,
                     Tags = t.Tags,
-                    ProjectId = t.ProjectId,
+                    ProjectId = resolvedProjectId,
                     CategoryId = t.CategoryId,
                     AssignedToUserId = resolvedAssignedUserId,
                     ParentTaskId = resolvedParentTaskId,
@@ -2014,6 +2080,21 @@ public class SyncService : ISyncService
             // 1. Cari catatan berdasarkan ID
             var existing = await _context.Notes.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.Id == n.Id);
 
+            // Validasi tabrakan ID: jika ditemukan berdasarkan ID namun judul berbeda dan catatan lokal sudah memiliki isi tersendiri,
+            // maka itu adalah catatan berbeda yang kebetulan memiliki ID yang sama di server tujuan. Jangan timpa!
+            if (existing != null)
+            {
+                var titleMatches = !string.IsNullOrWhiteSpace(n.Title) && !string.IsNullOrWhiteSpace(existing.Title) &&
+                                   string.Equals(existing.Title.Trim(), n.Title.Trim(), StringComparison.OrdinalIgnoreCase);
+                var isLocalEmpty = IsContentEmpty(existing.ContentHtml);
+                var isMatchingTask = resolvedTaskId.HasValue && existing.TaskId == resolvedTaskId.Value;
+
+                if (!titleMatches && !isLocalEmpty && !isMatchingTask)
+                {
+                    existing = null;
+                }
+            }
+
             // 2. Jika tidak ditemukan berdasarkan ID, cari berdasarkan TaskId dan Title serupa
             if (existing == null && resolvedTaskId.HasValue && !string.IsNullOrWhiteSpace(n.Title))
             {
@@ -2162,7 +2243,11 @@ public class SyncService : ISyncService
                     {
                         Path.Combine(_uploadBasePath, "notes", att.NoteId.ToString(), diskFileName),
                         Path.Combine(_uploadBasePath, "notes", att.NoteId.ToString(), att.FileName),
-                        Path.Combine(_uploadBasePath, "notes", targetNoteId.ToString(), att.FileName)
+                        Path.Combine(_uploadBasePath, "notes", targetNoteId.ToString(), att.FileName),
+                        Path.Combine(_uploadBasePath, "uploads", "notes", att.NoteId.ToString(), diskFileName),
+                        Path.Combine(_uploadBasePath, "uploads", "notes", targetNoteId.ToString(), diskFileName),
+                        Path.Combine(_uploadBasePath, "..", "wwwroot", "uploads", "notes", att.NoteId.ToString(), diskFileName),
+                        Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "wwwroot", "uploads", "notes", att.NoteId.ToString(), diskFileName)
                     };
 
                     string? foundSource = candidateSources.FirstOrDefault(File.Exists);
@@ -2216,7 +2301,9 @@ public class SyncService : ISyncService
                 _logger?.LogWarning(ex, "Failed to relocate or mirror note attachment file for note {NoteId}", targetNoteId);
             }
 
-            var existing = await _context.NoteAttachments.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.Id == att.Id);
+            var existing = await _context.NoteAttachments.IgnoreQueryFilters()
+                .FirstOrDefaultAsync(x => (x.Id == att.Id && x.NoteId == targetNoteId) ||
+                                          (x.NoteId == targetNoteId && x.FileName.ToLower() == att.FileName.ToLower()));
             if (existing != null)
             {
                 existing.NoteId = targetNoteId;
@@ -2455,6 +2542,164 @@ public class SyncService : ISyncService
             totalMerged++;
         }
         await _context.SaveChangesAsync();
+
+        // 14. Merge CompanyDocuments (Dokumentasi Kerja & SOP Repositori Dokumen)
+        if (data.Documents != null && data.Documents.Count > 0)
+        {
+            foreach (var doc in data.Documents)
+            {
+                var targetCompanyId = companyIdLookup.TryGetValue(doc.CompanyId, out var mappedCid) ? mappedCid : doc.CompanyId;
+                var companyExists = await _context.Companies.IgnoreQueryFilters().AnyAsync(c => c.Id == targetCompanyId);
+                if (!companyExists)
+                {
+                    targetCompanyId = defaultCompanyId ?? 1;
+                }
+
+                int? targetProjectId = null;
+                if (doc.ProjectId.HasValue)
+                {
+                    if (projectIdLookup.TryGetValue(doc.ProjectId.Value, out var mappedPid))
+                    {
+                        targetProjectId = mappedPid;
+                    }
+                    else if (await _context.Projects.IgnoreQueryFilters().AnyAsync(p => p.Id == doc.ProjectId.Value))
+                    {
+                        targetProjectId = doc.ProjectId.Value;
+                    }
+                }
+
+                var resolvedUploaderId = (!string.IsNullOrEmpty(doc.UploadedByUserId) && userLookup.TryGetValue(doc.UploadedByUserId, out var uploaderUid))
+                    ? uploaderUid
+                    : doc.UploadedByUserId;
+
+                if (!string.IsNullOrEmpty(resolvedUploaderId))
+                {
+                    var uploaderExists = await _context.Users.IgnoreQueryFilters().AnyAsync(u => u.Id == resolvedUploaderId);
+                    if (!uploaderExists)
+                    {
+                        resolvedUploaderId = defaultFallbackUserId;
+                    }
+                }
+
+                var rawPath = (doc.FileStoragePath ?? string.Empty).Replace('\\', '/');
+                var diskFileName = !string.IsNullOrWhiteSpace(rawPath) ? Path.GetFileName(rawPath) : doc.FileName;
+                if (string.IsNullOrWhiteSpace(diskFileName))
+                {
+                    diskFileName = doc.FileName;
+                }
+
+                var targetDocDir = Path.Combine(_uploadBasePath, "documents", targetCompanyId.ToString());
+                var targetDocPath = Path.Combine(targetDocDir, diskFileName);
+
+                try
+                {
+                    if (!Directory.Exists(targetDocDir))
+                    {
+                        Directory.CreateDirectory(targetDocDir);
+                    }
+
+                    if (!File.Exists(targetDocPath))
+                    {
+                        var candidateSources = new List<string>
+                        {
+                            Path.Combine(_uploadBasePath, "documents", doc.CompanyId.ToString(), diskFileName),
+                            Path.Combine(_uploadBasePath, "documents", doc.CompanyId.ToString(), doc.FileName),
+                            Path.Combine(_uploadBasePath, "documents", targetCompanyId.ToString(), doc.FileName),
+                            Path.Combine(_uploadBasePath, "uploads", "documents", doc.CompanyId.ToString(), diskFileName),
+                            Path.Combine(_uploadBasePath, "..", "wwwroot", "uploads", "documents", doc.CompanyId.ToString(), diskFileName),
+                            Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "wwwroot", "uploads", "documents", doc.CompanyId.ToString(), diskFileName)
+                        };
+
+                        string? foundSource = candidateSources.FirstOrDefault(File.Exists);
+                        if (foundSource == null && Directory.Exists(_uploadBasePath))
+                        {
+                            var matches = Directory.GetFiles(_uploadBasePath, diskFileName, SearchOption.AllDirectories);
+                            if (matches.Length == 0 && !string.IsNullOrWhiteSpace(doc.FileName))
+                            {
+                                matches = Directory.GetFiles(_uploadBasePath, doc.FileName, SearchOption.AllDirectories);
+                            }
+                            if (matches.Length > 0)
+                            {
+                                foundSource = matches[0];
+                            }
+                        }
+
+                        if (foundSource != null && File.Exists(foundSource))
+                        {
+                            File.Copy(foundSource, targetDocPath, overwrite: true);
+                            MirrorExtractedFile($"documents/{targetCompanyId}/{diskFileName}", targetDocPath);
+                            if (!string.IsNullOrWhiteSpace(doc.FileName))
+                            {
+                                MirrorExtractedFile($"documents/{targetCompanyId}/{doc.FileName}", targetDocPath);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        MirrorExtractedFile($"documents/{targetCompanyId}/{diskFileName}", targetDocPath);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogWarning(ex, "Failed to relocate or mirror document file {FileName}", diskFileName);
+                }
+
+                var normalizedFilePath = targetDocPath;
+
+                var existingDoc = await _context.Documents.IgnoreQueryFilters()
+                    .FirstOrDefaultAsync(d => (d.Id == doc.Id && d.CompanyId == targetCompanyId) || (d.Title.ToLower() == doc.Title.ToLower() && d.CompanyId == targetCompanyId));
+
+                if (existingDoc != null)
+                {
+                    existingDoc.Title = doc.Title;
+                    existingDoc.Description = doc.Description;
+                    existingDoc.FileName = doc.FileName;
+                    existingDoc.FileStoragePath = normalizedFilePath;
+                    existingDoc.FileSize = doc.FileSize > 0 ? doc.FileSize : (File.Exists(targetDocPath) ? new FileInfo(targetDocPath).Length : 0);
+                    existingDoc.ContentType = !string.IsNullOrWhiteSpace(doc.ContentType) ? doc.ContentType : "application/octet-stream";
+                    existingDoc.Category = !string.IsNullOrWhiteSpace(doc.Category) ? doc.Category : "Umum";
+                    existingDoc.CompanyId = targetCompanyId;
+                    existingDoc.ProjectId = targetProjectId;
+                    existingDoc.UploadedByUserId = resolvedUploaderId;
+                    existingDoc.UpdatedAt = doc.UpdatedAt != default ? doc.UpdatedAt : DateTimeOffset.UtcNow;
+                }
+                else
+                {
+                    var docIdTaken = await _context.Documents.IgnoreQueryFilters().AnyAsync(d => d.Id == doc.Id);
+                    var newDoc = new CompanyDocument
+                    {
+                        Title = doc.Title,
+                        Description = doc.Description,
+                        FileName = doc.FileName,
+                        FileStoragePath = normalizedFilePath,
+                        FileSize = doc.FileSize > 0 ? doc.FileSize : (File.Exists(targetDocPath) ? new FileInfo(targetDocPath).Length : 0),
+                        ContentType = !string.IsNullOrWhiteSpace(doc.ContentType) ? doc.ContentType : "application/octet-stream",
+                        Category = !string.IsNullOrWhiteSpace(doc.Category) ? doc.Category : "Umum",
+                        CompanyId = targetCompanyId,
+                        ProjectId = targetProjectId,
+                        UploadedByUserId = resolvedUploaderId,
+                        CreatedAt = doc.CreatedAt != default ? doc.CreatedAt : DateTimeOffset.UtcNow,
+                        UpdatedAt = doc.UpdatedAt != default ? doc.UpdatedAt : DateTimeOffset.UtcNow
+                    };
+
+                    if (!docIdTaken)
+                    {
+                        newDoc.Id = doc.Id;
+                    }
+
+                    _context.Documents.Add(newDoc);
+                }
+                totalMerged++;
+            }
+            await _context.SaveChangesAsync();
+        }
+
+        var isPostgres = _context.Database.ProviderName?.Contains("Npgsql", StringComparison.OrdinalIgnoreCase) == true
+                      || _context.Database.ProviderName?.Contains("Postgre", StringComparison.OrdinalIgnoreCase) == true;
+        if (isPostgres)
+        {
+            await UpdatePostgresSequencesAsync();
+        }
 
         return totalMerged;
     }
@@ -2859,6 +3104,23 @@ public class SyncService : ISyncService
             sb.AppendLine();
         }
 
+        // 17. Documents (Dokumentasi Kerja & SOP)
+        if (data.Documents != null && data.Documents.Count > 0)
+        {
+            sb.AppendLine("-- 17. Documents");
+            foreach (var doc in data.Documents)
+            {
+                AppendUpsert(
+                    sb,
+                    "documents",
+                    "id, title, description, file_name, file_storage_path, file_size, content_type, category, company_id, project_id, uploaded_by_user_id, created_at, updated_at",
+                    $"{doc.Id}, {SqlEscape(doc.Title)}, {SqlEscape(doc.Description)}, {SqlEscape(doc.FileName)}, {SqlEscape(doc.FileStoragePath)}, {doc.FileSize}, {SqlEscape(doc.ContentType)}, {SqlEscape(doc.Category)}, {doc.CompanyId}, {SqlNullableInt(doc.ProjectId)}, {SqlEscape(doc.UploadedByUserId)}, {SqlDate(doc.CreatedAt)}, {SqlDate(doc.UpdatedAt)}",
+                    new[] { "title", "description", "file_name", "file_storage_path", "file_size", "content_type", "category", "company_id", "project_id", "uploaded_by_user_id", "updated_at" },
+                    isPostgres);
+            }
+            sb.AppendLine();
+        }
+
         return sb.ToString();
     }
 
@@ -3135,20 +3397,50 @@ public class SyncService : ISyncService
         var tables = new[]
         {
             "companies", "categories", "master_priorities", "master_statuses",
-            "master_milestones", "projects", "tasks", "sessions", "attendances",
-            "notes", "note_attachments", "sync_histories"
+            "master_milestones", "master_badges", "user_badges", "daily_check_ins",
+            "reward_items", "reward_claims", "email_templates", "system_settings",
+            "announcements", "projects", "tasks", "sessions", "attendances",
+            "notes", "note_attachments", "documents", "invoices", "invoice_items",
+            "sync_histories", "audit_logs"
         };
 
         foreach (var tbl in tables)
         {
             try
             {
-                var sql = $"SELECT setval(pg_get_serial_sequence('{tbl}', 'id'), COALESCE((SELECT MAX(id) FROM {tbl}), 1), true);";
+                var sql = $@"
+DO $$
+DECLARE
+    seq_name text;
+    max_id bigint;
+BEGIN
+    SELECT pg_get_serial_sequence('{tbl}', 'id') INTO seq_name;
+    IF seq_name IS NULL THEN
+        seq_name := '{tbl}_id_seq';
+    END IF;
+    
+    EXECUTE 'SELECT COALESCE(MAX(id), 0) FROM {tbl}' INTO max_id;
+    IF max_id > 0 THEN
+        BEGIN
+            EXECUTE 'SELECT setval(''' || seq_name || ''', ' || max_id || ', true)';
+        EXCEPTION WHEN OTHERS THEN
+            -- Sequence might not exist or be named differently
+        END;
+    END IF;
+END $$;";
                 await _context.Database.ExecuteSqlRawAsync(sql);
             }
             catch
             {
-                // Sequence might not exist or be named differently, safely ignore
+                try
+                {
+                    var fallbackSql = $"SELECT setval(pg_get_serial_sequence('{tbl}', 'id'), COALESCE((SELECT MAX(id) FROM {tbl}), 1), true);";
+                    await _context.Database.ExecuteSqlRawAsync(fallbackSql);
+                }
+                catch
+                {
+                    // Sequence might not exist or be named differently, safely ignore
+                }
             }
         }
     }
@@ -3348,6 +3640,82 @@ public class SyncService : ISyncService
             catch (Exception ex)
             {
                 _logger?.LogDebug(ex, "Consolidation of database note attachments encountered an issue");
+            }
+
+            // 5. Pastikan setiap CompanyDocument di basis data tersedia secara fisik di _uploadBasePath/documents/{companyId}/{fileName}
+            try
+            {
+                var documents = _context.Documents.IgnoreQueryFilters().ToList();
+                foreach (var doc in documents)
+                {
+                    var rawPath = (doc.FileStoragePath ?? string.Empty).Replace('\\', '/');
+                    var diskFileName = !string.IsNullOrWhiteSpace(rawPath) ? Path.GetFileName(rawPath) : doc.FileName;
+                    if (string.IsNullOrWhiteSpace(diskFileName))
+                    {
+                        diskFileName = doc.FileName;
+                    }
+
+                    var expectedDir = Path.Combine(_uploadBasePath, "documents", doc.CompanyId.ToString());
+                    var expectedTarget = Path.Combine(expectedDir, diskFileName);
+
+                    if (!File.Exists(expectedTarget))
+                    {
+                        var candidates = new List<string>();
+                        if (!string.IsNullOrWhiteSpace(doc.FileStoragePath) && File.Exists(doc.FileStoragePath))
+                        {
+                            candidates.Add(doc.FileStoragePath);
+                        }
+
+                        if (!string.IsNullOrWhiteSpace(doc.FileStoragePath))
+                        {
+                            var trimmed = doc.FileStoragePath.TrimStart('/', '\\');
+                            candidates.Add(Path.Combine(_uploadBasePath, trimmed));
+                            candidates.Add(Path.Combine(_uploadBasePath, "..", trimmed));
+                        }
+
+                        foreach (var src in candidateSources)
+                        {
+                            candidates.Add(Path.Combine(src, "documents", doc.CompanyId.ToString(), diskFileName));
+                            candidates.Add(Path.Combine(src, "documents", doc.CompanyId.ToString(), doc.FileName));
+                        }
+
+                        string? found = candidates.FirstOrDefault(File.Exists);
+
+                        if (found == null && Directory.Exists(_uploadBasePath))
+                        {
+                            var matches = Directory.GetFiles(_uploadBasePath, diskFileName, SearchOption.AllDirectories);
+                            if (matches.Length == 0 && !string.IsNullOrWhiteSpace(doc.FileName))
+                            {
+                                matches = Directory.GetFiles(_uploadBasePath, doc.FileName, SearchOption.AllDirectories);
+                            }
+                            if (matches.Length > 0)
+                            {
+                                found = matches[0];
+                            }
+                        }
+
+                        if (found != null && File.Exists(found))
+                        {
+                            if (!Directory.Exists(expectedDir))
+                            {
+                                Directory.CreateDirectory(expectedDir);
+                            }
+                            File.Copy(found, expectedTarget, overwrite: true);
+                            if (!string.IsNullOrWhiteSpace(doc.FileName) && !doc.FileName.Equals(diskFileName, StringComparison.OrdinalIgnoreCase))
+                            {
+                                var expectedRaw = Path.Combine(expectedDir, doc.FileName);
+                                if (!File.Exists(expectedRaw))
+                                {
+                                    File.Copy(found, expectedRaw, overwrite: true);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogDebug(ex, "Consolidation of database documents encountered an issue");
             }
         }
         catch (Exception ex)

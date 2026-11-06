@@ -2422,7 +2422,7 @@ export default function ConfigurationPage() {
                         type="password"
                         value={syncApiKey}
                         onChange={(e) => handleSyncApiKeyChange(e.target.value)}
-                        placeholder="Masukkan token otorisasi host induk (misal: TK-SYNC-VUBKJ5PNX3PHI1WX)"
+                        placeholder="Masukkan token otorisasi host induk (misal: TRACKERKERJA-SYNC-APIKEY-PROD-2026-SECURE)"
                         className="font-mono text-xs pr-8"
                       />
                       <Key className="absolute right-2.5 top-2.5 h-4 w-4 text-gray-400" />
