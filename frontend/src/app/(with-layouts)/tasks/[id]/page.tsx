@@ -265,7 +265,7 @@ export default function TaskStudioPage() {
     }
   };
 
-  // Handle Quick Manual Time Presets (+30m, +1h, +2h, +4h, Reset) - FSD 5.5 & 5.21
+  // Handle Quick Manual Time Presets (+30m, +1h, +2h, +4h, +8h, Reset) - FSD 5.5 & 5.21
   const handleTimePreset = (minutes: number) => {
     const now = new Date();
     const start = new Date(now.getTime() - minutes * 60 * 1000);
@@ -371,6 +371,8 @@ export default function TaskStudioPage() {
       queryClient.invalidateQueries({ queryKey: ["tasksList"] });
       queryClient.invalidateQueries({ queryKey: ["kanbanTasks"] });
       queryClient.invalidateQueries({ queryKey: ["dashboardStats"] });
+      queryClient.invalidateQueries({ queryKey: ["currentUserProfile"] });
+      queryClient.invalidateQueries({ queryKey: ["gamificationSummary"] });
     },
     onError: (err: any) => {
       toast.error(extractErrorMessage(err, "Gagal menyimpan perubahan tugas"));
@@ -668,7 +670,7 @@ export default function TaskStudioPage() {
                 </label>
               </div>
 
-              {/* Quick Time Preset Buttons (FSD 5.5: +30m, +1h, +2h, +4h, Reset) */}
+              {/* Quick Time Preset Buttons (FSD 5.5: +30m, +1h, +2h, +4h, +8h, Reset) */}
               <div className="mt-3.5 flex flex-wrap items-center gap-2 border-t border-indigo-200/60 pt-3 dark:border-indigo-900/60">
                 <span className="text-[11px] font-bold text-gray-600 dark:text-gray-300">Preset Cepat:</span>
                 <button
@@ -702,6 +704,14 @@ export default function TaskStudioPage() {
                   className="rounded-lg border border-indigo-200 bg-white px-2.5 py-1 text-xs font-bold text-indigo-700 shadow-2xs hover:bg-indigo-50 dark:border-indigo-800 dark:bg-gray-900 dark:text-indigo-300 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   +4 Jam
+                </button>
+                <button
+                  type="button"
+                  disabled={!canEdit}
+                  onClick={() => canEdit && handleTimePreset(480)}
+                  className="rounded-lg border border-indigo-200 bg-white px-2.5 py-1 text-xs font-bold text-indigo-700 shadow-2xs hover:bg-indigo-50 dark:border-indigo-800 dark:bg-gray-900 dark:text-indigo-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  +8 Jam
                 </button>
                 {logManualSession && canEdit && (
                   <button

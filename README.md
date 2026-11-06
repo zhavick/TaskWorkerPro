@@ -61,7 +61,7 @@
 ### ⏱️ 7. Timesheet, Multi-Timer, Floating Timer Bar & Grafik Beban Kerja
 - **Pencatatan Jam Otomatis & Multi-Timer**: Menjalankan beberapa timer tugas bersamaan tanpa saling bertabrakan, terpantau langsung di bilah mengambang (*Floating Timer Bar*).
 - **Grafik Batang Perbandingan Jam Kerja Anggota (`/reports`)**: Diagram batang komparatif interaktif di bagian atas halaman laporan yang menyajikan total jam kerja per anggota tim untuk mempermudah pemantauan alokasi beban kerja.
-- **Input Durasi Cepat**: Tombol pintas penambahan jam kerja (+30m, +1h, +2h, +4h, Reset) langsung di formulir Task Studio.
+- **Input Durasi Cepat**: Tombol pintas penambahan jam kerja (+30m, +1h, +2h, +4h, +8h, Reset) langsung di formulir Task Studio.
 - **Laporan Excel Timesheet Resmi (ClosedXML)**: Ekspor multi-sheet dengan rincian harian, rekapitulasi per proyek, konversi Man-Days, dan formula otomatis.
 
 ### 📅 8. Modul Presensi Terpadu & Rekonsiliasi Kehadiran Tim (`/attendance`)

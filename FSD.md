@@ -843,7 +843,7 @@ Modul ini mengimplementasikan sistem gamifikasi komprehensif untuk meningkatkan 
 Seluruh formulir kerja inti telah dimodernisasi dari struktur sempit (`max-w-4xl`, `max-w-2xl`) menjadi tata letak studio bentang penuh (`w-full` dengan CSS Grid 12-kolom `lg:grid-cols-12`) yang mengoptimalkan penggunaan monitor resolusi tinggi (1080p, 1440p, 4K) dan tetap responsif pada perangkat seluler:
 - **5.21.1 Detail & Edit Tugas (`/Task/Edit/{id}`)**:
   - *Header Eksekutif Bentang Penuh*: Kode tugas, kode induk, tanggal, judul tugas, dan total durasi waktu kerja.
-  - *Kolom Kiri (8 Kolom)*: Input judul tugas, deskripsi kerja, panel dokumentasi kendala (*Obstacle*) bernuansa amber dan solusi (*Solution*) bernuansa emerald, pencatatan jam kerja manual terintegrasi (+30m, +1h, +2h, +4h, Reset), riwayat sesi kerja (*Work Sessions*), dan catatan terkait.
+  - *Kolom Kiri (8 Kolom)*: Input judul tugas, deskripsi kerja, panel dokumentasi kendala (*Obstacle*) bernuansa amber dan solusi (*Solution*) bernuansa emerald, pencatatan jam kerja manual terintegrasi (+30m, +1h, +2h, +4h, +8h, Reset), riwayat sesi kerja (*Work Sessions*), dan catatan terkait.
   - *Kolom Kanan (4 Kolom - Sticky)*: Dropdown status alur kerja, slider progress persentase (0-100%), penugasan PIC, prioritas, milestone waterfall SDLC, asosiasi proyek/kategori, jadwal mulai/deadline, dan hierarki sub-tugas (*Child Tasks*).
   - *Bilah Aksi Mengambang (Sticky Bottom Action Bar)*: Membentang penuh di bawah layar memuat ringkasan status dan tombol *"Simpan Semua Perubahan"*.
 - **5.21.2 Edit Catatan & Dokumentasi (`/Note/Edit/{id}`)**:
