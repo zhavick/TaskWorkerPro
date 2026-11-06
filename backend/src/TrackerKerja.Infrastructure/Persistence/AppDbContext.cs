@@ -48,6 +48,7 @@ public class AppDbContext : DbContext
     public DbSet<TimesheetPeriod> TimesheetPeriods => Set<TimesheetPeriod>();
     public DbSet<CompanyTimesheetConfig> CompanyTimesheetConfigs => Set<CompanyTimesheetConfig>();
     public DbSet<Holiday> Holidays => Set<Holiday>();
+    public DbSet<Client> Clients => Set<Client>();
     public DbSet<IssueTicket> IssueTickets => Set<IssueTicket>();
     public DbSet<IssueTicketComment> IssueTicketComments => Set<IssueTicketComment>();
     public DbSet<Invoice> Invoices => Set<Invoice>();
@@ -203,6 +204,12 @@ public class AppDbContext : DbContext
             .OnDelete(DeleteBehavior.SetNull);
 
         modelBuilder.Entity<Invoice>()
+            .HasOne(i => i.Client)
+            .WithMany()
+            .HasForeignKey(i => i.ClientId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<Invoice>()
             .HasOne(i => i.CreatedByUser)
             .WithMany()
             .HasForeignKey(i => i.CreatedByUserId)
@@ -325,6 +332,20 @@ public class AppDbContext : DbContext
             .OnDelete(DeleteBehavior.Cascade);
         modelBuilder.Entity<Holiday>().HasQueryFilter(h =>
             IsCurrentUserSuperAdmin || h.CompanyId == null || CurrentCompanyId == null || h.CompanyId == CurrentCompanyId);
+
+        modelBuilder.Entity<Client>().ToTable("clients");
+        modelBuilder.Entity<Client>()
+            .HasOne(c => c.Company)
+            .WithMany()
+            .HasForeignKey(c => c.CompanyId)
+            .OnDelete(DeleteBehavior.SetNull);
+        modelBuilder.Entity<Client>()
+            .HasOne(c => c.SourceCompany)
+            .WithMany()
+            .HasForeignKey(c => c.SourceCompanyId)
+            .OnDelete(DeleteBehavior.SetNull);
+        modelBuilder.Entity<Client>().HasQueryFilter(c =>
+            IsCurrentUserSuperAdmin || c.CompanyId == null || CurrentCompanyId == null || c.CompanyId == CurrentCompanyId);
 
         modelBuilder.Entity<IssueTicket>().HasQueryFilter(i =>
             IsCurrentUserSuperAdmin || CurrentCompanyId == null || i.CompanyId == CurrentCompanyId);

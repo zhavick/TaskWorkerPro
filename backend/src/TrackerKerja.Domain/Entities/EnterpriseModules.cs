@@ -98,6 +98,7 @@ public class Invoice
 
     public int CompanyId { get; set; }
     public int? ProjectId { get; set; }
+    public int? ClientId { get; set; }
 
     [Required]
     [MaxLength(255)]
@@ -140,6 +141,7 @@ public class Invoice
     // Navigation properties
     public Company? Company { get; set; }
     public Project? Project { get; set; }
+    public Client? Client { get; set; }
     public AppUser? CreatedByUser { get; set; }
     public ICollection<InvoiceItem> Items { get; set; } = new List<InvoiceItem>();
 }

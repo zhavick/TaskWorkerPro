@@ -17,7 +17,9 @@ public record UserProfileDto(
     DateTimeOffset? CreatedAt = null,
     bool EnableDms = true,
     bool EnableTicketing = true,
-    bool EnableInvoicing = true
+    bool EnableInvoicing = true,
+    bool EnableGamification = true,
+    int ConsecutiveTaskDays = 0
 );
 
 public record MemberListItemDto(

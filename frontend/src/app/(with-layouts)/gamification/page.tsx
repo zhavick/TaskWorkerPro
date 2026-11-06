@@ -134,7 +134,7 @@ export default function GamificationPage() {
                   className="gap-1.5 bg-indigo-600 hover:bg-indigo-700 font-bold text-white shadow-xs text-xs"
                 >
                   <Sparkles className="h-3.5 w-3.5" />
-                  + Buat Tugas Pertama
+                  + Isi Tugas ({summary?.consecutiveTaskDays || 0}/2 Hari)
                 </Button>
               </Link>
             ) : !summary?.hasCheckedInToday ? (
@@ -174,16 +174,16 @@ export default function GamificationPage() {
             <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
             <div>
               <p className="text-xs sm:text-sm font-semibold">
-                Fitur Gamifikasi Belum Aktif
+                Fitur Gamifikasi Belum Aktif ({summary?.consecutiveTaskDays || 0}/2 Hari Berturut-turut)
               </p>
               <p className="text-xs text-amber-800/90 dark:text-amber-300/90 mt-0.5">
-                Anda belum memiliki tugas kerja. Silakan buat minimal 1 tugas (task) terlebih dahulu untuk mengaktifkan perolehan hadiah poin harian, lencana pencapaian, dan penukaran reward.
+                Menu dan fitur gamifikasi bagi member akan terbuka otomatis setelah Anda mengisi tugas (task) kerja selama 2 hari berturut-turut.
               </p>
             </div>
           </div>
           <Link href="/tasks" className="self-end sm:self-center shrink-0">
             <Button size="sm" className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs whitespace-nowrap shadow-xs">
-              + Buat Tugas
+              + Isi Tugas Kerja
             </Button>
           </Link>
         </div>

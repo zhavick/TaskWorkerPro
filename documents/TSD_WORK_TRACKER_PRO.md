@@ -2,11 +2,11 @@
 # WORK TRACKER PRO (TRACKERKERJA MODERN)
 
 > **Dokumen Spesifikasi Teknis: Arsitektur Pengambilan Data, Controller, API Endpoint, Layanan Backend, Desain Basis Data Relasional, dan Otomasi Deployment**  
-> **Versi Sistem:** v4.2 Task Re-upload Diff & In-Place Update, Task-Linked Notes Card, & Attendance Synchronization Matrix Edition  
+> **Versi Sistem:** v4.3 Master Data Client & Unified Invoice Client Picker, Member 2-Day Consecutive Task Gamification Unlock, Task Re-upload Diff & Attendance Sync Edition  
 > **Target Framework:** Next.js 16 (React 19, TypeScript), .NET 8.0 (C# 12 Web API), Entity Framework Core 8  
 > **Mesin Basis Data:** PostgreSQL 16 & SQLite 3 (Write-Ahead Logging / WAL Mode)  
 > **Status Dokumen:** Approved & Published  
-> **Tanggal Rilis:** 29 Oktober 2026  
+> **Tanggal Rilis:** 6 November 2026  
 
 ---
 
@@ -60,11 +60,11 @@
 | Properti Dokumen | Rincian Teknis |
 | :--- | :--- |
 | **Nama Dokumen** | Technical Specification Document (TSD) Work Tracker Pro (TrackerKerja Modern) |
-| **Kode Dokumen** | TSD-WTP-4.2-202610 |
-| **Versi Aplikasi** | v4.2 Task Re-upload Diff & In-Place Update, Task-Linked Notes Card, & Attendance Synchronization Matrix Edition |
+| **Kode Dokumen** | TSD-WTP-4.3-202611 |
+| **Versi Aplikasi** | v4.3 Master Data Client & Unified Invoice Client Picker, Member 2-Day Consecutive Task Gamification Unlock, Task Re-upload Diff & Attendance Sync Edition |
 | **Arsitek Sistem** | Senior Systems & Software Engineering Team |
 | **Klasifikasi Akses** | Internal Development Team, Technical Leads, DevOps, & DB Administrator |
-| **Tanggal Pembaruan** | 29 Oktober 2026 |
+| **Tanggal Pembaruan** | 6 November 2026 |
 
 ---
 
@@ -859,8 +859,9 @@ await _db.SaveChangesAsync();
    - Jika `RewardItem.IsMonthlyMilestoneReward == true`, memvalidasi apakah pengguna memiliki riwayat `IsMonthlyMilestone == true` atau memiliki badge `CHECKIN_30`.
    - Mengurangi stok barang, mencatat snapshot kurs poin, dan menyimpan klaim berstatus `Pending`.
    - Jika Admin menolak klaim (`ClaimStatus.Rejected`), stok dikembalikan (`Stock + 1`) dan saldo poin kembali utuh ke pengguna.
-5. **Evaluasi Otomatis 40+ Master Badge Gaul (`EvaluateAndAwardBadgesAsync`)**:
-   Mengevaluasi secara otomatis seluruh pemicu (*trigger type*): `Auto_DoneTasks`, `Auto_TotalTasks`, `Auto_TotalHours`, `Auto_TimesheetCount`, `Auto_AttendanceCount`, `Auto_NotesCount`, `Auto_JsonCount`, `Auto_SqlCount`, `Auto_LoginCount`, `Auto_LogoutCount`, `Auto_DailyCheckInCount`, dan `Auto_DailyCheckInStreak`.
+5. **Evaluasi Otomatis 70+ Master Badge Gaul & Standarisasi Kisaran Poin (`10` – `100` Poin)**:
+   - Mengevaluasi secara otomatis seluruh pemicu (*trigger type*): `Auto_DoneTasks`, `Auto_TotalTasks`, `Auto_TotalHours`, `Auto_TimesheetCount`, `Auto_AttendanceCount`, `Auto_NotesCount`, `Auto_JsonCount`, `Auto_SqlCount`, `Auto_LoginCount`, `Auto_LogoutCount`, `Auto_DailyCheckInCount`, dan `Auto_DailyCheckInStreak`.
+   - Seluruh lencana pada `DbInitializer.cs` dan `02_init_seed.sql` memiliki nilai `Points` dalam rentang **10 hingga 100 poin** (`Math.Clamp(b.Points, 10, 100)`), serta divalidasi secara ketat pada endpoint `POST /api/gamification/admin/badges` (`CreateBadge`) dan `PUT /api/gamification/admin/badges/{id}` (`UpdateBadge`).
 6. **Integrasi Widget & Kartu Metrik Dashboard Personal (`HomeController.Index`)**:
    - `HomeController` menyuntikkan `IGamificationService` untuk memuat `DailyCheckInStatusDto` dan `GamificationUserPointsDto`.
    - Grid metrik personal dashboard ditingkatkan menjadi 5 kartu (`Total Tasks`, `In Progress`, `Done`, `Today Work Hours`, dan `Daily Check-In & Streak`).
@@ -869,6 +870,14 @@ await _db.SaveChangesAsync();
    - Komponen bersama `frontend/src/components/gamification/gamification-nav.tsx` menyatukan tata letak visual di ketiga sub-halaman: `/gamification` (Ringkasan & Peringkat), `/gamification/badges` (Koleksi Lencana), dan `/gamification/rewards` (Katalog Hadiah).
    - Menghadirkan *Hero Banner Glassmorphic* dengan efek glowing border, judul kontekstual, deskripsi, serta tab navigasi horizontal interaktif.
    - Mengintegrasikan 4 Kartu Metrik KPI Standar (`Saldo Poin`, `Peringkat/Level`, `Streak Hari`, `Total Badge Diraih`) yang tersinkronisasi lintas sub-halaman untuk pengalaman pengguna yang kohesif.
+8. **Evaluasi Eligibilitas 2 Hari Berturut-turut Mengisi Task bagi Member (`EvaluateTaskGamificationEligibilityAsync`)**:
+   - Prosedur statis `GamificationController.EvaluateTaskGamificationEligibilityAsync(AppDbContext context, string? userId, bool isAdminOrPm)` mengumpulkan himpunan tanggal kalender unik (`HashSet<DateOnly>`) dari aktivitas kerja pengguna:
+     1. Pembuatan atau pembaruan progres tugas pada `_context.Tasks` (`CreatedAt`, `StartDate`, `UpdatedAt`).
+     2. Pencatatan sesi kerja timesheet pada `_context.Sessions` (`StartTime`, `EndTime`).
+     3. Rekaman log audit aktivitas tugas/timesheet pada `_context.AuditLogs` (`POST`/`PUT`/`PATCH` pada controller `Tasks` atau `Timesheets`).
+   - Tanggal-tanggal unik diurutkan secara menaik (`activeDates.OrderBy(d => d)`) untuk menghitung rentang hari berturut-turut maksimum (`maxConsecutive` di mana `sortedDates[i].DayNumber - sortedDates[i - 1].DayNumber == 1`).
+   - Bagi Member (`isStaff`), fitur dan menu gamifikasi hanya terbuka apabila `maxConsecutive >= 2` (`IsUnlocked = true`).
+   - `ProfileController.GetProfile` menyertakan properti `EnableGamification` dan `ConsecutiveTaskDays` pada `UserProfileDto`, yang kemudian digunakan oleh hook `useCurrentUser` (`frontend/src/hooks/use-current-user.ts`) dan komponen `Sidebar` (`frontend/src/components/common/sidebar/index.tsx`) untuk menyembunyikan menu **Gamifikasi & Hadiah** bagi member yang belum mencapai 2 hari berturut-turut mengisi task.
 
 ---
 
@@ -995,6 +1004,13 @@ Mengambil template dari tabel `EmailTemplates` berdasarkan `EventCode`, lalu mel
 | **API** | `GET /api/masterdata/statuses` | `MasterDataApiController` | `Task<IActionResult> GetStatuses()` | Mengambil data dari tabel `MasterStatuses` |
 | **API** | `GET /api/masterdata/milestones` | `MasterDataApiController` | `Task<IActionResult> GetMilestones()` | Mengambil data dari tabel `MasterMilestones` |
 | **API** | `GET /api/masterdata/categories` | `MasterDataApiController` | `Task<IActionResult> GetCategories()` | Mengambil data dari tabel `Categories` |
+| **API** | `GET /api/master/clients` | `MasterDataController` | `Task<IActionResult> GetClients(...)` | Mengambil daftar Master Data Client (`clients`) lengkap dengan jumlah invoice |
+| **API** | `GET /api/master/clients/invoice-options` | `MasterDataController` | `Task<IActionResult> GetInvoiceClientOptions()` | Mengambil opsi klien gabungan dari tabel `clients` dan tabel `companies` |
+| **API** | `POST /api/master/clients` | `MasterDataController` | `Task<IActionResult> CreateClient(...)` | Menambahkan entitas Master Data Client baru (atau dari template perusahaan) |
+| **API** | `PUT /api/master/clients/{id}` | `MasterDataController` | `Task<IActionResult> UpdateClient(id, ...)` | Memperbarui data Master Data Client |
+| **API** | `DELETE /api/master/clients/{id}` | `MasterDataController` | `Task<IActionResult> DeleteClient(id)` | Menghapus atau menonaktifkan Master Data Client |
+| **API** | `POST /api/master/clients/sync-from-companies` | `MasterDataController` | `Task<IActionResult> SyncClientsFromCompanies()` | Menyinkronkan data dari tabel `companies` ke tabel `clients` |
+| **API** | `GET /api/invoices/client-options` | `InvoicesController` | `Task<IActionResult> GetInvoiceClientOptions()` | Mengambil daftar pilihan klien dari `clients` dan `companies` untuk form Invoice |
 | **API** | `GET /api/configuration/settings`| `ConfigurationApiController`| `Task<IActionResult> GetSettings()` | Mengambil konfigurasi dinamis `SystemSettings` |
 
 #### B. Logika Pemulihan Basis Data (`ConfigurationController.RestoreDatabase`)
@@ -1216,14 +1232,14 @@ Modal popup pengumuman (`AnnouncementModal`) memiliki pencegah visual overlap:
 #### A. Multi-Container Topologi & Orchestration
 1. **Layanan Docker Compose (`docker-compose.yml`)**:
    - `postgres`: Image `postgres:16-alpine`, port 5571, volume `pgdata`.
-   - `backend`: Image multi-stage build .NET 8 SDK & ASP.NET Core Runtime, port 5010, volume `backend_uploads`.
+   - `backend`: Image multi-stage build .NET 8 SDK & ASP.NET Core Runtime, port 5008, volume `backend_uploads`.
    - `frontend`: Image multi-stage build Node 20 Alpine, standalone Next.js 16 TurboPack, port 3000.
 2. **Helper Scripts Operasional**:
    - `docker-run.ps1`: Script PowerShell untuk perintah `up`, `down`, `logs`, `status`, `restart`, dan `init-data`.
    - `git-push.ps1`: Script PowerShell otomatisasi staging, semantic commit, dan remote push.
 3. **Postman API Artifacts**:
    - `TrackerKerja_Postman_Collection.json`: Koleksi Postman 2.1 memuat 10 grup endpoint terstruktur dengan auto-save token JWT.
-   - `TrackerKerja_Postman_Environment.json`: Environment Postman dengan `base_url` port 5010.
+   - `TrackerKerja_Postman_Environment.json`: Environment Postman dengan `base_url` port 5008.
 
 ---
 
@@ -1827,6 +1843,23 @@ Menyimpan template email event dinamis berbasis HTML.
   - `ClaimedAt` (TEXT / DateTime, Not Null)
   - `ProcessedAt` (TEXT / DateTime, Nullable)
   - `ProcessedByUserId` (TEXT, FK -> `AspNetUsers.Id`, Nullable)
+- `Clients` (`clients`):
+  - `Id` (`id`, INTEGER / SERIAL, PK, AutoIncrement)
+  - `Name` (`name`, VARCHAR(200), Not Null)
+  - `Code` (`code`, VARCHAR(50), Nullable)
+  - `Email` (`email`, VARCHAR(200), Nullable)
+  - `Phone` (`phone`, VARCHAR(50), Nullable)
+  - `ContactPerson` (`contact_person`, VARCHAR(150), Nullable)
+  - `Address` (`address`, TEXT, Nullable)
+  - `TaxId` (`tax_id`, VARCHAR(100), Nullable)
+  - `Notes` (`notes`, TEXT, Nullable)
+  - `IsActive` (`is_active`, BOOLEAN, Not Null, Default: `true`)
+  - `CompanyId` (`company_id`, INTEGER, FK -> `companies.id`, Nullable)
+  - `SourceCompanyId` (`source_company_id`, INTEGER, FK -> `companies.id`, Nullable)
+  - `CreatedAt` (`created_at`, TIMESTAMPTZ, Not Null)
+  - `UpdatedAt` (`updated_at`, TIMESTAMPTZ, Not Null)
+- `Invoices` (`invoices` - Pembaruan Relasi Klien):
+  - `ClientId` (`client_id`, INTEGER, FK -> `clients.id` ON DELETE SET NULL, Nullable) — menghubungkan invoice ke entitas Master Data Client yang dipilih dari tabel `clients` atau hasil sinkronisasi tabel `companies`.
 
 ---
 

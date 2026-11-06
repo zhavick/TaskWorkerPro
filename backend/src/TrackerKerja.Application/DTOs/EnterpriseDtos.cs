@@ -115,7 +115,8 @@ public record InvoiceDto(
     string? CreatedByUserName,
     DateTimeOffset? PaidAt,
     DateTimeOffset CreatedAt,
-    List<InvoiceItemDto> Items
+    List<InvoiceItemDto> Items,
+    int? ClientId = null
 );
 
 public record CreateInvoiceItemRequest(
@@ -136,7 +137,9 @@ public record CreateInvoiceRequest(
     decimal TaxRatePercent,
     decimal DiscountAmount,
     string? Notes,
-    List<CreateInvoiceItemRequest> Items
+    List<CreateInvoiceItemRequest> Items,
+    int? ClientId = null,
+    int? SourceCompanyClientId = null
 );
 
 public record UpdateInvoiceRequest(
@@ -151,7 +154,9 @@ public record UpdateInvoiceRequest(
     decimal TaxRatePercent,
     decimal DiscountAmount,
     string? Notes,
-    List<CreateInvoiceItemRequest> Items
+    List<CreateInvoiceItemRequest> Items,
+    int? ClientId = null,
+    int? SourceCompanyClientId = null
 );
 
 public record UpdateInvoiceStatusRequest(

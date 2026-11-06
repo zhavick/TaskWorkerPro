@@ -70,6 +70,7 @@ import {
 } from "@/components/sync/sync-progress-modal";
 import { TimesheetTemplateManager } from "@/components/configuration/timesheet-template-manager";
 import { MasterHolidaysManager } from "@/components/configuration/master-holidays-manager";
+import { MasterClientsManager } from "@/components/configuration/master-clients-manager";
 import { CompanyModuleMatrixManager } from "@/components/configuration/company-module-matrix-manager";
 
 const COLOR_PRESETS = [
@@ -151,7 +152,7 @@ export default function ConfigurationPage() {
 
   // Subtab for Master Data
   const [masterSubTab, setMasterSubTab] = useState<
-    "companies" | "priorities" | "statuses" | "milestones" | "categories" | "timesheet" | "holidays"
+    "companies" | "clients" | "priorities" | "statuses" | "milestones" | "categories" | "timesheet" | "holidays"
   >("companies");
 
   // ==========================================
@@ -307,6 +308,15 @@ export default function ConfigurationPage() {
     queryFn: async () => {
       const res = await apiClient.get("/master/categories");
       return res.data.data;
+    },
+    enabled: activeTab === "master",
+  });
+
+  const { data: masterClients = [] } = useQuery<any[]>({
+    queryKey: ["masterClients", "all"],
+    queryFn: async () => {
+      const res = await apiClient.get("/master/clients");
+      return res.data?.data || [];
     },
     enabled: activeTab === "master",
   });
@@ -1549,7 +1559,7 @@ export default function ConfigurationPage() {
       {activeTab === "master" && (
         <div className="space-y-6">
           {/* Sub Navigation Cards */}
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-7">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-8">
             <button
               type="button"
               onClick={() => setMasterSubTab("companies")}
@@ -1573,6 +1583,32 @@ export default function ConfigurationPage() {
                   Perusahaan
                 </h3>
                 <p className="text-[11px] text-gray-500">{companies.length} Entitas Bisnis</p>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setMasterSubTab("clients")}
+              className={`flex items-center gap-3 rounded-2xl border p-4 text-left transition ${
+                masterSubTab === "clients"
+                  ? "border-indigo-600 bg-indigo-50/70 shadow-xs dark:border-indigo-500 dark:bg-indigo-950/30"
+                  : "border-gray-200 bg-white hover:border-gray-300 dark:border-gray-800 dark:bg-gray-900"
+              }`}
+            >
+              <div
+                className={`flex h-10 w-10 items-center justify-center rounded-xl ${
+                  masterSubTab === "clients"
+                    ? "bg-indigo-600 text-white"
+                    : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300"
+                }`}
+              >
+                <Briefcase className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="text-xs font-bold text-gray-900 dark:text-white">
+                  Klien (Client)
+                </h3>
+                <p className="text-[11px] text-gray-500">{masterClients.length} Klien Invoice</p>
               </div>
             </button>
 
@@ -2311,6 +2347,13 @@ export default function ConfigurationPage() {
                 </table>
               </div>
             </div>
+          )}
+
+          {/* ======================================================== */}
+          {/* SUBTAB 0B: MASTER DATA CLIENT */}
+          {/* ======================================================== */}
+          {masterSubTab === "clients" && (
+            <MasterClientsManager />
           )}
 
           {/* ======================================================== */}

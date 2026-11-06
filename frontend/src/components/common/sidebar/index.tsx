@@ -29,7 +29,7 @@ export default function Sidebar({
     const pathname = usePathname();
     const { theme } = useTheme();
     const { appName } = useAppSettings();
-    const { isAdmin, canManageCompany, isPurgeAdmin, enableDms, enableTicketing, enableInvoicing } = useCurrentUser();
+    const { isAdmin, isStaff, canManageCompany, isPurgeAdmin, enableDms, enableTicketing, enableInvoicing, enableGamification } = useCurrentUser();
 
     // Filter navigasi berdasarkan 3 Role: Admin (Perawatan), Project Manager (Admin Perusahaan), Staff (Pengguna Biasa)
     const filteredNavData = useMemo(() => {
@@ -42,6 +42,9 @@ export default function Sidebar({
                 if (item.companyAdminOnly) {
                     return canManageCompany;
                 }
+                if (isStaff && (item.title === 'Gamifikasi & Hadiah' || item.items?.some((sub: any) => sub.url?.startsWith('/gamification')))) {
+                    if (!enableGamification) return false;
+                }
                 if (!isAdmin) {
                     if (item.url === '/issues' && !enableTicketing) return false;
                     if (item.url === '/invoices' && !enableInvoicing) return false;
@@ -50,7 +53,7 @@ export default function Sidebar({
                 return true;
             }),
         })).filter((section) => section.items.length > 0);
-    }, [isAdmin, canManageCompany, isPurgeAdmin, enableDms, enableTicketing, enableInvoicing]);
+    }, [isAdmin, isStaff, canManageCompany, isPurgeAdmin, enableDms, enableTicketing, enableInvoicing, enableGamification]);
 
     // Compute which group should be open based on the current route
     const activeGroupKey = useMemo(

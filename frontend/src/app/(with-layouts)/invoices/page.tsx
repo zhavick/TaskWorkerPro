@@ -48,6 +48,11 @@ export default function InvoicesPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingInvoiceId, setEditingInvoiceId] = useState<number | null>(null);
   const [invoiceNumber, setInvoiceNumber] = useState("");
+  const [clientSourceFilter, setClientSourceFilter] = useState<"all" | "client" | "company">("all");
+  const [selectedClientOptionKey, setSelectedClientOptionKey] = useState<string>("");
+  const [selectedClientId, setSelectedClientId] = useState<number | null>(null);
+  const [selectedSourceCompanyClientId, setSelectedSourceCompanyClientId] = useState<number | null>(null);
+  const [saveAsNewMasterClient, setSaveAsNewMasterClient] = useState<boolean>(false);
   const [clientName, setClientName] = useState("");
   const [clientEmail, setClientEmail] = useState("");
   const [clientAddress, setClientAddress] = useState("");
@@ -108,6 +113,63 @@ export default function InvoicesPage() {
     },
   });
 
+  // 4b. Fetch Unified Client Options (from `clients` and `companies` tables)
+  const { data: clientOptions = [] } = useQuery<any[]>({
+    queryKey: ["invoiceClientOptions", companyId],
+    queryFn: async () => {
+      try {
+        const url = companyId
+          ? `/master/clients/invoice-options?companyId=${companyId}`
+          : "/master/clients/invoice-options";
+        const res = await apiClient.get(url);
+        return res.data?.data || [];
+      } catch {
+        // Fallback to companies if endpoint not yet initialized
+        return companies.map((comp: any) => ({
+          key: `company:${comp.id}`,
+          source: "company",
+          clientId: null,
+          sourceCompanyId: comp.id,
+          name: comp.name,
+          code: comp.code,
+          email: comp.contactEmail,
+          address: comp.address,
+        }));
+      }
+    },
+  });
+
+  const masterClientList = useMemo(
+    () => clientOptions.filter((opt: any) => opt.source === "client"),
+    [clientOptions]
+  );
+
+  const companyClientList = useMemo(
+    () => clientOptions.filter((opt: any) => opt.source === "company"),
+    [clientOptions]
+  );
+
+  const handleSelectClientOption = (key: string) => {
+    setSelectedClientOptionKey(key);
+    if (!key) {
+      setSelectedClientId(null);
+      setSelectedSourceCompanyClientId(null);
+      return;
+    }
+
+    const found = clientOptions.find((opt: any) => opt.key === key);
+    if (found) {
+      setClientName(found.name || "");
+      setClientEmail(found.email || "");
+      setClientAddress(found.address || "");
+      setSelectedClientId(found.clientId ?? null);
+      setSelectedSourceCompanyClientId(
+        found.source === "company" ? (found.sourceCompanyId ?? null) : null
+      );
+      setSaveAsNewMasterClient(false);
+    }
+  };
+
   // Filtered Projects for Create Modal
   const availableProjectsForModal = useMemo(() => {
     if (!companyId) return [];
@@ -130,6 +192,11 @@ export default function InvoicesPage() {
   const handleOpenCreateModal = () => {
     setEditingInvoiceId(null);
     setInvoiceNumber("");
+    setClientSourceFilter("all");
+    setSelectedClientOptionKey("");
+    setSelectedClientId(null);
+    setSelectedSourceCompanyClientId(null);
+    setSaveAsNewMasterClient(false);
     setClientName("");
     setClientEmail("");
     setClientAddress("");
@@ -150,6 +217,19 @@ export default function InvoicesPage() {
   const handleOpenEditModal = (inv: any) => {
     setEditingInvoiceId(inv.id);
     setInvoiceNumber(inv.invoiceNumber || "");
+    setClientSourceFilter("all");
+    if (inv.clientId) {
+      setSelectedClientOptionKey(`client:${inv.clientId}`);
+      setSelectedClientId(inv.clientId);
+    } else {
+      const matchedOpt = clientOptions.find(
+        (opt: any) => opt.name?.toLowerCase() === (inv.clientName || "").toLowerCase()
+      );
+      setSelectedClientOptionKey(matchedOpt ? matchedOpt.key : "");
+      setSelectedClientId(matchedOpt?.clientId ?? null);
+    }
+    setSelectedSourceCompanyClientId(null);
+    setSaveAsNewMasterClient(false);
     setClientName(inv.clientName || "");
     setClientEmail(inv.clientEmail || "");
     setClientAddress(inv.clientAddress || "");
@@ -198,10 +278,34 @@ export default function InvoicesPage() {
         throw new Error("Deskripsi item tagihan wajib diisi.");
       }
 
+      let finalClientId = selectedClientId;
+
+      if (saveAsNewMasterClient && !finalClientId && clientName.trim()) {
+        try {
+          const createClientRes = await apiClient.post("/master/clients", {
+            name: clientName.trim(),
+            email: clientEmail.trim() || null,
+            address: clientAddress.trim() || null,
+            companyId: Number(companyId),
+            sourceCompanyId: selectedSourceCompanyClientId,
+            isActive: true,
+          });
+          if (createClientRes.data?.data?.id) {
+            finalClientId = createClientRes.data.data.id;
+          }
+          queryClient.invalidateQueries({ queryKey: ["masterClients"] });
+          queryClient.invalidateQueries({ queryKey: ["invoiceClientOptions"] });
+        } catch {
+          // Lanjutkan pembuatan invoice walaupun penyimpanan master client opsional gagal
+        }
+      }
+
       const payload = {
         invoiceNumber: invoiceNumber.trim() || null,
         companyId: Number(companyId),
         projectId: projectId ? Number(projectId) : null,
+        clientId: finalClientId,
+        sourceCompanyClientId: selectedSourceCompanyClientId,
         clientName: clientName.trim(),
         clientEmail: clientEmail.trim() || null,
         clientAddress: clientAddress.trim() || null,
@@ -622,7 +726,97 @@ export default function InvoicesPage() {
               </div>
             </div>
 
-            {/* Row 2: Client Info */}
+            {/* Row 2: Client Picker from `clients` and/or `companies` */}
+            <div className="rounded-xl border border-indigo-100 bg-indigo-50/40 p-3.5 space-y-2.5 dark:border-indigo-900/50 dark:bg-indigo-950/20">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <label className="text-xs font-bold text-indigo-950 dark:text-indigo-200 flex items-center gap-1.5">
+                  <Building2 className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                  Pilih Klien Penagihan (Tabel Master Client / Companies)
+                </label>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setClientSourceFilter("all")}
+                    className={`rounded-lg px-2 py-0.5 text-[10px] font-bold transition ${
+                      clientSourceFilter === "all"
+                        ? "bg-indigo-600 text-white"
+                        : "bg-white text-gray-600 hover:bg-gray-100 dark:bg-gray-800 dark:text-gray-300"
+                    }`}
+                  >
+                    Semua ({clientOptions.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setClientSourceFilter("client")}
+                    className={`rounded-lg px-2 py-0.5 text-[10px] font-bold transition ${
+                      clientSourceFilter === "client"
+                        ? "bg-indigo-600 text-white"
+                        : "bg-white text-gray-600 hover:bg-gray-100 dark:bg-gray-800 dark:text-gray-300"
+                    }`}
+                  >
+                    Tabel Clients ({masterClientList.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setClientSourceFilter("company")}
+                    className={`rounded-lg px-2 py-0.5 text-[10px] font-bold transition ${
+                      clientSourceFilter === "company"
+                        ? "bg-indigo-600 text-white"
+                        : "bg-white text-gray-600 hover:bg-gray-100 dark:bg-gray-800 dark:text-gray-300"
+                    }`}
+                  >
+                    Tabel Companies ({companyClientList.length})
+                  </button>
+                </div>
+              </div>
+
+              <select
+                value={selectedClientOptionKey}
+                onChange={(e) => handleSelectClientOption(e.target.value)}
+                className="w-full rounded-xl border border-indigo-200 bg-white p-2.5 text-xs text-gray-900 focus:border-indigo-500 focus:outline-hidden dark:border-indigo-800 dark:bg-gray-900 dark:text-white"
+              >
+                <option value="">-- Ketik Klien Manual / Pilih dari Daftar Klien &amp; Perusahaan --</option>
+                {(clientSourceFilter === "all" || clientSourceFilter === "client") &&
+                  masterClientList.length > 0 && (
+                    <optgroup label="Master Data Client (Tabel clients)">
+                      {masterClientList.map((c: any) => (
+                        <option key={c.key} value={c.key}>
+                          [Client] {c.name} {c.code ? `(${c.code})` : ""} {c.email ? `- ${c.email}` : ""}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                {(clientSourceFilter === "all" || clientSourceFilter === "company") &&
+                  companyClientList.length > 0 && (
+                    <optgroup label="Master Perusahaan (Tabel companies)">
+                      {companyClientList.map((comp: any) => (
+                        <option key={comp.key} value={comp.key}>
+                          [Company] {comp.name} {comp.code ? `(${comp.code})` : ""} {comp.email ? `- ${comp.email}` : ""}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+              </select>
+
+              <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-indigo-800/80 dark:text-indigo-300/80">
+                <span>
+                  Pilih dari daftar di atas untuk mengisi otomatis Nama, Email, dan Alamat Klien, atau ketik manual di bawah.
+                </span>
+                {!selectedClientId && clientName.trim() && (
+                  <label className="inline-flex items-center gap-1.5 font-semibold text-indigo-700 dark:text-indigo-300 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={saveAsNewMasterClient}
+                      onChange={(e) => setSaveAsNewMasterClient(e.target.checked)}
+                      className="h-3.5 w-3.5 rounded border-indigo-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <span>Simpan juga ke Master Data Client</span>
+                  </label>
+                )}
+              </div>
+            </div>
+
+            {/* Row 2b: Client Info Details */}
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <div>
                 <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
@@ -659,6 +853,18 @@ export default function InvoicesPage() {
                   className="mt-1 text-xs font-mono"
                 />
               </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
+                Alamat Penagihan Klien (Opsional)
+              </label>
+              <Input
+                placeholder="cth. Wisma Tugu I, Jl. H.R. Rasuna Said Kav. C8-9, Jakarta Selatan"
+                value={clientAddress}
+                onChange={(e) => setClientAddress(e.target.value)}
+                className="mt-1 text-xs"
+              />
             </div>
 
             {/* Row 3: Dates */}

@@ -146,8 +146,7 @@ public class DashboardController : ControllerBase
 
         // Gamification status
         var todayDateOnly = DateOnly.FromDateTime(now.UtcDateTime);
-        var hasCreatedTask = await _context.Tasks.IgnoreQueryFilters().AsNoTracking().AnyAsync(t => t.CreatedByUserId == currentUserId)
-            || await _context.AuditLogs.IgnoreQueryFilters().AsNoTracking().AnyAsync(a => a.UserId == currentUserId && a.ControllerName == "Tasks" && a.HttpMethod == "POST");
+        var (hasCreatedTask, consecutiveTaskDays) = await GamificationController.EvaluateTaskGamificationEligibilityAsync(_context, currentUserId, isAdmin);
 
         var todayCheckIn = await _context.DailyCheckIns
             .AsNoTracking()
@@ -268,7 +267,9 @@ public class DashboardController : ControllerBase
                     totalCurrentPoints = hasCreatedTask ? totalCurrentPoints : 0,
                     currentStreakDays = hasCreatedTask ? currentStreakDays : 0,
                     hasCheckedInToday = hasCreatedTask && todayCheckIn != null,
-                    hasCreatedTask
+                    hasCreatedTask,
+                    consecutiveTaskDays,
+                    requiredConsecutiveTaskDays = 2
                 },
                 attendance = new
                 {

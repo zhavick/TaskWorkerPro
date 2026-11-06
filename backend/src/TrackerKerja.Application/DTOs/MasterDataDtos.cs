@@ -170,3 +170,67 @@ public record JsonFormatRequest(
     public string ResolvedJson => !string.IsNullOrEmpty(JsonString) ? JsonString : (RawJson ?? string.Empty);
 }
 
+public record ClientDto(
+    int Id,
+    string Name,
+    string Code,
+    string? Email,
+    string? Phone,
+    string? ContactPerson,
+    string? Address,
+    string? TaxId,
+    string? Notes,
+    bool IsActive,
+    int? CompanyId,
+    string? CompanyName,
+    int? SourceCompanyId,
+    string? SourceCompanyName,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset UpdatedAt
+);
+
+public record CreateClientRequest(
+    string Name,
+    string? Code = null,
+    string? Email = null,
+    string? Phone = null,
+    string? ContactPerson = null,
+    string? Address = null,
+    string? TaxId = null,
+    string? Notes = null,
+    bool IsActive = true,
+    int? CompanyId = null,
+    int? SourceCompanyId = null
+);
+
+public record UpdateClientRequest(
+    string Name,
+    string? Code = null,
+    string? Email = null,
+    string? Phone = null,
+    string? ContactPerson = null,
+    string? Address = null,
+    string? TaxId = null,
+    string? Notes = null,
+    bool IsActive = true,
+    int? CompanyId = null,
+    int? SourceCompanyId = null
+);
+
+public record InvoiceClientOptionDto(
+    string Key,
+    string Source, // "client" or "company"
+    int? ClientId,
+    int? SourceCompanyId,
+    string Name,
+    string Code,
+    string? Email,
+    string? Phone,
+    string? ContactPerson,
+    string? Address,
+    string? TaxId,
+    int? OwnerCompanyId,
+    string? OwnerCompanyName
+);
+
+

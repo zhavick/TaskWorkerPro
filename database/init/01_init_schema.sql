@@ -516,8 +516,28 @@ CREATE TABLE IF NOT EXISTS company_timesheet_configs (
 CREATE INDEX IF NOT EXISTS ix_company_timesheet_configs_company_id ON company_timesheet_configs(company_id);
 
 -- ============================================================================
--- 15. TABEL ENTERPRISE MODULES: INVOICES, ISSUES, DOCUMENTS
+-- 15. TABEL ENTERPRISE MODULES: CLIENTS, INVOICES, ISSUES, DOCUMENTS
 -- ============================================================================
+
+-- A0. Master Data Clients
+CREATE TABLE IF NOT EXISTS clients (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    code VARCHAR(50) NOT NULL DEFAULT '',
+    email VARCHAR(255),
+    phone VARCHAR(100),
+    contact_person VARCHAR(150),
+    address TEXT,
+    tax_id VARCHAR(100),
+    notes TEXT,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    company_id INTEGER REFERENCES companies(id) ON DELETE SET NULL,
+    source_company_id INTEGER REFERENCES companies(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_clients_company_id ON clients(company_id);
+CREATE INDEX IF NOT EXISTS ix_clients_name ON clients(name);
 
 -- A. Invoices & Items
 CREATE TABLE IF NOT EXISTS invoices (
@@ -525,6 +545,7 @@ CREATE TABLE IF NOT EXISTS invoices (
     invoice_number VARCHAR(50) NOT NULL,
     company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
     project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+    client_id INTEGER REFERENCES clients(id) ON DELETE SET NULL,
     client_name VARCHAR(255) NOT NULL,
     client_email VARCHAR(255),
     client_address TEXT,

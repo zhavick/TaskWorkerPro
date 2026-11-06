@@ -184,11 +184,18 @@ export default function BadgesGalleryPage() {
   // Save (Create / Update) Badge Mutation
   const saveBadgeMutation = useMutation({
     mutationFn: async () => {
+      if (badgeForm.points < 10 || badgeForm.points > 100) {
+        throw new Error("Nilai poin lencana harus berada pada kisaran 10 hingga 100 poin.");
+      }
+      const payload = {
+        ...badgeForm,
+        points: Math.min(100, Math.max(10, Number(badgeForm.points) || 10)),
+      };
       if (badgeFormMode === "create") {
-        const res = await apiClient.post("/gamification/admin/badges", badgeForm);
+        const res = await apiClient.post("/gamification/admin/badges", payload);
         return res.data;
       } else {
-        const res = await apiClient.put(`/gamification/admin/badges/${editingBadgeId}`, badgeForm);
+        const res = await apiClient.put(`/gamification/admin/badges/${editingBadgeId}`, payload);
         return res.data;
       }
     },
@@ -200,7 +207,7 @@ export default function BadgesGalleryPage() {
       queryClient.invalidateQueries({ queryKey: ["gamificationSummary"] });
     },
     onError: (err: any) => {
-      toast.error(err.response?.data?.message || "Gagal menyimpan lencana");
+      toast.error(err.response?.data?.message || err.message || "Gagal menyimpan lencana");
     },
   });
 
@@ -304,7 +311,7 @@ export default function BadgesGalleryPage() {
       name: b.name || "",
       description: b.description || "",
       category: b.category || "Tugas",
-      points: b.points || 0,
+      points: Math.min(100, Math.max(10, Number(b.points) || 10)),
       rarity: b.rarity ?? 1,
       icon: b.icon || "award",
       color: b.color || "#6366F1",
@@ -998,14 +1005,15 @@ export default function BadgesGalleryPage() {
 
               <div>
                 <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
-                  Poin Permanen *
+                  Poin Permanen (10 - 100) *
                 </label>
                 <Input
                   type="number"
-                  min="0"
+                  min={10}
+                  max={100}
                   required
                   value={badgeForm.points}
-                  onChange={(e) => setBadgeForm({ ...badgeForm, points: Number(e.target.value) || 0 })}
+                  onChange={(e) => setBadgeForm({ ...badgeForm, points: Number(e.target.value) || 10 })}
                   className="mt-1 text-xs font-mono"
                 />
               </div>

@@ -56,16 +56,31 @@ public class GamificationMilestone30Tests
             IsApproved = true
         });
 
-        // Seed Task for TargetUserId so gamification check-ins & rewards are unlocked
-        _context.Tasks.Add(new WorkTask
-        {
-            Id = 101,
-            Title = "First Operational Task",
-            CreatedByUserId = TargetUserId,
-            AssignedToUserId = TargetUserId,
-            CompanyId = 1,
-            Status = TrackerKerja.Domain.Enums.TaskStatus.Done
-        });
+        // Seed Tasks on 2 consecutive days for TargetUserId so gamification check-ins & rewards are unlocked
+        _context.Tasks.AddRange(
+            new WorkTask
+            {
+                Id = 100,
+                Title = "Day 1 Operational Task",
+                CreatedByUserId = TargetUserId,
+                AssignedToUserId = TargetUserId,
+                CompanyId = 1,
+                CreatedAt = DateTimeOffset.UtcNow.AddDays(-1),
+                UpdatedAt = DateTimeOffset.UtcNow.AddDays(-1),
+                Status = TrackerKerja.Domain.Enums.TaskStatus.Done
+            },
+            new WorkTask
+            {
+                Id = 101,
+                Title = "Day 2 Operational Task",
+                CreatedByUserId = TargetUserId,
+                AssignedToUserId = TargetUserId,
+                CompanyId = 1,
+                CreatedAt = DateTimeOffset.UtcNow,
+                UpdatedAt = DateTimeOffset.UtcNow,
+                Status = TrackerKerja.Domain.Enums.TaskStatus.Done
+            }
+        );
 
         // Seed Milestone Badges & Rewards
         _context.MasterBadges.Add(new MasterBadge
@@ -73,7 +88,7 @@ public class GamificationMilestone30Tests
             Id = 30,
             Code = "STREAK_30",
             Name = "Legenda 30 Hari",
-            Points = 500,
+            Points = 100,
             Rarity = BadgeRarity.Legendary,
             IsActive = true
         });
@@ -286,6 +301,110 @@ public class GamificationMilestone30Tests
 
         result.Should().NotBeNull();
         result!.StatusCode.Should().Be(400);
-        result.Value.ToString().Should().Contain("buat minimal 1 tugas");
+        result.Value.ToString().Should().Contain("2 hari berturut-turut");
+    }
+
+    [Fact]
+    public async Task GetGamificationStatus_WhenUserFilledTasksOnly1Day_ShouldRemainLocked_AndUnlockAfter2ConsecutiveDays()
+    {
+        var memberId = "usr-two-day-rule";
+        _context.Users.Add(new AppUser
+        {
+            Id = memberId,
+            Email = "twoday@alphacorp.com",
+            FullName = "Member Dua Hari",
+            CompanyId = 1,
+            IsApproved = true
+        });
+
+        // Day 1 task only -> should still be locked
+        _context.Tasks.Add(new WorkTask
+        {
+            Id = 501,
+            Title = "Task Hari Pertama",
+            CreatedByUserId = memberId,
+            AssignedToUserId = memberId,
+            CompanyId = 1,
+            CreatedAt = DateTimeOffset.UtcNow.AddDays(-1),
+            UpdatedAt = DateTimeOffset.UtcNow.AddDays(-1),
+            Status = TrackerKerja.Domain.Enums.TaskStatus.InProgress
+        });
+        await _context.SaveChangesAsync();
+
+        var tenantService = new FakeTenantService(1, "CORP-ALPHA", memberId, false);
+        var controller = new GamificationController(_context, tenantService, _badgeService);
+
+        var day1Result = await controller.GetGamificationStatus() as OkObjectResult;
+        var day1Data = day1Result!.Value!.GetType().GetProperty("data")?.GetValue(day1Result.Value) as GamificationSummaryDto;
+        day1Data.Should().NotBeNull();
+        day1Data!.HasCreatedTask.Should().BeFalse();
+        day1Data.ConsecutiveTaskDays.Should().Be(1);
+
+        // Day 2 consecutive task -> should unlock gamification
+        _context.Tasks.Add(new WorkTask
+        {
+            Id = 502,
+            Title = "Task Hari Kedua Berturut-turut",
+            CreatedByUserId = memberId,
+            AssignedToUserId = memberId,
+            CompanyId = 1,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow,
+            Status = TrackerKerja.Domain.Enums.TaskStatus.InProgress
+        });
+        await _context.SaveChangesAsync();
+
+        var day2Result = await controller.GetGamificationStatus() as OkObjectResult;
+        var day2Data = day2Result!.Value!.GetType().GetProperty("data")?.GetValue(day2Result.Value) as GamificationSummaryDto;
+        day2Data.Should().NotBeNull();
+        day2Data!.HasCreatedTask.Should().BeTrue();
+        day2Data.ConsecutiveTaskDays.Should().BeGreaterOrEqualTo(2);
+    }
+
+    [Fact]
+    public async Task CreateBadge_WhenPointsOutsideRange10To100_ShouldReturnBadRequest_AndSucceedWhenWithinRange()
+    {
+        var adminUserId = "usr-admin-badge";
+        _context.Users.Add(new AppUser
+        {
+            Id = adminUserId,
+            Email = "adminbadge@alphacorp.com",
+            FullName = "Admin Gamifikasi",
+            CompanyId = 1,
+            IsApproved = true
+        });
+        await _context.SaveChangesAsync();
+
+        var adminTenantService = new FakeTenantService(1, "CORP-ALPHA", adminUserId, true);
+        var controller = new GamificationController(_context, adminTenantService, _badgeService);
+
+        // Points < 10 -> BadRequest
+        var lowPointsReq = new CreateOrUpdateMasterBadgeRequest(
+            Code: "BADGE_LOW",
+            Name: "Lencana Terlalu Kecil",
+            Description: "Kurang dari 10 poin",
+            Category: "Tugas",
+            Icon: "award",
+            Color: "#10B981",
+            Points: 5,
+            Rarity: BadgeRarity.Common
+        );
+        var lowResult = await controller.CreateBadge(lowPointsReq) as BadRequestObjectResult;
+        lowResult.Should().NotBeNull();
+        lowResult!.StatusCode.Should().Be(400);
+        lowResult.Value!.ToString().Should().Contain("10 hingga 100");
+
+        // Points > 100 -> BadRequest
+        var highPointsReq = lowPointsReq with { Code = "BADGE_HIGH", Points = 150 };
+        var highResult = await controller.CreateBadge(highPointsReq) as BadRequestObjectResult;
+        highResult.Should().NotBeNull();
+        highResult!.StatusCode.Should().Be(400);
+        highResult.Value!.ToString().Should().Contain("10 hingga 100");
+
+        // Points within 10..100 -> Ok
+        var validPointsReq = lowPointsReq with { Code = "BADGE_VALID", Name = "Lencana Valid", Points = 75, Rarity = BadgeRarity.Epic };
+        var okResult = await controller.CreateBadge(validPointsReq) as OkObjectResult;
+        okResult.Should().NotBeNull();
+        okResult!.StatusCode.Should().Be(200);
     }
 }
