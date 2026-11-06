@@ -34,6 +34,26 @@ public class GamificationController : ControllerBase
         var userId = _tenantService.UserId;
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
 
+        var hasCreatedTask = await _context.Tasks.IgnoreQueryFilters().AnyAsync(t => t.CreatedByUserId == userId)
+            || await _context.AuditLogs.IgnoreQueryFilters().AnyAsync(a => a.UserId == userId && a.ControllerName == "Tasks" && a.HttpMethod == "POST");
+
+        if (!hasCreatedTask)
+        {
+            var emptyDto = new GamificationSummaryDto(
+                TotalCurrentPoints: 0,
+                MonthlyCheckInPoints: 0,
+                BadgePoints: 0,
+                CurrentStreakDays: 0,
+                HasCheckedInToday: false,
+                DaysCheckedInThisMonth: 0,
+                Reached15DaysMilestone: false,
+                Reached30DaysMilestone: false,
+                TotalBadgesUnlocked: 0,
+                HasCreatedTask: false
+            );
+            return Ok(new { success = true, data = emptyDto });
+        }
+
         if (_badgeService != null)
         {
             await _badgeService.EvaluateBadgesAsync(userId);
@@ -98,7 +118,8 @@ public class GamificationController : ControllerBase
             daysCheckedInThisMonth,
             reached15,
             reached30,
-            userBadges.Count
+            userBadges.Count,
+            HasCreatedTask: true
         );
 
         return Ok(new { success = true, data = dto });
@@ -110,6 +131,18 @@ public class GamificationController : ControllerBase
     {
         var userId = _tenantService.UserId;
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
+        var hasCreatedTask = await _context.Tasks.IgnoreQueryFilters().AnyAsync(t => t.CreatedByUserId == userId)
+            || await _context.AuditLogs.IgnoreQueryFilters().AnyAsync(a => a.UserId == userId && a.ControllerName == "Tasks" && a.HttpMethod == "POST");
+
+        if (!hasCreatedTask)
+        {
+            return BadRequest(new 
+            { 
+                success = false, 
+                message = "Anda belum dapat melakukan check-in atau mengklaim hadiah poin. Silakan buat minimal 1 tugas (task) terlebih dahulu untuk mengaktifkan fitur gamifikasi Anda." 
+            });
+        }
 
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
         var existingToday = await _context.DailyCheckIns
@@ -372,6 +405,18 @@ public class GamificationController : ControllerBase
     {
         var userId = _tenantService.UserId;
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
+        var hasCreatedTask = await _context.Tasks.IgnoreQueryFilters().AnyAsync(t => t.CreatedByUserId == userId)
+            || await _context.AuditLogs.IgnoreQueryFilters().AnyAsync(a => a.UserId == userId && a.ControllerName == "Tasks" && a.HttpMethod == "POST");
+
+        if (!hasCreatedTask)
+        {
+            return BadRequest(new 
+            { 
+                success = false, 
+                message = "Anda harus membuat minimal 1 tugas (task) terlebih dahulu sebelum dapat menukarkan hadiah." 
+            });
+        }
 
         var reward = await _context.RewardItems.FirstOrDefaultAsync(r => r.Id == request.RewardItemId && r.IsActive);
         if (reward == null) return NotFound(new { success = false, message = "Hadiah tidak ditemukan atau tidak aktif." });

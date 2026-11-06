@@ -124,6 +124,16 @@ public class EnterpriseModulesControllerTests
     public async Task Gamification_CheckInAndClaimReward_ShouldValidateSufficientPoints()
     {
         // Arrange
+        _context.Tasks.Add(new WorkTask
+        {
+            Id = 999,
+            Title = "Initial Work Task",
+            CreatedByUserId = _tenantService.UserId,
+            CompanyId = 10,
+            Status = TrackerKerja.Domain.Enums.TaskStatus.Done
+        });
+        await _context.SaveChangesAsync();
+
         var controller = new GamificationController(_context, _tenantService);
 
         // Act - Daily Check In

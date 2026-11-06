@@ -26,7 +26,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogBody } from "@/
 
 export default function GamificationPage() {
   const queryClient = useQueryClient();
-  const { user, isAdmin, isProjectManager, canManageCompany } = useCurrentUser();
+  const { user, isAdmin, isProjectManager, isStaff, canManageCompany } = useCurrentUser();
 
   // Reset Gamifikasi Modal State for Project Manager & Admin
   const [resetModalOpen, setResetModalOpen] = useState(false);
@@ -127,7 +127,17 @@ export default function GamificationPage() {
         subtitle="Pantau rangkaian streak harian, raih lencana pencapaian, dan kumpulkan poin reward produktivitas."
         action={
           <div className="flex flex-wrap items-center gap-2">
-            {!summary?.hasCheckedInToday ? (
+            {isStaff && summary?.hasCreatedTask === false ? (
+              <Link href="/tasks">
+                <Button
+                  size="sm"
+                  className="gap-1.5 bg-indigo-600 hover:bg-indigo-700 font-bold text-white shadow-xs text-xs"
+                >
+                  <Sparkles className="h-3.5 w-3.5" />
+                  + Buat Tugas Pertama
+                </Button>
+              </Link>
+            ) : !summary?.hasCheckedInToday ? (
               <Button
                 onClick={() => checkInMutation.mutate()}
                 disabled={checkInMutation.isPending}
@@ -157,6 +167,27 @@ export default function GamificationPage() {
           </div>
         }
       />
+
+      {isStaff && summary?.hasCreatedTask === false && (
+        <div className="rounded-2xl border border-amber-300 bg-amber-50/80 p-4 text-amber-900 shadow-xs dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-xs sm:text-sm font-semibold">
+                Fitur Gamifikasi Belum Aktif
+              </p>
+              <p className="text-xs text-amber-800/90 dark:text-amber-300/90 mt-0.5">
+                Anda belum memiliki tugas kerja. Silakan buat minimal 1 tugas (task) terlebih dahulu untuk mengaktifkan perolehan hadiah poin harian, lencana pencapaian, dan penukaran reward.
+              </p>
+            </div>
+          </div>
+          <Link href="/tasks" className="self-end sm:self-center shrink-0">
+            <Button size="sm" className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs whitespace-nowrap shadow-xs">
+              + Buat Tugas
+            </Button>
+          </Link>
+        </div>
+      )}
 
       {/* 4 Standardized KPI Metric Cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">

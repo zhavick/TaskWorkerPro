@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "@/services/api/client";
 import { toast } from "sonner";
 import Link from "next/link";
+import { useCurrentUser } from "@/hooks/use-current-user";
 import { GamificationNav } from "../_components/gamification-nav";
 import {
   Gift,
@@ -43,6 +44,7 @@ import {
 
 export default function RewardStorePage() {
   const queryClient = useQueryClient();
+  const { isStaff } = useCurrentUser();
 
   // Tab states
   const [activeTab, setActiveTab] = useState<"catalog" | "my-claims" | "admin-manage" | "admin-approvals">("catalog");
@@ -305,6 +307,27 @@ export default function RewardStorePage() {
           </div>
         }
       />
+
+      {isStaff && status?.hasCreatedTask === false && (
+        <div className="rounded-2xl border border-amber-300 bg-amber-50/80 p-4 text-amber-900 shadow-xs dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-xs sm:text-sm font-semibold">
+                Penukaran Hadiah Terkunci
+              </p>
+              <p className="text-xs text-amber-800/90 dark:text-amber-300/90 mt-0.5">
+                Anda belum memiliki tugas kerja. Silakan buat minimal 1 tugas (task) terlebih dahulu untuk mengaktifkan poin dan menukarkan hadiah.
+              </p>
+            </div>
+          </div>
+          <Link href="/tasks" className="self-end sm:self-center shrink-0">
+            <Button size="sm" className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs whitespace-nowrap shadow-xs">
+              + Buat Tugas
+            </Button>
+          </Link>
+        </div>
+      )}
 
       {/* 4 Standardized KPI Metric Cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -579,26 +602,37 @@ export default function RewardStorePage() {
                           </span>
                         </div>
 
-                        <Button
-                          size="sm"
-                          onClick={() => {
-                            setSelectedReward(item);
-                            setClaimNotes("");
-                            setClaimModalOpen(true);
-                          }}
-                          disabled={!canAfford}
-                          className={`text-xs font-semibold ${
-                            canAfford
-                              ? "bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm shadow-emerald-600/20"
-                              : "bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-500 cursor-not-allowed"
-                          }`}
-                        >
-                          {item.stock <= 0
-                            ? "Habis"
-                            : !canAfford
-                            ? "Poin Kurang"
-                            : "Tukar Hadiah"}
-                        </Button>
+                        {isStaff && status?.hasCreatedTask === false ? (
+                          <Link href="/tasks">
+                            <Button
+                              size="sm"
+                              className="text-xs font-semibold bg-gray-100 text-gray-500 hover:bg-indigo-50 hover:text-indigo-600 dark:bg-gray-800 dark:text-gray-400"
+                            >
+                              Buat Task Dulu
+                            </Button>
+                          </Link>
+                        ) : (
+                          <Button
+                            size="sm"
+                            onClick={() => {
+                              setSelectedReward(item);
+                              setClaimNotes("");
+                              setClaimModalOpen(true);
+                            }}
+                            disabled={!canAfford}
+                            className={`text-xs font-semibold ${
+                              canAfford
+                                ? "bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm shadow-emerald-600/20"
+                                : "bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-500 cursor-not-allowed"
+                            }`}
+                          >
+                            {item.stock <= 0
+                              ? "Habis"
+                              : !canAfford
+                              ? "Poin Kurang"
+                              : "Tukar Hadiah"}
+                          </Button>
+                        )}
                       </div>
                     </div>
                   </div>

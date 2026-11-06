@@ -56,6 +56,17 @@ public class GamificationMilestone30Tests
             IsApproved = true
         });
 
+        // Seed Task for TargetUserId so gamification check-ins & rewards are unlocked
+        _context.Tasks.Add(new WorkTask
+        {
+            Id = 101,
+            Title = "First Operational Task",
+            CreatedByUserId = TargetUserId,
+            AssignedToUserId = TargetUserId,
+            CompanyId = 1,
+            Status = TrackerKerja.Domain.Enums.TaskStatus.Done
+        });
+
         // Seed Milestone Badges & Rewards
         _context.MasterBadges.Add(new MasterBadge
         {
@@ -194,5 +205,87 @@ public class GamificationMilestone30Tests
         result.Should().NotBeNull();
         result!.StatusCode.Should().Be(400);
         result.Value.ToString().Should().Contain("Hadiah ini khusus untuk pengguna yang telah meraih Monthly Streak Milestone");
+    }
+
+    [Fact]
+    public async Task DailyCheckIn_WhenUserHasNeverCreatedTask_ShouldReturnBadRequest()
+    {
+        var newUserId = "usr-brand-new";
+        _context.Users.Add(new AppUser
+        {
+            Id = newUserId,
+            Email = "brandnew@alphacorp.com",
+            FullName = "User Baru",
+            CompanyId = 1,
+            IsApproved = true
+        });
+        await _context.SaveChangesAsync();
+
+        var tenantService = new FakeTenantService(1, "CORP-ALPHA", newUserId, false);
+        var controller = new GamificationController(_context, tenantService, _badgeService);
+
+        var result = await controller.DailyCheckIn() as BadRequestObjectResult;
+
+        result.Should().NotBeNull();
+        result!.StatusCode.Should().Be(400);
+        result.Value.ToString().Should().Contain("buat minimal 1 tugas");
+    }
+
+    [Fact]
+    public async Task GetGamificationStatus_WhenUserHasNeverCreatedTask_ShouldReturnHasCreatedTaskFalseAndZeroPoints()
+    {
+        var newUserId = "usr-never-task";
+        _context.Users.Add(new AppUser
+        {
+            Id = newUserId,
+            Email = "nevertask@alphacorp.com",
+            FullName = "User Belum Buat Task",
+            CompanyId = 1,
+            IsApproved = true
+        });
+        await _context.SaveChangesAsync();
+
+        var tenantService = new FakeTenantService(1, "CORP-ALPHA", newUserId, false);
+        var controller = new GamificationController(_context, tenantService, _badgeService);
+
+        var result = await controller.GetGamificationStatus() as OkObjectResult;
+
+        result.Should().NotBeNull();
+        result!.StatusCode.Should().Be(200);
+
+        var dataProp = result.Value!.GetType().GetProperty("data")?.GetValue(result.Value) as GamificationSummaryDto;
+        dataProp.Should().NotBeNull();
+        dataProp!.HasCreatedTask.Should().BeFalse();
+        dataProp.TotalCurrentPoints.Should().Be(0);
+        dataProp.CurrentStreakDays.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task ClaimReward_WhenUserHasNeverCreatedTask_ShouldReturnBadRequest()
+    {
+        var newUserId = "usr-claim-notask";
+        _context.Users.Add(new AppUser
+        {
+            Id = newUserId,
+            Email = "claimnotask@alphacorp.com",
+            FullName = "User Klaim Tanpa Task",
+            CompanyId = 1,
+            IsApproved = true
+        });
+        await _context.SaveChangesAsync();
+
+        var tenantService = new FakeTenantService(1, "CORP-ALPHA", newUserId, false);
+        var controller = new GamificationController(_context, tenantService, _badgeService);
+
+        var claimReq = new ClaimRewardRequest(
+            RewardItemId: 1,
+            UserNotes: "Klaim reward"
+        );
+
+        var result = await controller.ClaimReward(claimReq) as BadRequestObjectResult;
+
+        result.Should().NotBeNull();
+        result!.StatusCode.Should().Be(400);
+        result.Value.ToString().Should().Contain("buat minimal 1 tugas");
     }
 }
