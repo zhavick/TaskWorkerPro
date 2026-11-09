@@ -72,6 +72,7 @@ import { TimesheetTemplateManager } from "@/components/configuration/timesheet-t
 import { MasterHolidaysManager } from "@/components/configuration/master-holidays-manager";
 import { MasterClientsManager } from "@/components/configuration/master-clients-manager";
 import { CompanyModuleMatrixManager } from "@/components/configuration/company-module-matrix-manager";
+import { CompanyStorageLimitManager } from "@/components/configuration/company-storage-limit-manager";
 
 const COLOR_PRESETS = [
   "#6366F1", // Indigo
@@ -91,7 +92,7 @@ export default function ConfigurationPage() {
   const isPurgeOnly = isPurgeAdmin && !isAdmin;
 
   const [activeTab, setActiveTab] = useState<
-    "general" | "security" | "smtp" | "audit" | "master" | "sync" | "maintenance" | "matrix"
+    "general" | "security" | "smtp" | "audit" | "master" | "sync" | "maintenance" | "matrix" | "storage"
   >("general");
 
   useEffect(() => {
@@ -1278,6 +1279,18 @@ export default function ConfigurationPage() {
             >
               <Building2 className="h-4 w-4" />
               Matriks Modul Perusahaan
+            </button>
+
+            <button
+              onClick={() => setActiveTab("storage")}
+              className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition ${
+                activeTab === "storage"
+                  ? "bg-indigo-600 text-white shadow-xs"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300"
+              }`}
+            >
+              <HardDrive className="h-4 w-4" />
+              Kuota Penyimpanan
             </button>
           </>
         ) : null}
@@ -3442,6 +3455,13 @@ export default function ConfigurationPage() {
       {/* ======================================================== */}
       {activeTab === "matrix" && (
         <CompanyModuleMatrixManager />
+      )}
+
+      {/* ======================================================== */}
+      {/* TAB 9: KUOTA PENYIMPANAN PERUSAHAAN */}
+      {/* ======================================================== */}
+      {activeTab === "storage" && (
+        <CompanyStorageLimitManager />
       )}
 
       {/* ======================================================== */}

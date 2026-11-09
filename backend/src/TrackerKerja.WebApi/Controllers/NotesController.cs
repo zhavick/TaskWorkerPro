@@ -259,6 +259,39 @@ public class NotesController : ControllerBase
             return BadRequest(new { success = false, message = $"Format berkas {ext} tidak diizinkan." });
         }
 
+        // Enforce Per-Company Storage Quota & File Size Limit
+        var targetCompanyId = note.CompanyId ?? _tenantService.CompanyId;
+        if (targetCompanyId.HasValue)
+        {
+            var company = await _context.Companies.FirstOrDefaultAsync(c => c.Id == targetCompanyId.Value);
+            if (company != null)
+            {
+                if (company.MaxUploadFileSizeBytes > 0 && file.Length > company.MaxUploadFileSizeBytes)
+                {
+                    var maxFileMb = Math.Round((double)company.MaxUploadFileSizeBytes / (1024 * 1024), 1);
+                    var actualMb = Math.Round((double)file.Length / (1024 * 1024), 2);
+                    return BadRequest(new { 
+                        success = false, 
+                        message = $"Ukuran lampiran ({actualMb} MB) melebihi batas maksimum per berkas ({maxFileMb} MB) untuk perusahaan '{company.Name}'." 
+                    });
+                }
+
+                if (company.MaxStorageSizeBytes > 0)
+                {
+                    var currentDocStorage = await _context.Documents.Where(d => d.CompanyId == targetCompanyId.Value).SumAsync(d => (long)d.FileSize);
+                    var currentNoteStorage = await _context.Notes.Where(n => n.CompanyId == targetCompanyId.Value).SelectMany(n => n.Attachments).SumAsync(na => (long)na.FileSize);
+                    if (currentDocStorage + currentNoteStorage + file.Length > company.MaxStorageSizeBytes)
+                    {
+                        var maxStorageMb = Math.Round((double)company.MaxStorageSizeBytes / (1024 * 1024), 1);
+                        return BadRequest(new { 
+                            success = false, 
+                            message = $"Kapasitas penyimpanan perusahaan '{company.Name}' telah mencapai batas kuota ({maxStorageMb} MB). Silakan hubungi Administrator untuk memperbesar kuota." 
+                        });
+                    }
+                }
+            }
+        }
+
         var sanitizedFileName = $"{DateTime.UtcNow:yyyyMMdd_HHmmss}_{Path.GetFileName(file.FileName)}";
 
         // 1. Simpan pada ContentRootPath/uploads/notes/{note.Id}/{sanitizedFileName}

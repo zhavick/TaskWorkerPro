@@ -54,6 +54,7 @@ public class AppDbContext : DbContext
     public DbSet<Invoice> Invoices => Set<Invoice>();
     public DbSet<InvoiceItem> InvoiceItems => Set<InvoiceItem>();
     public DbSet<CompanyDocument> Documents => Set<CompanyDocument>();
+    public DbSet<MasterInvoiceItem> MasterInvoiceItems => Set<MasterInvoiceItem>();
 
     public int? CurrentCompanyId => _tenantService?.CompanyId;
     public bool IsCurrentUserAdmin => _tenantService?.IsAdmin ?? false;
@@ -355,5 +356,9 @@ public class AppDbContext : DbContext
 
         modelBuilder.Entity<CompanyDocument>().HasQueryFilter(d =>
             IsCurrentUserSuperAdmin || IsCurrentUserAdmin || CurrentCompanyId == null || d.CompanyId == CurrentCompanyId || d.Category == "SOP");
+
+        modelBuilder.Entity<MasterInvoiceItem>().ToTable("master_invoice_items");
+        modelBuilder.Entity<MasterInvoiceItem>().HasQueryFilter(it =>
+            IsCurrentUserSuperAdmin || CurrentCompanyId == null || it.CompanyId == CurrentCompanyId);
     }
 }

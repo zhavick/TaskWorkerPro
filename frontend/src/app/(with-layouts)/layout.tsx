@@ -5,6 +5,7 @@ import Sidebar from "@/components/common/sidebar";
 import { FloatingTimerBar } from "@/components/common/floating-timer-bar";
 import { AnnouncementModal } from "@/components/common/announcement-modal";
 import { UserGuideModal } from "@/components/common/user-guide-modal";
+import { useIsMobileDevice } from "@/hooks/use-is-mobile";
 import { OnboardingTour } from "@/components/common/onboarding-tour";
 import { SheetContent, SheetOverlay, SheetTitle } from "@/components/tailgrids/core/sheet";
 import { cn } from "@/utils/cn";
@@ -21,14 +22,19 @@ export default function WithLayout({ children }: { children: ReactNode }) {
   const [isMobileSheetOpen, setIsMobileSheetOpen] = useState(false);
   // User guide modal state
   const [isUserGuideOpen, setIsUserGuideOpen] = useState(false);
+  const isMobile = useIsMobileDevice();
 
   useEffect(() => {
-    const handleOpenUserGuide = () => setIsUserGuideOpen(true);
+    const handleOpenUserGuide = () => {
+      if (!isMobile) {
+        setIsUserGuideOpen(true);
+      }
+    };
     window.addEventListener("wtp:open_user_guide", handleOpenUserGuide);
     return () => {
       window.removeEventListener("wtp:open_user_guide", handleOpenUserGuide);
     };
-  }, []);
+  }, [isMobile]);
 
   const toggleSidebar = () => setIsSidebarOpen((prev) => !prev);
 
@@ -86,11 +92,13 @@ export default function WithLayout({ children }: { children: ReactNode }) {
       {/* Global User-Facing Announcement Modal (FSD 5.23.3) */}
       <AnnouncementModal />
 
-      {/* Global Interactive User Guide & Help Modal (FSD 5.19 & FSD 5.23.4) */}
-      <UserGuideModal
-        isOpen={isUserGuideOpen}
-        onClose={() => setIsUserGuideOpen(false)}
-      />
+      {/* Global Interactive User Guide & Help Modal (Desktop only) */}
+      {!isMobile && (
+        <UserGuideModal
+          isOpen={isUserGuideOpen}
+          onClose={() => setIsUserGuideOpen(false)}
+        />
+      )}
 
       {/* Global Interactive Onboarding Tour (FSD 5.19 - 6 Spotlights) */}
       <OnboardingTour />

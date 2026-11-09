@@ -15,11 +15,16 @@ public class Company
     public bool EnableTicketing { get; set; } = true;
     public bool EnableInvoicing { get; set; } = true;
 
+    // Storage Quota & File Limits
+    public long MaxStorageSizeBytes { get; set; } = 1073741824; // Default 1 GB
+    public long MaxUploadFileSizeBytes { get; set; } = 52428800; // Default 50 MB per file
+
     // Navigation properties
     public ICollection<AppUser> Users { get; set; } = new List<AppUser>();
     public ICollection<Project> Projects { get; set; } = new List<Project>();
     public ICollection<WorkTask> Tasks { get; set; } = new List<WorkTask>();
     public ICollection<WorkNote> Notes { get; set; } = new List<WorkNote>();
     public ICollection<TimesheetPeriod> TimesheetPeriods { get; set; } = new List<TimesheetPeriod>();
+    public ICollection<MasterInvoiceItem> InvoiceItems { get; set; } = new List<MasterInvoiceItem>();
     public CompanyTimesheetConfig? TimesheetConfig { get; set; }
 }

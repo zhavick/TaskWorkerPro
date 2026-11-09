@@ -204,6 +204,32 @@ public class DocumentsController : ControllerBase
             return StatusCode(403, new { success = false, message = "Modul Document Management System (DMS) dinonaktifkan untuk perusahaan ini. Hubungi Administrator untuk mengaktifkan modul." });
         }
 
+        // Enforce Per-Company Max File Size Limit
+        if (company.MaxUploadFileSizeBytes > 0 && file.Length > company.MaxUploadFileSizeBytes)
+        {
+            var maxFileMb = Math.Round((double)company.MaxUploadFileSizeBytes / (1024 * 1024), 1);
+            var actualMb = Math.Round((double)file.Length / (1024 * 1024), 2);
+            return BadRequest(new { 
+                success = false, 
+                message = $"Ukuran berkas ({actualMb} MB) melebihi batas maksimum per berkas ({maxFileMb} MB) yang diizinkan untuk perusahaan '{company.Name}'." 
+            });
+        }
+
+        // Enforce Per-Company Total Storage Quota
+        if (company.MaxStorageSizeBytes > 0)
+        {
+            var currentDocStorage = await _context.Documents.Where(d => d.CompanyId == targetCompanyId.Value).SumAsync(d => (long)d.FileSize);
+            var currentNoteStorage = await _context.Notes.Where(n => n.CompanyId == targetCompanyId.Value).SelectMany(n => n.Attachments).SumAsync(na => (long)na.FileSize);
+            if (currentDocStorage + currentNoteStorage + file.Length > company.MaxStorageSizeBytes)
+            {
+                var maxStorageMb = Math.Round((double)company.MaxStorageSizeBytes / (1024 * 1024), 1);
+                return BadRequest(new { 
+                    success = false, 
+                    message = $"Kapasitas penyimpanan perusahaan '{company.Name}' telah mencapai batas kuota ({maxStorageMb} MB). Silakan hubungi Administrator untuk memperbesar kuota atau lakukan pembersihan berkas." 
+                });
+            }
+        }
+
         if (projectId.HasValue)
         {
             var project = await _context.Projects.AsNoTracking().FirstOrDefaultAsync(p => p.Id == projectId.Value);

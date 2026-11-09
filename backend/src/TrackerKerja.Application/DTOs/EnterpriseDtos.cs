@@ -189,3 +189,40 @@ public record UpdateDocumentRequest(
     int? ProjectId
 );
 
+// --- 4. MASTER INVOICE ITEMS DTOS ---
+
+public record MasterInvoiceItemDto(
+    int Id,
+    int CompanyId,
+    string? CompanyName,
+    string Code,
+    string Name,
+    string? Description,
+    string Category,
+    string Unit,
+    decimal UnitPrice,
+    bool IsActive,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset UpdatedAt
+);
+
+public record CreateMasterInvoiceItemRequest(
+    string Code,
+    string Name,
+    string? Description,
+    string Category,
+    string Unit,
+    decimal UnitPrice,
+    int? CompanyId = null
+);
+
+public record UpdateMasterInvoiceItemRequest(
+    string Code,
+    string Name,
+    string? Description,
+    string Category,
+    string Unit,
+    decimal UnitPrice,
+    bool IsActive = true
+);
+

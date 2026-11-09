@@ -22,7 +22,9 @@ import {
   FileSpreadsheet,
   Download,
   Calendar,
+  Package,
 } from "lucide-react";
+import Link from "next/link";
 import { Button } from "@/components/tailgrids/core/button";
 import { Input } from "@/components/tailgrids/core/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/tailgrids/core/dialog";
@@ -137,6 +139,23 @@ export default function InvoicesPage() {
         }));
       }
     },
+  });
+
+  // 4c. Fetch Master Item Options (for quick filling Invoice Line Items)
+  const { data: catalogItemOptions = [] } = useQuery<any[]>({
+    queryKey: ["invoiceCatalogItemOptions", companyId],
+    queryFn: async () => {
+      try {
+        const url = companyId
+          ? `/invoices/item-options?companyId=${companyId}`
+          : "/invoices/item-options";
+        const res = await apiClient.get(url);
+        return res.data?.data || [];
+      } catch {
+        return [];
+      }
+    },
+    enabled: modalOpen,
   });
 
   const masterClientList = useMemo(
@@ -436,15 +455,29 @@ export default function InvoicesPage() {
           </p>
         </div>
 
-        {(isProjectManager || isAdmin) && (
-          <Button
-            onClick={handleOpenCreateModal}
-            className="gap-2 bg-indigo-600 font-semibold text-white shadow-md shadow-indigo-500/20 hover:bg-indigo-700"
-          >
-            <Plus className="h-4 w-4" />
-            Terbitkan Invoice Baru
-          </Button>
-        )}
+        <div className="flex flex-wrap items-center gap-2.5">
+          <Link href="/invoices/items">
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2 font-semibold text-gray-700 hover:text-indigo-600 dark:border-gray-700 dark:text-gray-200"
+            >
+              <Package className="h-4 w-4 text-indigo-600" />
+              Katalog Item Jasa & Produk
+            </Button>
+          </Link>
+
+          {(isProjectManager || isAdmin) && (
+            <Button
+              onClick={handleOpenCreateModal}
+              size="sm"
+              className="gap-2 bg-indigo-600 font-semibold text-white shadow-md shadow-indigo-500/20 hover:bg-indigo-700"
+            >
+              <Plus className="h-4 w-4" />
+              Terbitkan Invoice Baru
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Summary Cards */}
@@ -895,60 +928,134 @@ export default function InvoicesPage() {
 
             {/* Dynamic Items Section */}
             <div className="space-y-2 border-t border-gray-100 pt-3 dark:border-gray-800">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500">
                   Rincian Item Jasa / Produk Tagihan
                 </h4>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={addItemRow}
-                  className="gap-1 text-xs text-indigo-600"
-                >
-                  <Plus className="h-3 w-3" /> Tambah Baris
-                </Button>
+                <div className="flex items-center gap-2">
+                  {catalogItemOptions.length > 0 && (
+                    <select
+                      onChange={(e) => {
+                        const selectedId = Number(e.target.value);
+                        if (!selectedId) return;
+                        const found = catalogItemOptions.find((x) => x.id === selectedId);
+                        if (found) {
+                          setItems((prev) => [
+                            ...prev,
+                            {
+                              description: `[${found.code}] ${found.name}${found.description ? ` - ${found.description}` : ""}`,
+                              quantity: 1,
+                              unitPrice: found.unitPrice || 0,
+                            },
+                          ]);
+                          toast.success(`Item "${found.name}" ditambahkan`);
+                        }
+                        e.target.value = "";
+                      }}
+                      defaultValue=""
+                      className="rounded-xl border border-indigo-200 bg-indigo-50/70 px-2.5 py-1 text-xs font-semibold text-indigo-700 dark:border-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-300 transition"
+                    >
+                      <option value="" disabled>
+                        + Tambah dari Katalog Item...
+                      </option>
+                      {catalogItemOptions.map((opt) => (
+                        <option key={opt.id} value={opt.id}>
+                          [{opt.code}] {opt.name} ({opt.unit}) - Rp {Number(opt.unitPrice).toLocaleString("id-ID")}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={addItemRow}
+                    className="gap-1 text-xs text-indigo-600"
+                  >
+                    <Plus className="h-3 w-3" /> Tambah Baris
+                  </Button>
+                </div>
               </div>
 
               <div className="space-y-2">
                 {items.map((it, idx) => (
-                  <div key={idx} className="flex items-center gap-2">
-                    <Input
-                      placeholder="Deskripsi item jasa..."
-                      value={it.description}
-                      onChange={(e) => updateItemRow(idx, "description", e.target.value)}
-                      className="flex-3 text-xs"
-                      required
-                    />
-                    <Input
-                      type="number"
-                      min="1"
-                      placeholder="Qty"
-                      value={it.quantity}
-                      onChange={(e) => updateItemRow(idx, "quantity", e.target.value)}
-                      className="w-20 text-xs"
-                      required
-                    />
-                    <Input
-                      type="number"
-                      placeholder="Harga Satuan (Rp)"
-                      value={it.unitPrice}
-                      onChange={(e) => updateItemRow(idx, "unitPrice", e.target.value)}
-                      className="flex-2 text-xs font-mono"
-                      required
-                    />
-                    <div className="w-28 text-right font-mono font-bold text-xs text-gray-900 dark:text-white">
-                      Rp {((Number(it.quantity) || 0) * (Number(it.unitPrice) || 0)).toLocaleString("id-ID")}
-                    </div>
-                    {items.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => removeItemRow(idx)}
-                        className="text-rose-500 hover:text-rose-700 p-1"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
+                  <div
+                    key={idx}
+                    className="rounded-xl border border-gray-100 bg-gray-50/40 p-2.5 dark:border-gray-800/80 dark:bg-gray-800/30 space-y-1.5"
+                  >
+                    {catalogItemOptions.length > 0 && (
+                      <div className="flex items-center justify-between text-[11px] text-gray-500 dark:text-gray-400">
+                        <span className="flex items-center gap-1 font-medium">
+                          <Package className="h-3 w-3 text-indigo-500" /> Baris #{idx + 1}
+                        </span>
+                        <select
+                          onChange={(e) => {
+                            const selectedId = Number(e.target.value);
+                            if (!selectedId) return;
+                            const found = catalogItemOptions.find((x) => x.id === selectedId);
+                            if (found) {
+                              updateItemRow(
+                                idx,
+                                "description",
+                                `[${found.code}] ${found.name}${found.description ? ` - ${found.description}` : ""}`
+                              );
+                              updateItemRow(idx, "unitPrice", found.unitPrice || 0);
+                            }
+                            e.target.value = "";
+                          }}
+                          defaultValue=""
+                          className="rounded-md border border-gray-200 bg-white px-2 py-0.5 text-[10px] text-gray-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300"
+                        >
+                          <option value="" disabled>
+                            -- Pilih dari Katalog Item ({catalogItemOptions.length} item) --
+                          </option>
+                          {catalogItemOptions.map((opt) => (
+                            <option key={opt.id} value={opt.id}>
+                              [{opt.code}] {opt.name} ({opt.unit}) - Rp {Number(opt.unitPrice).toLocaleString("id-ID")}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                     )}
+                    <div className="flex items-center gap-2">
+                      <Input
+                        placeholder="Deskripsi item jasa..."
+                        value={it.description}
+                        onChange={(e) => updateItemRow(idx, "description", e.target.value)}
+                        className="flex-3 text-xs"
+                        required
+                      />
+                      <Input
+                        type="number"
+                        min="1"
+                        placeholder="Qty"
+                        value={it.quantity}
+                        onChange={(e) => updateItemRow(idx, "quantity", e.target.value)}
+                        className="w-20 text-xs"
+                        required
+                      />
+                      <Input
+                        type="number"
+                        placeholder="Harga Satuan (Rp)"
+                        value={it.unitPrice}
+                        onChange={(e) => updateItemRow(idx, "unitPrice", e.target.value)}
+                        className="flex-2 text-xs font-mono"
+                        required
+                      />
+                      <div className="w-28 text-right font-mono font-bold text-xs text-gray-900 dark:text-white">
+                        Rp {((Number(it.quantity) || 0) * (Number(it.unitPrice) || 0)).toLocaleString("id-ID")}
+                      </div>
+                      {items.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => removeItemRow(idx)}
+                          className="text-rose-500 hover:text-rose-700 p-1"
+                          title="Hapus baris"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>

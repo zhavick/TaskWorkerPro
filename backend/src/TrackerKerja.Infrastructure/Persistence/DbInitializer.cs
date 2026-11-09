@@ -67,6 +67,8 @@ public static class DbInitializer
                             ALTER TABLE companies ADD COLUMN IF NOT EXISTS enable_dms BOOLEAN NOT NULL DEFAULT TRUE;
                             ALTER TABLE companies ADD COLUMN IF NOT EXISTS enable_ticketing BOOLEAN NOT NULL DEFAULT TRUE;
                             ALTER TABLE companies ADD COLUMN IF NOT EXISTS enable_invoicing BOOLEAN NOT NULL DEFAULT TRUE;
+                            ALTER TABLE companies ADD COLUMN IF NOT EXISTS max_storage_size_bytes BIGINT NOT NULL DEFAULT 1073741824;
+                            ALTER TABLE companies ADD COLUMN IF NOT EXISTS max_upload_file_size_bytes BIGINT NOT NULL DEFAULT 52428800;
                         END IF;
 
                         IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'json_histories') THEN 
@@ -341,6 +343,22 @@ public static class DbInitializer
                         amount NUMERIC(18,2) NOT NULL DEFAULT 0.00
                     );
                     CREATE INDEX IF NOT EXISTS ix_invoice_items_invoice_id ON invoice_items(invoice_id);
+
+                    CREATE TABLE IF NOT EXISTS master_invoice_items (
+                        id SERIAL PRIMARY KEY,
+                        company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+                        code VARCHAR(50) NOT NULL,
+                        name VARCHAR(255) NOT NULL,
+                        description TEXT,
+                        category VARCHAR(100) NOT NULL DEFAULT 'Jasa',
+                        unit VARCHAR(50) NOT NULL DEFAULT 'Jam',
+                        unit_price NUMERIC(18,2) NOT NULL DEFAULT 0.00,
+                        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    );
+                    CREATE INDEX IF NOT EXISTS ix_master_invoice_items_company_id ON master_invoice_items(company_id);
+                    CREATE INDEX IF NOT EXISTS ix_master_invoice_items_code ON master_invoice_items(code);
                 ");
             }
             catch { }

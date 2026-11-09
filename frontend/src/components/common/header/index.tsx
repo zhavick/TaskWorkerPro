@@ -113,25 +113,15 @@ export default function Header({ onMenuClick }: { onMenuClick?: () => void }) {
 // Mobile Info
 function MobileInfoDrawer({
   isOpen,
-  onOpenGuide,
 }: {
   isOpen: boolean;
-  onOpenGuide: () => void;
+  onOpenGuide?: () => void;
 }) {
   return (
     <div className={cn("xl:hidden", isOpen ? "block" : "hidden")}>
       <div className="px-5 py-4 shadow-xs">
         <div className="flex items-center justify-between gap-2.5">
           <div className="flex items-center gap-2.5">
-            <button
-              id="headerUserGuideMobileBtn"
-              onClick={onOpenGuide}
-              title="Panduan Sistem & Bantuan"
-              aria-label="Panduan Sistem & Bantuan"
-              className="flex h-10 w-10 items-center justify-center rounded-lg border border-border-secondary-alt text-icon-tertiary transition-colors hover:bg-background-gray-secondary hover:text-text-primary"
-            >
-              <HelpCircle className="h-5 w-5" />
-            </button>
             <NotificationsButton />
             <ThemeToggle />
             <ThemeCustomizerDialog />

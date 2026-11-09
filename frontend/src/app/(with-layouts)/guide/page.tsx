@@ -41,6 +41,8 @@ import {
   Building,
 } from "lucide-react";
 import { useCurrentUser } from "@/hooks/use-current-user";
+import { useIsMobileDevice } from "@/hooks/use-is-mobile";
+import { useRouter } from "next/navigation";
 import { cn } from "@/utils/cn";
 import { toast } from "sonner";
 
@@ -68,6 +70,15 @@ interface Chapter {
 
 export default function UserGuidePage() {
   const { user, isAdmin } = useCurrentUser();
+  const isMobile = useIsMobileDevice();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (isMobile) {
+      toast.info("Panduan pengguna dinonaktifkan pada perangkat mobile.");
+      router.replace("/dashboard");
+    }
+  }, [isMobile, router]);
 
   // State Kontrol Navigasi & Filter
   const [searchQuery, setSearchQuery] = useState("");
@@ -1099,6 +1110,28 @@ export default function UserGuidePage() {
 
   const prevChapter = currentIndex > 0 ? filteredChapters[currentIndex - 1] : null;
   const nextChapter = currentIndex < filteredChapters.length - 1 ? filteredChapters[currentIndex + 1] : null;
+
+  if (isMobile) {
+    return (
+      <div className="flex min-h-[60vh] flex-col items-center justify-center p-6 text-center">
+        <div className="rounded-2xl border border-gray-200 bg-white p-8 shadow-sm dark:border-gray-800 dark:bg-gray-900 max-w-md">
+          <BookOpen className="mx-auto h-12 w-12 text-indigo-500 mb-4" />
+          <h2 className="text-lg font-bold text-gray-900 dark:text-white">
+            Panduan Pengguna Khusus Desktop
+          </h2>
+          <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+            Halaman Panduan Pengguna dan dokumentasi sistem dinonaktifkan pada perangkat seluler. Silakan buka aplikasi melalui komputer atau laptop Anda.
+          </p>
+          <button
+            onClick={() => router.replace("/dashboard")}
+            className="mt-6 w-full rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 transition-colors"
+          >
+            Kembali ke Dashboard
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full min-h-screen bg-gray-50/50 dark:bg-gray-950/40 text-gray-900 dark:text-gray-100 pb-20">
