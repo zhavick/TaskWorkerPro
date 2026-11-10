@@ -35,11 +35,31 @@ public class InvoicesController : ControllerBase
             if (_context.Database.IsRelational())
             {
                 await _context.Database.ExecuteSqlRawAsync(@"
+                    CREATE TABLE IF NOT EXISTS clients (
+                        id SERIAL PRIMARY KEY,
+                        name VARCHAR(255) NOT NULL,
+                        code VARCHAR(50) NOT NULL DEFAULT '',
+                        email VARCHAR(255),
+                        phone VARCHAR(100),
+                        contact_person VARCHAR(150),
+                        address TEXT,
+                        tax_id VARCHAR(100),
+                        notes TEXT,
+                        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                        company_id INTEGER REFERENCES companies(id) ON DELETE SET NULL,
+                        source_company_id INTEGER REFERENCES companies(id) ON DELETE SET NULL,
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    );
+                    CREATE INDEX IF NOT EXISTS ix_clients_company_id ON clients(company_id);
+                    CREATE INDEX IF NOT EXISTS ix_clients_name ON clients(name);
+
                     CREATE TABLE IF NOT EXISTS invoices (
                         id SERIAL PRIMARY KEY,
                         invoice_number VARCHAR(50) NOT NULL,
                         company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
                         project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+                        client_id INTEGER REFERENCES clients(id) ON DELETE SET NULL,
                         client_name VARCHAR(255) NOT NULL,
                         client_email VARCHAR(255),
                         client_address TEXT,
@@ -57,6 +77,7 @@ public class InvoicesController : ControllerBase
                         created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
                         updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
                     );
+                    ALTER TABLE invoices ADD COLUMN IF NOT EXISTS client_id INTEGER REFERENCES clients(id) ON DELETE SET NULL;
                     CREATE INDEX IF NOT EXISTS ix_invoices_company_id ON invoices(company_id);
                     CREATE INDEX IF NOT EXISTS ix_invoices_status ON invoices(status);
 
@@ -69,6 +90,22 @@ public class InvoicesController : ControllerBase
                         amount NUMERIC(18,2) NOT NULL DEFAULT 0.00
                     );
                     CREATE INDEX IF NOT EXISTS ix_invoice_items_invoice_id ON invoice_items(invoice_id);
+
+                    CREATE TABLE IF NOT EXISTS master_invoice_items (
+                        id SERIAL PRIMARY KEY,
+                        company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+                        code VARCHAR(50) NOT NULL,
+                        name VARCHAR(255) NOT NULL,
+                        description TEXT,
+                        category VARCHAR(100) NOT NULL DEFAULT 'Jasa',
+                        unit VARCHAR(50) NOT NULL DEFAULT 'Jam',
+                        unit_price NUMERIC(18,2) NOT NULL DEFAULT 0.00,
+                        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    );
+                    CREATE INDEX IF NOT EXISTS ix_master_invoice_items_company_id ON master_invoice_items(company_id);
+                    CREATE INDEX IF NOT EXISTS ix_master_invoice_items_code ON master_invoice_items(code);
                 ");
             }
             _tablesChecked = true;
@@ -174,10 +211,76 @@ public class InvoicesController : ControllerBase
                 item.Quantity,
                 item.UnitPrice,
                 item.Amount
-            )).ToList()
+            )).ToList(),
+            inv.ClientId
         )).ToList();
 
         return Ok(new { success = true, data = dtos });
+    }
+
+    [HttpGet("client-options")]
+    public async Task<IActionResult> GetClientOptions([FromQuery] int? companyId = null)
+    {
+        await EnsureInvoiceTablesAsync();
+
+        var userCompanyId = await GetUserCompanyIdAsync();
+        var effectiveCompanyId = !_tenantService.IsSuperAdmin ? userCompanyId : (companyId ?? userCompanyId);
+
+        var clientQuery = _context.Clients
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .Include(c => c.Company)
+            .Where(c => c.IsActive);
+
+        if (effectiveCompanyId.HasValue)
+        {
+            clientQuery = clientQuery.Where(c => c.CompanyId == null || c.CompanyId == effectiveCompanyId.Value);
+        }
+
+        var masterClients = await clientQuery.OrderBy(c => c.Name).ToListAsync();
+        var companies = await _context.Companies.AsNoTracking().OrderBy(c => c.Name).ToListAsync();
+
+        var options = new List<InvoiceClientOptionDto>();
+
+        foreach (var c in masterClients)
+        {
+            options.Add(new InvoiceClientOptionDto(
+                Key: $"client:{c.Id}",
+                Source: "client",
+                ClientId: c.Id,
+                SourceCompanyId: c.SourceCompanyId,
+                Name: c.Name,
+                Code: c.Code,
+                Email: c.Email,
+                Phone: c.Phone,
+                ContactPerson: c.ContactPerson,
+                Address: c.Address,
+                TaxId: c.TaxId,
+                OwnerCompanyId: c.CompanyId,
+                OwnerCompanyName: c.Company?.Name
+            ));
+        }
+
+        foreach (var comp in companies)
+        {
+            options.Add(new InvoiceClientOptionDto(
+                Key: $"company:{comp.Id}",
+                Source: "company",
+                ClientId: null,
+                SourceCompanyId: comp.Id,
+                Name: comp.Name,
+                Code: comp.Code,
+                Email: comp.ContactEmail,
+                Phone: null,
+                ContactPerson: null,
+                Address: comp.Address,
+                TaxId: null,
+                OwnerCompanyId: comp.Id,
+                OwnerCompanyName: comp.Name
+            ));
+        }
+
+        return Ok(new { success = true, data = options });
     }
 
     [HttpGet("summary")]
@@ -270,7 +373,8 @@ public class InvoicesController : ControllerBase
                 item.Quantity,
                 item.UnitPrice,
                 item.Amount
-            )).ToList()
+            )).ToList(),
+            inv.ClientId
         );
 
         return Ok(new { success = true, data = dto });
@@ -388,14 +492,57 @@ public class InvoicesController : ControllerBase
         var discount = request.DiscountAmount >= 0 ? request.DiscountAmount : 0.00m;
         var totalAmount = Math.Max(0, subTotal + taxAmount - discount);
 
+        int? resolvedClientId = request.ClientId;
+        var resolvedClientName = request.ClientName?.Trim() ?? string.Empty;
+        var resolvedClientEmail = request.ClientEmail?.Trim();
+        var resolvedClientAddress = request.ClientAddress?.Trim();
+
+        if (request.ClientId.HasValue)
+        {
+            var clientEntity = await _context.Clients.IgnoreQueryFilters().AsNoTracking().FirstOrDefaultAsync(c => c.Id == request.ClientId.Value);
+            if (clientEntity != null)
+            {
+                if (string.IsNullOrWhiteSpace(resolvedClientName)) resolvedClientName = clientEntity.Name;
+                if (string.IsNullOrWhiteSpace(resolvedClientEmail)) resolvedClientEmail = clientEntity.Email;
+                if (string.IsNullOrWhiteSpace(resolvedClientAddress)) resolvedClientAddress = clientEntity.Address;
+            }
+            else
+            {
+                resolvedClientId = null;
+            }
+        }
+        else if (request.SourceCompanyClientId.HasValue)
+        {
+            var sourceComp = await _context.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == request.SourceCompanyClientId.Value);
+            if (sourceComp != null)
+            {
+                if (string.IsNullOrWhiteSpace(resolvedClientName)) resolvedClientName = sourceComp.Name;
+                if (string.IsNullOrWhiteSpace(resolvedClientEmail)) resolvedClientEmail = sourceComp.ContactEmail;
+                if (string.IsNullOrWhiteSpace(resolvedClientAddress)) resolvedClientAddress = sourceComp.Address;
+
+                var linkedClient = await _context.Clients.IgnoreQueryFilters().AsNoTracking()
+                    .FirstOrDefaultAsync(c => c.SourceCompanyId == sourceComp.Id || c.Name.ToLower() == sourceComp.Name.ToLower());
+                if (linkedClient != null)
+                {
+                    resolvedClientId = linkedClient.Id;
+                }
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(resolvedClientName))
+        {
+            return BadRequest(new { success = false, message = "Nama klien wajib diisi atau dipilih dari daftar klien/perusahaan." });
+        }
+
         var invoice = new Invoice
         {
             InvoiceNumber = invoiceNumber,
             CompanyId = targetCompanyId.Value,
             ProjectId = request.ProjectId,
-            ClientName = request.ClientName.Trim(),
-            ClientEmail = request.ClientEmail?.Trim(),
-            ClientAddress = request.ClientAddress?.Trim(),
+            ClientId = resolvedClientId,
+            ClientName = resolvedClientName,
+            ClientEmail = resolvedClientEmail,
+            ClientAddress = resolvedClientAddress,
             IssueDate = request.IssueDate.ToUniversalTime(),
             DueDate = request.DueDate.ToUniversalTime(),
             Status = InvoiceStatus.Draft,
@@ -443,7 +590,8 @@ public class InvoicesController : ControllerBase
                 null,
                 invoice.PaidAt,
                 invoice.CreatedAt,
-                invoice.Items.Select(it => new InvoiceItemDto(it.Id, it.Description, it.Quantity, it.UnitPrice, it.Amount)).ToList()
+                invoice.Items.Select(it => new InvoiceItemDto(it.Id, it.Description, it.Quantity, it.UnitPrice, it.Amount)).ToList(),
+                invoice.ClientId
             );
 
             return Ok(new { success = true, message = "Invoice berhasil dibuat.", data = dto });
@@ -480,10 +628,38 @@ public class InvoicesController : ControllerBase
             invoice.InvoiceNumber = request.InvoiceNumber.Trim();
         }
 
+        var updatedClientName = request.ClientName?.Trim() ?? string.Empty;
+        var updatedClientEmail = request.ClientEmail?.Trim();
+        var updatedClientAddress = request.ClientAddress?.Trim();
+        int? updatedClientId = request.ClientId ?? invoice.ClientId;
+
+        if (request.ClientId.HasValue)
+        {
+            var clientEntity = await _context.Clients.IgnoreQueryFilters().AsNoTracking().FirstOrDefaultAsync(c => c.Id == request.ClientId.Value);
+            if (clientEntity != null)
+            {
+                if (string.IsNullOrWhiteSpace(updatedClientName)) updatedClientName = clientEntity.Name;
+                if (string.IsNullOrWhiteSpace(updatedClientEmail)) updatedClientEmail = clientEntity.Email;
+                if (string.IsNullOrWhiteSpace(updatedClientAddress)) updatedClientAddress = clientEntity.Address;
+                updatedClientId = clientEntity.Id;
+            }
+        }
+        else if (request.SourceCompanyClientId.HasValue)
+        {
+            var sourceComp = await _context.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == request.SourceCompanyClientId.Value);
+            if (sourceComp != null)
+            {
+                if (string.IsNullOrWhiteSpace(updatedClientName)) updatedClientName = sourceComp.Name;
+                if (string.IsNullOrWhiteSpace(updatedClientEmail)) updatedClientEmail = sourceComp.ContactEmail;
+                if (string.IsNullOrWhiteSpace(updatedClientAddress)) updatedClientAddress = sourceComp.Address;
+            }
+        }
+
         invoice.ProjectId = request.ProjectId;
-        invoice.ClientName = request.ClientName.Trim();
-        invoice.ClientEmail = request.ClientEmail?.Trim();
-        invoice.ClientAddress = request.ClientAddress?.Trim();
+        invoice.ClientId = updatedClientId;
+        invoice.ClientName = !string.IsNullOrWhiteSpace(updatedClientName) ? updatedClientName : invoice.ClientName;
+        invoice.ClientEmail = updatedClientEmail;
+        invoice.ClientAddress = updatedClientAddress;
         invoice.IssueDate = request.IssueDate.ToUniversalTime();
         invoice.DueDate = request.DueDate.ToUniversalTime();
         invoice.Status = request.Status;
@@ -556,7 +732,8 @@ public class InvoicesController : ControllerBase
                 null,
                 invoice.PaidAt,
                 invoice.CreatedAt,
-                invoice.Items.Select(it => new InvoiceItemDto(it.Id, it.Description, it.Quantity, it.UnitPrice, it.Amount)).ToList()
+                invoice.Items.Select(it => new InvoiceItemDto(it.Id, it.Description, it.Quantity, it.UnitPrice, it.Amount)).ToList(),
+                invoice.ClientId
             );
 
             return Ok(new { success = true, message = "Invoice berhasil diperbarui.", data = dto });
@@ -623,6 +800,303 @@ public class InvoicesController : ControllerBase
         await _context.SaveChangesAsync();
 
         return Ok(new { success = true, message = "Invoice berhasil dihapus." });
+    }
+
+    // ==========================================
+    // MASTER INVOICE ITEMS & SERVICES CATALOG
+    // ==========================================
+
+    [HttpGet("items")]
+    public async Task<IActionResult> GetInvoiceItems(
+        [FromQuery] string? search = null,
+        [FromQuery] string? category = null,
+        [FromQuery] bool? isActive = null,
+        [FromQuery] int? companyId = null)
+    {
+        await EnsureInvoiceTablesAsync();
+
+        var userCompanyId = await GetUserCompanyIdAsync();
+        var effectiveCompanyId = !_tenantService.IsSuperAdmin ? userCompanyId : (companyId ?? userCompanyId);
+
+        var query = _context.MasterInvoiceItems
+            .IgnoreQueryFilters()
+            .Include(i => i.Company)
+            .AsNoTracking()
+            .AsQueryable();
+
+        if (effectiveCompanyId.HasValue)
+        {
+            query = query.Where(i => i.CompanyId == effectiveCompanyId.Value);
+        }
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var s = search.Trim().ToLower();
+            query = query.Where(i => i.Code.ToLower().Contains(s) || i.Name.ToLower().Contains(s) || (i.Description != null && i.Description.ToLower().Contains(s)));
+        }
+
+        if (!string.IsNullOrWhiteSpace(category) && category != "all")
+        {
+            query = query.Where(i => i.Category.ToLower() == category.Trim().ToLower());
+        }
+
+        if (isActive.HasValue)
+        {
+            query = query.Where(i => i.IsActive == isActive.Value);
+        }
+
+        var items = await query
+            .OrderBy(i => i.Category)
+            .ThenBy(i => i.Name)
+            .Select(i => new MasterInvoiceItemDto(
+                i.Id,
+                i.CompanyId,
+                i.Company != null ? i.Company.Name : null,
+                i.Code,
+                i.Name,
+                i.Description,
+                i.Category,
+                i.Unit,
+                i.UnitPrice,
+                i.IsActive,
+                i.CreatedAt,
+                i.UpdatedAt
+            ))
+            .ToListAsync();
+
+        return Ok(new { success = true, data = items });
+    }
+
+    [HttpGet("items/{id:int}")]
+    public async Task<IActionResult> GetInvoiceItemById(int id)
+    {
+        await EnsureInvoiceTablesAsync();
+
+        var item = await _context.MasterInvoiceItems
+            .IgnoreQueryFilters()
+            .Include(i => i.Company)
+            .AsNoTracking()
+            .FirstOrDefaultAsync(i => i.Id == id);
+
+        if (item == null)
+        {
+            return NotFound(new { success = false, message = "Item jasa / produk tidak ditemukan." });
+        }
+
+        var userCompanyId = await GetUserCompanyIdAsync();
+        if (!_tenantService.IsSuperAdmin && userCompanyId.HasValue && item.CompanyId != userCompanyId.Value)
+        {
+            return StatusCode(403, new { success = false, message = "Anda tidak berhak mengakses item perusahaan lain." });
+        }
+
+        var dto = new MasterInvoiceItemDto(
+            item.Id,
+            item.CompanyId,
+            item.Company?.Name,
+            item.Code,
+            item.Name,
+            item.Description,
+            item.Category,
+            item.Unit,
+            item.UnitPrice,
+            item.IsActive,
+            item.CreatedAt,
+            item.UpdatedAt
+        );
+
+        return Ok(new { success = true, data = dto });
+    }
+
+    [HttpPost("items")]
+    public async Task<IActionResult> CreateInvoiceItem([FromBody] CreateMasterInvoiceItemRequest request)
+    {
+        await EnsureInvoiceTablesAsync();
+
+        if (string.IsNullOrWhiteSpace(request.Name))
+        {
+            return BadRequest(new { success = false, message = "Nama item jasa / produk wajib diisi." });
+        }
+
+        var userCompanyId = await GetUserCompanyIdAsync();
+        var targetCompanyId = !_tenantService.IsSuperAdmin ? userCompanyId : (request.CompanyId ?? userCompanyId);
+
+        if (!targetCompanyId.HasValue)
+        {
+            return BadRequest(new { success = false, message = "Perusahaan pemilik item wajib ditentukan." });
+        }
+
+        var cleanCode = (request.Code ?? string.Empty).Trim().ToUpperInvariant();
+        if (string.IsNullOrWhiteSpace(cleanCode))
+        {
+            cleanCode = $"ITM-{DateTime.UtcNow:yyMMddHHmmss}";
+        }
+
+        var codeExists = await _context.MasterInvoiceItems
+            .IgnoreQueryFilters()
+            .AnyAsync(i => i.CompanyId == targetCompanyId.Value && i.Code == cleanCode);
+
+        if (codeExists)
+        {
+            return BadRequest(new { success = false, message = $"Kode item '{cleanCode}' sudah digunakan di perusahaan ini." });
+        }
+
+        var item = new MasterInvoiceItem
+        {
+            CompanyId = targetCompanyId.Value,
+            Code = cleanCode,
+            Name = request.Name.Trim(),
+            Description = request.Description?.Trim(),
+            Category = string.IsNullOrWhiteSpace(request.Category) ? "Jasa" : request.Category.Trim(),
+            Unit = string.IsNullOrWhiteSpace(request.Unit) ? "Jam" : request.Unit.Trim(),
+            UnitPrice = request.UnitPrice >= 0 ? request.UnitPrice : 0,
+            IsActive = true,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow
+        };
+
+        _context.MasterInvoiceItems.Add(item);
+        await _context.SaveChangesAsync();
+
+        var company = await _context.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == item.CompanyId);
+
+        var dto = new MasterInvoiceItemDto(
+            item.Id,
+            item.CompanyId,
+            company?.Name,
+            item.Code,
+            item.Name,
+            item.Description,
+            item.Category,
+            item.Unit,
+            item.UnitPrice,
+            item.IsActive,
+            item.CreatedAt,
+            item.UpdatedAt
+        );
+
+        return CreatedAtAction(nameof(GetInvoiceItemById), new { id = item.Id }, new { success = true, data = dto, message = "Item jasa / produk berhasil ditambahkan." });
+    }
+
+    [HttpPut("items/{id:int}")]
+    public async Task<IActionResult> UpdateInvoiceItem(int id, [FromBody] UpdateMasterInvoiceItemRequest request)
+    {
+        await EnsureInvoiceTablesAsync();
+
+        var item = await _context.MasterInvoiceItems.IgnoreQueryFilters().FirstOrDefaultAsync(i => i.Id == id);
+        if (item == null)
+        {
+            return NotFound(new { success = false, message = "Item jasa / produk tidak ditemukan." });
+        }
+
+        var userCompanyId = await GetUserCompanyIdAsync();
+        if (!_tenantService.IsSuperAdmin && userCompanyId.HasValue && item.CompanyId != userCompanyId.Value)
+        {
+            return StatusCode(403, new { success = false, message = "Anda tidak berhak mengubah item perusahaan lain." });
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Name))
+        {
+            return BadRequest(new { success = false, message = "Nama item jasa / produk wajib diisi." });
+        }
+
+        var cleanCode = (request.Code ?? item.Code).Trim().ToUpperInvariant();
+        var codeExists = await _context.MasterInvoiceItems
+            .IgnoreQueryFilters()
+            .AnyAsync(i => i.Id != id && i.CompanyId == item.CompanyId && i.Code == cleanCode);
+
+        if (codeExists)
+        {
+            return BadRequest(new { success = false, message = $"Kode item '{cleanCode}' sudah digunakan oleh item lain." });
+        }
+
+        item.Code = cleanCode;
+        item.Name = request.Name.Trim();
+        item.Description = request.Description?.Trim();
+        item.Category = string.IsNullOrWhiteSpace(request.Category) ? item.Category : request.Category.Trim();
+        item.Unit = string.IsNullOrWhiteSpace(request.Unit) ? item.Unit : request.Unit.Trim();
+        item.UnitPrice = request.UnitPrice >= 0 ? request.UnitPrice : item.UnitPrice;
+        item.IsActive = request.IsActive;
+        item.UpdatedAt = DateTimeOffset.UtcNow;
+
+        await _context.SaveChangesAsync();
+
+        var company = await _context.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == item.CompanyId);
+
+        var dto = new MasterInvoiceItemDto(
+            item.Id,
+            item.CompanyId,
+            company?.Name,
+            item.Code,
+            item.Name,
+            item.Description,
+            item.Category,
+            item.Unit,
+            item.UnitPrice,
+            item.IsActive,
+            item.CreatedAt,
+            item.UpdatedAt
+        );
+
+        return Ok(new { success = true, data = dto, message = "Item jasa / produk berhasil diperbarui." });
+    }
+
+    [HttpDelete("items/{id:int}")]
+    public async Task<IActionResult> DeleteInvoiceItem(int id)
+    {
+        await EnsureInvoiceTablesAsync();
+
+        var item = await _context.MasterInvoiceItems.IgnoreQueryFilters().FirstOrDefaultAsync(i => i.Id == id);
+        if (item == null)
+        {
+            return NotFound(new { success = false, message = "Item jasa / produk tidak ditemukan." });
+        }
+
+        var userCompanyId = await GetUserCompanyIdAsync();
+        if (!_tenantService.IsSuperAdmin && userCompanyId.HasValue && item.CompanyId != userCompanyId.Value)
+        {
+            return StatusCode(403, new { success = false, message = "Anda tidak berhak menghapus item perusahaan lain." });
+        }
+
+        _context.MasterInvoiceItems.Remove(item);
+        await _context.SaveChangesAsync();
+
+        return Ok(new { success = true, message = "Item jasa / produk berhasil dihapus." });
+    }
+
+    [HttpGet("item-options")]
+    public async Task<IActionResult> GetItemOptions([FromQuery] int? companyId = null)
+    {
+        await EnsureInvoiceTablesAsync();
+
+        var userCompanyId = await GetUserCompanyIdAsync();
+        var effectiveCompanyId = !_tenantService.IsSuperAdmin ? userCompanyId : (companyId ?? userCompanyId);
+
+        var query = _context.MasterInvoiceItems
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(i => i.IsActive);
+
+        if (effectiveCompanyId.HasValue)
+        {
+            query = query.Where(i => i.CompanyId == effectiveCompanyId.Value);
+        }
+
+        var items = await query
+            .OrderBy(i => i.Category)
+            .ThenBy(i => i.Name)
+            .Select(i => new
+            {
+                i.Id,
+                i.Code,
+                i.Name,
+                i.Description,
+                i.Category,
+                i.Unit,
+                i.UnitPrice
+            })
+            .ToListAsync();
+
+        return Ok(new { success = true, data = items });
     }
 }
 

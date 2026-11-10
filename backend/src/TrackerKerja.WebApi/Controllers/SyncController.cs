@@ -70,6 +70,7 @@ public class SyncController : ControllerBase
 
     [HttpPost("push")]
     [Authorize]
+    [DisableRequestSizeLimit]
     public async Task<IActionResult> Push([FromBody] SyncPushRequest request)
     {
         if (!IsAdmin())
@@ -124,6 +125,7 @@ public class SyncController : ControllerBase
 
     [HttpPost("receive")]
     [AllowAnonymous]
+    [DisableRequestSizeLimit]
     public async Task<IActionResult> ReceivePayload([FromBody] SyncPayload payload)
     {
         if (!IsSyncAuthorized())
@@ -167,6 +169,8 @@ public class SyncController : ControllerBase
     [HttpPost("import-package")]
     [HttpPost("package/upload")]
     [Authorize]
+    [DisableRequestSizeLimit]
+    [RequestFormLimits(MultipartBodyLengthLimit = 524_288_000)]
     public async Task<IActionResult> ImportPackage(IFormFile file)
     {
         if (!IsAdmin())
@@ -190,12 +194,20 @@ public class SyncController : ControllerBase
             using var reader = new StreamReader(file.OpenReadStream(), System.Text.Encoding.UTF8);
             var sqlContent = await reader.ReadToEndAsync();
             var result = await _syncService.ImportSqlScriptAsync(sqlContent, _tenantService.UserId);
+            if (!result.Success)
+            {
+                return BadRequest(result);
+            }
             return Ok(result);
         }
         else
         {
             using var stream = file.OpenReadStream();
             var result = await _syncService.ImportPackageZipAsync(stream, _tenantService.UserId);
+            if (!result.Success)
+            {
+                return BadRequest(result);
+            }
             return Ok(result);
         }
     }
@@ -216,7 +228,7 @@ public class SyncController : ControllerBase
 
     private bool IsAdmin()
     {
-        return _tenantService.IsAdmin || (User.Identity?.IsAuthenticated == true && (User.IsInRole("Administrator") || User.IsInRole("SuperAdmin")));
+        return _tenantService.IsAdmin || (User.Identity?.IsAuthenticated == true && (User.IsInRole("Administrator") || User.IsInRole("SuperAdmin") || User.IsInRole("Admin")));
     }
 
     private bool IsSyncAuthorized()

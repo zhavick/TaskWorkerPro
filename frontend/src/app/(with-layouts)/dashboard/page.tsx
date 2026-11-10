@@ -29,6 +29,7 @@ import {
 import { Button } from "@/components/tailgrids/core/button";
 import { toast } from "sonner";
 import Link from "next/link";
+import { useCurrentUser } from "@/hooks/use-current-user";
 import { parseTaskStatus } from "@/utils/task-status";
 import {
   ResponsiveContainer,
@@ -155,6 +156,7 @@ function CustomTimesheetStackedTooltip({
 
 export default function DashboardPage() {
   const queryClient = useQueryClient();
+  const { isStaff, isAdmin, isProjectManager } = useCurrentUser();
   const [userName, setUserName] = useState("Rekan Kerja");
   const [userRole, setUserRole] = useState("Member");
   const [activeChartTab, setActiveChartTab] = useState<"hours" | "tasks">("hours");
@@ -616,7 +618,8 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* 2. Spanduk Pengingat Check-In & Streak (FSD 5.20.7 & USER_GUIDE 2.1) */}
+      {/* 2. Spanduk Pengingat Check-In & Streak (FSD 5.20.7 & USER_GUIDE 2.1) - Hanya muncul untuk Member setelah mengisi task 2 hari berturut-turut */}
+      {(!isStaff || gamification?.hasCreatedTask === true) && (
       <div className={`relative overflow-hidden rounded-2xl border p-4 sm:p-5 transition-all ${
         gamification?.hasCheckedInToday
           ? "border-emerald-200/80 bg-gradient-to-r from-emerald-500/10 via-teal-500/5 to-transparent dark:border-emerald-800/60 dark:from-emerald-950/30"
@@ -641,9 +644,11 @@ export default function DashboardPage() {
                 </span>
               </div>
               <p className="mt-0.5 text-xs text-gray-600 dark:text-gray-300">
-                {gamification?.hasCheckedInToday
+                {isStaff && gamification?.hasCreatedTask === false
+                  ? "Isi tugas (task) kerja selama 2 hari berturut-turut untuk mengaktifkan hadiah poin dan menu gamifikasi Anda."
+                  : gamification?.hasCheckedInToday
                   ? "Hebat! Anda sudah check-in hari ini. Pertahankan streak aktif Anda untuk meraih milestone hadiah bulanan!"
-                  : "Check-in harian wajib dilakukan agar streak Anda tidak terputus (toleransi toleransi reset 2 hari). Dapatkan +10 poin sekarang!"}
+                  : "Check-in harian wajib dilakukan agar streak Anda tidak terputus (toleransi reset 2 hari). Dapatkan +10 poin sekarang!"}
               </p>
             </div>
           </div>
@@ -656,7 +661,17 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {!gamification?.hasCheckedInToday ? (
+            {isStaff && gamification?.hasCreatedTask === false ? (
+              <Link href="/tasks">
+                <Button
+                  size="sm"
+                  className="gap-1.5 bg-indigo-600 hover:bg-indigo-700 font-bold text-xs text-white shadow-xs"
+                >
+                  <Sparkles className="h-4 w-4" />
+                  + Isi Tugas (Task)
+                </Button>
+              </Link>
+            ) : !gamification?.hasCheckedInToday ? (
               <Button
                 onClick={() => checkInMutation.mutate()}
                 disabled={checkInMutation.isPending}
@@ -678,6 +693,7 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+      )}
 
       {/* 2.5 Informasi Penting Integritas Operasional: Task Tanpa Proyek & Proyek Kosong */}
       {(integrity.tasksWithoutProjectCount > 0 || integrity.emptyProjectsCount > 0) && (
@@ -842,7 +858,9 @@ export default function DashboardPage() {
             </div>
             <div className="mt-1 flex items-center justify-between text-[11px]">
               <span className="text-text-secondary">🔥 {gamification?.currentStreakDays || 0} Hari Streak</span>
-              {gamification?.hasCheckedInToday ? (
+              {isStaff && gamification?.hasCreatedTask === false ? (
+                <span className="font-semibold text-amber-500">Perlu Buat Task</span>
+              ) : gamification?.hasCheckedInToday ? (
                 <span className="font-semibold text-emerald-500">Check-In OK</span>
               ) : (
                 <span className="font-semibold text-amber-500">Belum Check-In</span>

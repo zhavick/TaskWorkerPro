@@ -5,14 +5,14 @@
 
 ### INFORMASI DOKUMEN
 - **Nama Aplikasi**: Work Tracker Pro (TrackerKerja Modern)
-- **Versi Dokumen**: 4.2 (Task Re-upload Diff & In-Place Update, Task-Linked Notes Card, & Attendance Synchronization Matrix Edition)
+- **Versi Dokumen**: 4.3 (Master Data Client & Unified Invoice Client Picker, Member 2-Day Consecutive Task Gamification Unlock, Task Re-upload Diff & Attendance Sync Edition)
 - **Status**: Disetujui & Terimplementasi Penuh (Production-Ready)
 - **Target Platform**: Web Application (Next.js 16 TurboPack Frontend / ASP.NET Core 8.0 Web API / Docker Multi-Container)
 - **Basis Data**: Entity Framework Core 8.0 dengan PostgreSQL 16 & SQLite Database Engine
 - **Engine Spreadsheet**: ClosedXML 0.104.2 (Format ARMS 21-kolom, Template Standar 9-kolom, & Timesheet Personal)
 - **Dokumentasi REST API**: OpenAPI 3.0 via Swashbuckle Swagger UI (`/swagger`) dengan Strict JWT Bearer Authorization & Postman Collection
 - **Repositori Source Code**: [https://github.com/zhavick/TaskWorkerPro.git](https://github.com/zhavick/TaskWorkerPro.git) (Branch `modern`)
-- **Tanggal Rilis & Pembaruan**: 29 Oktober 2026
+- **Tanggal Rilis & Pembaruan**: 6 November 2026
 
 ---
 
@@ -648,8 +648,15 @@ erDiagram
 - **Modal Detail Aktivitas**: Menampilkan modal popup elegan rincian setiap baris log audit termasuk payload data dan query string.
 - **Ekspor Audit Log**: Fasilitas ekspor rekaman audit trail ke format CSV untuk kebutuhan audit kepatuhan regulasi eksternal.
 
-### 5.13 Modul Master Data (Prioritas, Status & Milestone SDLC)
+### 5.13 Modul Master Data (Prioritas, Status, Milestone SDLC & Master Data Client untuk Invoice)
 - Pengelolaan referensi Master Prioritas, Master Status, Kategori, dan Master Milestone SDLC Waterfall (*Requirement Analysis*, *System Design*, *Implementation*, *Testing & QA*, *Deployment*, *Maintenance*).
+- **Modul Master Data Client (`clients`) & Integrasi Penagihan Invoice (`/invoices`)**:
+  - Menyediakan pengelolaan entitas **Master Data Klien (`Client`)** pada halaman Konfigurasi Sistem (`/configuration` -> Tab *Master Data & SDLC* -> Sub-tab *Klien (Client)*) yang mencakup atribut: Nama Klien, Kode Klien, Email Penagihan, Nomor Telepon, Nama Kontak PIC (*Contact Person*), NPWP / Tax ID, Alamat Penagihan, Catatan, Status Aktif, serta referensi opsional ke tabel perusahaan (`SourceCompanyId`).
+  - **Sinkronisasi Otomatis dari Tabel Perusahaan (`companies`)**: Tombol aksi **"Ambil dari Tabel Perusahaan"** (`POST /api/master/clients/sync-from-companies`) memungkinkan Administrator atau Project Manager menyalin/mensinkronkan data dari tabel `companies` ke tabel `clients` secara otomatis tanpa duplikasi, maupun memilih perusahaan sebagai template saat menambah klien baru.
+  - **Pemilihan Klien Terpadu pada Pembuatan Invoice (`/invoices`)**:
+    - Saat membuat atau mengedit Invoice, pengguna dapat memilih klien langsung dari daftar gabungan (**Tabel Master Clients** dan **Tabel Companies** melalui endpoint `GET /api/invoices/client-options` / `GET /api/master/clients/invoice-options`) atau mengisi rincian klien secara manual.
+    - Memilih entitas dari tabel `clients` atau `companies` secara otomatis mengisi Nama Klien, Email Klien, dan Alamat Penagihan Klien pada formulir invoice.
+    - Apabila pengguna memilih klien dari tabel `companies` atau menginput manual dengan mencentang opsi *"Simpan juga ke Master Data Client"*, sistem secara otomatis mencatat/menautkan `ClientId` pada tabel `clients` dan menyimpannya ke kolom `invoices.client_id`.
 
 ### 5.14 Modul Kalender Tugas Interaktif & Role-Based Scope Filter
 - Antarmuka kalender visual bertenaga **FullCalendar v6** dengan tampilan Bulan (*Month*), Minggu (*Week*), dan Hari (*Day*).
@@ -789,8 +796,12 @@ erDiagram
 - **Tur Interaktif Layar (*Interactive Onboarding Tour* - `onboarding-tour.js`)**:
   - 6 spotlight navigasi interaktif memandu pengguna baru memahami alur operasional: Ringkasan Metrik Dashboard, Manajemen Tugas & Multi-Timer, Kalender Kerja, Presensi Mandiri, SQL Beautifier, dan Theme & Font Switcher.
   - Dapat diakses kembali sewaktu-waktu melalui menu profil navbar atau pintasan bantuan.
-### 5.20 Modul Gamifikasi, Daily Check-In, Aturan Streak, Master Badge Gaul & Klaim Hadiah
+### 5.20 Modul Gamifikasi, Syarat Aktivasi 2 Hari Berturut-turut, Daily Check-In, Aturan Streak, Master Badge Gaul & Klaim Hadiah
 Modul ini mengimplementasikan sistem gamifikasi komprehensif untuk meningkatkan kedisiplinan dan retensi pengguna melalui pengumpulan poin, streak check-in, lencana prestasi, dan penukaran hadiah nyata:
+- **5.20.0 Syarat Kemunculan & Aktivasi Menu Gamifikasi bagi Member (Mengisi Task 2 Hari Berturut-turut)**:
+  - **Menu Gamifikasi Tersembunyi pada Awalnya bagi Member Baru**: Bagi pengguna dengan peran **Member / Staff** (`isStaff`), menu navigasi **Gamifikasi & Hadiah** pada bilah samping (*Sidebar*) serta spanduk pengingat check-in pada Dashboard **tidak dimunculkan pertama kali** saat akun baru dibuat atau belum memenuhi syarat konsistensi tugas.
+  - **Aturan 2 Hari Berturut-turut Mengisi Task (`ConsecutiveTaskDays >= 2`)**: Menu **Gamifikasi & Hadiah** beserta hak akses check-in harian dan klaim reward akan **muncul dan aktif secara otomatis** apabila member telah mengisi/mencatat tugas kerja (*task creation, task progress update, atau work session timesheet*) selama minimal **2 hari kalender berturut-turut**.
+  - **Akses Penuh bagi Administrator & Project Manager**: Pengguna dengan peran Administrator dan Project Manager selalu dapat melihat menu Gamifikasi & Hadiah setiap saat untuk keperluan pemantauan tim, pengelolaan katalog hadiah, serta persetujuan klaim poin.
 - **5.20.1 Saldo Awal & Aturan Akumulasi Poin Bulanan (Aturan 15 & 30 Hari)**:
   - Saldo poin gamifikasi untuk setiap pengguna selalu **dimulai dari 0** pada awal periode bulanan.
   - Akumulasi poin check-in dihitung berdasarkan pencapaian disiplin check-in pengguna:
@@ -804,8 +815,9 @@ Modul ini mengimplementasikan sistem gamifikasi komprehensif untuk meningkatkan 
   - **Aturan Toleransi & Reset**: Jika pengguna tidak melakukan check-in selama 2 hari berturut-turut (`gap >= 2 hari`), hitungan streak otomatis di-reset kembali ke awal (Hari 1). Jika selisihnya 1 hari (kemarin check-in, hari ini check-in), streak berlanjut.
 - **5.20.3 Monthly Streak Milestone (Streak 30 Hari)**:
   - Pengguna yang mencapai streak berturut-turut selama **30 hari (1 bulan)** membuka status pencapaian bulanan (`IsMonthlyMilestone = true`), memperoleh bonus poin besar (`Gamification_MonthlyStreakBonusPoints`, default: 500 poin), serta berhak mengklaim reward berkategori `IsMonthlyMilestoneReward = true`.
-- **5.20.4 Koleksi 40+ Master Badge Gaul & Modern Anak Muda**:
+- **5.20.4 Koleksi 70+ Master Badge Gaul & Modern Anak Muda (Kisaran Nilai Poin 10 hingga 100)**:
   - Seluruh lencana master menggunakan penamaan dan deskripsi berbahasa Indonesia gaya modern anak muda yang memotivasi (*Si Paling Eksekutor*, *Kopi & Keringat*, *Jawara Timesheet*, *Pawang JSON*, *Dewa SQL*, *Sultan Check-In*, *MVP Idola Kantor*, dll.).
+  - **Standar Rentang Nilai Poin Lencana (`10` hingga `100` Poin)**: Setiap Master Badge memiliki nilai poin permanen yang berada secara ketat pada kisaran **10 hingga 100 poin** (`10 <= Points <= 100`) sesuai tingkat kelangkaan (*Rarity*: *Common* 10–30 poin, *Rare* 45–60 poin, *Epic* 75–85 poin, dan *Legendary* 95–100 poin). Pembuatan maupun pembaruan Master Badge oleh Administrator divalidasi pada rentang 10–100 poin.
   - Evaluasi badge otomatis terjadi setiap kali ada aksi relevan (tugas selesai, jam kerja terkumpul, presensi, catatan, beautify JSON, beautify SQL, login, logout, check-in count, dan streak harian).
 - **5.20.5 Modul Klaim Hadiah & Pembatasan Saldo Poin**:
   - Saldo poin yang dapat ditukarkan dihitung secara ketat hanya dari akumulasi:
@@ -831,7 +843,7 @@ Modul ini mengimplementasikan sistem gamifikasi komprehensif untuk meningkatkan 
 Seluruh formulir kerja inti telah dimodernisasi dari struktur sempit (`max-w-4xl`, `max-w-2xl`) menjadi tata letak studio bentang penuh (`w-full` dengan CSS Grid 12-kolom `lg:grid-cols-12`) yang mengoptimalkan penggunaan monitor resolusi tinggi (1080p, 1440p, 4K) dan tetap responsif pada perangkat seluler:
 - **5.21.1 Detail & Edit Tugas (`/Task/Edit/{id}`)**:
   - *Header Eksekutif Bentang Penuh*: Kode tugas, kode induk, tanggal, judul tugas, dan total durasi waktu kerja.
-  - *Kolom Kiri (8 Kolom)*: Input judul tugas, deskripsi kerja, panel dokumentasi kendala (*Obstacle*) bernuansa amber dan solusi (*Solution*) bernuansa emerald, pencatatan jam kerja manual terintegrasi (+30m, +1h, +2h, +4h, Reset), riwayat sesi kerja (*Work Sessions*), dan catatan terkait.
+  - *Kolom Kiri (8 Kolom)*: Input judul tugas, deskripsi kerja, panel dokumentasi kendala (*Obstacle*) bernuansa amber dan solusi (*Solution*) bernuansa emerald, pencatatan jam kerja manual terintegrasi (+30m, +1h, +2h, +4h, +8h, Reset), riwayat sesi kerja (*Work Sessions*), dan catatan terkait.
   - *Kolom Kanan (4 Kolom - Sticky)*: Dropdown status alur kerja, slider progress persentase (0-100%), penugasan PIC, prioritas, milestone waterfall SDLC, asosiasi proyek/kategori, jadwal mulai/deadline, dan hierarki sub-tugas (*Child Tasks*).
   - *Bilah Aksi Mengambang (Sticky Bottom Action Bar)*: Membentang penuh di bawah layar memuat ringkasan status dan tombol *"Simpan Semua Perubahan"*.
 - **5.21.2 Edit Catatan & Dokumentasi (`/Note/Edit/{id}`)**:

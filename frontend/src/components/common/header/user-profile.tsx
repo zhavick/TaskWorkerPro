@@ -21,6 +21,7 @@ import { AltArrowDownIcon } from "@/utils/icon";
 import Link from "next/link";
 
 import { HelpCircle, Sparkles } from "lucide-react";
+import { useIsMobileDevice } from "@/hooks/use-is-mobile";
 
 interface UserProfileMenuItem {
   href?: string;
@@ -42,6 +43,7 @@ const user: UserProfile = {
 };
 
 export function UserProfileButton() {
+  const isMobile = useIsMobileDevice();
   const [currentUser, setCurrentUser] = React.useState<UserProfile>({
     name: "Pengguna",
     email: "user@trackerkerja.com",
@@ -135,7 +137,7 @@ export function UserProfileButton() {
         </DropdownMenuHeader>
 
         <DropdownMenuSection className="p-1.5">
-          {menuItems.map((item) =>
+          {menuItems.filter((item) => !isMobile || item.label !== "Panduan & Bantuan").map((item) =>
             item.href ? (
               <DropdownMenuItem
                 key={item.label}

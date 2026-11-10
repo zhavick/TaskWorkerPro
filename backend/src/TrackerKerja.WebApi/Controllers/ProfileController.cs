@@ -57,6 +57,11 @@ public class ProfileController : ControllerBase
             roles.Add("Member");
         }
 
+        var (enableGamification, consecutiveTaskDays) = await GamificationController.EvaluateTaskGamificationEligibilityAsync(
+            _context,
+            user.Id,
+            isAdmin || isPmRole || isPurgeRole);
+
         var profile = new UserProfileDto(
             user.Id,
             user.FullName,
@@ -74,7 +79,9 @@ public class ProfileController : ControllerBase
             user.CreatedAt,
             user.Company?.EnableDms ?? true,
             user.Company?.EnableTicketing ?? true,
-            user.Company?.EnableInvoicing ?? true
+            user.Company?.EnableInvoicing ?? true,
+            enableGamification,
+            consecutiveTaskDays
         );
 
         return Ok(new { success = true, data = profile });

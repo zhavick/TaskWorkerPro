@@ -48,11 +48,13 @@ public class AppDbContext : DbContext
     public DbSet<TimesheetPeriod> TimesheetPeriods => Set<TimesheetPeriod>();
     public DbSet<CompanyTimesheetConfig> CompanyTimesheetConfigs => Set<CompanyTimesheetConfig>();
     public DbSet<Holiday> Holidays => Set<Holiday>();
+    public DbSet<Client> Clients => Set<Client>();
     public DbSet<IssueTicket> IssueTickets => Set<IssueTicket>();
     public DbSet<IssueTicketComment> IssueTicketComments => Set<IssueTicketComment>();
     public DbSet<Invoice> Invoices => Set<Invoice>();
     public DbSet<InvoiceItem> InvoiceItems => Set<InvoiceItem>();
     public DbSet<CompanyDocument> Documents => Set<CompanyDocument>();
+    public DbSet<MasterInvoiceItem> MasterInvoiceItems => Set<MasterInvoiceItem>();
 
     public int? CurrentCompanyId => _tenantService?.CompanyId;
     public bool IsCurrentUserAdmin => _tenantService?.IsAdmin ?? false;
@@ -203,6 +205,12 @@ public class AppDbContext : DbContext
             .OnDelete(DeleteBehavior.SetNull);
 
         modelBuilder.Entity<Invoice>()
+            .HasOne(i => i.Client)
+            .WithMany()
+            .HasForeignKey(i => i.ClientId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<Invoice>()
             .HasOne(i => i.CreatedByUser)
             .WithMany()
             .HasForeignKey(i => i.CreatedByUserId)
@@ -278,7 +286,7 @@ public class AppDbContext : DbContext
             IsCurrentUserSuperAdmin || CurrentCompanyId == null || p.CompanyId == CurrentCompanyId);
 
         modelBuilder.Entity<WorkNote>().HasQueryFilter(n =>
-            IsCurrentUserSuperAdmin || CurrentCompanyId == null || n.CompanyId == CurrentCompanyId);
+            IsCurrentUserSuperAdmin || IsCurrentUserAdmin || n.CompanyId == null || CurrentCompanyId == null || n.CompanyId == CurrentCompanyId || n.Category == "SOP");
 
         modelBuilder.Entity<Announcement>().HasQueryFilter(a =>
             IsCurrentUserSuperAdmin || a.CompanyId == null || CurrentCompanyId == null || a.CompanyId == CurrentCompanyId);
@@ -326,6 +334,20 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Holiday>().HasQueryFilter(h =>
             IsCurrentUserSuperAdmin || h.CompanyId == null || CurrentCompanyId == null || h.CompanyId == CurrentCompanyId);
 
+        modelBuilder.Entity<Client>().ToTable("clients");
+        modelBuilder.Entity<Client>()
+            .HasOne(c => c.Company)
+            .WithMany()
+            .HasForeignKey(c => c.CompanyId)
+            .OnDelete(DeleteBehavior.SetNull);
+        modelBuilder.Entity<Client>()
+            .HasOne(c => c.SourceCompany)
+            .WithMany()
+            .HasForeignKey(c => c.SourceCompanyId)
+            .OnDelete(DeleteBehavior.SetNull);
+        modelBuilder.Entity<Client>().HasQueryFilter(c =>
+            IsCurrentUserSuperAdmin || c.CompanyId == null || CurrentCompanyId == null || c.CompanyId == CurrentCompanyId);
+
         modelBuilder.Entity<IssueTicket>().HasQueryFilter(i =>
             IsCurrentUserSuperAdmin || CurrentCompanyId == null || i.CompanyId == CurrentCompanyId);
 
@@ -333,6 +355,10 @@ public class AppDbContext : DbContext
             IsCurrentUserSuperAdmin || CurrentCompanyId == null || inv.CompanyId == CurrentCompanyId);
 
         modelBuilder.Entity<CompanyDocument>().HasQueryFilter(d =>
-            IsCurrentUserSuperAdmin || CurrentCompanyId == null || d.CompanyId == CurrentCompanyId);
+            IsCurrentUserSuperAdmin || IsCurrentUserAdmin || CurrentCompanyId == null || d.CompanyId == CurrentCompanyId || d.Category == "SOP");
+
+        modelBuilder.Entity<MasterInvoiceItem>().ToTable("master_invoice_items");
+        modelBuilder.Entity<MasterInvoiceItem>().HasQueryFilter(it =>
+            IsCurrentUserSuperAdmin || CurrentCompanyId == null || it.CompanyId == CurrentCompanyId);
     }
 }

@@ -70,7 +70,9 @@ import {
 } from "@/components/sync/sync-progress-modal";
 import { TimesheetTemplateManager } from "@/components/configuration/timesheet-template-manager";
 import { MasterHolidaysManager } from "@/components/configuration/master-holidays-manager";
+import { MasterClientsManager } from "@/components/configuration/master-clients-manager";
 import { CompanyModuleMatrixManager } from "@/components/configuration/company-module-matrix-manager";
+import { CompanyStorageLimitManager } from "@/components/configuration/company-storage-limit-manager";
 
 const COLOR_PRESETS = [
   "#6366F1", // Indigo
@@ -90,7 +92,7 @@ export default function ConfigurationPage() {
   const isPurgeOnly = isPurgeAdmin && !isAdmin;
 
   const [activeTab, setActiveTab] = useState<
-    "general" | "security" | "smtp" | "audit" | "master" | "sync" | "maintenance" | "matrix"
+    "general" | "security" | "smtp" | "audit" | "master" | "sync" | "maintenance" | "matrix" | "storage"
   >("general");
 
   useEffect(() => {
@@ -151,7 +153,7 @@ export default function ConfigurationPage() {
 
   // Subtab for Master Data
   const [masterSubTab, setMasterSubTab] = useState<
-    "companies" | "priorities" | "statuses" | "milestones" | "categories" | "timesheet" | "holidays"
+    "companies" | "clients" | "priorities" | "statuses" | "milestones" | "categories" | "timesheet" | "holidays"
   >("companies");
 
   // ==========================================
@@ -307,6 +309,15 @@ export default function ConfigurationPage() {
     queryFn: async () => {
       const res = await apiClient.get("/master/categories");
       return res.data.data;
+    },
+    enabled: activeTab === "master",
+  });
+
+  const { data: masterClients = [] } = useQuery<any[]>({
+    queryKey: ["masterClients", "all"],
+    queryFn: async () => {
+      const res = await apiClient.get("/master/clients");
+      return res.data?.data || [];
     },
     enabled: activeTab === "master",
   });
@@ -560,19 +571,34 @@ export default function ConfigurationPage() {
       setSyncResultData(null);
       setSyncModalOpen(true);
 
-      const response = await apiClient.get(`/sync/export-package?includeFiles=${includeFiles}`, {
-        responseType: "blob",
-      });
-      const blob = new Blob([response.data]);
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.setAttribute("download", `trackerkerja_sync_package_${Date.now()}.zip`);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
-      return { size: blob.size };
+      try {
+        const response = await apiClient.get(`/sync/export-package?includeFiles=${includeFiles}`, {
+          responseType: "blob",
+        });
+        const blob = new Blob([response.data], { type: "application/zip" });
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.setAttribute("download", `trackerkerja_sync_package_${Date.now()}.zip`);
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.URL.revokeObjectURL(url);
+        return { size: blob.size };
+      } catch (err: any) {
+        if (err.response?.data instanceof Blob) {
+          try {
+            const text = await err.response.data.text();
+            const parsed = JSON.parse(text);
+            throw new Error(parsed.message || text);
+          } catch (parseErr: any) {
+            if (parseErr.message && !parseErr.message.includes("JSON")) {
+              throw parseErr;
+            }
+          }
+        }
+        throw err;
+      }
     },
     onSuccess: (res: any) => {
       setSyncModalStatus("success");
@@ -600,19 +626,34 @@ export default function ConfigurationPage() {
       setSyncResultData(null);
       setSyncModalOpen(true);
 
-      const response = await apiClient.get("/sync/export-sql", {
-        responseType: "blob",
-      });
-      const blob = new Blob([response.data]);
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.setAttribute("download", `trackerkerja_sync_dump_${Date.now()}.sql`);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
-      return { size: blob.size };
+      try {
+        const response = await apiClient.get("/sync/export-sql", {
+          responseType: "blob",
+        });
+        const blob = new Blob([response.data], { type: "application/sql" });
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.setAttribute("download", `trackerkerja_sync_dump_${Date.now()}.sql`);
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.URL.revokeObjectURL(url);
+        return { size: blob.size };
+      } catch (err: any) {
+        if (err.response?.data instanceof Blob) {
+          try {
+            const text = await err.response.data.text();
+            const parsed = JSON.parse(text);
+            throw new Error(parsed.message || text);
+          } catch (parseErr: any) {
+            if (parseErr.message && !parseErr.message.includes("JSON")) {
+              throw parseErr;
+            }
+          }
+        }
+        throw err;
+      }
     },
     onSuccess: (res: any) => {
       setSyncModalStatus("success");
@@ -648,6 +689,13 @@ export default function ConfigurationPage() {
       return res.data;
     },
     onSuccess: (data: any) => {
+      if (data?.success === false) {
+        setSyncModalStatus("error");
+        const errMsg = data?.message || "Gagal menerapkan paket sinkronisasi.";
+        setSyncModalError(errMsg);
+        toast.error(errMsg);
+        return;
+      }
       setSyncModalStatus("success");
       setSyncResultData({
         recordsProcessed: data?.recordsProcessed,
@@ -1232,6 +1280,18 @@ export default function ConfigurationPage() {
               <Building2 className="h-4 w-4" />
               Matriks Modul Perusahaan
             </button>
+
+            <button
+              onClick={() => setActiveTab("storage")}
+              className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition ${
+                activeTab === "storage"
+                  ? "bg-indigo-600 text-white shadow-xs"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300"
+              }`}
+            >
+              <HardDrive className="h-4 w-4" />
+              Kuota Penyimpanan
+            </button>
           </>
         ) : null}
 
@@ -1512,7 +1572,7 @@ export default function ConfigurationPage() {
       {activeTab === "master" && (
         <div className="space-y-6">
           {/* Sub Navigation Cards */}
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-7">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-8">
             <button
               type="button"
               onClick={() => setMasterSubTab("companies")}
@@ -1536,6 +1596,32 @@ export default function ConfigurationPage() {
                   Perusahaan
                 </h3>
                 <p className="text-[11px] text-gray-500">{companies.length} Entitas Bisnis</p>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setMasterSubTab("clients")}
+              className={`flex items-center gap-3 rounded-2xl border p-4 text-left transition ${
+                masterSubTab === "clients"
+                  ? "border-indigo-600 bg-indigo-50/70 shadow-xs dark:border-indigo-500 dark:bg-indigo-950/30"
+                  : "border-gray-200 bg-white hover:border-gray-300 dark:border-gray-800 dark:bg-gray-900"
+              }`}
+            >
+              <div
+                className={`flex h-10 w-10 items-center justify-center rounded-xl ${
+                  masterSubTab === "clients"
+                    ? "bg-indigo-600 text-white"
+                    : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300"
+                }`}
+              >
+                <Briefcase className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="text-xs font-bold text-gray-900 dark:text-white">
+                  Klien (Client)
+                </h3>
+                <p className="text-[11px] text-gray-500">{masterClients.length} Klien Invoice</p>
               </div>
             </button>
 
@@ -2277,6 +2363,13 @@ export default function ConfigurationPage() {
           )}
 
           {/* ======================================================== */}
+          {/* SUBTAB 0B: MASTER DATA CLIENT */}
+          {/* ======================================================== */}
+          {masterSubTab === "clients" && (
+            <MasterClientsManager />
+          )}
+
+          {/* ======================================================== */}
           {/* SUBTAB 5: TEMPLATE & PERIODE TIMESHEET */}
           {/* ======================================================== */}
           {masterSubTab === "timesheet" && (
@@ -2422,7 +2515,7 @@ export default function ConfigurationPage() {
                         type="password"
                         value={syncApiKey}
                         onChange={(e) => handleSyncApiKeyChange(e.target.value)}
-                        placeholder="Masukkan token otorisasi host induk (misal: TK-SYNC-VUBKJ5PNX3PHI1WX)"
+                        placeholder="Masukkan token otorisasi host induk (misal: TRACKERKERJA-SYNC-APIKEY-PROD-2026-SECURE)"
                         className="font-mono text-xs pr-8"
                       />
                       <Key className="absolute right-2.5 top-2.5 h-4 w-4 text-gray-400" />
@@ -3362,6 +3455,13 @@ export default function ConfigurationPage() {
       {/* ======================================================== */}
       {activeTab === "matrix" && (
         <CompanyModuleMatrixManager />
+      )}
+
+      {/* ======================================================== */}
+      {/* TAB 9: KUOTA PENYIMPANAN PERUSAHAAN */}
+      {/* ======================================================== */}
+      {activeTab === "storage" && (
+        <CompanyStorageLimitManager />
       )}
 
       {/* ======================================================== */}

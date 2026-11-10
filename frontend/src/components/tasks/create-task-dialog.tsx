@@ -216,6 +216,9 @@ export function CreateTaskDialog({
       queryClient.invalidateQueries({ queryKey: ["kanbanTasks"] });
       queryClient.invalidateQueries({ queryKey: ["dashboardStats"] });
       queryClient.invalidateQueries({ queryKey: ["calendarTasks"] });
+      queryClient.invalidateQueries({ queryKey: ["currentUserProfile"] });
+      queryClient.invalidateQueries({ queryKey: ["gamificationSummary"] });
+      queryClient.invalidateQueries({ queryKey: ["gamificationStatus"] });
     },
     onError: (err: any) => {
       toast.error(err.response?.data?.message || "Gagal membuat tugas baru");

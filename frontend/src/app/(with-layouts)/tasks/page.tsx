@@ -391,6 +391,8 @@ export default function TasksListPage() {
       setSelectedTaskIds([]);
       queryClient.invalidateQueries({ queryKey: ["tasksList"] });
       queryClient.invalidateQueries({ queryKey: ["kanbanTasks"] });
+      queryClient.invalidateQueries({ queryKey: ["currentUserProfile"] });
+      queryClient.invalidateQueries({ queryKey: ["gamificationSummary"] });
     },
     onError: (err: any) => toast.error(err.response?.data?.message || "Gagal memperbarui status"),
   });

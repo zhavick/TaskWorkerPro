@@ -1,23 +1,32 @@
 # 🚀 Work Tracker Pro (TrackerKerja Modern)
 
-> **Enterprise Work Task Management, Multi-Timer Timesheet Tracking, Attendance Management, Technical Documentation, Calendar Scheduling, & Team Performance Analytics Platform (v4.2 Task Re-upload Diff & In-Place Update, Task-Linked Notes Card, & Attendance Synchronization Matrix Edition)**
+> **Enterprise Work Task Management, Multi-Timer Timesheet Tracking, Attendance Management, Master Client & Invoice Billing, Technical Documentation, Calendar Scheduling, & Team Performance Analytics Platform (v4.3 Master Data Client & Unified Invoice Picker, Member 2-Day Consecutive Task Gamification Unlock, Task Re-upload Diff & Attendance Sync Edition)**
 
 [![Next.js 16](https://img.shields.io/badge/Next.js-16%20TurboPack-black?logo=next.js&logoColor=white)](https://nextjs.org/)
 [![ASP.NET Core 8.0](https://img.shields.io/badge/ASP.NET%20Core-8.0%20Web%20API-512BD4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/)
-[![Tests Passing](https://img.shields.io/badge/Tests-203%20Passed-brightgreen?logo=dotnet&logoColor=white)](backend/tests/TrackerKerja.Tests)
+[![Tests Passing](https://img.shields.io/badge/Tests-287%20Passed-brightgreen?logo=dotnet&logoColor=white)](backend/tests/TrackerKerja.Tests)
 [![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL%2016%20%7C%20SQLite-336791?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![ClosedXML](https://img.shields.io/badge/ClosedXML-0.104.2-emerald?logo=microsoft-excel&logoColor=white)](https://github.com/ClosedXML/ClosedXML)
 [![Docker](https://img.shields.io/badge/Docker-Multi--Container-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
-[![REST API](https://img.shields.io/badge/REST%20API-110%2B%20Endpoints-85EA2D?logo=swagger&logoColor=black)](http://localhost:5010/swagger)
+[![REST API](https://img.shields.io/badge/REST%20API-115%2B%20Endpoints-85EA2D?logo=swagger&logoColor=black)](http://localhost:5010/swagger)
 [![JWT Bearer](https://img.shields.io/badge/Auth-JWT%20Bearer-orange?logo=jsonwebtokens&logoColor=white)](http://localhost:5010/swagger)
 [![Themes & Fonts](https://img.shields.io/badge/Themes%20%26%20Fonts-40%20Themes%20%7C%205%20Fonts-pink)](http://localhost:3005)
 [![GitHub](https://img.shields.io/badge/GitHub-zhavick%2FTaskWorkerPro-181717?logo=github&logoColor=white)](https://github.com/zhavick/TaskWorkerPro.git)
 
 ---
 
-## 🌟 Fitur Unggulan Sistem (v4.2 Modern)
+## 🌟 Fitur Unggulan Sistem (v4.3 Modern)
 
-### 📥 1. Re-upload Task Excel dengan Diff Engine & In-Place Update (Anti-Duplikasi)
+### 🧾 1. Modul Master Data Client & Integrasi Pembuatan Invoice (`clients` & `companies`)
+- **Manajemen Master Data Client (`/configuration` -> Master Data & SDLC -> Klien)**: Pengelolaan lengkap data klien (`clients`) mencakup Nama Klien, Kode Klien, Email Penagihan, Telepon, Nama Kontak PIC, NPWP / Tax ID, Alamat Penagihan, serta Catatan.
+- **Sinkronisasi 1-Klik dari Tabel Perusahaan (`companies`)**: Fitur **"Ambil dari Tabel Perusahaan"** untuk menyalin entitas perusahaan yang terdaftar di tabel `companies` ke dalam Master Data Client tanpa duplikasi.
+- **Pemilih Klien Terpadu pada Pembuatan Invoice (`/invoices`)**: Saat membuat atau mengedit Invoice, pengguna dapat memilih klien langsung dari **Tabel Master Clients**, dari **Tabel Companies**, ataupun mengisi manual (dengan opsi menyimpan otomatis ke Master Data Client).
+
+### 🎮 2. Aktivasi Menu Gamifikasi Member Setelah 2 Hari Berturut-turut Mengisi Task
+- **Menu Gamifikasi Terkunci di Awal bagi Member**: Bagi pengguna berstatus Member (`Staff`), menu **Gamifikasi & Hadiah** pada bilah samping (*Sidebar*) serta spanduk check-in di Dashboard tidak dimunculkan pada saat pertama kali bergabung.
+- **Unlock Otomatis Setelah 2 Hari Berturut-turut (`2 Consecutive Task Days`)**: Begitu member mengisi/mencatat tugas kerja (*task* atau *timesheet*) selama **2 hari kalender berturut-turut**, menu **Gamifikasi & Hadiah** langsung muncul di sidebar dan fitur check-in harian serta klaim reward terbuka penuh.
+
+### 📥 3. Re-upload Task Excel dengan Diff Engine & In-Place Update (Anti-Duplikasi)
 - **Deteksi Perbedaan Field-by-Field (Smart Diff Tracking)**: Berkas Excel tugas yang pernah diunggah dapat diunggah kembali (file yang sama atau file revisi) tanpa menghasilkan data duplikat di sistem.
 - **Pencocokan Identitas Multi-Kunci**: Tugas dicocokkan secara akurat melalui kode tugas resmi (`TK-xxxx`), tag indexing `code:xxxx`, kode asli spreadsheet, maupun kombinasi proyek dan normalisasi judul.
 - **Visualisasi Pratinjau Diff & Filter Status**: Dialog import menyajikan kartu statistik (Total Baris, Tugas Baru, Diperbarui/Diff, Sama Persis, Error), tab filter status, serta pill highlight perubahan yang menunjukkan secara persis field mana yang diperbarui (Status, Progress, PIC, Tanggal, Milestone, Kendala, Solusi, Deskripsi).
@@ -52,7 +61,7 @@
 ### ⏱️ 7. Timesheet, Multi-Timer, Floating Timer Bar & Grafik Beban Kerja
 - **Pencatatan Jam Otomatis & Multi-Timer**: Menjalankan beberapa timer tugas bersamaan tanpa saling bertabrakan, terpantau langsung di bilah mengambang (*Floating Timer Bar*).
 - **Grafik Batang Perbandingan Jam Kerja Anggota (`/reports`)**: Diagram batang komparatif interaktif di bagian atas halaman laporan yang menyajikan total jam kerja per anggota tim untuk mempermudah pemantauan alokasi beban kerja.
-- **Input Durasi Cepat**: Tombol pintas penambahan jam kerja (+30m, +1h, +2h, +4h, Reset) langsung di formulir Task Studio.
+- **Input Durasi Cepat**: Tombol pintas penambahan jam kerja (+30m, +1h, +2h, +4h, +8h, Reset) langsung di formulir Task Studio.
 - **Laporan Excel Timesheet Resmi (ClosedXML)**: Ekspor multi-sheet dengan rincian harian, rekapitulasi per proyek, konversi Man-Days, dan formula otomatis.
 
 ### 📅 8. Modul Presensi Terpadu & Rekonsiliasi Kehadiran Tim (`/attendance`)
@@ -60,9 +69,10 @@
 - **Dukungan Tugas Aktif Berjalan**: Tugas yang masih berjalan (*In Progress*, dsb.) otomatis diperpanjang kehadirannya hingga hari ini (*today*).
 - **Matriks Kehadiran Bulanan & Audit Harian Inklusif**: Penyajian matriks kehadiran staf lengkap 1..31 hari dan audit harian dengan resolusi multi-tenant yang inklusif untuk seluruh personel terdaftar (termasuk yang belum memiliki `CompanyId`), serta riwayat presensi mandiri bagi Administrator.
 
-### 🎮 9. Standardisasi Modul Gamifikasi, 42 Master Badges Gaul & Streak
+### 🎮 9. Standardisasi Modul Gamifikasi, Syarat 2 Hari Berturut-turut, 42 Master Badges Gaul & Streak
+- **Syarat Kemunculan Menu Gamifikasi bagi Member (2 Hari Berturut-turut Mengisi Task)**: Menu **Gamifikasi & Hadiah** pada sidebar tidak muncul pertama kali bagi Member baru, dan otomatis terbuka setelah member mengisi task selama 2 hari kalender berturut-turut.
 - **Standardisasi Tampilan & Navigasi Bersama**: Seluruh sub-halaman gamifikasi (`/gamification`, `/gamification/badges`, `/gamification/rewards`) mengadopsi struktur tata letak terpadu dengan header navigasi bersama (`gamification-nav.tsx`), glowing theme accents, dan 4 kartu metrik KPI standar (Total Poin, Level/Peringkat, Streak Hari, Total Lencana).
-- **Koleksi 42 Master Badges Gaul**: Lencana prestasi bahasa gaul anak muda modern (*Si Paling Eksekutor*, *Kopi & Keringat*, *Jawara Timesheet*, *Pawang JSON*, *Dewa SQL*, *Sultan Check-In*, dll.) lintas 6 kategori.
+- **Koleksi 76 Master Badges Gaul (Kisaran Poin 10 – 100)**: Lencana prestasi bahasa gaul anak muda modern (*Si Paling Eksekutor*, *Kopi & Keringat*, *Jawara Timesheet*, *Pawang JSON*, *Dewa SQL*, *Sultan Check-In*, dll.) dengan rentang nilai lencana terstandarisasi antara **10 hingga 100 poin** berdasarkan tingkat kelangkaan (*Common*, *Rare*, *Epic*, *Legendary*).
 - **Automated Badge Evaluation Engine**: Evaluasi otomatis metrik kerja nyata (tugas selesai, jam kerja, presensi WFO/WFH, catatan, kendala & solusi).
 - **Aturan Streak & Reset 2 Hari**: Toleransi absen 2 hari berturut-turut sebelum streak di-reset ke Hari 1.
 - **Milestone 30 Hari & Bonus 500 Poin**: Pengguna yang mencapai streak 30 hari berturut-turut mendapatkan bonus 500 poin dan hak mengklaim reward bulanan eksklusif.

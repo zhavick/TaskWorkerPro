@@ -22,6 +22,8 @@ export interface UserProfileInfo {
   enableDms?: boolean;
   enableTicketing?: boolean;
   enableInvoicing?: boolean;
+  enableGamification?: boolean;
+  consecutiveTaskDays?: number;
 }
 
 export function useCurrentUser() {
@@ -93,6 +95,8 @@ export function useCurrentUser() {
     enableDms: user?.enableDms ?? true,
     enableTicketing: user?.enableTicketing ?? true,
     enableInvoicing: user?.enableInvoicing ?? true,
+    enableGamification: isStaff ? Boolean(user?.enableGamification === true) : true,
+    consecutiveTaskDays: user?.consecutiveTaskDays ?? 0,
     isLoading: isLoading && !user,
   };
 }

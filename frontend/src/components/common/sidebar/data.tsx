@@ -103,10 +103,13 @@ export const NAV_DATA = [
     label: "FINANSIAL & DOKUMEN",
     items: [
       {
+        id: "tour-invoices",
         title: "Invoice & Tagihan",
         icon: <Receipt className="h-5 w-5" />,
-        url: "/invoices",
-        items: [],
+        items: [
+          { title: "Daftar Tagihan", url: "/invoices" },
+          { title: "Rincian Item Jasa & Produk", url: "/invoices/items" },
+        ],
       },
       {
         title: "Repositori Dokumen",

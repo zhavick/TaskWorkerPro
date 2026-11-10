@@ -204,6 +204,32 @@ public class DocumentsController : ControllerBase
             return StatusCode(403, new { success = false, message = "Modul Document Management System (DMS) dinonaktifkan untuk perusahaan ini. Hubungi Administrator untuk mengaktifkan modul." });
         }
 
+        // Enforce Per-Company Max File Size Limit
+        if (company.MaxUploadFileSizeBytes > 0 && file.Length > company.MaxUploadFileSizeBytes)
+        {
+            var maxFileMb = Math.Round((double)company.MaxUploadFileSizeBytes / (1024 * 1024), 1);
+            var actualMb = Math.Round((double)file.Length / (1024 * 1024), 2);
+            return BadRequest(new { 
+                success = false, 
+                message = $"Ukuran berkas ({actualMb} MB) melebihi batas maksimum per berkas ({maxFileMb} MB) yang diizinkan untuk perusahaan '{company.Name}'." 
+            });
+        }
+
+        // Enforce Per-Company Total Storage Quota
+        if (company.MaxStorageSizeBytes > 0)
+        {
+            var currentDocStorage = await _context.Documents.Where(d => d.CompanyId == targetCompanyId.Value).SumAsync(d => (long)d.FileSize);
+            var currentNoteStorage = await _context.Notes.Where(n => n.CompanyId == targetCompanyId.Value).SelectMany(n => n.Attachments).SumAsync(na => (long)na.FileSize);
+            if (currentDocStorage + currentNoteStorage + file.Length > company.MaxStorageSizeBytes)
+            {
+                var maxStorageMb = Math.Round((double)company.MaxStorageSizeBytes / (1024 * 1024), 1);
+                return BadRequest(new { 
+                    success = false, 
+                    message = $"Kapasitas penyimpanan perusahaan '{company.Name}' telah mencapai batas kuota ({maxStorageMb} MB). Silakan hubungi Administrator untuk memperbesar kuota atau lakukan pembersihan berkas." 
+                });
+            }
+        }
+
         if (projectId.HasValue)
         {
             var project = await _context.Projects.AsNoTracking().FirstOrDefaultAsync(p => p.Id == projectId.Value);
@@ -313,6 +339,61 @@ public class DocumentsController : ControllerBase
         };
     }
 
+    private string? ResolveDocumentFilePath(CompanyDocument doc)
+    {
+        if (!string.IsNullOrWhiteSpace(doc.FileStoragePath) && System.IO.File.Exists(doc.FileStoragePath))
+        {
+            return doc.FileStoragePath;
+        }
+
+        var rawDiskName = !string.IsNullOrWhiteSpace(doc.FileStoragePath)
+            ? Path.GetFileName(doc.FileStoragePath.Replace('\\', '/'))
+            : doc.FileName;
+        var fileName = string.IsNullOrWhiteSpace(rawDiskName) ? doc.FileName : rawDiskName;
+        var originalFileName = doc.FileName;
+
+        var candidatePaths = new List<string>
+        {
+            Path.Combine(_environment.ContentRootPath, "uploads", "documents", doc.CompanyId.ToString(), fileName),
+            Path.Combine(_environment.ContentRootPath, "uploads", "documents", doc.CompanyId.ToString(), originalFileName),
+            Path.Combine(_environment.ContentRootPath, "uploads", "documents", fileName),
+            Path.Combine(_environment.ContentRootPath, "uploads", fileName),
+            Path.Combine(_environment.WebRootPath ?? Path.Combine(_environment.ContentRootPath, "wwwroot"), "uploads", "documents", doc.CompanyId.ToString(), fileName),
+            Path.Combine(_environment.WebRootPath ?? Path.Combine(_environment.ContentRootPath, "wwwroot"), "uploads", "documents", doc.CompanyId.ToString(), originalFileName),
+            Path.Combine(Directory.GetCurrentDirectory(), "uploads", "documents", doc.CompanyId.ToString(), fileName),
+            Path.Combine(Directory.GetCurrentDirectory(), "uploads", "documents", doc.CompanyId.ToString(), originalFileName)
+        };
+
+        if (!string.IsNullOrWhiteSpace(doc.FileStoragePath))
+        {
+            var trimmed = doc.FileStoragePath.TrimStart('/', '\\');
+            candidatePaths.Add(Path.Combine(_environment.ContentRootPath, trimmed));
+            candidatePaths.Add(Path.Combine(_environment.ContentRootPath, "uploads", trimmed));
+        }
+
+        foreach (var path in candidatePaths)
+        {
+            if (System.IO.File.Exists(path)) return path;
+        }
+
+        // Deep wildcard fallback in uploads folder
+        var uploadRoot = Path.Combine(_environment.ContentRootPath, "uploads");
+        if (Directory.Exists(uploadRoot))
+        {
+            var matches = Directory.GetFiles(uploadRoot, fileName, SearchOption.AllDirectories);
+            if (matches.Length == 0 && !string.IsNullOrWhiteSpace(originalFileName))
+            {
+                matches = Directory.GetFiles(uploadRoot, originalFileName, SearchOption.AllDirectories);
+            }
+            if (matches.Length > 0)
+            {
+                return matches[0];
+            }
+        }
+
+        return null;
+    }
+
     [HttpGet("{id:int}/download")]
     public async Task<IActionResult> DownloadDocument(int id)
     {
@@ -323,17 +404,18 @@ public class DocumentsController : ControllerBase
         }
 
         var userCompanyId = await GetUserCompanyIdAsync();
-        if (!_tenantService.IsSuperAdmin && userCompanyId.HasValue && doc.CompanyId != userCompanyId.Value)
+        if (!_tenantService.IsSuperAdmin && !_tenantService.IsAdmin && userCompanyId.HasValue && doc.CompanyId != userCompanyId.Value && doc.Category != "SOP")
         {
             return StatusCode(403, new { success = false, message = "Anda tidak berhak mengunduh dokumen ini." });
         }
 
-        if (!System.IO.File.Exists(doc.FileStoragePath))
+        var foundPath = ResolveDocumentFilePath(doc);
+        if (string.IsNullOrEmpty(foundPath) || !System.IO.File.Exists(foundPath))
         {
             return NotFound(new { success = false, message = "Berkas fisik tidak ditemukan di server." });
         }
 
-        var fileBytes = await System.IO.File.ReadAllBytesAsync(doc.FileStoragePath);
+        var fileBytes = await System.IO.File.ReadAllBytesAsync(foundPath);
         var contentType = ResolveContentType(doc.FileName, doc.ContentType);
         return File(fileBytes, contentType, doc.FileName);
     }
@@ -348,17 +430,18 @@ public class DocumentsController : ControllerBase
         }
 
         var userCompanyId = await GetUserCompanyIdAsync();
-        if (!_tenantService.IsSuperAdmin && userCompanyId.HasValue && doc.CompanyId != userCompanyId.Value)
+        if (!_tenantService.IsSuperAdmin && !_tenantService.IsAdmin && userCompanyId.HasValue && doc.CompanyId != userCompanyId.Value && doc.Category != "SOP")
         {
             return StatusCode(403, new { success = false, message = "Anda tidak berhak melihat pratinjau dokumen ini." });
         }
 
-        if (!System.IO.File.Exists(doc.FileStoragePath))
+        var foundPath = ResolveDocumentFilePath(doc);
+        if (string.IsNullOrEmpty(foundPath) || !System.IO.File.Exists(foundPath))
         {
             return NotFound(new { success = false, message = "Berkas fisik tidak ditemukan di server." });
         }
 
-        var fileBytes = await System.IO.File.ReadAllBytesAsync(doc.FileStoragePath);
+        var fileBytes = await System.IO.File.ReadAllBytesAsync(foundPath);
         var contentType = ResolveContentType(doc.FileName, doc.ContentType);
         if (Response != null)
         {

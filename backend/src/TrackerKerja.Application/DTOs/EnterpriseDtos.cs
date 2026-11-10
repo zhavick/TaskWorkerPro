@@ -115,7 +115,8 @@ public record InvoiceDto(
     string? CreatedByUserName,
     DateTimeOffset? PaidAt,
     DateTimeOffset CreatedAt,
-    List<InvoiceItemDto> Items
+    List<InvoiceItemDto> Items,
+    int? ClientId = null
 );
 
 public record CreateInvoiceItemRequest(
@@ -136,7 +137,9 @@ public record CreateInvoiceRequest(
     decimal TaxRatePercent,
     decimal DiscountAmount,
     string? Notes,
-    List<CreateInvoiceItemRequest> Items
+    List<CreateInvoiceItemRequest> Items,
+    int? ClientId = null,
+    int? SourceCompanyClientId = null
 );
 
 public record UpdateInvoiceRequest(
@@ -151,7 +154,9 @@ public record UpdateInvoiceRequest(
     decimal TaxRatePercent,
     decimal DiscountAmount,
     string? Notes,
-    List<CreateInvoiceItemRequest> Items
+    List<CreateInvoiceItemRequest> Items,
+    int? ClientId = null,
+    int? SourceCompanyClientId = null
 );
 
 public record UpdateInvoiceStatusRequest(
@@ -182,5 +187,42 @@ public record UpdateDocumentRequest(
     string? Description,
     string Category,
     int? ProjectId
+);
+
+// --- 4. MASTER INVOICE ITEMS DTOS ---
+
+public record MasterInvoiceItemDto(
+    int Id,
+    int CompanyId,
+    string? CompanyName,
+    string Code,
+    string Name,
+    string? Description,
+    string Category,
+    string Unit,
+    decimal UnitPrice,
+    bool IsActive,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset UpdatedAt
+);
+
+public record CreateMasterInvoiceItemRequest(
+    string Code,
+    string Name,
+    string? Description,
+    string Category,
+    string Unit,
+    decimal UnitPrice,
+    int? CompanyId = null
+);
+
+public record UpdateMasterInvoiceItemRequest(
+    string Code,
+    string Name,
+    string? Description,
+    string Category,
+    string Unit,
+    decimal UnitPrice,
+    bool IsActive = true
 );
 

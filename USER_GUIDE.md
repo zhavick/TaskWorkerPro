@@ -1,9 +1,9 @@
 # Buku Panduan Pengguna (User Guide)
 # Work Tracker Pro (TrackerKerja Modern)
 
-> **Versi Aplikasi**: 4.2 (Task Re-upload Diff & In-Place Update, Task-Linked Notes Card, & Attendance Synchronization Matrix Edition)  
+> **Versi Aplikasi**: 4.3 (Master Data Client & Unified Invoice Picker, Member 2-Day Consecutive Task Gamification Unlock, Task Re-upload Diff & Attendance Sync Edition)  
 > **Target Pengguna**: Seluruh Karyawan, System Analyst, Developer, QA, Technical Writer, Project Lead, dan Administrator  
-> **Terakhir Diperbarui**: 29 Oktober 2026  
+> **Terakhir Diperbarui**: 6 November 2026  
 
 ---
 
@@ -639,8 +639,16 @@ Halaman **Konfigurasi Sistem (`/Configuration`)** dirancang dengan tata kelola 4
 ### 13.3 Master Milestone SDLC Waterfall
 - Mengatur tahapan siklus pengembangan perangkat lunak (Requirement, Design, Development, Testing, Deployment).
 
-### 13.4 Master Hari Libur Nasional
-- Mengelola daftar hari libur resmi yang terintegrasi otomatis dengan laporan Timesheet Excel.
+### 13.4 Master Hari Libur Nasional & Master Data Klien (Client) untuk Invoice
+- **Master Hari Libur Nasional**: Mengelola daftar hari libur resmi yang terintegrasi otomatis dengan laporan Timesheet Excel dan sinkronisasi presensi.
+- **Master Data Klien (`Client`) & Integrasi Penagihan Invoice (`/invoices`)**:
+  1. Buka menu **Konfigurasi Sistem (`/configuration`)**, pilih tab **Master Data & SDLC**, lalu klik sub-tab **Klien (Client)**.
+  2. **Sinkronisasi dari Tabel Perusahaan (`companies`)**: Klik tombol **"Ambil dari Tabel Perusahaan"** untuk menarik dan menyalin daftar perusahaan yang sudah ada di tabel `companies` menjadi data klien siap pakai.
+  3. **Tambah / Edit Klien**: Klik **"+ Tambah Klien"**, pilih template dari perusahaan (opsional) atau isi Nama Klien, Kode Klien, Email Penagihan, Nomor Telepon, Kontak PIC, NPWP / Tax ID, dan Alamat Penagihan.
+  4. **Penggunaan Saat Membuat Invoice (`/invoices`)**:
+     - Buka menu **Penagihan & Invoice (`/invoices`)**, lalu klik **"+ Buat Invoice"**.
+     - Pada kolom **Pilih Klien (Dari Tabel Clients / Companies)**, pilih klien dari grup **Master Data Client (`clients`)** atau **Tabel Perusahaan (`companies`)**.
+     - Nama Klien, Email Klien, dan Alamat Penagihan akan terisi secara otomatis. Anda juga dapat mengetik manual dan mencentang **"Simpan juga ke Master Data Client"** agar klien baru langsung tersimpan ke master data.
 
 ### 13.5 Sinkronisasi Multi-Instance ke Host Induk (Online Streaming Base64 & Paket ZIP)
 Fitur ini memungkinkan instance lokal atau laptop cabang melakukan sinkronisasi data pekerjaan dan seluruh berkas lampiran ke atau dari Server Host Induk terpusat:
@@ -723,9 +731,15 @@ Setiap aksi penting (pembuatan, perubahan, penghapusan, login, logout, dsb.) ter
 
 ---
 
-## 14. Modul Gamifikasi, Aturan Poin 15 & 30 Hari, Daily Check-In & Hadiah
+## 14. Modul Gamifikasi, Syarat Aktivasi 2 Hari Berturut-turut, Aturan Poin 15 & 30 Hari, Daily Check-In & Hadiah
 
 Modul **Gamifikasi** (`/gamification`) hadir untuk mendorong kedisiplinan dan produktivitas tim melalui pendekatan berbasis penghargaan (*gamified reward system*).
+
+> [!IMPORTANT]
+> **Syarat Kemunculan Menu Gamifikasi bagi Member (Mengisi Task 2 Hari Berturut-turut)**:
+> - Bagi pengguna berstatus **Member / Staff**, menu **Gamifikasi & Hadiah** pada bilah samping (*Sidebar*) serta spanduk pengingat check-in pada Dashboard **tidak muncul pada saat pertama kali bergabung**.
+> - Setelah member mengisi/mencatat tugas kerja (*task* atau *timesheet*) selama **2 hari kalender berturut-turut**, menu **Gamifikasi & Hadiah** akan otomatis muncul di sidebar dan seluruh fitur check-in harian, perolehan badge, serta penukaran reward dapat digunakan.
+> - Bagi **Administrator** dan **Project Manager**, menu Gamifikasi & Hadiah selalu tampil setiap saat.
 
 ### 14.1 Navigasi Terpadu Sub-Modul & 4 Kartu Metrik KPI Gamifikasi
 Seluruh sub-halaman pada modul gamifikasi telah distandarisasi untuk menghadirkan pengalaman visual yang seragam dan kohesif:
@@ -763,8 +777,8 @@ Seluruh sub-halaman pada modul gamifikasi telah distandarisasi untuk menghadirka
 - **Pencapaian 1 Bulan Penuh**: Pengguna yang berhasil mempertahankan streak hingga **30 hari berturut-turut (1 bulan)** akan membuka lencana pencapaian bulanan, memperoleh bonus poin besar (default: 500 Poin), serta berhak mengklaim reward berkategori **"Hadiah Khusus Streak 30 Hari"**.
 - Setelah mencapai hari ke-30, roadmap akan memulai siklus bulan berikutnya dengan pencapaian yang tetap terekam dalam riwayat akun.
 
-### 14.4 Koleksi 42 Master Badge Gaul & Modern Anak Muda
-Sistem menyediakan lebih dari 40 lencana prestasi dengan nama dan deskripsi berbahasa Indonesia gaya modern anak muda yang memotivasi:
+### 14.4 Koleksi 76 Master Badge Gaul & Modern Anak Muda (Kisaran Nilai 10 – 100 Poin)
+Sistem menyediakan lebih dari 70 lencana prestasi dengan nama dan deskripsi berbahasa Indonesia gaya modern anak muda yang memotivasi. Setiap lencana memiliki **nilai poin permanen dalam kisaran 10 hingga 100 Poin** sesuai tingkat kelangkaannya (*Common*: 10–30 Poin, *Rare*: 45–60 Poin, *Epic*: 75–85 Poin, *Legendary*: 95–100 Poin):
 - **Kategori Tugas (Tasks)**: *Awalan Nih Bos! 🐾*, *Sat-Set 10 Task ⚡*, *Si Paling Eksekutor ⚔️*, *Sepuh Produktif 100 🏆*, *Mulai Proyekan 📋*, *Juggling 25 Task 🗂️*, *Suhu Penugasan 🏗️*.
 - **Kategori Waktu & Fokus (Timesheets)**: *Mode Fokus On 🔥*, *Kopi & Keringat ☕*, *Mulai Nyatet Waktu ⏱️*, *Jawara Timesheet ⏳*, *Speedrun Kerja 🚀*, *Dewa Waktu 🪐*.
 - **Kategori Presensi (Attendance)**: *Hadir Bos! ⏰*, *Anti Mangkir Seminggu 📅*, *Sebulan No Bolos 🛡️*, *Duta Presensi 100 🌟*.
@@ -940,6 +954,9 @@ Buka berkas `Tracking_Test_Case_E2E_TrackerKerja.xlsx` menggunakan Microsoft Exc
 
 ### Q6: Dari mana saja sumber poin yang bisa saya gunakan untuk klaim hadiah?
 > **Jawaban**: Poin penukaran hadiah dibatasi secara ketat hanya dari akumulasi **Poin Master Badge yang telah Anda raih** ditambah **Poin Daily Check-In & Bonus Streak**. Poin tidak dapat dimanipulasi atau diisi secara manual.
+
+### Q7: Mengapa menu "Gamifikasi & Hadiah" belum muncul di sidebar akun Member saya?
+> **Jawaban**: Bagi pengguna berstatus Member, menu **Gamifikasi & Hadiah** tidak dimunculkan saat pertama kali akun dibuat. Anda cukup mengisi atau memperbarui tugas (*task*) kerja selama **2 hari berturut-turut**, maka menu **Gamifikasi & Hadiah** akan otomatis muncul di sidebar beserta akses check-in harian dan klaim hadiah.
 
 ---
 

@@ -114,6 +114,7 @@ INSERT INTO system_settings (key, value, description) VALUES
 ('Security:SessionWarningBeforeMinutes', '5', 'Waktu peringatan sebelum sesi kedaluwarsa (menit)'),
 ('Sync:MasterHostUrl', 'https://central.trackerkerja.local', 'Host server induk untuk sinkronisasi multi-instance'),
 ('Sync:AutoSyncIntervalMinutes', '60', 'Interval sinkronisasi data otomatis antar instance (menit)'),
+('Sync_ApiKey', 'TRACKERKERJA-SYNC-APIKEY-PROD-2026-SECURE', 'Kunci Otorisasi REST API Sinkronisasi Multi-Instance'),
 ('Database:VacuumSchedule', 'Weekly', 'Jadwal otomatis pemeliharaan pembersihan database VACUUM'),
 ('Smtp:Host', 'smtp.gmail.com', 'Alamat host mail server SMTP'),
 ('Smtp:Port', '587', 'Port server SMTP'),
@@ -133,27 +134,27 @@ INSERT INTO email_templates (id, event_code, event_name, category, subject, body
  '{UserFullName},{ResetUrl},{TokenLifespan}', true)
 ON CONFLICT (id) DO NOTHING;
 
--- 10. Master Badges Awal & 15 Lencana Baru Super Kreatif
+-- 10. Master Badges Awal & 15 Lencana Baru Super Kreatif (Kisaran Nilai Poin: 10 - 100)
 INSERT INTO master_badges (id, code, name, description, category, icon, color, points, rarity, trigger_type, trigger_threshold) VALUES
-(1, 'BADGE_FIRST_TASK', 'First Step Master', 'Menyelesaikan tugas pertama Anda', 'Productivity', 'award', '#10B981', 50, 1, 1, 1),
-(2, 'BADGE_STREAK_7', 'Consistency Flame', 'Check-in 7 hari berturut-turut tanpa putus', 'Attendance', 'flame', '#F59E0B', 100, 2, 2, 7),
-(3, 'BADGE_STREAK_30', 'Monthly Champion', 'Check-in 30 hari penuh dalam satu bulan kalender', 'Attendance', 'crown', '#EC4899', 300, 3, 2, 30),
-(4, 'BADGE_TIME_100H', 'Century Logger', 'Mencatat lebih dari 100 jam kerja di timesheet', 'Timesheet', 'clock', '#8B5CF6', 250, 3, 3, 360000),
-(43, 'NIGHT_OWL', 'Burung Hantu Malam', 'Selesaikan tugas berkualitas tinggi pada jam malam atau sesi lembur di atas pukul 21:00.', 'Timesheet', 'moon', '#8B5CF6', 150, 2, 1, 1),
-(44, 'EARLY_BIRD', 'Rajin Subuh (Early Bird)', 'Lakukan presensi kerja Clock-In sebelum pukul 07:30 pagi.', 'Presensi', 'sun', '#F59E0B', 150, 2, 1, 1),
-(45, 'TIME_LORD', 'Pengendali Waktu (Time Lord)', 'Catat minimal 15 sesi timesheet dengan durasi terencana tanpa jeda kosong.', 'Timesheet', 'hourglass', '#06B6D4', 200, 2, 1, 15),
-(46, 'SPRINT_CHAMPION', 'Kampiun Sprint Cepat', 'Selesaikan minimal 3 tugas berstatus Done dalam kurun waktu 1 hari yang sama.', 'Tugas', 'zap', '#EC4899', 250, 3, 1, 3),
-(47, 'BUG_HUNTER', 'Pemburu Kutu Kode (Bug Hunter)', 'Tuntaskan tugas yang memuat kendala bug, fix, atau penyelesaian isu teknis.', 'Tugas', 'shield-alert', '#EF4444', 150, 2, 1, 1),
-(48, 'CLEAN_SWEEPER', 'Sapu Bersih Backlog', 'Tuntaskan semua sub-tugas yang terdaftar hingga mencapai 100% tuntas.', 'Tugas', 'sparkles', '#10B981', 200, 2, 1, 1),
-(49, 'DOCUMENTATION_GURU', 'Kamus Berjalan (Doc Guru)', 'Buat catatan kerja (WorkNotes) yang dilengkapi lampiran berkas dokumen/gambar.', 'Catatan', 'paperclip', '#6366F1', 200, 2, 1, 1),
-(50, 'MARATHONER', 'Pelari Maraton Fokus', 'Selesaikan sesi fokus kerja timesheet berdurasi minimal 3 jam berturut-turut tanpa jeda.', 'Timesheet', 'flame', '#F97316', 250, 3, 1, 1),
-(51, 'PERFECT_ATTENDANCE', 'Presensi Tanpa Cela', 'Catat kehadiran kerja sebanyak 20 hari tanpa ada status terlambat atau alpa.', 'Presensi', 'award', '#10B981', 350, 3, 1, 20),
-(52, 'TASK_CRUSHER', 'Penghancur Target Urgent', 'Selesaikan tugas berprioritas Urgent / High dengan sukses tepat waktu.', 'Tugas', 'target', '#DC2626', 200, 2, 1, 1),
-(53, 'TEAM_CATALYST', 'Katalisator Tim', 'Berkontribusi aktif dan menyelesaikan tugas di minimal 2 proyek berbeda.', 'Prestasi', 'users', '#3B82F6', 300, 3, 1, 2),
-(54, 'CONSISTENCY_KING', 'Raja Konsistensi 21 Hari', 'Pertahankan streak daily check-in selama 21 hari pembentukan kebiasaan emas.', 'Streak', 'crown', '#EAB308', 500, 4, 1, 21),
-(55, 'MILESTONE_MASTER', 'Penakluk Milestone', 'Selesaikan tugas yang terhubung langsung dengan target Milestone proyek.', 'Prestasi', 'flag', '#8B5CF6', 200, 2, 1, 1),
-(56, 'ZEN_WORKER', 'Fokus Zen Bebas Hambatan', 'Selesaikan 10 tugas kerja dengan lancar tanpa hambatan.', 'Tugas', 'smile', '#06B6D4', 200, 2, 1, 10),
-(57, 'LIFELONG_LEARNER', 'Pembelajar Sejati', 'Tulis catatan kerja bertema riset, SOP, panduan teknis, atau dokumentasi arsitektur.', 'Catatan', 'book-marked', '#14B8A6', 150, 2, 1, 1)
+(1, 'BADGE_FIRST_TASK', 'First Step Master', 'Menyelesaikan tugas pertama Anda', 'Productivity', 'award', '#10B981', 15, 1, 1, 1),
+(2, 'BADGE_STREAK_7', 'Consistency Flame', 'Check-in 7 hari berturut-turut tanpa putus', 'Attendance', 'flame', '#F59E0B', 30, 1, 2, 7),
+(3, 'BADGE_STREAK_30', 'Monthly Champion', 'Check-in 30 hari penuh dalam satu bulan kalender', 'Attendance', 'crown', '#EC4899', 80, 3, 2, 30),
+(4, 'BADGE_TIME_100H', 'Century Logger', 'Mencatat lebih dari 100 jam kerja di timesheet', 'Timesheet', 'clock', '#8B5CF6', 60, 2, 3, 360000),
+(43, 'NIGHT_OWL', 'Burung Hantu Malam', 'Selesaikan tugas berkualitas tinggi pada jam malam atau sesi lembur di atas pukul 21:00.', 'Timesheet', 'moon', '#8B5CF6', 25, 1, 1, 1),
+(44, 'EARLY_BIRD', 'Rajin Subuh (Early Bird)', 'Lakukan presensi kerja Clock-In sebelum pukul 07:30 pagi.', 'Presensi', 'sun', '#F59E0B', 25, 1, 1, 1),
+(45, 'TIME_LORD', 'Pengendali Waktu (Time Lord)', 'Catat minimal 15 sesi timesheet dengan durasi terencana tanpa jeda kosong.', 'Timesheet', 'hourglass', '#06B6D4', 50, 2, 1, 15),
+(46, 'SPRINT_CHAMPION', 'Kampiun Sprint Cepat', 'Selesaikan minimal 3 tugas berstatus Done dalam kurun waktu 1 hari yang sama.', 'Tugas', 'zap', '#EC4899', 75, 3, 1, 3),
+(47, 'BUG_HUNTER', 'Pemburu Kutu Kode (Bug Hunter)', 'Tuntaskan tugas yang memuat kendala bug, fix, atau penyelesaian isu teknis.', 'Tugas', 'shield-alert', '#EF4444', 45, 2, 1, 1),
+(48, 'CLEAN_SWEEPER', 'Sapu Bersih Backlog', 'Tuntaskan semua sub-tugas yang terdaftar hingga mencapai 100% tuntas.', 'Tugas', 'sparkles', '#10B981', 50, 2, 1, 1),
+(49, 'DOCUMENTATION_GURU', 'Kamus Berjalan (Doc Guru)', 'Buat catatan kerja (WorkNotes) yang dilengkapi lampiran berkas dokumen/gambar.', 'Catatan', 'paperclip', '#6366F1', 50, 2, 1, 1),
+(50, 'MARATHONER', 'Pelari Maraton Fokus', 'Selesaikan sesi fokus kerja timesheet berdurasi minimal 3 jam berturut-turut tanpa jeda.', 'Timesheet', 'flame', '#F97316', 75, 3, 1, 1),
+(51, 'PERFECT_ATTENDANCE', 'Presensi Tanpa Cela', 'Catat kehadiran kerja sebanyak 20 hari tanpa ada status terlambat atau alpa.', 'Presensi', 'award', '#10B981', 85, 3, 1, 20),
+(52, 'TASK_CRUSHER', 'Penghancur Target Urgent', 'Selesaikan tugas berprioritas Urgent / High dengan sukses tepat waktu.', 'Tugas', 'target', '#DC2626', 50, 2, 1, 1),
+(53, 'TEAM_CATALYST', 'Katalisator Tim', 'Berkontribusi aktif dan menyelesaikan tugas di minimal 2 proyek berbeda.', 'Prestasi', 'users', '#3B82F6', 75, 3, 1, 2),
+(54, 'CONSISTENCY_KING', 'Raja Konsistensi 21 Hari', 'Pertahankan streak daily check-in selama 21 hari pembentukan kebiasaan emas.', 'Streak', 'crown', '#EAB308', 95, 4, 1, 21),
+(55, 'MILESTONE_MASTER', 'Penakluk Milestone', 'Selesaikan tugas yang terhubung langsung dengan target Milestone proyek.', 'Prestasi', 'flag', '#8B5CF6', 50, 2, 1, 1),
+(56, 'ZEN_WORKER', 'Fokus Zen Bebas Hambatan', 'Selesaikan 10 tugas kerja dengan lancar tanpa hambatan.', 'Tugas', 'smile', '#06B6D4', 50, 2, 1, 10),
+(57, 'LIFELONG_LEARNER', 'Pembelajar Sejati', 'Tulis catatan kerja bertema riset, SOP, panduan teknis, atau dokumentasi arsitektur.', 'Catatan', 'book-marked', '#14B8A6', 45, 2, 1, 1)
 ON CONFLICT (id) DO NOTHING;
 
 -- 11. Katalog Hadiah Awal (Reward Items)
@@ -164,8 +165,16 @@ INSERT INTO reward_items (id, name, description, point_cost, stock, category, ic
 (4, 'Tumbler Stainless Eksklusif', 'Tumbler termos kopi branding Work Tracker Pro', 1500, 10, 'Merchandise', 'coffee', '#F59E0B')
 ON CONFLICT (id) DO NOTHING;
 
+-- 11b. Master Data Clients Awal
+INSERT INTO clients (id, name, code, email, phone, contact_person, address, tax_id, notes, is_active, company_id, source_company_id) VALUES
+(1, 'PT Tugu Pratama Indonesia Tbk (Tugu Insurance)', 'TUGU', 'finance@tugu.com', '021-52961777', 'Divisi IT & Finance Settlement', 'Wisma Tugu I, Jl. H.R. Rasuna Said Kav. C8-9, Kuningan, Jakarta Selatan', '01.308.524.6-093.000', 'Klien utama proyek TCES & TICS Settlement', true, 1, NULL),
+(2, 'PT Sinar Mandiri Korporindo', 'SMK', 'finance@sinarmandiri.co.id', '021-29881100', 'Budi Hartono (VP Finance)', 'Menara Sudirman Lt. 18, Jl. Jend. Sudirman Kav. 60, Jakarta Selatan', '02.419.882.1-077.000', 'Klien korporat implementasi ERP & modul penagihan', true, 1, NULL),
+(3, 'Wahana Central Holding', 'CL-WCH', 'admin@trackerkerja.local', '021-5550100', 'Corporate Secretariat', 'Jakarta, Indonesia', NULL, 'Diambil dari Master Perusahaan', true, 1, 1)
+ON CONFLICT (id) DO NOTHING;
+
 -- 12. Sinkronisasi Sequence SERIAL setelah insert ID eksplisit
 SELECT setval('companies_id_seq', (SELECT COALESCE(MAX(id), 1) FROM companies));
+SELECT setval('clients_id_seq', (SELECT COALESCE(MAX(id), 1) FROM clients));
 SELECT setval('master_priorities_id_seq', (SELECT COALESCE(MAX(id), 1) FROM master_priorities));
 SELECT setval('master_statuses_id_seq', (SELECT COALESCE(MAX(id), 1) FROM master_statuses));
 SELECT setval('master_milestones_id_seq', (SELECT COALESCE(MAX(id), 1) FROM master_milestones));

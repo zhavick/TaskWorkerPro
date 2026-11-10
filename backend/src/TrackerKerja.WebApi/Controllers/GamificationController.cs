@@ -28,11 +28,155 @@ public class GamificationController : ControllerBase
         _badgeService = badgeService;
     }
 
+    public static async Task<(bool IsUnlocked, int ConsecutiveTaskDays)> EvaluateTaskGamificationEligibilityAsync(
+        AppDbContext context,
+        string? userId,
+        bool isAdminOrPm = false)
+    {
+        if (isAdminOrPm)
+        {
+            return (true, 2);
+        }
+
+        if (string.IsNullOrEmpty(userId))
+        {
+            return (false, 0);
+        }
+
+        var activeDates = new HashSet<DateOnly>();
+
+        var userTasks = await context.Tasks
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(t => t.CreatedByUserId == userId || t.AssignedToUserId == userId)
+            .Select(t => new
+            {
+                t.CreatedByUserId,
+                t.AssignedToUserId,
+                t.CreatedAt,
+                t.UpdatedAt,
+                t.StartDate,
+                t.Status,
+                t.Progress,
+                HasObstacle = t.Obstacle != null && t.Obstacle != "",
+                HasSolution = t.Solution != null && t.Solution != ""
+            })
+            .ToListAsync();
+
+        foreach (var t in userTasks)
+        {
+            bool isCreator = t.CreatedByUserId == userId;
+            bool isActivelyWorked = t.AssignedToUserId == userId &&
+                (t.Status != Domain.Enums.TaskStatus.Todo || t.Progress > 0 || t.HasObstacle || t.HasSolution || t.UpdatedAt > t.CreatedAt.AddSeconds(5));
+
+            if (isCreator)
+            {
+                activeDates.Add(DateOnly.FromDateTime(t.CreatedAt.UtcDateTime));
+                if (t.StartDate.HasValue)
+                {
+                    activeDates.Add(DateOnly.FromDateTime(t.StartDate.Value.UtcDateTime));
+                }
+                if (t.UpdatedAt.UtcDateTime.Date > t.CreatedAt.UtcDateTime.Date)
+                {
+                    activeDates.Add(DateOnly.FromDateTime(t.UpdatedAt.UtcDateTime));
+                }
+            }
+            else if (isActivelyWorked)
+            {
+                activeDates.Add(DateOnly.FromDateTime(t.UpdatedAt.UtcDateTime));
+                if (t.StartDate.HasValue)
+                {
+                    activeDates.Add(DateOnly.FromDateTime(t.StartDate.Value.UtcDateTime));
+                }
+            }
+        }
+
+        var sessionDates = await context.Sessions
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(s => s.UserId == userId)
+            .Select(s => new { s.StartTime, s.EndTime })
+            .ToListAsync();
+
+        foreach (var s in sessionDates)
+        {
+            activeDates.Add(DateOnly.FromDateTime(s.StartTime.UtcDateTime));
+            if (s.EndTime.HasValue)
+            {
+                activeDates.Add(DateOnly.FromDateTime(s.EndTime.Value.UtcDateTime));
+            }
+        }
+
+        var auditDates = await context.AuditLogs
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(a => a.UserId == userId &&
+                        (a.ControllerName == "Tasks" || a.ControllerName == "Timesheets") &&
+                        (a.HttpMethod == "POST" || a.HttpMethod == "PUT" || a.HttpMethod == "PATCH"))
+            .Select(a => a.Timestamp)
+            .ToListAsync();
+
+        foreach (var ts in auditDates)
+        {
+            activeDates.Add(DateOnly.FromDateTime(ts.UtcDateTime));
+        }
+
+        if (activeDates.Count == 0)
+        {
+            return (false, 0);
+        }
+
+        var sortedDates = activeDates.OrderBy(d => d).ToList();
+        int maxConsecutive = 1;
+        int currentRun = 1;
+
+        for (int i = 1; i < sortedDates.Count; i++)
+        {
+            int diff = sortedDates[i].DayNumber - sortedDates[i - 1].DayNumber;
+            if (diff == 1)
+            {
+                currentRun++;
+                if (currentRun > maxConsecutive)
+                {
+                    maxConsecutive = currentRun;
+                }
+            }
+            else if (diff > 1)
+            {
+                currentRun = 1;
+            }
+        }
+
+        return (maxConsecutive >= 2, maxConsecutive);
+    }
+
     [HttpGet("status")]
     public async Task<IActionResult> GetGamificationStatus()
     {
         var userId = _tenantService.UserId;
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
+        var isAdmin = _tenantService.IsAdmin || (User?.Identity?.IsAuthenticated == true && (User.IsInRole("Administrator") || User.IsInRole("Project Manager") || User.IsInRole("ProjectManager")));
+        var (hasCreatedTask, consecutiveTaskDays) = await EvaluateTaskGamificationEligibilityAsync(_context, userId, isAdmin);
+
+        if (!hasCreatedTask)
+        {
+            var emptyDto = new GamificationSummaryDto(
+                TotalCurrentPoints: 0,
+                MonthlyCheckInPoints: 0,
+                BadgePoints: 0,
+                CurrentStreakDays: 0,
+                HasCheckedInToday: false,
+                DaysCheckedInThisMonth: 0,
+                Reached15DaysMilestone: false,
+                Reached30DaysMilestone: false,
+                TotalBadgesUnlocked: 0,
+                HasCreatedTask: false,
+                ConsecutiveTaskDays: consecutiveTaskDays,
+                RequiredConsecutiveTaskDays: 2
+            );
+            return Ok(new { success = true, data = emptyDto });
+        }
 
         if (_badgeService != null)
         {
@@ -98,7 +242,10 @@ public class GamificationController : ControllerBase
             daysCheckedInThisMonth,
             reached15,
             reached30,
-            userBadges.Count
+            userBadges.Count,
+            HasCreatedTask: true,
+            ConsecutiveTaskDays: consecutiveTaskDays,
+            RequiredConsecutiveTaskDays: 2
         );
 
         return Ok(new { success = true, data = dto });
@@ -110,6 +257,18 @@ public class GamificationController : ControllerBase
     {
         var userId = _tenantService.UserId;
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
+        var isAdmin = _tenantService.IsAdmin || (User?.Identity?.IsAuthenticated == true && (User.IsInRole("Administrator") || User.IsInRole("Project Manager") || User.IsInRole("ProjectManager")));
+        var (hasCreatedTask, consecutiveTaskDays) = await EvaluateTaskGamificationEligibilityAsync(_context, userId, isAdmin);
+
+        if (!hasCreatedTask)
+        {
+            return BadRequest(new 
+            { 
+                success = false, 
+                message = $"Anda belum dapat melakukan check-in atau mengklaim hadiah poin. Silakan buat minimal 1 tugas (task) dan mengisi task selama 2 hari berturut-turut (saat ini: {consecutiveTaskDays}/2 hari) untuk mengaktifkan fitur gamifikasi Anda." 
+            });
+        }
 
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
         var existingToday = await _context.DailyCheckIns
@@ -372,6 +531,18 @@ public class GamificationController : ControllerBase
     {
         var userId = _tenantService.UserId;
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
+        var isAdmin = _tenantService.IsAdmin || (User?.Identity?.IsAuthenticated == true && (User.IsInRole("Administrator") || User.IsInRole("Project Manager") || User.IsInRole("ProjectManager")));
+        var (hasCreatedTask, consecutiveTaskDays) = await EvaluateTaskGamificationEligibilityAsync(_context, userId, isAdmin);
+
+        if (!hasCreatedTask)
+        {
+            return BadRequest(new 
+            { 
+                success = false, 
+                message = $"Anda harus buat minimal 1 tugas (task) dan mengisi task selama 2 hari berturut-turut (saat ini: {consecutiveTaskDays}/2 hari) terlebih dahulu sebelum dapat menukarkan hadiah." 
+            });
+        }
 
         var reward = await _context.RewardItems.FirstOrDefaultAsync(r => r.Id == request.RewardItemId && r.IsActive);
         if (reward == null) return NotFound(new { success = false, message = "Hadiah tidak ditemukan atau tidak aktif." });
@@ -793,6 +964,11 @@ public class GamificationController : ControllerBase
             return BadRequest(new { success = false, message = "Nama lencana (badge) wajib diisi." });
         }
 
+        if (request.Points < 10 || request.Points > 100)
+        {
+            return BadRequest(new { success = false, message = "Nilai poin lencana (badge) harus berada pada kisaran 10 hingga 100 poin." });
+        }
+
         var code = string.IsNullOrWhiteSpace(request.Code)
             ? request.Name.Trim().ToLowerInvariant().Replace(" ", "-")
             : request.Code.Trim();
@@ -811,7 +987,7 @@ public class GamificationController : ControllerBase
             Category = string.IsNullOrWhiteSpace(request.Category) ? "General" : request.Category.Trim(),
             Icon = string.IsNullOrWhiteSpace(request.Icon) ? "award" : request.Icon.Trim(),
             Color = string.IsNullOrWhiteSpace(request.Color) ? "#6366F1" : request.Color.Trim(),
-            Points = Math.Max(0, request.Points),
+            Points = Math.Clamp(request.Points, 10, 100),
             Rarity = request.Rarity,
             TriggerType = request.TriggerType,
             TriggerThreshold = Math.Max(1, request.TriggerThreshold),
@@ -866,6 +1042,11 @@ public class GamificationController : ControllerBase
             return BadRequest(new { success = false, message = "Nama lencana (badge) wajib diisi." });
         }
 
+        if (request.Points < 10 || request.Points > 100)
+        {
+            return BadRequest(new { success = false, message = "Nilai poin lencana (badge) harus berada pada kisaran 10 hingga 100 poin." });
+        }
+
         var code = string.IsNullOrWhiteSpace(request.Code)
             ? badge.Code
             : request.Code.Trim();
@@ -882,7 +1063,7 @@ public class GamificationController : ControllerBase
         badge.Category = string.IsNullOrWhiteSpace(request.Category) ? "General" : request.Category.Trim();
         badge.Icon = string.IsNullOrWhiteSpace(request.Icon) ? "award" : request.Icon.Trim();
         badge.Color = string.IsNullOrWhiteSpace(request.Color) ? "#6366F1" : request.Color.Trim();
-        badge.Points = Math.Max(0, request.Points);
+        badge.Points = Math.Clamp(request.Points, 10, 100);
         badge.Rarity = request.Rarity;
         badge.TriggerType = request.TriggerType;
         badge.TriggerThreshold = Math.Max(1, request.TriggerThreshold);

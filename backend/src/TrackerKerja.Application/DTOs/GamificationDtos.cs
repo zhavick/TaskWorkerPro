@@ -11,7 +11,10 @@ public record GamificationSummaryDto(
     int DaysCheckedInThisMonth,
     bool Reached15DaysMilestone,
     bool Reached30DaysMilestone,
-    int TotalBadgesUnlocked
+    int TotalBadgesUnlocked,
+    bool HasCreatedTask = true,
+    int ConsecutiveTaskDays = 0,
+    int RequiredConsecutiveTaskDays = 2
 );
 
 public record LeaderboardItemDto(

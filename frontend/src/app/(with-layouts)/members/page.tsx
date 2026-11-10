@@ -81,6 +81,7 @@ interface MemberItem {
   isActive?: boolean;
   resignedAt?: string | null;
   resignationReason?: string | null;
+  rejectionReason?: string | null;
 }
 
 interface CompanyGroup {
@@ -2978,8 +2979,15 @@ function MemberCard({
                 Resign
               </span>
             ) : !m.isApproved ? (
-              <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-[10px] font-extrabold text-amber-700 dark:bg-amber-950/60 dark:text-amber-400">
-                Pending
+              <span
+                className={`rounded-full px-2.5 py-0.5 text-[10px] font-extrabold ${
+                  m.rejectionReason?.includes("kata sandi")
+                    ? "bg-purple-100 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300 border border-purple-200 dark:border-purple-800"
+                    : "bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-400"
+                }`}
+                title={m.rejectionReason || "Menunggu Persetujuan Akun"}
+              >
+                {m.rejectionReason?.includes("kata sandi") ? "Reset Sandi (Pending)" : "Pending"}
               </span>
             ) : m.isLockedOut ? (
               <span className="rounded-full bg-rose-100 px-2.5 py-0.5 text-[10px] font-extrabold text-rose-700 dark:bg-rose-950/60 dark:text-rose-400">
@@ -3014,6 +3022,11 @@ function MemberCard({
           {m.isActive === false && (
             <div className="rounded-lg bg-slate-100 px-2 py-1 text-[10px] text-slate-600 dark:bg-slate-800 dark:text-slate-300">
               <span className="font-semibold">Status Resign:</span> {m.resignationReason || "Non-aktif"}
+            </div>
+          )}
+          {!m.isApproved && m.rejectionReason && (
+            <div className="rounded-lg border border-amber-200/80 bg-amber-50/90 px-2 py-1 text-[10px] text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/50 dark:text-amber-300">
+              <span className="font-semibold">Status:</span> {m.rejectionReason}
             </div>
           )}
         </div>

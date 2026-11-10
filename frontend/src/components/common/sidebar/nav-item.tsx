@@ -99,7 +99,18 @@ export default function NavItem({
 
         <CollapsibleContent className="space-y-1 pr-0 group-data-expanded:mt-2">
           {items.map((item) => {
-            const isChildActive = item.url ? isPathActive(item.url, pathname) : false;
+            const itemUrl = item.url;
+            const isChildActive = itemUrl
+              ? pathname === itemUrl ||
+                (pathname.startsWith(itemUrl + "/") &&
+                  !items.some(
+                    (other) =>
+                      other.url &&
+                      other.url !== itemUrl &&
+                      other.url.startsWith(itemUrl) &&
+                      (pathname === other.url || pathname.startsWith(other.url + "/")),
+                  ))
+              : false;
 
             return (
               <div key={item.title} className="px-0">

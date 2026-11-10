@@ -14,6 +14,7 @@ import { CloseIcon, SidebarExpandedIcon, ThreeDots } from './icon';
 import NavItem from './nav-item';
 import { findActiveGroupKey } from './utils';
 import { useCurrentUser } from '@/hooks/use-current-user';
+import { useIsMobileDevice } from '@/hooks/use-is-mobile';
 
 export default function Sidebar({
     isSidebarOpen,
@@ -29,28 +30,36 @@ export default function Sidebar({
     const pathname = usePathname();
     const { theme } = useTheme();
     const { appName } = useAppSettings();
-    const { isAdmin, canManageCompany, isPurgeAdmin, enableDms, enableTicketing, enableInvoicing } = useCurrentUser();
+    const { isAdmin, isStaff, canManageCompany, isPurgeAdmin, enableDms, enableTicketing, enableInvoicing, enableGamification } = useCurrentUser();
+    const isMobileDevice = useIsMobileDevice();
 
     // Filter navigasi berdasarkan 3 Role: Admin (Perawatan), Project Manager (Admin Perusahaan), Staff (Pengguna Biasa)
     const filteredNavData = useMemo(() => {
         return NAV_DATA.map((section) => ({
             ...section,
             items: section.items.filter((item: any) => {
+                // Sembunyikan Panduan Pengguna jika user mengakses lewat perangkat mobile
+                if ((isMobileSheet || isMobileDevice) && (item.url === '/guide' || item.title === 'Panduan Pengguna')) {
+                    return false;
+                }
                 if (item.adminOnly) {
                     return isAdmin || (item.url === '/configuration' && isPurgeAdmin);
                 }
                 if (item.companyAdminOnly) {
                     return canManageCompany;
                 }
+                if (isStaff && (item.title === 'Gamifikasi & Hadiah' || item.items?.some((sub: any) => sub.url?.startsWith('/gamification')))) {
+                    if (!enableGamification) return false;
+                }
                 if (!isAdmin) {
                     if (item.url === '/issues' && !enableTicketing) return false;
-                    if (item.url === '/invoices' && !enableInvoicing) return false;
+                    if ((item.url === '/invoices' || item.title === 'Invoice & Tagihan' || item.items?.some((sub: any) => sub.url?.startsWith('/invoices'))) && !enableInvoicing) return false;
                     if (item.url === '/documents' && !enableDms) return false;
                 }
                 return true;
             }),
         })).filter((section) => section.items.length > 0);
-    }, [isAdmin, canManageCompany, isPurgeAdmin, enableDms, enableTicketing, enableInvoicing]);
+    }, [isAdmin, isStaff, canManageCompany, isPurgeAdmin, enableDms, enableTicketing, enableInvoicing, enableGamification, isMobileSheet, isMobileDevice]);
 
     // Compute which group should be open based on the current route
     const activeGroupKey = useMemo(

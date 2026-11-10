@@ -64,7 +64,9 @@ public class CompaniesController : ControllerBase
                 c.Tasks.Count(),
                 c.EnableDms,
                 c.EnableTicketing,
-                c.EnableInvoicing
+                c.EnableInvoicing,
+                c.MaxStorageSizeBytes,
+                c.MaxUploadFileSizeBytes
             ))
             .ToListAsync();
 
@@ -104,7 +106,9 @@ public class CompaniesController : ControllerBase
             company.Tasks.Count(),
             company.EnableDms,
             company.EnableTicketing,
-            company.EnableInvoicing
+            company.EnableInvoicing,
+            company.MaxStorageSizeBytes,
+            company.MaxUploadFileSizeBytes
         );
 
         return Ok(new { success = true, data = dto });
@@ -146,6 +150,8 @@ public class CompaniesController : ControllerBase
             EnableDms = request.EnableDms,
             EnableTicketing = request.EnableTicketing,
             EnableInvoicing = request.EnableInvoicing,
+            MaxStorageSizeBytes = request.MaxStorageSizeBytes ?? 1073741824,
+            MaxUploadFileSizeBytes = request.MaxUploadFileSizeBytes ?? 52428800,
             CreatedAt = DateTimeOffset.UtcNow
         };
 
@@ -165,7 +171,9 @@ public class CompaniesController : ControllerBase
             0,
             company.EnableDms,
             company.EnableTicketing,
-            company.EnableInvoicing
+            company.EnableInvoicing,
+            company.MaxStorageSizeBytes,
+            company.MaxUploadFileSizeBytes
         );
 
         return CreatedAtAction(nameof(GetCompanyById), new { id = company.Id }, new { success = true, data = dto, message = "Perusahaan berhasil ditambahkan." });
@@ -207,6 +215,8 @@ public class CompaniesController : ControllerBase
         company.Description = request.Description?.Trim();
         company.Address = request.Address?.Trim();
         company.ContactEmail = request.ContactEmail?.Trim();
+        if (request.MaxStorageSizeBytes.HasValue) company.MaxStorageSizeBytes = request.MaxStorageSizeBytes.Value;
+        if (request.MaxUploadFileSizeBytes.HasValue) company.MaxUploadFileSizeBytes = request.MaxUploadFileSizeBytes.Value;
 
         await _context.SaveChangesAsync();
 
@@ -217,7 +227,15 @@ public class CompaniesController : ControllerBase
             company.Description,
             company.Address,
             company.ContactEmail,
-            company.CreatedAt
+            company.CreatedAt,
+            company.Users.Count(u => u.IsApproved),
+            company.Projects.Count(),
+            company.Tasks.Count(),
+            company.EnableDms,
+            company.EnableTicketing,
+            company.EnableInvoicing,
+            company.MaxStorageSizeBytes,
+            company.MaxUploadFileSizeBytes
         );
 
         return Ok(new { success = true, data = dto, message = "Data perusahaan berhasil diperbarui." });
@@ -364,6 +382,153 @@ public class CompaniesController : ControllerBase
         {
             success = true,
             message = $"Matriks modul untuk {companies.Count} perusahaan berhasil diperbarui."
+        });
+    }
+
+    [HttpGet("storage-quota")]
+    public async Task<IActionResult> GetStorageQuotas()
+    {
+        var query = _context.Companies
+            .AsNoTracking()
+            .AsQueryable();
+
+        if (!_tenantService.IsSuperAdmin && _tenantService.CompanyId.HasValue)
+        {
+            query = query.Where(c => c.Id == _tenantService.CompanyId.Value);
+        }
+
+        var companies = await query.OrderBy(c => c.Name).ToListAsync();
+
+        var result = new List<CompanyStorageUsageDto>();
+        foreach (var c in companies)
+        {
+            var usedDocBytes = await _context.Documents.Where(d => d.CompanyId == c.Id).SumAsync(d => (long)d.FileSize);
+            var usedNoteBytes = await _context.Notes.Where(n => n.CompanyId == c.Id).SelectMany(n => n.Attachments).SumAsync(na => (long)na.FileSize);
+            var totalUsedBytes = usedDocBytes + usedNoteBytes;
+            var docCount = await _context.Documents.CountAsync(d => d.CompanyId == c.Id);
+            var noteAttCount = await _context.Notes.Where(n => n.CompanyId == c.Id).SelectMany(n => n.Attachments).CountAsync();
+            var totalFiles = docCount + noteAttCount;
+
+            var maxStorageMb = Math.Round((double)c.MaxStorageSizeBytes / (1024 * 1024), 1);
+            var maxUploadMb = Math.Round((double)c.MaxUploadFileSizeBytes / (1024 * 1024), 1);
+            var usedMb = Math.Round((double)totalUsedBytes / (1024 * 1024), 2);
+            var usedPct = c.MaxStorageSizeBytes > 0 ? Math.Round((double)totalUsedBytes / c.MaxStorageSizeBytes * 100, 1) : 0;
+            var isExceeded = c.MaxStorageSizeBytes > 0 && totalUsedBytes >= c.MaxStorageSizeBytes;
+
+            result.Add(new CompanyStorageUsageDto(
+                c.Id,
+                c.Name,
+                c.Code,
+                c.MaxStorageSizeBytes,
+                maxStorageMb,
+                c.MaxUploadFileSizeBytes,
+                maxUploadMb,
+                totalUsedBytes,
+                usedMb,
+                usedPct,
+                totalFiles,
+                isExceeded
+            ));
+        }
+
+        return Ok(new { success = true, data = result });
+    }
+
+    [HttpPut("{id:int}/storage-quota")]
+    public async Task<IActionResult> UpdateCompanyStorageQuota(int id, [FromBody] UpdateCompanyStorageQuotaRequest request)
+    {
+        if (!CheckIsAdmin() && !_tenantService.IsProjectManager)
+        {
+            return Forbid();
+        }
+
+        var company = await _context.Companies.FirstOrDefaultAsync(c => c.Id == id);
+        if (company == null)
+        {
+            return NotFound(new { success = false, message = "Perusahaan tidak ditemukan." });
+        }
+
+        if (!_tenantService.IsSuperAdmin && _tenantService.CompanyId.HasValue && id != _tenantService.CompanyId.Value)
+        {
+            return StatusCode(403, new { success = false, message = "Anda tidak berhak mengakses data perusahaan lain." });
+        }
+
+        if (request.MaxStorageMb < 0 || request.MaxUploadFileSizeMb < 0)
+        {
+            return BadRequest(new { success = false, message = "Nilai kuota atau ukuran berkas tidak boleh negatif." });
+        }
+
+        company.MaxStorageSizeBytes = (long)(request.MaxStorageMb * 1024 * 1024);
+        company.MaxUploadFileSizeBytes = (long)(request.MaxUploadFileSizeMb * 1024 * 1024);
+
+        await _context.SaveChangesAsync();
+
+        var usedDocBytes = await _context.Documents.Where(d => d.CompanyId == company.Id).SumAsync(d => (long)d.FileSize);
+        var usedNoteBytes = await _context.Notes.Where(n => n.CompanyId == company.Id).SelectMany(n => n.Attachments).SumAsync(na => (long)na.FileSize);
+        var totalUsedBytes = usedDocBytes + usedNoteBytes;
+        var docCount = await _context.Documents.CountAsync(d => d.CompanyId == company.Id);
+        var noteAttCount = await _context.Notes.Where(n => n.CompanyId == company.Id).SelectMany(n => n.Attachments).CountAsync();
+        var totalFiles = docCount + noteAttCount;
+
+        var maxStorageMb = Math.Round((double)company.MaxStorageSizeBytes / (1024 * 1024), 1);
+        var maxUploadMb = Math.Round((double)company.MaxUploadFileSizeBytes / (1024 * 1024), 1);
+        var usedMb = Math.Round((double)totalUsedBytes / (1024 * 1024), 2);
+        var usedPct = company.MaxStorageSizeBytes > 0 ? Math.Round((double)totalUsedBytes / company.MaxStorageSizeBytes * 100, 1) : 0;
+        var isExceeded = company.MaxStorageSizeBytes > 0 && totalUsedBytes >= company.MaxStorageSizeBytes;
+
+        return Ok(new
+        {
+            success = true,
+            message = $"Batas kuota penyimpanan untuk perusahaan '{company.Name}' berhasil diperbarui.",
+            data = new CompanyStorageUsageDto(
+                company.Id,
+                company.Name,
+                company.Code,
+                company.MaxStorageSizeBytes,
+                maxStorageMb,
+                company.MaxUploadFileSizeBytes,
+                maxUploadMb,
+                totalUsedBytes,
+                usedMb,
+                usedPct,
+                totalFiles,
+                isExceeded
+            )
+        });
+    }
+
+    [HttpPut("storage-quota/bulk")]
+    public async Task<IActionResult> BulkUpdateStorageQuotas([FromBody] BulkUpdateCompanyStorageQuotaRequest request)
+    {
+        if (!_tenantService.IsSuperAdmin)
+        {
+            return Forbid();
+        }
+
+        if (request?.Items == null || request.Items.Count == 0)
+        {
+            return BadRequest(new { success = false, message = "Data kuota tidak boleh kosong." });
+        }
+
+        var ids = request.Items.Select(i => i.CompanyId).ToList();
+        var companies = await _context.Companies.Where(c => ids.Contains(c.Id)).ToListAsync();
+
+        foreach (var item in request.Items)
+        {
+            var comp = companies.FirstOrDefault(c => c.Id == item.CompanyId);
+            if (comp != null)
+            {
+                if (item.MaxStorageMb >= 0) comp.MaxStorageSizeBytes = (long)(item.MaxStorageMb * 1024 * 1024);
+                if (item.MaxUploadFileSizeMb >= 0) comp.MaxUploadFileSizeBytes = (long)(item.MaxUploadFileSizeMb * 1024 * 1024);
+            }
+        }
+
+        await _context.SaveChangesAsync();
+
+        return Ok(new
+        {
+            success = true,
+            message = $"Batas kuota penyimpanan untuk {companies.Count} perusahaan berhasil diperbarui."
         });
     }
 }

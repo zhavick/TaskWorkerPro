@@ -17,7 +17,9 @@ public record UserProfileDto(
     DateTimeOffset? CreatedAt = null,
     bool EnableDms = true,
     bool EnableTicketing = true,
-    bool EnableInvoicing = true
+    bool EnableInvoicing = true,
+    bool EnableGamification = true,
+    int ConsecutiveTaskDays = 0
 );
 
 public record MemberListItemDto(
@@ -44,7 +46,8 @@ public record MemberListItemDto(
     bool CanPurgeData = false,
     bool IsActive = true,
     DateTimeOffset? ResignedAt = null,
-    string? ResignationReason = null
+    string? ResignationReason = null,
+    string? RejectionReason = null
 );
 
 public record CreateMemberRequest(

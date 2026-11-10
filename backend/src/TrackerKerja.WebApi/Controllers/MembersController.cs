@@ -223,7 +223,8 @@ public class MembersController : ControllerBase
                 CanPurgeData: isUserAdmin || isUserPurgeAdmin,
                 IsActive: u.IsActive,
                 ResignedAt: u.ResignedAt,
-                ResignationReason: u.ResignationReason
+                ResignationReason: u.ResignationReason,
+                RejectionReason: u.RejectionReason
             );
         }).ToList();
 
@@ -591,6 +592,7 @@ public class MembersController : ControllerBase
         user.IsApproved = true;
         user.ApprovedAt = DateTimeOffset.UtcNow;
         user.ApprovedByUserId = _tenantService.UserId;
+        user.RejectionReason = null;
 
         await _context.SaveChangesAsync();
 

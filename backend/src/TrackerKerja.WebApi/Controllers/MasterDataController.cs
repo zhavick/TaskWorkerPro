@@ -496,4 +496,435 @@ public class MasterDataController : ControllerBase
 
         return Ok(new { success = true, message = $"Berhasil menambahkan {toAdd.Count} hari libur nasional untuk tahun {year}.", addedCount = toAdd.Count });
     }
+
+    // ==========================================
+    // CLIENTS (MASTER DATA KLIEN)
+    // ==========================================
+
+    private static bool _clientTableChecked = false;
+    private static readonly SemaphoreSlim _clientTableLock = new(1, 1);
+
+    private async Task EnsureClientsTableAsync()
+    {
+        if (_clientTableChecked) return;
+        await _clientTableLock.WaitAsync();
+        try
+        {
+            if (_clientTableChecked) return;
+            if (_context.Database.IsRelational())
+            {
+                await _context.Database.ExecuteSqlRawAsync(@"
+                    CREATE TABLE IF NOT EXISTS clients (
+                        id SERIAL PRIMARY KEY,
+                        name VARCHAR(255) NOT NULL,
+                        code VARCHAR(50) NOT NULL DEFAULT '',
+                        email VARCHAR(255),
+                        phone VARCHAR(100),
+                        contact_person VARCHAR(150),
+                        address TEXT,
+                        tax_id VARCHAR(100),
+                        notes TEXT,
+                        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                        company_id INTEGER REFERENCES companies(id) ON DELETE SET NULL,
+                        source_company_id INTEGER REFERENCES companies(id) ON DELETE SET NULL,
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    );
+                    CREATE INDEX IF NOT EXISTS ix_clients_company_id ON clients(company_id);
+                    CREATE INDEX IF NOT EXISTS ix_clients_name ON clients(name);
+                ");
+            }
+            _clientTableChecked = true;
+        }
+        catch
+        {
+            // Ignore if already created or using in-memory provider
+        }
+        finally
+        {
+            _clientTableLock.Release();
+        }
+    }
+
+    [HttpGet("clients")]
+    public async Task<IActionResult> GetClients(
+        [FromQuery] string? search = null,
+        [FromQuery] int? companyId = null,
+        [FromQuery] bool? onlyActive = null)
+    {
+        await EnsureClientsTableAsync();
+
+        if (!await _context.Clients.IgnoreQueryFilters().AnyAsync())
+        {
+            await DbInitializer.SeedAsync(_context);
+        }
+
+        var query = _context.Clients
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .Include(c => c.Company)
+            .Include(c => c.SourceCompany)
+            .AsQueryable();
+
+        if (companyId.HasValue)
+        {
+            query = query.Where(c => c.CompanyId == null || c.CompanyId == companyId.Value);
+        }
+
+        if (onlyActive == true)
+        {
+            query = query.Where(c => c.IsActive);
+        }
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var s = search.Trim().ToLower();
+            query = query.Where(c =>
+                c.Name.ToLower().Contains(s) ||
+                c.Code.ToLower().Contains(s) ||
+                (c.Email != null && c.Email.ToLower().Contains(s)) ||
+                (c.ContactPerson != null && c.ContactPerson.ToLower().Contains(s)) ||
+                (c.Phone != null && c.Phone.ToLower().Contains(s)) ||
+                (c.TaxId != null && c.TaxId.ToLower().Contains(s)));
+        }
+
+        var clients = await query
+            .OrderBy(c => c.Name)
+            .Select(c => new ClientDto(
+                c.Id,
+                c.Name,
+                c.Code,
+                c.Email,
+                c.Phone,
+                c.ContactPerson,
+                c.Address,
+                c.TaxId,
+                c.Notes,
+                c.IsActive,
+                c.CompanyId,
+                c.Company != null ? c.Company.Name : null,
+                c.SourceCompanyId,
+                c.SourceCompany != null ? c.SourceCompany.Name : null,
+                c.CreatedAt,
+                c.UpdatedAt
+            ))
+            .ToListAsync();
+
+        return Ok(new { success = true, data = clients });
+    }
+
+    [HttpGet("clients/invoice-options")]
+    public async Task<IActionResult> GetInvoiceClientOptions([FromQuery] int? companyId = null)
+    {
+        await EnsureClientsTableAsync();
+
+        if (!await _context.Clients.IgnoreQueryFilters().AnyAsync())
+        {
+            await DbInitializer.SeedAsync(_context);
+        }
+
+        var clientQuery = _context.Clients
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .Include(c => c.Company)
+            .Where(c => c.IsActive);
+
+        if (companyId.HasValue)
+        {
+            clientQuery = clientQuery.Where(c => c.CompanyId == null || c.CompanyId == companyId.Value);
+        }
+
+        var masterClients = await clientQuery.OrderBy(c => c.Name).ToListAsync();
+        var companies = await _context.Companies.AsNoTracking().OrderBy(c => c.Name).ToListAsync();
+
+        var options = new List<InvoiceClientOptionDto>();
+
+        foreach (var c in masterClients)
+        {
+            options.Add(new InvoiceClientOptionDto(
+                Key: $"client:{c.Id}",
+                Source: "client",
+                ClientId: c.Id,
+                SourceCompanyId: c.SourceCompanyId,
+                Name: c.Name,
+                Code: c.Code,
+                Email: c.Email,
+                Phone: c.Phone,
+                ContactPerson: c.ContactPerson,
+                Address: c.Address,
+                TaxId: c.TaxId,
+                OwnerCompanyId: c.CompanyId,
+                OwnerCompanyName: c.Company?.Name
+            ));
+        }
+
+        foreach (var comp in companies)
+        {
+            options.Add(new InvoiceClientOptionDto(
+                Key: $"company:{comp.Id}",
+                Source: "company",
+                ClientId: null,
+                SourceCompanyId: comp.Id,
+                Name: comp.Name,
+                Code: comp.Code,
+                Email: comp.ContactEmail,
+                Phone: null,
+                ContactPerson: null,
+                Address: comp.Address,
+                TaxId: null,
+                OwnerCompanyId: comp.Id,
+                OwnerCompanyName: comp.Name
+            ));
+        }
+
+        return Ok(new { success = true, data = options });
+    }
+
+    [HttpGet("clients/{id:int}")]
+    public async Task<IActionResult> GetClientById(int id)
+    {
+        await EnsureClientsTableAsync();
+
+        var c = await _context.Clients
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .Include(x => x.Company)
+            .Include(x => x.SourceCompany)
+            .FirstOrDefaultAsync(x => x.Id == id);
+
+        if (c == null)
+            return NotFound(new { success = false, message = "Data klien tidak ditemukan." });
+
+        var dto = new ClientDto(
+            c.Id,
+            c.Name,
+            c.Code,
+            c.Email,
+            c.Phone,
+            c.ContactPerson,
+            c.Address,
+            c.TaxId,
+            c.Notes,
+            c.IsActive,
+            c.CompanyId,
+            c.Company != null ? c.Company.Name : null,
+            c.SourceCompanyId,
+            c.SourceCompany != null ? c.SourceCompany.Name : null,
+            c.CreatedAt,
+            c.UpdatedAt
+        );
+
+        return Ok(new { success = true, data = dto });
+    }
+
+    [HttpPost("clients")]
+    [Authorize]
+    public async Task<IActionResult> CreateClient([FromBody] CreateClientRequest request)
+    {
+        await EnsureClientsTableAsync();
+
+        if (string.IsNullOrWhiteSpace(request.Name))
+            return BadRequest(new { success = false, message = "Nama klien wajib diisi." });
+
+        var cleanName = request.Name.Trim();
+        var cleanCode = (request.Code ?? string.Empty).Trim().ToUpperInvariant();
+        if (string.IsNullOrWhiteSpace(cleanCode))
+        {
+            var initials = new string(cleanName
+                .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                .Select(w => w.FirstOrDefault())
+                .Where(char.IsLetterOrDigit)
+                .Take(4)
+                .ToArray()).ToUpperInvariant();
+            var count = await _context.Clients.IgnoreQueryFilters().CountAsync() + 1;
+            cleanCode = string.IsNullOrWhiteSpace(initials) ? $"CL-{count:D3}" : $"{initials}-{count:D2}";
+        }
+
+        var client = new Client
+        {
+            Name = cleanName,
+            Code = cleanCode,
+            Email = request.Email?.Trim(),
+            Phone = request.Phone?.Trim(),
+            ContactPerson = request.ContactPerson?.Trim(),
+            Address = request.Address?.Trim(),
+            TaxId = request.TaxId?.Trim(),
+            Notes = request.Notes?.Trim(),
+            IsActive = request.IsActive,
+            CompanyId = request.CompanyId,
+            SourceCompanyId = request.SourceCompanyId,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow
+        };
+
+        _context.Clients.Add(client);
+        await _context.SaveChangesAsync();
+
+        var company = client.CompanyId.HasValue
+            ? await _context.Companies.AsNoTracking().FirstOrDefaultAsync(x => x.Id == client.CompanyId.Value)
+            : null;
+        var sourceCompany = client.SourceCompanyId.HasValue
+            ? await _context.Companies.AsNoTracking().FirstOrDefaultAsync(x => x.Id == client.SourceCompanyId.Value)
+            : null;
+
+        var dto = new ClientDto(
+            client.Id,
+            client.Name,
+            client.Code,
+            client.Email,
+            client.Phone,
+            client.ContactPerson,
+            client.Address,
+            client.TaxId,
+            client.Notes,
+            client.IsActive,
+            client.CompanyId,
+            company?.Name,
+            client.SourceCompanyId,
+            sourceCompany?.Name,
+            client.CreatedAt,
+            client.UpdatedAt
+        );
+
+        return Ok(new { success = true, message = "Data klien berhasil ditambahkan.", data = dto });
+    }
+
+    [HttpPut("clients/{id:int}")]
+    [Authorize]
+    public async Task<IActionResult> UpdateClient(int id, [FromBody] UpdateClientRequest request)
+    {
+        await EnsureClientsTableAsync();
+
+        var client = await _context.Clients.IgnoreQueryFilters().FirstOrDefaultAsync(c => c.Id == id);
+        if (client == null)
+            return NotFound(new { success = false, message = "Data klien tidak ditemukan." });
+
+        if (string.IsNullOrWhiteSpace(request.Name))
+            return BadRequest(new { success = false, message = "Nama klien wajib diisi." });
+
+        client.Name = request.Name.Trim();
+        if (!string.IsNullOrWhiteSpace(request.Code))
+        {
+            client.Code = request.Code.Trim().ToUpperInvariant();
+        }
+        client.Email = request.Email?.Trim();
+        client.Phone = request.Phone?.Trim();
+        client.ContactPerson = request.ContactPerson?.Trim();
+        client.Address = request.Address?.Trim();
+        client.TaxId = request.TaxId?.Trim();
+        client.Notes = request.Notes?.Trim();
+        client.IsActive = request.IsActive;
+        client.CompanyId = request.CompanyId;
+        client.SourceCompanyId = request.SourceCompanyId;
+        client.UpdatedAt = DateTimeOffset.UtcNow;
+
+        await _context.SaveChangesAsync();
+
+        var company = client.CompanyId.HasValue
+            ? await _context.Companies.AsNoTracking().FirstOrDefaultAsync(x => x.Id == client.CompanyId.Value)
+            : null;
+        var sourceCompany = client.SourceCompanyId.HasValue
+            ? await _context.Companies.AsNoTracking().FirstOrDefaultAsync(x => x.Id == client.SourceCompanyId.Value)
+            : null;
+
+        var dto = new ClientDto(
+            client.Id,
+            client.Name,
+            client.Code,
+            client.Email,
+            client.Phone,
+            client.ContactPerson,
+            client.Address,
+            client.TaxId,
+            client.Notes,
+            client.IsActive,
+            client.CompanyId,
+            company?.Name,
+            client.SourceCompanyId,
+            sourceCompany?.Name,
+            client.CreatedAt,
+            client.UpdatedAt
+        );
+
+        return Ok(new { success = true, message = "Data klien berhasil diperbarui.", data = dto });
+    }
+
+    [HttpDelete("clients/{id:int}")]
+    [Authorize]
+    public async Task<IActionResult> DeleteClient(int id)
+    {
+        await EnsureClientsTableAsync();
+
+        var client = await _context.Clients.IgnoreQueryFilters().FirstOrDefaultAsync(c => c.Id == id);
+        if (client == null)
+            return NotFound(new { success = false, message = "Data klien tidak ditemukan." });
+
+        _context.Clients.Remove(client);
+        await _context.SaveChangesAsync();
+
+        return Ok(new { success = true, message = "Data klien berhasil dihapus." });
+    }
+
+    [HttpPost("clients/sync-from-companies")]
+    [Authorize]
+    public async Task<IActionResult> SyncClientsFromCompanies()
+    {
+        await EnsureClientsTableAsync();
+
+        var companies = await _context.Companies.AsNoTracking().ToListAsync();
+        var existingClients = await _context.Clients.IgnoreQueryFilters().ToListAsync();
+
+        var toAdd = new List<Client>();
+        int updatedCount = 0;
+
+        foreach (var comp in companies)
+        {
+            var existing = existingClients.FirstOrDefault(c =>
+                c.SourceCompanyId == comp.Id ||
+                c.Name.Equals(comp.Name, StringComparison.OrdinalIgnoreCase));
+
+            if (existing == null)
+            {
+                toAdd.Add(new Client
+                {
+                    Name = comp.Name,
+                    Code = $"CL-{comp.Code}",
+                    Email = comp.ContactEmail,
+                    Address = comp.Address,
+                    Notes = comp.Description ?? "Diambil dari tabel Master Perusahaan (companies)",
+                    IsActive = true,
+                    CompanyId = comp.Id,
+                    SourceCompanyId = comp.Id,
+                    CreatedAt = DateTimeOffset.UtcNow,
+                    UpdatedAt = DateTimeOffset.UtcNow
+                });
+            }
+            else if (existing.SourceCompanyId == null)
+            {
+                existing.SourceCompanyId = comp.Id;
+                existing.Email ??= comp.ContactEmail;
+                existing.Address ??= comp.Address;
+                existing.UpdatedAt = DateTimeOffset.UtcNow;
+                updatedCount++;
+            }
+        }
+
+        if (toAdd.Any())
+        {
+            _context.Clients.AddRange(toAdd);
+        }
+
+        if (toAdd.Any() || updatedCount > 0)
+        {
+            await _context.SaveChangesAsync();
+        }
+
+        return Ok(new
+        {
+            success = true,
+            message = $"Sinkronisasi selesai: {toAdd.Count} klien baru ditambahkan dan {updatedCount} klien ditautkan dari tabel Perusahaan.",
+            addedCount = toAdd.Count,
+            updatedCount
+        });
+    }
 }

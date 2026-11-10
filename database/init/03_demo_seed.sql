@@ -1,4 +1,4 @@
--- ============================================================================
+﻿-- ============================================================================
 -- TRACKERKERJA MODERN (WORK TRACKER PRO)
 -- REALISTIC SEED DATA DARI TASK TRACKER V2.XLSX & ATTENDANCES LENGKAP
 -- File: 03_demo_seed.sql
@@ -26,16 +26,16 @@ INSERT INTO asp_net_users (
     password_hash, security_stamp, concurrency_stamp, phone_number,
     full_name, job_title, avatar_color, company_id, is_approved, approved_at, created_at
 ) VALUES 
-('usr-syafix', 'syafix.said@elistec.com', 'SYAFIX.SAID@ELISTEC.COM', 'syafix.said@elistec.com', 'SYAFIX.SAID@ELISTEC.COM', true, 't82mZG+wBg0EEdMXLJ6GAw==:u6Wn6QaRzEKetEcVzAG1vMP2OBk+jEZEiirACFoRBD8=', gen_random_uuid()::text, gen_random_uuid()::text, '081214011792', 'Syafix Said', 'System Analyst & Project Specialist', '#3B82F6', 1, true, CURRENT_TIMESTAMP - INTERVAL '90 days', CURRENT_TIMESTAMP - INTERVAL '90 days'),
-('usr-haviz', 'haviz.indra@elistec.com', 'HAVIZ.INDRA@ELISTEC.COM', 'haviz.indra@elistec.com', 'HAVIZ.INDRA@ELISTEC.COM', true, 't82mZG+wBg0EEdMXLJ6GAw==:u6Wn6QaRzEKetEcVzAG1vMP2OBk+jEZEiirACFoRBD8=', gen_random_uuid()::text, gen_random_uuid()::text, '081212672337', 'Haviz Indra', 'Lead Full-Stack Developer', '#EF4444', 1, true, CURRENT_TIMESTAMP - INTERVAL '90 days', CURRENT_TIMESTAMP - INTERVAL '90 days'),
-('usr-danang', 'mohammad.danang@elistec.com', 'MOHAMMAD.DANANG@ELISTEC.COM', 'mohammad.danang@elistec.com', 'MOHAMMAD.DANANG@ELISTEC.COM', true, 't82mZG+wBg0EEdMXLJ6GAw==:u6Wn6QaRzEKetEcVzAG1vMP2OBk+jEZEiirACFoRBD8=', gen_random_uuid()::text, gen_random_uuid()::text, '081263082121', 'Mohammad Danang', 'QA Automation & Performance Engineer', '#10B981', 1, true, CURRENT_TIMESTAMP - INTERVAL '90 days', CURRENT_TIMESTAMP - INTERVAL '90 days'),
-('usr-athallah', 'athallah.bariq@elistec.com', 'ATHALLAH.BARIQ@ELISTEC.COM', 'athallah.bariq@elistec.com', 'ATHALLAH.BARIQ@ELISTEC.COM', true, 't82mZG+wBg0EEdMXLJ6GAw==:u6Wn6QaRzEKetEcVzAG1vMP2OBk+jEZEiirACFoRBD8=', gen_random_uuid()::text, gen_random_uuid()::text, '081212622877', 'Athallah Bariq', 'Technical Writer & Documentation Lead', '#06B6D4', 1, true, CURRENT_TIMESTAMP - INTERVAL '90 days', CURRENT_TIMESTAMP - INTERVAL '90 days'),
-('usr-iqbal', 'iqbal.ali@elistec.com', 'IQBAL.ALI@ELISTEC.COM', 'iqbal.ali@elistec.com', 'IQBAL.ALI@ELISTEC.COM', true, 't82mZG+wBg0EEdMXLJ6GAw==:u6Wn6QaRzEKetEcVzAG1vMP2OBk+jEZEiirACFoRBD8=', gen_random_uuid()::text, gen_random_uuid()::text, '081255967320', 'Iqbal Ali', 'Senior Backend & Integration Engineer', '#EC4899', 1, true, CURRENT_TIMESTAMP - INTERVAL '90 days', CURRENT_TIMESTAMP - INTERVAL '90 days'),
-('usr-glenn', 'glenn.hakim@elistec.com', 'GLENN.HAKIM@ELISTEC.COM', 'glenn.hakim@elistec.com', 'GLENN.HAKIM@ELISTEC.COM', true, 't82mZG+wBg0EEdMXLJ6GAw==:u6Wn6QaRzEKetEcVzAG1vMP2OBk+jEZEiirACFoRBD8=', gen_random_uuid()::text, gen_random_uuid()::text, '081223104336', 'Glenn Hakim', 'Frontend & UI/UX Developer', '#06B6D4', 1, true, CURRENT_TIMESTAMP - INTERVAL '90 days', CURRENT_TIMESTAMP - INTERVAL '90 days'),
-('usr-heni', 'heni.rahayu@elistec.com', 'HENI.RAHAYU@ELISTEC.COM', 'heni.rahayu@elistec.com', 'HENI.RAHAYU@ELISTEC.COM', true, 't82mZG+wBg0EEdMXLJ6GAw==:u6Wn6QaRzEKetEcVzAG1vMP2OBk+jEZEiirACFoRBD8=', gen_random_uuid()::text, gen_random_uuid()::text, '081270799905', 'Heni Rahayu', 'Database Administrator & Data Analyst', '#8B5CF6', 1, true, CURRENT_TIMESTAMP - INTERVAL '90 days', CURRENT_TIMESTAMP - INTERVAL '90 days'),
-('usr-syifa', 'syifa.kurnia@elistec.com', 'SYIFA.KURNIA@ELISTEC.COM', 'syifa.kurnia@elistec.com', 'SYIFA.KURNIA@ELISTEC.COM', true, 't82mZG+wBg0EEdMXLJ6GAw==:u6Wn6QaRzEKetEcVzAG1vMP2OBk+jEZEiirACFoRBD8=', gen_random_uuid()::text, gen_random_uuid()::text, '081216136849', 'Syifa Kurnia', 'Business Analyst & QA Specialist', '#EC4899', 1, true, CURRENT_TIMESTAMP - INTERVAL '90 days', CURRENT_TIMESTAMP - INTERVAL '90 days'),
-('usr-pending', 'calon.member@trackerkerja.local', 'CALON.MEMBER@TRACKERKERJA.LOCAL', 'calon.member@trackerkerja.local', 'CALON.MEMBER@TRACKERKERJA.LOCAL', true, 't82mZG+wBg0EEdMXLJ6GAw==:u6Wn6QaRzEKetEcVzAG1vMP2OBk+jEZEiirACFoRBD8=', gen_random_uuid()::text, gen_random_uuid()::text, '081298765435', 'Ahmad Wahyudi (Pending Approval)', 'Junior Data Analyst', '#F59E0B', 1, false, null, CURRENT_TIMESTAMP - INTERVAL '1 days'),
-('usr-eksternal', 'dev@nusantara.local', 'DEV@NUSANTARA.LOCAL', 'dev@nusantara.local', 'DEV@NUSANTARA.LOCAL', true, 't82mZG+wBg0EEdMXLJ6GAw==:u6Wn6QaRzEKetEcVzAG1vMP2OBk+jEZEiirACFoRBD8=', gen_random_uuid()::text, gen_random_uuid()::text, '081398765499', 'Doni Prakoso', 'External Cloud Engineer', '#06B6D4', 2, true, CURRENT_TIMESTAMP - INTERVAL '10 days', CURRENT_TIMESTAMP - INTERVAL '10 days')
+('usr-syafix', 'syafix.said@elistec.com', 'SYAFIX.SAID@ELISTEC.COM', 'syafix.said@elistec.com', 'SYAFIX.SAID@ELISTEC.COM', true, 'SRDV4YykmWRJEOt/eVcXkQ==:Gh2T5Ka6u9taP1ZuO/44eB8dbUv0WLNcx8vCuPgExAQ=', gen_random_uuid()::text, gen_random_uuid()::text, '081213110666', 'Syafix Said', 'System Analyst & Project Specialist', '#06B6D4', 1, true, CURRENT_TIMESTAMP - INTERVAL '90 days', CURRENT_TIMESTAMP - INTERVAL '90 days'),
+('usr-haviz', 'haviz.indra@elistec.com', 'HAVIZ.INDRA@ELISTEC.COM', 'haviz.indra@elistec.com', 'HAVIZ.INDRA@ELISTEC.COM', true, 'SRDV4YykmWRJEOt/eVcXkQ==:Gh2T5Ka6u9taP1ZuO/44eB8dbUv0WLNcx8vCuPgExAQ=', gen_random_uuid()::text, gen_random_uuid()::text, '081259676329', 'Haviz Indra', 'Lead Full-Stack Developer', '#3B82F6', 1, true, CURRENT_TIMESTAMP - INTERVAL '90 days', CURRENT_TIMESTAMP - INTERVAL '90 days'),
+('usr-danang', 'mohammad.danang@elistec.com', 'MOHAMMAD.DANANG@ELISTEC.COM', 'mohammad.danang@elistec.com', 'MOHAMMAD.DANANG@ELISTEC.COM', true, 'SRDV4YykmWRJEOt/eVcXkQ==:Gh2T5Ka6u9taP1ZuO/44eB8dbUv0WLNcx8vCuPgExAQ=', gen_random_uuid()::text, gen_random_uuid()::text, '081216926233', 'Mohammad Danang', 'QA Automation & Performance Engineer', '#6366F1', 1, true, CURRENT_TIMESTAMP - INTERVAL '90 days', CURRENT_TIMESTAMP - INTERVAL '90 days'),
+('usr-athallah', 'athallah.bariq@elistec.com', 'ATHALLAH.BARIQ@ELISTEC.COM', 'athallah.bariq@elistec.com', 'ATHALLAH.BARIQ@ELISTEC.COM', true, 'SRDV4YykmWRJEOt/eVcXkQ==:Gh2T5Ka6u9taP1ZuO/44eB8dbUv0WLNcx8vCuPgExAQ=', gen_random_uuid()::text, gen_random_uuid()::text, '081276307168', 'Athallah Bariq', 'Technical Writer & Documentation Lead', '#EC4899', 1, true, CURRENT_TIMESTAMP - INTERVAL '90 days', CURRENT_TIMESTAMP - INTERVAL '90 days'),
+('usr-iqbal', 'iqbal.ali@elistec.com', 'IQBAL.ALI@ELISTEC.COM', 'iqbal.ali@elistec.com', 'IQBAL.ALI@ELISTEC.COM', true, 'SRDV4YykmWRJEOt/eVcXkQ==:Gh2T5Ka6u9taP1ZuO/44eB8dbUv0WLNcx8vCuPgExAQ=', gen_random_uuid()::text, gen_random_uuid()::text, '081253016161', 'Iqbal Ali', 'Senior Backend & Integration Engineer', '#06B6D4', 1, true, CURRENT_TIMESTAMP - INTERVAL '90 days', CURRENT_TIMESTAMP - INTERVAL '90 days'),
+('usr-glenn', 'glenn.hakim@elistec.com', 'GLENN.HAKIM@ELISTEC.COM', 'glenn.hakim@elistec.com', 'GLENN.HAKIM@ELISTEC.COM', true, 'SRDV4YykmWRJEOt/eVcXkQ==:Gh2T5Ka6u9taP1ZuO/44eB8dbUv0WLNcx8vCuPgExAQ=', gen_random_uuid()::text, gen_random_uuid()::text, '081231909949', 'Glenn Hakim', 'Frontend & UI/UX Developer', '#6366F1', 1, true, CURRENT_TIMESTAMP - INTERVAL '90 days', CURRENT_TIMESTAMP - INTERVAL '90 days'),
+('usr-heni', 'heni.rahayu@elistec.com', 'HENI.RAHAYU@ELISTEC.COM', 'heni.rahayu@elistec.com', 'HENI.RAHAYU@ELISTEC.COM', true, 'SRDV4YykmWRJEOt/eVcXkQ==:Gh2T5Ka6u9taP1ZuO/44eB8dbUv0WLNcx8vCuPgExAQ=', gen_random_uuid()::text, gen_random_uuid()::text, '081229298490', 'Heni Rahayu', 'Database Administrator & Data Analyst', '#F59E0B', 1, true, CURRENT_TIMESTAMP - INTERVAL '90 days', CURRENT_TIMESTAMP - INTERVAL '90 days'),
+('usr-syifa', 'syifa.kurnia@elistec.com', 'SYIFA.KURNIA@ELISTEC.COM', 'syifa.kurnia@elistec.com', 'SYIFA.KURNIA@ELISTEC.COM', true, 'SRDV4YykmWRJEOt/eVcXkQ==:Gh2T5Ka6u9taP1ZuO/44eB8dbUv0WLNcx8vCuPgExAQ=', gen_random_uuid()::text, gen_random_uuid()::text, '081268651556', 'Syifa Kurnia', 'Business Analyst & QA Specialist', '#6366F1', 1, true, CURRENT_TIMESTAMP - INTERVAL '90 days', CURRENT_TIMESTAMP - INTERVAL '90 days'),
+('usr-pending', 'calon.member@trackerkerja.local', 'CALON.MEMBER@TRACKERKERJA.LOCAL', 'calon.member@trackerkerja.local', 'CALON.MEMBER@TRACKERKERJA.LOCAL', true, 'SRDV4YykmWRJEOt/eVcXkQ==:Gh2T5Ka6u9taP1ZuO/44eB8dbUv0WLNcx8vCuPgExAQ=', gen_random_uuid()::text, gen_random_uuid()::text, '081298765435', 'Ahmad Wahyudi (Pending Approval)', 'Junior Data Analyst', '#F59E0B', 1, false, null, CURRENT_TIMESTAMP - INTERVAL '1 days'),
+('usr-eksternal', 'dev@nusantara.local', 'DEV@NUSANTARA.LOCAL', 'dev@nusantara.local', 'DEV@NUSANTARA.LOCAL', true, 'SRDV4YykmWRJEOt/eVcXkQ==:Gh2T5Ka6u9taP1ZuO/44eB8dbUv0WLNcx8vCuPgExAQ=', gen_random_uuid()::text, gen_random_uuid()::text, '081398765499', 'Doni Prakoso', 'External Cloud Engineer', '#06B6D4', 2, true, CURRENT_TIMESTAMP - INTERVAL '10 days', CURRENT_TIMESTAMP - INTERVAL '10 days')
 ON CONFLICT (id) DO UPDATE SET
     full_name = EXCLUDED.full_name,
     job_title = EXCLUDED.job_title,
@@ -1190,16 +1190,11 @@ VALUES
 (2, 'Data Operasional Task Tracker v2 & Presensi Tim Terpasang', 'Sistem TrackerKerja telah mengimpor 491 tugas operasional dan presensi tim terpadu.', 'Pengumuman Umum', CURRENT_TIMESTAMP - INTERVAL '2 days', CURRENT_TIMESTAMP + INTERVAL '14 days', true, 1, 'usr-superadmin', CURRENT_TIMESTAMP - INTERVAL '2 days')
 ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, content = EXCLUDED.content;
 
-SELECT setval('companies_id_seq', (SELECT COALESCE(MAX(id), 1) FROM companies));
-SELECT setval('announcements_id_seq', (SELECT COALESCE(MAX(id), 1) FROM announcements));
-SELECT setval('master_priorities_id_seq', (SELECT COALESCE(MAX(id), 1) FROM master_priorities));
-SELECT setval('master_statuses_id_seq', (SELECT COALESCE(MAX(id), 1) FROM master_statuses));
-SELECT setval('master_milestones_id_seq', (SELECT COALESCE(MAX(id), 1) FROM master_milestones));
-SELECT setval('categories_id_seq', (SELECT COALESCE(MAX(id), 1) FROM categories));
-SELECT setval('projects_id_seq', (SELECT COALESCE(MAX(id), 1) FROM projects));
-SELECT setval('tasks_id_seq', (SELECT COALESCE(MAX(id), 1) FROM tasks));
-SELECT setval('email_templates_id_seq', (SELECT COALESCE(MAX(id), 1) FROM email_templates));
-SELECT setval('master_badges_id_seq', (SELECT COALESCE(MAX(id), 1) FROM master_badges));
-SELECT setval('reward_items_id_seq', (SELECT COALESCE(MAX(id), 1) FROM reward_items));
+SELECT setval('announcements_id_seq', (SELECT MAX(id) FROM announcements));
+SELECT setval('master_priorities_id_seq', (SELECT MAX(id) FROM master_priorities));
+SELECT setval('master_statuses_id_seq', (SELECT MAX(id) FROM master_statuses));
+SELECT setval('master_milestones_id_seq', (SELECT MAX(id) FROM master_milestones));
+SELECT setval('categories_id_seq', (SELECT MAX(id) FROM categories));
+SELECT setval('projects_id_seq', (SELECT MAX(id) FROM projects));
 
 -- SEED DATA TASK TRACKER V2 & PRESENSI SELESAI
