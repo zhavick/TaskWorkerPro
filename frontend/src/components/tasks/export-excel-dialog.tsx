@@ -35,13 +35,22 @@ interface ExportTasksDialogProps {
 
 export function ExportTasksDialog({ open, onOpenChange }: ExportTasksDialogProps) {
   const [format, setFormat] = useState<"standard" | "arms">("standard");
-  const [datePreset, setDatePreset] = useState<"all" | "7d" | "thisMonth" | "30d" | "custom">("all");
+  const [datePreset, setDatePreset] = useState<"daily" | "today" | "all" | "7d" | "thisMonth" | "30d" | "custom">("all");
+  const [dailyDate, setDailyDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
   const [customStartDate, setCustomStartDate] = useState<string>("");
   const [customEndDate, setCustomEndDate] = useState<string>("");
   const [selectedProjectId, setSelectedProjectId] = useState<string>("all");
   const [selectedStatus, setSelectedStatus] = useState<string>("all");
   const [scope, setScope] = useState<"all" | "mine">("all");
   const [isExporting, setIsExporting] = useState(false);
+
+  const handleSelectFormat = (selectedFormat: "standard" | "arms") => {
+    setFormat(selectedFormat);
+    if (selectedFormat === "arms") {
+      // Default to daily period for ARMS enterprise export
+      setDatePreset("daily");
+    }
+  };
 
   // 1. Fetch User Profile to check Admin RBAC
   const { data: userProfile } = useQuery<any>({
@@ -87,7 +96,15 @@ export function ExportTasksDialog({ open, onOpenChange }: ExportTasksDialogProps
 
       // Compute date boundaries based on preset
       const now = new Date();
-      if (datePreset === "7d") {
+      if (datePreset === "daily") {
+        const selected = dailyDate || now.toISOString().slice(0, 10);
+        params.startDate = `${selected}T00:00:00.000Z`;
+        params.endDate = `${selected}T23:59:59.999Z`;
+      } else if (datePreset === "today") {
+        const todayStr = now.toISOString().slice(0, 10);
+        params.startDate = `${todayStr}T00:00:00.000Z`;
+        params.endDate = `${todayStr}T23:59:59.999Z`;
+      } else if (datePreset === "7d") {
         const start = new Date();
         start.setDate(now.getDate() - 7);
         params.startDate = start.toISOString();
@@ -124,9 +141,16 @@ export function ExportTasksDialog({ open, onOpenChange }: ExportTasksDialogProps
         type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       });
 
+      const exportDateStr =
+        datePreset === "daily"
+          ? dailyDate
+          : datePreset === "today"
+          ? now.toISOString().slice(0, 10)
+          : customStartDate || now.toISOString().slice(0, 10);
+
       let fileName =
         format === "arms"
-          ? `Laporan_ARMS_Enterprise_${Date.now()}.xlsx`
+          ? `task_tracker_company_export_Start_${exportDateStr}.xlsx`
           : `Laporan_Tugas_${Date.now()}.xlsx`;
 
       const contentDisposition = res.headers["content-disposition"];
@@ -184,7 +208,7 @@ export function ExportTasksDialog({ open, onOpenChange }: ExportTasksDialogProps
             </label>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div
-                onClick={() => setFormat("standard")}
+                onClick={() => handleSelectFormat("standard")}
                 className={`cursor-pointer rounded-xl border p-3.5 transition ${
                   format === "standard"
                     ? "border-indigo-600 bg-indigo-50/30 ring-2 ring-indigo-500 dark:border-indigo-500 dark:bg-indigo-950/20"
@@ -208,7 +232,7 @@ export function ExportTasksDialog({ open, onOpenChange }: ExportTasksDialogProps
               </div>
 
               <div
-                onClick={() => setFormat("arms")}
+                onClick={() => handleSelectFormat("arms")}
                 className={`cursor-pointer rounded-xl border p-3.5 transition ${
                   format === "arms"
                     ? "border-blue-600 bg-blue-50/30 ring-2 ring-blue-500 dark:border-blue-500 dark:bg-blue-950/20"
@@ -219,15 +243,15 @@ export function ExportTasksDialog({ open, onOpenChange }: ExportTasksDialogProps
                   <div className="flex items-center gap-2">
                     <Briefcase className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                     <span className="text-xs font-bold text-gray-900 dark:text-white">
-                      ARMS Enterprise (21 Kolom)
+                      ARMS Enterprise (23 Kolom)
                     </span>
                   </div>
                   <span className="rounded bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-700 dark:bg-blue-950 dark:text-blue-300">
-                    SDLC + Summary
+                    Template Resmi
                   </span>
                 </div>
                 <p className="mt-2 text-[11px] text-gray-500 line-clamp-2">
-                  Laporan resmi SDLC Waterfall, pemetaan milestone, durasi jam kerja, dan sheet Ringkasan Eksekutif.
+                  Format ARMS resmi: Sheet Template (23 kolom) + Sheet Lookup, validasi dropdown, dan filter periode harian.
                 </p>
               </div>
             </div>
@@ -235,16 +259,25 @@ export function ExportTasksDialog({ open, onOpenChange }: ExportTasksDialogProps
 
           {/* 2. Date Range Filter & Presets */}
           <div>
-            <label className="mb-2 block text-xs font-bold text-gray-700 dark:text-gray-300">
-              Rentang Tanggal (Berdasarkan Tenggat/Mulai):
-            </label>
+            <div className="mb-2 flex items-center justify-between">
+              <label className="block text-xs font-bold text-gray-700 dark:text-gray-300">
+                Rentang Tanggal (Berdasarkan Tenggat/Mulai):
+              </label>
+              {format === "arms" && (
+                <span className="text-[11px] font-medium text-blue-600 dark:text-blue-400">
+                  Direkomendasikan: Periode Harian
+                </span>
+              )}
+            </div>
             <div className="flex flex-wrap gap-1.5">
               {[
-                { id: "all", label: "Semua Waktu" },
+                { id: "daily", label: "Harian (Pilih Tanggal)" },
+                { id: "today", label: "Hari Ini" },
                 { id: "7d", label: "7 Hari Terakhir" },
                 { id: "thisMonth", label: "Bulan Ini" },
                 { id: "30d", label: "30 Hari Terakhir" },
-                { id: "custom", label: "Kustom" },
+                { id: "custom", label: "Rentang Kustom" },
+                ...(format === "standard" ? [{ id: "all", label: "Semua Waktu" }] : []),
               ].map((p) => (
                 <button
                   key={p.id}
@@ -260,6 +293,37 @@ export function ExportTasksDialog({ open, onOpenChange }: ExportTasksDialogProps
                 </button>
               ))}
             </div>
+
+            {datePreset === "daily" && (
+              <div className="mt-2.5 rounded-lg border border-blue-200 bg-blue-50/50 p-3 dark:border-blue-900/50 dark:bg-blue-950/20">
+                <div className="flex flex-wrap items-center justify-between gap-1">
+                  <span className="text-xs font-semibold text-blue-900 dark:text-blue-200 flex items-center gap-1.5">
+                    <Calendar className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+                    Pilih Tanggal Periode Harian:
+                  </span>
+                  <span className="text-[10px] text-blue-600 dark:text-blue-400 font-mono">
+                    task_tracker_company_export_Start_{dailyDate}.xlsx
+                  </span>
+                </div>
+                <input
+                  type="date"
+                  value={dailyDate}
+                  onChange={(e) => setDailyDate(e.target.value)}
+                  className="mt-1.5 w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 outline-none focus:border-blue-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+                />
+                <p className="mt-1 text-[11px] text-blue-700/80 dark:text-blue-300/80">
+                  Sesuai spesifikasi ARMS, ekspor dilakukan per periode harian untuk menangkap seluruh aktivitas task pada tanggal tersebut.
+                </p>
+              </div>
+            )}
+
+            {datePreset === "today" && (
+              <div className="mt-2.5 rounded-lg border border-gray-200 bg-gray-50 p-2.5 dark:border-gray-800 dark:bg-gray-900/40">
+                <p className="text-xs text-gray-600 dark:text-gray-400">
+                  Mengekspor data periode hari ini: <span className="font-semibold text-gray-900 dark:text-white">{new Date().toLocaleDateString("id-ID", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}</span>
+                </p>
+              </div>
+            )}
 
             {datePreset === "custom" && (
               <div className="mt-2.5 grid grid-cols-2 gap-2">

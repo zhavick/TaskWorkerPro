@@ -67,13 +67,16 @@ public class TaskExcelImportServiceTests
 
         using var ms = new MemoryStream(bytes);
         using var wb = new XLWorkbook(ms);
-        var ws = wb.Worksheets.FirstOrDefault();
+        var ws = wb.Worksheet("Template");
+        var wsLookup = wb.Worksheet("Lookup");
 
         Assert.NotNull(ws);
-        Assert.Equal("Template ARMS", ws.Name);
-        Assert.Equal("Kode Tugas", ws.Cell(1, 2).GetString());
-        Assert.Equal("Judul Tugas (*)", ws.Cell(1, 6).GetString());
-        Assert.True(ws.LastRowUsed()?.RowNumber() >= 3);
+        Assert.NotNull(wsLookup);
+        Assert.Equal("Template", ws.Name);
+        Assert.Equal("project_name", ws.Cell(1, 1).GetString());
+        Assert.Equal("requirement_code", ws.Cell(1, 2).GetString());
+        Assert.Equal("title", ws.Cell(1, 3).GetString());
+        Assert.Equal("task_code", ws.Cell(1, 23).GetString());
     }
 
     [Fact]

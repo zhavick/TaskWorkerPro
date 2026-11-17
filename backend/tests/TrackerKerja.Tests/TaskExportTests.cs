@@ -112,7 +112,7 @@ public class TaskExportTests
     }
 
     [Fact]
-    public async Task GenerateTasksExcelAsync_ArmsFormat_ProducesSummarySheetAnd21ColumnsDetail()
+    public async Task GenerateTasksExcelAsync_ArmsFormat_ProducesTemplateAndLookupSheets_MatchingArmsSpecification()
     {
         using var context = CreateInMemoryContext();
         var service = new ClosedXmlExportService(context);
@@ -127,18 +127,33 @@ public class TaskExportTests
         using var workbook = new XLWorkbook(ms);
 
         Assert.Equal(2, workbook.Worksheets.Count);
-        var wsSummary = workbook.Worksheets.FirstOrDefault(w => w.Name == "Ringkasan Eksekutif");
-        var wsDetail = workbook.Worksheets.FirstOrDefault(w => w.Name == "Rincian Tugas ARMS");
+        var wsTemplate = workbook.Worksheets.FirstOrDefault(w => w.Name == "Template");
+        var wsLookup = workbook.Worksheets.FirstOrDefault(w => w.Name == "Lookup");
 
-        Assert.NotNull(wsSummary);
-        Assert.NotNull(wsDetail);
+        Assert.NotNull(wsTemplate);
+        Assert.NotNull(wsLookup);
 
-        // 21 columns on detail sheet
-        Assert.Equal("No", wsDetail.Cell(3, 1).GetString());
-        Assert.Equal("Project Code", wsDetail.Cell(3, 2).GetString());
-        Assert.Equal("Project Name", wsDetail.Cell(3, 3).GetString());
-        Assert.Equal("Task Code", wsDetail.Cell(3, 4).GetString());
-        Assert.Equal("Updated At", wsDetail.Cell(3, 21).GetString());
+        // 23 columns on Template sheet header
+        Assert.Equal("project_name", wsTemplate.Cell(1, 1).GetString());
+        Assert.Equal("requirement_code", wsTemplate.Cell(1, 2).GetString());
+        Assert.Equal("title", wsTemplate.Cell(1, 3).GetString());
+        Assert.Equal("status", wsTemplate.Cell(1, 4).GetString());
+        Assert.Equal("priority", wsTemplate.Cell(1, 5).GetString());
+        Assert.Equal("jenis_task", wsTemplate.Cell(1, 6).GetString());
+        Assert.Equal("module_name", wsTemplate.Cell(1, 7).GetString());
+        Assert.Equal("progress", wsTemplate.Cell(1, 9).GetString());
+        Assert.Equal("developer_emails", wsTemplate.Cell(1, 13).GetString());
+        Assert.Equal("task_code", wsTemplate.Cell(1, 23).GetString());
+
+        // Check task data row 2
+        Assert.Equal("Portal E-Commerce", wsTemplate.Cell(2, 1).GetString());
+        Assert.Equal("API Checkout Payment", wsTemplate.Cell(2, 3).GetString());
+        Assert.Equal("DONE", wsTemplate.Cell(2, 4).GetString());
+        Assert.Equal("HIGH", wsTemplate.Cell(2, 5).GetString());
+
+        // Lookup sheet header
+        Assert.Equal("project_name", wsLookup.Cell(1, 1).GetString());
+        Assert.Equal("requirement_code", wsLookup.Cell(1, 2).GetString());
     }
 
     [Fact]

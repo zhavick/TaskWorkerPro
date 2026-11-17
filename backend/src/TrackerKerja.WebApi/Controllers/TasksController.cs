@@ -1054,7 +1054,7 @@ public class TasksController : ControllerBase
     {
         var bytes = _excelImportService.GenerateTemplate(format);
         var fileName = format.ToLowerInvariant() == "arms"
-            ? "Template_Import_Tugas_ARMS.xlsx"
+            ? $"task_tracker_company_export_Start_{DateTime.UtcNow:yyyy-MM-dd}.xlsx"
             : "Template_Import_Tugas_Standar.xlsx";
         return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
     }
@@ -1261,8 +1261,19 @@ public class TasksController : ControllerBase
             isAdmin,
             cancellationToken);
 
-        var prefix = filter.Format?.ToLowerInvariant() == "arms" ? "Laporan_ARMS_Enterprise" : "Laporan_Tugas";
-        var fileName = $"{prefix}_{DateTime.UtcNow:yyyyMMdd_HHmmss}.xlsx";
+        string fileName;
+        if (filter.Format?.ToLowerInvariant() == "arms")
+        {
+            var dateStr = filter.StartDate.HasValue
+                ? filter.StartDate.Value.ToString("yyyy-MM-dd")
+                : DateTime.UtcNow.ToString("yyyy-MM-dd");
+            fileName = $"task_tracker_company_export_Start_{dateStr}.xlsx";
+        }
+        else
+        {
+            fileName = $"Laporan_Tugas_{DateTime.UtcNow:yyyyMMdd_HHmmss}.xlsx";
+        }
+
 
         return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
     }

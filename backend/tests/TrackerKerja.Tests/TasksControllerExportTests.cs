@@ -38,7 +38,7 @@ public class TasksControllerExportTests
 
         var fileResult = Assert.IsType<FileContentResult>(result);
         Assert.Equal("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileResult.ContentType);
-        Assert.Contains("Laporan_ARMS_Enterprise", fileResult.FileDownloadName);
+        Assert.Contains("task_tracker_company_export_Start", fileResult.FileDownloadName);
         Assert.Contains(".xlsx", fileResult.FileDownloadName);
     }
 

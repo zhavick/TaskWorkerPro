@@ -1,7 +1,10 @@
+using System.Text.RegularExpressions;
 using ClosedXML.Excel;
 using Microsoft.EntityFrameworkCore;
 using TrackerKerja.Application.Common.Interfaces;
 using TrackerKerja.Application.DTOs;
+using TrackerKerja.Domain.Entities;
+using TrackerKerja.Domain.Enums;
 using TrackerKerja.Infrastructure.Persistence;
 
 namespace TrackerKerja.Infrastructure.Services;
@@ -238,24 +241,41 @@ public class ClosedXmlExportService : IExcelExportService
             query = query.Where(t => t.Status == targetStatus);
         }
 
-        if (filter.StartDate.HasValue)
+        if (filter.StartDate.HasValue && filter.EndDate.HasValue &&
+            filter.StartDate.Value.Date == filter.EndDate.Value.Date)
         {
-            query = query.Where(t => (t.DueDate ?? t.StartDate ?? t.CreatedAt) >= filter.StartDate.Value);
-        }
+            var dayStart = new DateTimeOffset(filter.StartDate.Value.Year, filter.StartDate.Value.Month, filter.StartDate.Value.Day, 0, 0, 0, TimeSpan.Zero);
+            var dayEnd = dayStart.AddDays(1).AddTicks(-1);
 
-        if (filter.EndDate.HasValue)
+            query = query.Where(t =>
+                (t.StartDate.HasValue && t.StartDate.Value <= dayEnd && (t.DueDate == null || t.DueDate.Value >= dayStart)) ||
+                (t.DueDate.HasValue && t.DueDate.Value >= dayStart && t.DueDate.Value <= dayEnd) ||
+                (t.CreatedAt >= dayStart && t.CreatedAt <= dayEnd) ||
+                (t.UpdatedAt >= dayStart && t.UpdatedAt <= dayEnd) ||
+                t.Sessions.Any(s => s.StartTime >= dayStart && s.StartTime <= dayEnd)
+            );
+        }
+        else
         {
-            query = query.Where(t => (t.DueDate ?? t.StartDate ?? t.CreatedAt) <= filter.EndDate.Value);
+            if (filter.StartDate.HasValue)
+            {
+                query = query.Where(t => (t.DueDate ?? t.StartDate ?? t.CreatedAt) >= filter.StartDate.Value);
+            }
+
+            if (filter.EndDate.HasValue)
+            {
+                query = query.Where(t => (t.DueDate ?? t.StartDate ?? t.CreatedAt) <= filter.EndDate.Value);
+            }
         }
 
         var tasks = await query.OrderBy(t => t.DueDate ?? t.CreatedAt).ToListAsync(cancellationToken);
 
-        using var workbook = new XLWorkbook();
-
         var isArms = filter.Format?.ToLowerInvariant() == "arms";
+        using var workbook = isArms ? LoadOrCreateArmsWorkbook() : new XLWorkbook();
+
         if (isArms)
         {
-            BuildArmsWorkbook(workbook, tasks, filter, isAdmin);
+            await PopulateArmsWorkbookAsync(workbook, tasks, filter, companyId, cancellationToken);
         }
         else
         {
@@ -322,171 +342,330 @@ public class ClosedXmlExportService : IExcelExportService
         ws.Columns().AdjustToContents();
     }
 
-    private static void BuildArmsWorkbook(XLWorkbook workbook, List<Domain.Entities.WorkTask> tasks, TaskExportFilterDto filter, bool isAdmin)
+    private static string? ResolveArmsTemplatePath()
     {
-        // ----------------------------------------------------
-        // SHEET 1: Ringkasan Eksekutif (Executive Summary)
-        // ----------------------------------------------------
-        var wsSummary = workbook.Worksheets.Add("Ringkasan Eksekutif");
-        wsSummary.Cell(1, 1).Value = "RINGKASAN EKSEKUTIF PROYEK & SDLC (ARMS)";
-        wsSummary.Cell(1, 1).Style.Font.Bold = true;
-        wsSummary.Cell(1, 1).Style.Font.FontSize = 14;
-        wsSummary.Cell(1, 1).Style.Font.FontColor = XLColor.FromHtml("#1E3A8A");
-
-        wsSummary.Cell(2, 1).Value = $"Tanggal Ekspor: {DateTime.UtcNow:yyyy-MM-dd HH:mm} UTC | Total Tugas: {tasks.Count}";
-        wsSummary.Cell(2, 1).Style.Font.Italic = true;
-        wsSummary.Cell(2, 1).Style.Font.FontColor = XLColor.FromHtml("#64748B");
-
-        // KPI Box
-        var doneCount = tasks.Count(t => t.Status == Domain.Enums.TaskStatus.Done || t.Progress == 100);
-        var inProgressCount = tasks.Count(t => t.Status == Domain.Enums.TaskStatus.InProgress);
-        var now = DateTimeOffset.UtcNow;
-        var overdueCount = tasks.Count(t => t.Status != Domain.Enums.TaskStatus.Done && t.DueDate.HasValue && t.DueDate.Value < now);
-        var totalHours = Math.Round(tasks.Sum(t => t.Sessions?.Sum(s => s.Duration) ?? 0) / 3600.0, 2);
-
-        string[] kpiHeaders = { "Metrik", "Nilai", "Keterangan" };
-        for (int i = 0; i < kpiHeaders.Length; i++)
+        var candidates = new[]
         {
-            var cell = wsSummary.Cell(4, i + 1);
-            cell.Value = kpiHeaders[i];
-            cell.Style.Fill.BackgroundColor = XLColor.FromHtml("#1E3A8A");
-            cell.Style.Font.FontColor = XLColor.White;
-            cell.Style.Font.Bold = true;
-        }
-
-        wsSummary.Cell(5, 1).Value = "Total Tugas";
-        wsSummary.Cell(5, 2).Value = tasks.Count;
-        wsSummary.Cell(5, 3).Value = "Seluruh tugas dalam cakupan filter";
-
-        wsSummary.Cell(6, 1).Value = "Tugas Selesai (Done)";
-        wsSummary.Cell(6, 2).Value = doneCount;
-        wsSummary.Cell(6, 3).Value = $"Rasio: {(tasks.Count > 0 ? (doneCount * 100 / tasks.Count) : 0)}%";
-
-        wsSummary.Cell(7, 1).Value = "Dalam Pengerjaan (In Progress)";
-        wsSummary.Cell(7, 2).Value = inProgressCount;
-        wsSummary.Cell(7, 3).Value = "Sedang dikerjakan tim";
-
-        wsSummary.Cell(8, 1).Value = "Melewati Tenggat (Overdue)";
-        wsSummary.Cell(8, 2).Value = overdueCount;
-        wsSummary.Cell(8, 3).Value = "Perlu tindak lanjut / eskalasi";
-
-        wsSummary.Cell(9, 1).Value = "Akumulasi Jam Kerja (Man-Hours)";
-        wsSummary.Cell(9, 2).Value = totalHours;
-        wsSummary.Cell(9, 3).Value = "Total jam kerja dari seluruh sesi kerja";
-
-        // Table Project Distribution
-        wsSummary.Cell(11, 1).Value = "DISTRIBUSI PER PROYEK";
-        wsSummary.Cell(11, 1).Style.Font.Bold = true;
-        wsSummary.Cell(11, 1).Style.Font.FontColor = XLColor.FromHtml("#1E3A8A");
-
-        string[] projHeaders = { "No", "Nama Proyek", "Total Tugas", "Selesai", "Progres Rata-rata (%)" };
-        for (int i = 0; i < projHeaders.Length; i++)
-        {
-            var cell = wsSummary.Cell(12, i + 1);
-            cell.Value = projHeaders[i];
-            cell.Style.Fill.BackgroundColor = XLColor.FromHtml("#2563EB");
-            cell.Style.Font.FontColor = XLColor.White;
-            cell.Style.Font.Bold = true;
-        }
-
-        var projGroups = tasks.GroupBy(t => t.Project?.Name ?? "General").OrderByDescending(g => g.Count()).ToList();
-        int rowP = 13;
-        for (int i = 0; i < projGroups.Count; i++)
-        {
-            var grp = projGroups[i];
-            var pDone = grp.Count(t => t.Status == Domain.Enums.TaskStatus.Done || t.Progress == 100);
-            var pAvgProg = grp.Any() ? Math.Round(grp.Average(t => t.Progress), 1) : 0;
-
-            wsSummary.Cell(rowP, 1).Value = i + 1;
-            wsSummary.Cell(rowP, 2).Value = grp.Key;
-            wsSummary.Cell(rowP, 3).Value = grp.Count();
-            wsSummary.Cell(rowP, 4).Value = pDone;
-            wsSummary.Cell(rowP, 5).Value = pAvgProg;
-            rowP++;
-        }
-
-        wsSummary.Columns().AdjustToContents();
-
-        // ----------------------------------------------------
-        // SHEET 2: Rincian Tugas ARMS (21 Kolom)
-        // ----------------------------------------------------
-        var wsDetail = workbook.Worksheets.Add("Rincian Tugas ARMS");
-
-        wsDetail.Cell(1, 1).Value = "RINCIAN TUGAS REKAYASA SISTEM ARMS (SDLC WATERFALL)";
-        wsDetail.Cell(1, 1).Style.Font.Bold = true;
-        wsDetail.Cell(1, 1).Style.Font.FontSize = 14;
-        wsDetail.Cell(1, 1).Style.Font.FontColor = XLColor.FromHtml("#1E3A8A");
-
-        string[] armsHeaders = {
-            "No",
-            "Project Code",
-            "Project Name",
-            "Task Code",
-            "Parent Task Code",
-            "Task Title",
-            "Description",
-            "SDLC Milestone",
-            "Category",
-            "Priority",
-            "Status",
-            "Progress (%)",
-            "PIC Name",
-            "PIC Email",
-            "Start Date",
-            "Due Date",
-            "Total Logged Hours",
-            "Obstacle",
-            "Solution",
-            "Created At",
-            "Updated At"
+            Path.Combine(Directory.GetCurrentDirectory(), "uploads", "templates", "task_tracker_company_export_template.xlsx"),
+            Path.Combine(AppContext.BaseDirectory, "uploads", "templates", "task_tracker_company_export_template.xlsx"),
+            Path.Combine(Directory.GetCurrentDirectory(), "Sample Source DB", "task_tracker_company_export_Start_2026-11-13 (2).xlsx"),
+            Path.Combine(AppContext.BaseDirectory, "Sample Source DB", "task_tracker_company_export_Start_2026-11-13 (2).xlsx"),
+            Path.Combine(Directory.GetCurrentDirectory(), "..", "Sample Source DB", "task_tracker_company_export_Start_2026-11-13 (2).xlsx"),
+            Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "Sample Source DB", "task_tracker_company_export_Start_2026-11-13 (2).xlsx"),
         };
 
-        for (int i = 0; i < armsHeaders.Length; i++)
+        foreach (var c in candidates)
         {
-            var cell = wsDetail.Cell(3, i + 1);
-            cell.Value = armsHeaders[i];
-            cell.Style.Fill.BackgroundColor = XLColor.FromHtml("#1E3A8A");
-            cell.Style.Font.FontColor = XLColor.White;
-            cell.Style.Font.Bold = true;
-            cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+            if (File.Exists(c)) return c;
         }
 
-        int rowD = 4;
-        for (int i = 0; i < tasks.Count; i++)
+        return null;
+    }
+
+    private static XLWorkbook LoadOrCreateArmsWorkbook()
+    {
+        var templatePath = ResolveArmsTemplatePath();
+        if (!string.IsNullOrEmpty(templatePath) && File.Exists(templatePath))
         {
-            var t = tasks[i];
-            var taskHours = Math.Round((t.Sessions?.Sum(s => s.Duration) ?? 0) / 3600.0, 2);
-
-            wsDetail.Cell(rowD, 1).Value = i + 1;
-            wsDetail.Cell(rowD, 2).Value = t.ProjectId.HasValue ? $"PRJ-{t.ProjectId.Value:D3}" : "PRJ-GEN";
-            wsDetail.Cell(rowD, 3).Value = t.Project?.Name ?? "General";
-            wsDetail.Cell(rowD, 4).Value = $"TSK-{t.Id:D4}";
-            wsDetail.Cell(rowD, 5).Value = t.ParentTaskId.HasValue ? $"TSK-{t.ParentTaskId.Value:D4}" : "-";
-            wsDetail.Cell(rowD, 6).Value = t.Title;
-            wsDetail.Cell(rowD, 7).Value = string.IsNullOrWhiteSpace(t.Description) ? "-" : t.Description;
-            wsDetail.Cell(rowD, 8).Value = string.IsNullOrWhiteSpace(t.Milestone) ? "Implementation" : t.Milestone;
-            wsDetail.Cell(rowD, 9).Value = t.Category?.Name ?? "-";
-            wsDetail.Cell(rowD, 10).Value = t.Priority.ToString();
-            wsDetail.Cell(rowD, 11).Value = t.Status.ToString();
-            wsDetail.Cell(rowD, 12).Value = t.Progress;
-            wsDetail.Cell(rowD, 13).Value = t.AssignedToUser?.FullName ?? "Belum Ditugaskan";
-            wsDetail.Cell(rowD, 14).Value = t.AssignedToUser?.Email ?? "-";
-            wsDetail.Cell(rowD, 15).Value = t.StartDate.HasValue ? t.StartDate.Value.ToString("yyyy-MM-dd") : "-";
-            wsDetail.Cell(rowD, 16).Value = t.DueDate.HasValue ? t.DueDate.Value.ToString("yyyy-MM-dd") : "-";
-            wsDetail.Cell(rowD, 17).Value = taskHours;
-            wsDetail.Cell(rowD, 18).Value = string.IsNullOrWhiteSpace(t.Obstacle) ? "-" : t.Obstacle;
-            wsDetail.Cell(rowD, 19).Value = string.IsNullOrWhiteSpace(t.Solution) ? "-" : t.Solution;
-            wsDetail.Cell(rowD, 20).Value = t.CreatedAt.ToString("yyyy-MM-dd HH:mm");
-            wsDetail.Cell(rowD, 21).Value = t.UpdatedAt.ToString("yyyy-MM-dd HH:mm");
-
-            if (rowD % 2 == 1)
+            try
             {
-                wsDetail.Row(rowD).Style.Fill.BackgroundColor = XLColor.FromHtml("#F8FAFC");
+                return new XLWorkbook(templatePath);
+            }
+            catch
+            {
+                // Fallback if template file is locked or corrupt
+            }
+        }
+
+        return CreateFreshArmsWorkbook();
+    }
+
+    private static XLWorkbook CreateFreshArmsWorkbook()
+    {
+        var wb = new XLWorkbook();
+
+        // 1. Template Sheet (23 Columns)
+        var wsTemplate = wb.Worksheets.Add("Template");
+        string[] headers =
+        {
+            "project_name", "requirement_code", "title", "status", "priority",
+            "jenis_task", "module_name", "bug_type", "progress", "start_date",
+            "due_date", "completed_date", "developer_emails", "ba_emails",
+            "infra_emails", "master_data_emails", "tester_emails", "technical_writer_emails",
+            "quality_assurance_emails", "system_analyst_emails", "kendala", "solusi", "task_code"
+        };
+
+        for (int i = 0; i < headers.Length; i++)
+        {
+            var cell = wsTemplate.Cell(1, i + 1);
+            cell.Value = headers[i];
+            cell.Style.Font.Bold = true;
+            cell.Style.Font.FontName = "Calibri";
+            cell.Style.Font.FontSize = 11;
+        }
+
+        // 2. Lookup Sheet
+        var wsLookup = wb.Worksheets.Add("Lookup");
+        wsLookup.Cell(1, 1).Value = "project_name";
+        wsLookup.Cell(1, 1).Style.Font.Bold = true;
+        wsLookup.Cell(1, 2).Value = "requirement_code";
+        wsLookup.Cell(1, 2).Style.Font.Bold = true;
+
+        wsLookup.Cell(2, 1).Value = "General";
+        wsLookup.Cell(2, 2).Value = "REQ-0001";
+
+        // Setup Data Validations on wsTemplate
+        wsTemplate.Range("A2:A500").CreateDataValidation().List(wsLookup.Range("A2:A500"));
+        wsTemplate.Range("B2:B500").CreateDataValidation().List(wsLookup.Range("B2:B500"));
+        wsTemplate.Range("D2:D500").CreateDataValidation().List("\"TODO,IN_PROGRESS,IN_REVIEW,DONE\"", true);
+        wsTemplate.Range("E2:E500").CreateDataValidation().List("\"LOW,MEDIUM,HIGH,CRITICAL\"", true);
+        wsTemplate.Range("F2:F500").CreateDataValidation().List("\"NEW_APPLICATION,ENHANCEMENT,BUG,MAINTENANCE,MIGRATION\"", true);
+        wsTemplate.Range("H2:H500").CreateDataValidation().List("\"UI_BUG,FUNCTIONAL_BUG,INTEGRATION_BUG,DATA_BUG,PERFORMANCE_BUG,SECURITY_BUG,OTHER\"", true);
+
+        return wb;
+    }
+
+    private async Task PopulateArmsWorkbookAsync(
+        XLWorkbook workbook,
+        List<WorkTask> tasks,
+        TaskExportFilterDto filter,
+        int? companyId,
+        CancellationToken cancellationToken)
+    {
+        var wsTemplate = workbook.Worksheets.FirstOrDefault(w => w.Name == "Template")
+                         ?? workbook.Worksheets.FirstOrDefault()
+                         ?? workbook.Worksheets.Add("Template");
+
+        var wsLookup = workbook.Worksheets.FirstOrDefault(w => w.Name == "Lookup")
+                       ?? workbook.Worksheets.Add("Lookup");
+
+        // Clear existing data rows (2..N) on Template
+        var lastRow = wsTemplate.LastRowUsed()?.RowNumber() ?? 1;
+        if (lastRow >= 2)
+        {
+            wsTemplate.Rows(2, Math.Max(lastRow, 500)).Clear(XLClearOptions.Contents);
+        }
+
+        // Build existing project -> requirement code map from Lookup
+        var projectReqMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var lookupLastRow = wsLookup.LastRowUsed()?.RowNumber() ?? 1;
+        for (int r = 2; r <= lookupLastRow; r++)
+        {
+            var pName = wsLookup.Cell(r, 1).GetString().Trim();
+            var rCode = wsLookup.Cell(r, 2).GetString().Trim();
+            if (!string.IsNullOrEmpty(pName) && !projectReqMap.ContainsKey(pName))
+            {
+                projectReqMap[pName] = rCode;
+            }
+        }
+
+        // Fetch company projects from DB to guarantee Lookup has all current projects
+        var dbProjectsQuery = _context.Projects.AsNoTracking().AsQueryable();
+        if (companyId.HasValue)
+        {
+            dbProjectsQuery = dbProjectsQuery.Where(p => p.CompanyId == companyId.Value || p.CompanyId == null);
+        }
+        var dbProjects = await dbProjectsQuery.ToListAsync(cancellationToken);
+
+        int nextLookupRow = lookupLastRow + 1;
+        foreach (var p in dbProjects)
+        {
+            if (!projectReqMap.ContainsKey(p.Name))
+            {
+                string reqCode = "";
+                if (!string.IsNullOrWhiteSpace(p.Tags) && Regex.IsMatch(p.Tags, @"(REQ|BRD|DC|FR)-[^\s,;]+", RegexOptions.IgnoreCase))
+                {
+                    reqCode = Regex.Match(p.Tags, @"(REQ|BRD|DC|FR)-[^\s,;]+", RegexOptions.IgnoreCase).Value;
+                }
+                else
+                {
+                    reqCode = $"REQ-{p.Id:D4}";
+                }
+
+                wsLookup.Cell(nextLookupRow, 1).SetValue(p.Name);
+                wsLookup.Cell(nextLookupRow, 2).SetValue(reqCode);
+                projectReqMap[p.Name] = reqCode;
+                nextLookupRow++;
+            }
+        }
+
+        // Populate task data rows (Row 2 onwards)
+        int targetRow = 2;
+        foreach (var t in tasks)
+        {
+            var projectName = t.Project?.Name ?? "General";
+            string reqCode = "";
+            if (projectReqMap.TryGetValue(projectName, out var code) && !string.IsNullOrWhiteSpace(code))
+            {
+                reqCode = code;
+            }
+            else if (!string.IsNullOrWhiteSpace(t.Tags) && Regex.IsMatch(t.Tags, @"(REQ|BRD|DC|FR)-[^\s,;]+", RegexOptions.IgnoreCase))
+            {
+                reqCode = Regex.Match(t.Tags, @"(REQ|BRD|DC|FR)-[^\s,;]+", RegexOptions.IgnoreCase).Value;
             }
 
-            rowD++;
+            // Status: TODO, IN_PROGRESS, IN_REVIEW, DONE
+            string status = t.Status switch
+            {
+                Domain.Enums.TaskStatus.Done => "DONE",
+                Domain.Enums.TaskStatus.InProgress => "IN_PROGRESS",
+                Domain.Enums.TaskStatus.Review => "IN_REVIEW",
+                _ => "TODO"
+            };
+
+            // Priority: LOW, MEDIUM, HIGH, CRITICAL
+            string priority = t.Priority switch
+            {
+                TaskPriority.Low => "LOW",
+                TaskPriority.Medium => "MEDIUM",
+                TaskPriority.High => "HIGH",
+                _ => "CRITICAL"
+            };
+
+            // Jenis Task: NEW_APPLICATION, ENHANCEMENT, BUG, MAINTENANCE, MIGRATION
+            string jenisTask = "ENHANCEMENT";
+            var catName = (t.Category?.Name ?? "").ToLowerInvariant();
+            var titleLower = t.Title.ToLowerInvariant();
+            var tagsLower = (t.Tags ?? "").ToLowerInvariant();
+
+            if (catName.Contains("new") || catName.Contains("baru") || tagsLower.Contains("new_application"))
+            {
+                jenisTask = "NEW_APPLICATION";
+            }
+            else if (catName.Contains("bug") || titleLower.Contains("bug") || titleLower.Contains("fix") || tagsLower.Contains("bug"))
+            {
+                jenisTask = "BUG";
+            }
+            else if (catName.Contains("maint") || catName.Contains("sla") || tagsLower.Contains("maintenance"))
+            {
+                jenisTask = "MAINTENANCE";
+            }
+            else if (catName.Contains("migrat") || tagsLower.Contains("migration"))
+            {
+                jenisTask = "MIGRATION";
+            }
+
+            // Module Name
+            string moduleName = !string.IsNullOrWhiteSpace(t.Milestone)
+                ? t.Milestone
+                : (!string.IsNullOrWhiteSpace(t.Category?.Name) ? t.Category.Name : projectName);
+
+            // Bug Type: UI_BUG, FUNCTIONAL_BUG, INTEGRATION_BUG, DATA_BUG, PERFORMANCE_BUG, SECURITY_BUG, OTHER
+            string bugType = "";
+            if (jenisTask == "BUG")
+            {
+                bugType = "FUNCTIONAL_BUG";
+                if (tagsLower.Contains("ui_bug") || titleLower.Contains("ui")) bugType = "UI_BUG";
+                else if (tagsLower.Contains("integration_bug") || titleLower.Contains("api")) bugType = "INTEGRATION_BUG";
+                else if (tagsLower.Contains("data_bug") || titleLower.Contains("data")) bugType = "DATA_BUG";
+                else if (tagsLower.Contains("performance_bug") || titleLower.Contains("perf")) bugType = "PERFORMANCE_BUG";
+                else if (tagsLower.Contains("security_bug") || titleLower.Contains("security")) bugType = "SECURITY_BUG";
+            }
+
+            // Progress (0 - 100)
+            int progress = status == "DONE" ? 100 : Math.Clamp(t.Progress, 0, 100);
+
+            // Dates (yyyy-MM-dd)
+            var startDateStr = (t.StartDate ?? t.CreatedAt).ToString("yyyy-MM-dd");
+            var dueDateStr = (t.DueDate ?? t.StartDate ?? t.CreatedAt).ToString("yyyy-MM-dd");
+            var completedDateStr = (status == "DONE" || progress == 100)
+                ? (t.DueDate ?? t.UpdatedAt).ToString("yyyy-MM-dd")
+                : "";
+
+            // Personnel emails mapping across roles
+            string devEmails = "";
+            string baEmails = "";
+            string infraEmails = "";
+            string mdEmails = "";
+            string testerEmails = "";
+            string twEmails = "";
+            string qaEmails = "";
+            string saEmails = "";
+
+            var assignedEmail = t.AssignedToUser?.Email?.Trim();
+            var jobTitle = (t.AssignedToUser?.JobTitle ?? "").ToLowerInvariant();
+
+            if (!string.IsNullOrEmpty(assignedEmail))
+            {
+                if (jobTitle.Contains("business analyst") || jobTitle.Contains("ba"))
+                {
+                    baEmails = assignedEmail;
+                }
+                else if (jobTitle.Contains("system analyst") || jobTitle.Contains("sa"))
+                {
+                    saEmails = assignedEmail;
+                }
+                else if (jobTitle.Contains("technical writer") || jobTitle.Contains("documentation") || jobTitle.Contains("tw"))
+                {
+                    twEmails = assignedEmail;
+                }
+                else if (jobTitle.Contains("quality") || jobTitle.Contains("qa"))
+                {
+                    qaEmails = assignedEmail;
+                }
+                else if (jobTitle.Contains("tester") || jobTitle.Contains("testing"))
+                {
+                    testerEmails = assignedEmail;
+                }
+                else if (jobTitle.Contains("infra") || jobTitle.Contains("devops") || jobTitle.Contains("cloud") || jobTitle.Contains("network"))
+                {
+                    infraEmails = assignedEmail;
+                }
+                else if (jobTitle.Contains("database") || jobTitle.Contains("master data") || jobTitle.Contains("dba"))
+                {
+                    mdEmails = assignedEmail;
+                }
+                else
+                {
+                    devEmails = assignedEmail;
+                }
+            }
+
+            // Secondary role hints from Title (e.g. (BA), (TW), (QA))
+            if (titleLower.Contains("(ba)") && string.IsNullOrEmpty(baEmails) && !string.IsNullOrEmpty(assignedEmail))
+            {
+                baEmails = assignedEmail;
+            }
+            if (titleLower.Contains("(tw)") && string.IsNullOrEmpty(twEmails) && !string.IsNullOrEmpty(assignedEmail))
+            {
+                twEmails = assignedEmail;
+            }
+            if (titleLower.Contains("(qa)") && string.IsNullOrEmpty(qaEmails) && !string.IsNullOrEmpty(assignedEmail))
+            {
+                qaEmails = assignedEmail;
+            }
+
+            // Fill row cells (Col 1 to 23)
+            wsTemplate.Cell(targetRow, 1).SetValue(projectName);
+            wsTemplate.Cell(targetRow, 2).SetValue(reqCode);
+            wsTemplate.Cell(targetRow, 3).SetValue(t.Title);
+            wsTemplate.Cell(targetRow, 4).SetValue(status);
+            wsTemplate.Cell(targetRow, 5).SetValue(priority);
+            wsTemplate.Cell(targetRow, 6).SetValue(jenisTask);
+            wsTemplate.Cell(targetRow, 7).SetValue(moduleName);
+            wsTemplate.Cell(targetRow, 8).SetValue(bugType);
+            wsTemplate.Cell(targetRow, 9).SetValue(progress);
+            wsTemplate.Cell(targetRow, 10).SetValue(startDateStr);
+            wsTemplate.Cell(targetRow, 11).SetValue(dueDateStr);
+            wsTemplate.Cell(targetRow, 12).SetValue(completedDateStr);
+            wsTemplate.Cell(targetRow, 13).SetValue(devEmails);
+            wsTemplate.Cell(targetRow, 14).SetValue(baEmails);
+            wsTemplate.Cell(targetRow, 15).SetValue(infraEmails);
+            wsTemplate.Cell(targetRow, 16).SetValue(mdEmails);
+            wsTemplate.Cell(targetRow, 17).SetValue(testerEmails);
+            wsTemplate.Cell(targetRow, 18).SetValue(twEmails);
+            wsTemplate.Cell(targetRow, 19).SetValue(qaEmails);
+            wsTemplate.Cell(targetRow, 20).SetValue(saEmails);
+            wsTemplate.Cell(targetRow, 21).SetValue(t.Obstacle ?? "");
+            wsTemplate.Cell(targetRow, 22).SetValue(t.Solution ?? "");
+            wsTemplate.Cell(targetRow, 23).SetValue(!string.IsNullOrWhiteSpace(t.Tags) && t.Tags.Contains("code:") ? t.Tags : $"TK-{t.Id:D4}");
+
+            wsTemplate.Row(targetRow).Style.Font.FontName = "Calibri";
+            wsTemplate.Row(targetRow).Style.Font.FontSize = 11;
+
+            targetRow++;
         }
 
-        wsDetail.Columns().AdjustToContents();
+        wsTemplate.Columns(1, 23).AdjustToContents();
     }
 }

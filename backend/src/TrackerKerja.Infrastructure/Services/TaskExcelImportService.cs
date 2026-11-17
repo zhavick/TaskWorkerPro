@@ -110,81 +110,78 @@ public class TaskExcelImportService : ITaskExcelImportService
 
     public byte[] GenerateTemplate(string format)
     {
-        using var workbook = new XLWorkbook();
         var isArms = string.Equals(format, "arms", StringComparison.OrdinalIgnoreCase);
 
         if (isArms)
         {
-            var ws = workbook.Worksheets.Add("Template ARMS");
-            string[] headers =
-            [
-                "No", "Kode Tugas", "Kode Induk Tugas", "Nama Proyek", "Modul / Milestone",
-                "Judul Tugas (*)", "Deskripsi", "Prioritas", "Status", "Progres (%)",
-                "Tanggal Mulai", "Target Selesai", "Nama PIC", "Email PIC", "Kategori",
-                "Kendala", "Solusi", "Estimasi Jam", "Jam Aktual", "Dapat Ditagih", "Catatan"
-            ];
-
-            for (int i = 0; i < headers.Length; i++)
+            var candidates = new[]
             {
-                var cell = ws.Cell(1, i + 1);
-                cell.Value = headers[i];
-                cell.Style.Font.Bold = true;
-                cell.Style.Font.FontColor = XLColor.White;
-                cell.Style.Fill.BackgroundColor = XLColor.FromHtml("#1E293B");
-                cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+                Path.Combine(Directory.GetCurrentDirectory(), "uploads", "templates", "task_tracker_company_export_template.xlsx"),
+                Path.Combine(AppContext.BaseDirectory, "uploads", "templates", "task_tracker_company_export_template.xlsx"),
+                Path.Combine(Directory.GetCurrentDirectory(), "Sample Source DB", "task_tracker_company_export_Start_2026-11-13 (2).xlsx"),
+                Path.Combine(AppContext.BaseDirectory, "Sample Source DB", "task_tracker_company_export_Start_2026-11-13 (2).xlsx"),
+                Path.Combine(Directory.GetCurrentDirectory(), "..", "Sample Source DB", "task_tracker_company_export_Start_2026-11-13 (2).xlsx"),
+                Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "Sample Source DB", "task_tracker_company_export_Start_2026-11-13 (2).xlsx"),
+            };
+
+            foreach (var cand in candidates)
+            {
+                if (File.Exists(cand))
+                {
+                    try
+                    {
+                        return File.ReadAllBytes(cand);
+                    }
+                    catch
+                    {
+                        // Fallback to programmatic generation
+                    }
+                }
             }
 
-            // Sample row 1 (Parent task)
-            ws.Cell(2, 1).Value = 1;
-            ws.Cell(2, 2).Value = "TASK-001";
-            ws.Cell(2, 3).Value = "";
-            ws.Cell(2, 4).Value = "Website Redesign";
-            ws.Cell(2, 5).Value = "Phase 1 - Discovery";
-            ws.Cell(2, 6).Value = "Rancangan Arsitektur Frontend";
-            ws.Cell(2, 7).Value = "Menyusun skema arsitektur antarmuka dan design system.";
-            ws.Cell(2, 8).Value = "Tinggi";
-            ws.Cell(2, 9).Value = "InProgress";
-            ws.Cell(2, 10).Value = 60;
-            ws.Cell(2, 11).Value = DateTime.UtcNow.ToString("yyyy-MM-dd");
-            ws.Cell(2, 12).Value = DateTime.UtcNow.AddDays(7).ToString("yyyy-MM-dd");
-            ws.Cell(2, 13).Value = "Budi Santoso";
-            ws.Cell(2, 14).Value = "budi@perusahaan.com";
-            ws.Cell(2, 15).Value = "Frontend";
-            ws.Cell(2, 16).Value = "";
-            ws.Cell(2, 17).Value = "";
-            ws.Cell(2, 18).Value = 16;
-            ws.Cell(2, 19).Value = 10;
-            ws.Cell(2, 20).Value = "Ya";
-            ws.Cell(2, 21).Value = "Arsitektur menggunakan Next.js App Router";
+            using var armsWb = new XLWorkbook();
+            var wsTemplate = armsWb.Worksheets.Add("Template");
+            string[] armsHeaders =
+            [
+                "project_name", "requirement_code", "title", "status", "priority",
+                "jenis_task", "module_name", "bug_type", "progress", "start_date",
+                "due_date", "completed_date", "developer_emails", "ba_emails",
+                "infra_emails", "master_data_emails", "tester_emails", "technical_writer_emails",
+                "quality_assurance_emails", "system_analyst_emails", "kendala", "solusi", "task_code"
+            ];
 
-            // Sample row 2 (Child subtask linked to TASK-001)
-            ws.Cell(3, 1).Value = 2;
-            ws.Cell(3, 2).Value = "TASK-002";
-            ws.Cell(3, 3).Value = "TASK-001";
-            ws.Cell(3, 4).Value = "Website Redesign";
-            ws.Cell(3, 5).Value = "Phase 1 - Discovery";
-            ws.Cell(3, 6).Value = "Setup TailwindCSS & Design Tokens";
-            ws.Cell(3, 7).Value = "Inisialisasi palet warna dan tipografi Tailgrids.";
-            ws.Cell(3, 8).Value = "Sedang";
-            ws.Cell(3, 9).Value = "Done";
-            ws.Cell(3, 10).Value = 100;
-            ws.Cell(3, 11).Value = DateTime.UtcNow.AddDays(-2).ToString("yyyy-MM-dd");
-            ws.Cell(3, 12).Value = DateTime.UtcNow.ToString("yyyy-MM-dd");
-            ws.Cell(3, 13).Value = "Budi Santoso";
-            ws.Cell(3, 14).Value = "budi@perusahaan.com";
-            ws.Cell(3, 15).Value = "Frontend";
-            ws.Cell(3, 16).Value = "";
-            ws.Cell(3, 17).Value = "";
-            ws.Cell(3, 18).Value = 8;
-            ws.Cell(3, 19).Value = 8;
-            ws.Cell(3, 20).Value = "Ya";
-            ws.Cell(3, 21).Value = "";
+            for (int i = 0; i < armsHeaders.Length; i++)
+            {
+                var cell = wsTemplate.Cell(1, i + 1);
+                cell.Value = armsHeaders[i];
+                cell.Style.Font.Bold = true;
+                cell.Style.Font.FontName = "Calibri";
+                cell.Style.Font.FontSize = 11;
+            }
 
-            ws.Columns().AdjustToContents();
+            var wsLookup = armsWb.Worksheets.Add("Lookup");
+            wsLookup.Cell(1, 1).Value = "project_name";
+            wsLookup.Cell(1, 1).Style.Font.Bold = true;
+            wsLookup.Cell(1, 2).Value = "requirement_code";
+            wsLookup.Cell(1, 2).Style.Font.Bold = true;
+            wsLookup.Cell(2, 1).Value = "General";
+            wsLookup.Cell(2, 2).Value = "REQ-0001";
+
+            wsTemplate.Range("A2:A500").CreateDataValidation().List(wsLookup.Range("A2:A500"));
+            wsTemplate.Range("B2:B500").CreateDataValidation().List(wsLookup.Range("B2:B500"));
+            wsTemplate.Range("D2:D500").CreateDataValidation().List("\"TODO,IN_PROGRESS,IN_REVIEW,DONE\"", true);
+            wsTemplate.Range("E2:E500").CreateDataValidation().List("\"LOW,MEDIUM,HIGH,CRITICAL\"", true);
+            wsTemplate.Range("F2:F500").CreateDataValidation().List("\"NEW_APPLICATION,ENHANCEMENT,BUG,MAINTENANCE,MIGRATION\"", true);
+            wsTemplate.Range("H2:H500").CreateDataValidation().List("\"UI_BUG,FUNCTIONAL_BUG,INTEGRATION_BUG,DATA_BUG,PERFORMANCE_BUG,SECURITY_BUG,OTHER\"", true);
+
+            wsTemplate.Columns(1, 23).AdjustToContents();
+            using var stream = new MemoryStream();
+            armsWb.SaveAs(stream);
+            return stream.ToArray();
         }
-        else
-        {
-            var ws = workbook.Worksheets.Add("Template Standar");
+
+        using var workbook = new XLWorkbook();
+        var ws = workbook.Worksheets.Add("Template Standar");
             string[] headers =
             [
                 "No.", "project_name", "requirement_code", "title", "status",
@@ -260,8 +257,7 @@ public class TaskExcelImportService : ITaskExcelImportService
             ws.Cell(3, 25).Value = "TASK-002";
             ws.Cell(3, 26).Value = "Sprint 1";
 
-            ws.Columns().AdjustToContents();
-        }
+        ws.Columns().AdjustToContents();
 
         using var ms = new MemoryStream();
         workbook.SaveAs(ms);
