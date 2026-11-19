@@ -7,6 +7,7 @@ import { Toaster } from "sonner";
 import { SessionInactivityGuard } from "@/components/guards/SessionInactivityGuard";
 
 import { ThemeFontProvider } from "@/context/ThemeFontContext";
+import { SplashScreen } from "@/components/common/splash-screen";
 
 import { useTheme } from "next-themes";
 
@@ -48,6 +49,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
       <ThemeFontProvider>
         <QueryClientProvider client={queryClient}>
+          <SplashScreen />
           <SessionInactivityGuard timeoutMinutes={60} warningMinutes={5}>
             {children}
           </SessionInactivityGuard>

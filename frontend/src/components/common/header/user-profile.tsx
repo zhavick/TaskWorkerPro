@@ -20,7 +20,7 @@ import {
 import { AltArrowDownIcon } from "@/utils/icon";
 import Link from "next/link";
 
-import { HelpCircle, Sparkles } from "lucide-react";
+import { HelpCircle, Sparkles, Layers } from "lucide-react";
 import { useIsMobileDevice } from "@/hooks/use-is-mobile";
 
 interface UserProfileMenuItem {
@@ -84,6 +84,10 @@ export function UserProfileButton() {
     window.dispatchEvent(new CustomEvent("wtp:start_onboarding_tour"));
   };
 
+  const handleOpenSplash = () => {
+    window.dispatchEvent(new CustomEvent("wtp:open_splash"));
+  };
+
   const menuItems: UserProfileMenuItem[] = [
     {
       href: "/profile",
@@ -94,6 +98,11 @@ export function UserProfileButton() {
       href: "/configuration",
       icon: <GearIcon />,
       label: "Konfigurasi Sistem",
+    },
+    {
+      icon: <Layers className="h-4 w-4 text-sky-500" />,
+      label: "Lihat Splash Screen",
+      onClick: handleOpenSplash,
     },
     {
       icon: <Sparkles className="h-4 w-4 text-amber-500" />,
